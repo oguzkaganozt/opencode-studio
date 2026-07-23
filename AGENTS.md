@@ -36,13 +36,15 @@ Catalog IDs (`src/core/registry.ts`): `cad` \| `media` \| `pcb` \| `startup`. Or
 
 Paths: `@/*` → `src/*`, `@studios/*` → `studios/*` (tsconfig + Vite).
 
-## Config (fail-closed)
+## Config (fail-closed) — config global, data local
 
-- Project: `<workspace>/.opencode/studio.json` → `{ "enabled": ["cad", "pcb"] }`. Missing/invalid → **no** studios.
-- Optional `roots.<id>` must be **absolute** paths. Media default root is XDG user-data (`~/.local/share/opencode-studio/media`), not the workspace.
-- `opencode-studio configure …` also writes managed skills under `.opencode/skills/<id>-studio/` (marker `.opencode-studio-managed.json`), pins plugin entries in OpenCode config, and (when cad enabled) manages MCP key `build123d`.
+- Studio enablement: `~/.config/opencode-studio/studio.json` → `{ "enabled": ["cad", "pcb"] }`. Missing/invalid → **no** studios.
+- Optional `roots.<id>` must be **absolute** paths. Media default root is XDG user-data (`~/.local/share/opencode-studio/media`).
+- CAD/PCB/startup **data** roots default to the domain workspace (`serve --workspace` / OpenCode `context.directory`), not the config home.
+- `opencode-studio configure …` writes managed skills under `~/.config/opencode/skills/<id>-studio/` (marker `.opencode-studio-managed.json`), pins the plugin (+ media-go) in `~/.config/opencode/opencode.json`, and (when cad enabled) manages MCP key `build123d`. Does **not** write into project directories.
+- Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
 - After configure via home UI Apply: host hot-reloads studio APIs; restart **OpenCode** only. CLI `configure` does not notify a running host — restart serve too (or Apply from the UI).
-- Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts.
+- Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` clears **user-global** enablement.
 - Host is loopback-only by default; CSRF + Origin on `PUT /api/config` only (studio APIs are read-only GETs). Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`. Multi-user hosts are out of scope without additional auth.
 
 ## Hard rules
@@ -51,7 +53,7 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*` (tsconfig + Vite).
 - Tool names must not collide across studios; `provider`/`auth` hooks are singletons (media-go is the only auxiliary plugin export).
 - New studio: `bun run create-studio <id>` scaffolds only — still register in `registry.ts`, `studios.ts`, `studio-loaders.ts` (plugin + API), and `ui/app.tsx` (`viewerLoaders`). See `docs/new-studio.md`.
 - Changing tools or packaged skills: update `test/parity/tools.json` and/or `test/parity/skill-digests.json` or parity tests fail.
-- Domain agent workflows live in `studios/*/skill/SKILL.md` (copied into workspaces on configure). Prefer those over inventing tool flows.
+- Domain agent workflows live in `studios/*/skill/SKILL.md` (copied into `~/.config/opencode/skills/` on configure). Prefer those over inventing tool flows.
 - Viewer CSS: Vite root is `ui/`, so Tailwind only auto-scans `ui/**`. `ui/styles.css` registers `@source "../studios"` and each studio `styles.css` carries `@source "."` — keep both when adding a studio or its utilities silently never generate.
 - Viewer framing: `.studio-shell` is `flex min-h-dvh flex-col`; studio viewer roots must be `flex-1 min-h-0` (media uses `flex: 1 1 auto`). Never `h-full`/`min-h-screen` on viewer roots and never style `.studio-shell` from studio CSS — that breaks the height chain.
 - CAD forge runs from XDG cache (`ensureForgeRuntimeDir`), not in-package; source is `studios/cad/forge/` (Python, excluded from tsc/biome). Example designs live under `studios/cad/designs/`; organic benchmark under `studios/cad/benchmarks/` (both excluded from biome; required by `bun run test:python`).

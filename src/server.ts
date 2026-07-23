@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import { Hono } from "hono"
-import { readStudioConfigFile, resolveStudioRoot } from "./config"
+import { maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } from "./config"
 import { errorBody } from "./core/errors"
 import { loadPackageMeta } from "./core/package-meta"
 import { isInside, packageRootFrom } from "./core/paths"
@@ -17,11 +17,12 @@ import {
   securityHeaders,
 } from "./core/security"
 import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
+import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { configureStudios, doctorStudios, statusStudios } from "./lifecycle"
 import { apiLoaders } from "./studio-loaders"
 import { listStudioDefinitions } from "./studios"
 
-export type HostInput = {
+export type HostInput = UserPathOptions & {
   workspace: string
   hostname?: string
   port?: number
@@ -45,8 +46,15 @@ type StudioMountState = {
 async function buildStudioMounts(input: {
   workspace: string
   packageRoot: string
+  userPaths: UserPathOptions
 }): Promise<{ state: StudioMountState; mountErrors: string[] }> {
-  const config = await readStudioConfigFile(input.workspace)
+  // Enablement is user-global; workspace is domain data root only.
+  try {
+    await maybeMigrateLegacyConfig(input.workspace, input.userPaths)
+  } catch {
+    // fail-closed read below still applies
+  }
+  const config = await readStudioConfigFile(input.userPaths)
   const studios = new Hono()
   const mountErrors: string[] = []
   const pcbEnabled = !config.error && config.enabled.includes("pcb")
@@ -81,8 +89,10 @@ export async function createHostApp(input: HostInput) {
   const meta = await loadPackageMeta(packageRoot)
   const packageVersion = input.packageVersion ?? meta.version
   const csrfToken = createCsrfToken()
+  const userPaths = pickUserPaths(input)
+  const domain = { workspace: input.workspace, packageRoot, userPaths }
 
-  const initial = await buildStudioMounts({ workspace: input.workspace, packageRoot })
+  const initial = await buildStudioMounts(domain)
   if (initial.mountErrors.length > 0) {
     throw new Error(`Failed to mount enabled studio API(s): ${initial.mountErrors.join("; ")}`)
   }
@@ -90,7 +100,7 @@ export async function createHostApp(input: HostInput) {
   const mount = { current: initial.state }
 
   const reloadStudios = async () => {
-    const next = await buildStudioMounts({ workspace: input.workspace, packageRoot })
+    const next = await buildStudioMounts(domain)
     // Swap even if some mounts failed so disable still takes effect; surface errors to caller.
     mount.current = next.state
     return next
@@ -118,10 +128,11 @@ export async function createHostApp(input: HostInput) {
   app.get("/api/csrf", (ctx) => ctx.json({ token: csrfToken }))
 
   app.get("/api/studios", async (ctx) => {
-    const status = await statusStudios({ workspace: input.workspace, packageRoot })
+    const status = await statusStudios({ workspace: input.workspace, packageRoot, ...userPaths })
     const update = await checkNpmUpdate({ packageName: meta.name, current: packageVersion })
     return ctx.json({
       workspace: status.workspace,
+      configPath: status.configPath,
       enabled: status.enabled,
       configError: status.configError,
       packageVersion,
@@ -146,7 +157,7 @@ export async function createHostApp(input: HostInput) {
   })
 
   app.get("/api/doctor", async (ctx) => {
-    const result = await doctorStudios({ workspace: input.workspace, packageRoot })
+    const result = await doctorStudios({ workspace: input.workspace, packageRoot, ...userPaths })
     return ctx.json(result)
   })
 
@@ -171,13 +182,14 @@ export async function createHostApp(input: HostInput) {
     }
     // roots are CLI-only — HTTP configure must not repoint studio roots.
     if (body.roots !== undefined) {
-      return ctx.json(errorBody("invalid_body", "roots cannot be set via HTTP; use opencode-studio configure / studio.json"), 400)
+      return ctx.json(errorBody("invalid_body", "roots cannot be set via HTTP; use opencode-studio configure with absolute roots"), 400)
     }
     try {
       const result = await configureStudios({
         workspace: input.workspace,
         enabled: body.enabled,
         packageRoot,
+        ...userPaths,
       })
       const reloaded = await reloadStudios()
       return ctx.json({
@@ -264,7 +276,7 @@ export async function createHostApp(input: HostInput) {
     })
   }
 
-  const config = await readStudioConfigFile(input.workspace)
+  const config = await readStudioConfigFile(userPaths)
   return { app, csrfToken, hostname, port, packageVersion, config, reloadStudios }
 }
 

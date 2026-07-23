@@ -10,13 +10,16 @@ import { manageService, type ServiceAction } from "./service"
 function printHelp() {
   console.log(`opencode-studio
 
+Config is user-global (~/.config/opencode-studio + ~/.config/opencode).
+--workspace is the domain data root for CAD/PCB/startup (default: cwd).
+
 Usage:
   opencode-studio configure <studio...> [--workspace <path>]
   opencode-studio status [--workspace <path>]
   opencode-studio doctor [--workspace <path>]
   opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>] [--allow-non-loopback]
   opencode-studio service install|uninstall|start|stop|restart|status|update [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
-  opencode-studio remove [--workspace <path>]
+  opencode-studio remove
 `)
 }
 
@@ -49,7 +52,8 @@ async function main(argv: string[]) {
     })
     if (values.json) console.log(JSON.stringify(result, null, 2))
     else {
-      console.log(`Configured studios: ${result.enabled.join(", ") || "(none)"}`)
+      console.log(`Configured studios (global): ${result.enabled.join(", ") || "(none)"}`)
+      if ("configPath" in result && result.configPath) console.log(`Config: ${result.configPath}`)
       console.log(
         "Restart OpenCode. If opencode-studio serve is already running, restart it too (CLI configure does not hot-reload the host).",
       )
@@ -70,7 +74,8 @@ async function main(argv: string[]) {
     const result = await statusStudios({ workspace: values.workspace, packageRoot })
     if (values.json) console.log(JSON.stringify(result, null, 2))
     else {
-      console.log(`Workspace: ${result.workspace}`)
+      console.log(`Config: ${result.configPath}`)
+      console.log(`Domain root: ${result.workspace}`)
       if (result.configError) console.log(`Config error: ${result.configError}`)
       console.log(`Enabled: ${result.enabled.join(", ") || "(none)"}`)
       for (const studio of result.studios) {
@@ -113,7 +118,7 @@ async function main(argv: string[]) {
     })
     const result = await removeStudios({ workspace: values.workspace, packageRoot })
     if (values.json) console.log(JSON.stringify(result, null, 2))
-    else console.log("Removed all Studios from this workspace. Restart OpenCode and the host.")
+    else console.log("Removed all Studios (user-global). Restart OpenCode and the host.")
     return 0
   }
 

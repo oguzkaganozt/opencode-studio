@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { applyEdits, modify, type ParseError, parse, printParseErrorCode } from "jsonc-parser"
+import { resolveOpenCodeHome, type UserPathOptions } from "./user-paths"
 
 export type OpenCodeConfig = {
   exists: boolean
@@ -10,6 +11,8 @@ export type OpenCodeConfig = {
   value: Record<string, unknown>
   filePath: string
 }
+
+export type OpenCodePathOptions = UserPathOptions
 
 function parseConfig(text: string, filePath: string) {
   const errors: ParseError[] = []
@@ -44,13 +47,15 @@ function validatePluginEntries(value: unknown): asserts value is unknown[] {
   }
 }
 
-export async function resolveOpenCodeConfigPath(workspace: string) {
-  const jsonc = path.join(workspace, "opencode.jsonc")
-  const json = path.join(workspace, "opencode.json")
+/** Global OpenCode config: ~/.config/opencode/opencode.json[c] */
+export async function resolveOpenCodeConfigPath(options: OpenCodePathOptions = {}) {
+  const home = resolveOpenCodeHome(options)
+  const jsonc = path.join(home, "opencode.jsonc")
+  const json = path.join(home, "opencode.json")
   const hasJsonc = await Bun.file(jsonc).exists()
   const hasJson = await Bun.file(json).exists()
   if (hasJsonc && hasJson) {
-    throw new Error("Both opencode.json and opencode.jsonc exist; keep exactly one")
+    throw new Error(`Both opencode.json and opencode.jsonc exist under ${home}; keep exactly one`)
   }
   if (hasJsonc) return jsonc
   if (hasJson) return json
@@ -189,5 +194,5 @@ export function pluginBaseName(entry: unknown): string | null {
   return name.split("@")[0] ?? name
 }
 
-/** Former unscoped package name — strip on configure so workspaces migrate cleanly. */
+/** Former unscoped package name — strip on configure so installs migrate cleanly. */
 export const LEGACY_PACKAGE_NAMES = ["opencode-studio"] as const

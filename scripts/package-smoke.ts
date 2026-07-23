@@ -52,8 +52,21 @@ try {
     throw new Error("missing packed UI")
   }
 
+  const studioConfigHome = path.join(staging, "studio-config")
+  const openCodeHome = path.join(staging, "opencode-config")
+  const domain = path.join(staging, "domain")
+  await import("node:fs/promises").then(({ mkdir }) => mkdir(domain, { recursive: true }))
+
   const cli = path.join(pkg, "dist/cli.js")
-  const status = Bun.spawn(["bun", cli, "status", "--workspace", staging], { stdout: "pipe", stderr: "pipe" })
+  const status = Bun.spawn(["bun", cli, "status", "--workspace", domain], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      OPENCODE_STUDIO_CONFIG_HOME: studioConfigHome,
+      OPENCODE_CONFIG_HOME: openCodeHome,
+    },
+  })
   const [cliOut, cliErr, cliCode] = await Promise.all([
     new Response(status.stdout).text(),
     new Response(status.stderr).text(),
@@ -61,17 +74,22 @@ try {
   ])
   if (cliCode !== 0) throw new Error(`cli status failed: ${cliErr || cliOut}`)
 
-  // Configure from source package root for skill sources (packed package uses same layout)
+  // Configure from packed package; config lands in user-global homes (isolated here).
   await configureStudios({
-    workspace: staging,
+    workspace: domain,
+    studioConfigHome,
+    openCodeHome,
     enabled: ["startup"],
     packageRoot: pkg,
     validateOpenCode: false,
   })
-  const studioJson = JSON.parse(await readFile(path.join(staging, ".opencode/studio.json"), "utf8"))
+  const studioJson = JSON.parse(await readFile(path.join(studioConfigHome, "studio.json"), "utf8"))
   if (JSON.stringify(studioJson.enabled) !== JSON.stringify(["startup"])) throw new Error("configure failed in packed package")
-  if (!(await Bun.file(path.join(staging, ".opencode/skills/startup-studio/SKILL.md")).exists())) {
+  if (!(await Bun.file(path.join(openCodeHome, "skills/startup-studio/SKILL.md")).exists())) {
     throw new Error("packed configure did not install skill")
+  }
+  if (await Bun.file(path.join(domain, "opencode.json")).exists()) {
+    throw new Error("configure must not write opencode.json into the domain root")
   }
 
   console.log("package-smoke ok")

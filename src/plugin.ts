@@ -1,10 +1,11 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { readStudioConfigFile, resolveStudioRoot } from "./config"
+import { maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } from "./config"
 import { ensureForgeRuntimeDir, loadPackageMeta } from "./core/package-meta"
 import { packageRootFrom } from "./core/paths"
 import { composeStudioPlugins, type StudioPluginContribution } from "./core/plugin-compose"
 import type { StudioId } from "./core/registry"
 import { assertNotRoot } from "./core/security"
+import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { pluginLoaders } from "./studio-loaders"
 
 const DEFAULT_HOST_URL = "http://127.0.0.1:4173"
@@ -15,14 +16,28 @@ function hostUrlFromEnv() {
   return DEFAULT_HOST_URL
 }
 
-export type StudioPluginOptions = {
+export type StudioPluginOptions = UserPathOptions & {
+  /** Domain data root override (CAD/PCB/startup). Defaults to OpenCode context.directory. */
   workspace?: string
   hostUrl?: string
   packageRoot?: string
 }
 
-async function resolveEnabled(workspace: string) {
-  const config = await readStudioConfigFile(workspace)
+async function resolveEnabled(userPaths: UserPathOptions = {}, domainRoot?: string) {
+  if (domainRoot) {
+    try {
+      const migrated = await maybeMigrateLegacyConfig(domainRoot, userPaths)
+      if (migrated.migrated) {
+        console.error(
+          `[opencode-studio] migrated enablement from ${migrated.legacyPath} → ${migrated.config.configPath}. Run opencode-studio configure to finish cleanup.`,
+        )
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[opencode-studio] legacy config migration skipped: ${message}`)
+    }
+  }
+  const config = await readStudioConfigFile(userPaths)
   if (config.error) {
     console.error(`[opencode-studio] configuration error (fail-closed): ${config.error}`)
     return { enabled: [] as StudioId[], roots: {}, error: config.error }
@@ -35,6 +50,8 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
     assertNotRoot("initialize the OpenCode Studio plugin")
     const packageRoot = defaults.packageRoot ?? packageRootFrom(import.meta.dir)
     const meta = await loadPackageMeta(packageRoot)
+    const userPaths = pickUserPaths(defaults)
+    // Domain data root: OpenCode project directory (or explicit override).
     const workspace =
       typeof rawOptions?.workspace === "string" && rawOptions.workspace.length > 0
         ? rawOptions.workspace
@@ -46,7 +63,7 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
         ? rawOptions.hostUrl.replace(/\/$/, "")
         : (defaults.hostUrl ?? hostUrlFromEnv())
 
-    const { enabled, roots, error } = await resolveEnabled(workspace)
+    const { enabled, roots, error } = await resolveEnabled(userPaths, workspace)
     if (error || enabled.length === 0) {
       return {
         tool: {},

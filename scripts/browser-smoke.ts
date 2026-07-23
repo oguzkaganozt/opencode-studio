@@ -165,9 +165,16 @@ async function freePort(): Promise<number> {
   return port
 }
 
+const studioConfigHome = path.join(workspace, "studio-config")
+const openCodeHome = path.join(workspace, "opencode-config")
+const domain = path.join(workspace, "domain")
+await import("node:fs/promises").then(({ mkdir }) => mkdir(domain, { recursive: true }))
+
 try {
   await configureStudios({
-    workspace,
+    workspace: domain,
+    studioConfigHome,
+    openCodeHome,
     enabled: [...STUDIO_IDS],
     packageRoot: root,
     validateOpenCode: false,
@@ -175,7 +182,9 @@ try {
   // Bind a concrete loopback port so Host-header allowlisting matches the browser.
   const port = await freePort()
   const { url, stop } = await startHost({
-    workspace,
+    workspace: domain,
+    studioConfigHome,
+    openCodeHome,
     packageRoot: root,
     hostname: "127.0.0.1",
     port,

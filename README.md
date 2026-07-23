@@ -28,28 +28,35 @@ Enable/disable Studios only toggles tools/skills/APIs — it does not install or
 
 ## Quick start
 
-In any project directory:
-
 ```bash
-cd /path/to/project
 opencode-studio serve
+# optional: domain data root for CAD/PCB/startup (default: cwd)
+opencode-studio serve --workspace /path/to/project
 ```
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173) → tick the Studios you want → **Apply selection**.
 
 The host reloads studio APIs on Apply. Restart **OpenCode** so plugins and skills match.
 
-`serve` defaults to the current working directory (`--workspace` only if you need another path).
+Enablement is **user-global** — you only configure once. `--workspace` is the domain data root (where designs/boards live), not a per-project config file.
 
-### Config
+### Config (global)
 
-Written by the home UI (or CLI). Project file: `.opencode/studio.json`
+Written by the home UI (or CLI):
+
+| File | Purpose |
+| --- | --- |
+| `~/.config/opencode-studio/studio.json` | `{ "enabled": ["cad", "pcb"] }` + optional absolute `roots` |
+| `~/.config/opencode/opencode.json` | Plugin pin + managed `build123d` MCP |
+| `~/.config/opencode/skills/<id>-studio/` | Managed agent skills |
 
 ```json
 { "enabled": ["cad", "pcb"] }
 ```
 
-Optional absolute `roots.<id>` overrides. Media defaults to XDG user-data (`~/.local/share/opencode-studio/media`), not the workspace.
+Missing/invalid config → no studios (fail-closed). Media data defaults to XDG user-data (`~/.local/share/opencode-studio/media`).
+
+**Upgrade from project-local config:** if `~/.config/opencode-studio/studio.json` is missing and the domain still has `.opencode/studio.json`, enablement is migrated automatically on `serve` / plugin load. Run `opencode-studio configure <studios…>` once to finish (pins global plugin/skills and scrubs leftover project `opencode.json` / skills). Or delete old project files after configure.
 
 ### Background service (Linux systemd user)
 
@@ -64,7 +71,7 @@ opencode-studio service uninstall
 opencode-studio service update           # npm i -g @latest + reinstall/restart unit
 ```
 
-Options: `--workspace`, `--host`, `--port`, `--name <unit>` (multiple workspaces).  
+Options: `--workspace` (domain data root), `--host`, `--port`, `--name <unit>` (multiple hosts/ports).  
 After logout, if the unit stops: `loginctl enable-linger $USER`.
 
 While `serve` is running, the home page shows a banner when a newer npm version exists (also logged to the service journal).
@@ -73,9 +80,10 @@ While `serve` is running, the home page shows a banner when a newer npm version 
 
 ```bash
 opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>]
-opencode-studio service install|uninstall|start|stop|restart|status [...]
-opencode-studio status|doctor|remove [--workspace <path>]
-opencode-studio configure <studios...> [--workspace <path>]   # same as home UI Apply
+opencode-studio service install|uninstall|start|stop|restart|status|update [...]
+opencode-studio status|doctor [--workspace <path>]
+opencode-studio configure <studios...> [--workspace <path>]   # same as home UI Apply (global)
+opencode-studio remove                                         # clear all studios (global)
 ```
 
 ## Package exports

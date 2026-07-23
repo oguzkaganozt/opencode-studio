@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { configureStudios } from "../src/lifecycle"
@@ -12,11 +12,23 @@ afterEach(async () => {
   for (const dir of temps.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
+async function isolatedHost() {
+  const root = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
+  temps.push(root)
+  const workspace = path.join(root, "domain")
+  await mkdir(workspace, { recursive: true })
+  return {
+    workspace,
+    studioConfigHome: path.join(root, "studio-config"),
+    openCodeHome: path.join(root, "opencode-config"),
+    packageRoot,
+  }
+}
+
 describe("host server", () => {
   test("health and fail-closed studios list", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
-    temps.push(workspace)
-    const { app } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
+    const ctx = await isolatedHost()
+    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
     const health = await app.request("http://127.0.0.1:4173/api/health", { headers: { host: "127.0.0.1:4173" } })
     expect(health.status).toBe(200)
     const studios = await app.request("http://127.0.0.1:4173/api/studios", { headers: { host: "127.0.0.1:4173" } })
@@ -25,19 +37,16 @@ describe("host server", () => {
   })
 
   test("rejects bad host", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
-    temps.push(workspace)
-    const { app } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
+    const ctx = await isolatedHost()
+    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
     const response = await app.request("http://evil.test/api/health", { headers: { host: "evil.test" } })
     expect(response.status).toBe(400)
   })
 
   test("configure requires csrf and origin (matrix)", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
-    temps.push(workspace)
-    const { app, csrfToken } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
+    const ctx = await isolatedHost()
+    const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
 
-    // Neither origin nor token → 403
     const noOriginNoToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", "content-type": "application/json" },
@@ -45,7 +54,6 @@ describe("host server", () => {
     })
     expect(noOriginNoToken.status).toBe(403)
 
-    // Good origin, bad token → 403
     const goodOriginBadToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": "wrong" },
@@ -53,7 +61,6 @@ describe("host server", () => {
     })
     expect(goodOriginBadToken.status).toBe(403)
 
-    // Bad origin, good token → 403
     const badOriginGoodToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://evil.com:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
@@ -61,7 +68,6 @@ describe("host server", () => {
     })
     expect(badOriginGoodToken.status).toBe(403)
 
-    // Vite dev origin (:5173) with valid token → 200
     const devOrigin = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:5173", "content-type": "application/json", "x-csrf-token": csrfToken },
@@ -69,7 +75,6 @@ describe("host server", () => {
     })
     expect(devOrigin.status).toBe(200)
 
-    // Bare loopback origin (no port) → 403 (port-strict)
     const bareOrigin = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1", "content-type": "application/json", "x-csrf-token": csrfToken },
@@ -79,9 +84,8 @@ describe("host server", () => {
   })
 
   test("configure rejects roots via HTTP", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
-    temps.push(workspace)
-    const { app, csrfToken } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
+    const ctx = await isolatedHost()
+    const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
     const response = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
@@ -93,10 +97,13 @@ describe("host server", () => {
   })
 
   test("mounts startup routes when enabled", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
-    temps.push(workspace)
-    await configureStudios({ workspace, enabled: ["startup"], packageRoot, validateOpenCode: false })
-    const { app } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
+    const ctx = await isolatedHost()
+    await configureStudios({
+      ...ctx,
+      enabled: ["startup"],
+      validateOpenCode: false,
+    })
+    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
     const response = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
       headers: { host: "127.0.0.1:4173" },
     })
@@ -106,9 +113,8 @@ describe("host server", () => {
   })
 
   test("configure hot-reloads studio API mounts without process restart", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
-    temps.push(workspace)
-    const { app, csrfToken } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
+    const ctx = await isolatedHost()
+    const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
 
     const before = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
       headers: { host: "127.0.0.1:4173" },

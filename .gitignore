@@ -11,6 +11,7 @@ __pycache__/
 *.tgz
 
 # Domain-generated data and local configuration
+# Legacy project-local config (pre global-config); keep ignoring if leftover
 .opencode/studio.json
 .opencode/studio.local.json
 .opencode/skills/

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { listComposedToolNames } from "../src/core/plugin-compose"
@@ -40,10 +40,16 @@ describe("parity fixtures", () => {
 
 describe("live tool inventory", () => {
   test("enabling all studios exposes every parity tool name", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-tools-"))
+    const root = await mkdtemp(path.join(tmpdir(), "osc-tools-"))
     try {
+      const workspace = path.join(root, "domain")
+      await mkdir(workspace, { recursive: true })
+      const studioConfigHome = path.join(root, "studio-config")
+      const openCodeHome = path.join(root, "opencode-config")
       await configureStudios({
         workspace,
+        studioConfigHome,
+        openCodeHome,
         enabled: ["cad", "media", "pcb", "startup"],
         packageRoot,
         validateOpenCode: false,
@@ -51,7 +57,12 @@ describe("live tool inventory", () => {
           media: path.join(workspace, "media-library"),
         },
       })
-      const plugin = createOpenCodeStudioPlugin({ workspace, packageRoot })
+      const plugin = createOpenCodeStudioPlugin({
+        workspace,
+        packageRoot,
+        studioConfigHome,
+        openCodeHome,
+      })
       const composed = await plugin({ directory: workspace } as any, {})
       const names = listComposedToolNames(composed)
       for (const toolName of Object.keys(tools.tools)) {
@@ -59,7 +70,7 @@ describe("live tool inventory", () => {
       }
       expect(names.length).toBe(tools.count)
     } finally {
-      await rm(workspace, { recursive: true, force: true })
+      await rm(root, { recursive: true, force: true })
     }
   }, 60_000)
 })

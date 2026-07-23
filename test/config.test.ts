@@ -2,12 +2,18 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { parseStudioConfig, readStudioConfigFile, studioConfigPath } from "../src/config"
+import { maybeMigrateLegacyConfig, parseStudioConfig, readStudioConfigFile, studioConfigPath, writeStudioConfigFile } from "../src/config"
 
 const temps: string[] = []
 afterEach(async () => {
   for (const dir of temps.splice(0)) await rm(dir, { recursive: true, force: true })
 })
+
+async function isolatedHome() {
+  const dir = await mkdtemp(path.join(tmpdir(), "osc-cfg-"))
+  temps.push(dir)
+  return { studioConfigHome: dir }
+}
 
 describe("parseStudioConfig", () => {
   test("valid enabled", () => {
@@ -48,36 +54,69 @@ describe("parseStudioConfig", () => {
 
 describe("readStudioConfigFile", () => {
   test("missing file returns empty enabled (fail-closed)", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-cfg-"))
-    temps.push(workspace)
-    const result = await readStudioConfigFile(workspace)
+    const homes = await isolatedHome()
+    const result = await readStudioConfigFile(homes)
     expect(result.enabled).toEqual([])
     expect(result.error).toBeUndefined()
+    expect(result.configPath).toBe(studioConfigPath(homes))
   })
   test("invalid JSON returns empty enabled with error (fail-closed)", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-cfg-"))
-    temps.push(workspace)
-    await mkdir(path.dirname(studioConfigPath(workspace)), { recursive: true })
-    await writeFile(studioConfigPath(workspace), "{not json")
-    const result = await readStudioConfigFile(workspace)
+    const homes = await isolatedHome()
+    await mkdir(homes.studioConfigHome, { recursive: true })
+    await writeFile(studioConfigPath(homes), "{not json")
+    const result = await readStudioConfigFile(homes)
     expect(result.enabled).toEqual([])
     expect(result.error).toBeTruthy()
   })
   test("non-object JSON returns empty enabled with error", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-cfg-"))
-    temps.push(workspace)
-    await mkdir(path.dirname(studioConfigPath(workspace)), { recursive: true })
-    await writeFile(studioConfigPath(workspace), "[]")
-    const result = await readStudioConfigFile(workspace)
+    const homes = await isolatedHome()
+    await mkdir(homes.studioConfigHome, { recursive: true })
+    await writeFile(studioConfigPath(homes), "[]")
+    const result = await readStudioConfigFile(homes)
     expect(result.enabled).toEqual([])
     expect(result.error).toBeTruthy()
   })
   test("valid config reads enabled", async () => {
-    const workspace = await mkdtemp(path.join(tmpdir(), "osc-cfg-"))
-    temps.push(workspace)
-    await mkdir(path.dirname(studioConfigPath(workspace)), { recursive: true })
-    await writeFile(studioConfigPath(workspace), JSON.stringify({ enabled: ["cad", "startup"] }))
-    const result = await readStudioConfigFile(workspace)
+    const homes = await isolatedHome()
+    await mkdir(homes.studioConfigHome, { recursive: true })
+    await writeFile(studioConfigPath(homes), JSON.stringify({ enabled: ["cad", "startup"] }))
+    const result = await readStudioConfigFile(homes)
     expect(result.enabled).toEqual(["cad", "startup"])
+  })
+})
+
+describe("maybeMigrateLegacyConfig", () => {
+  test("copies legacy project config into empty global home", async () => {
+    const homes = await isolatedHome()
+    const domain = path.join(homes.studioConfigHome, "domain")
+    await mkdir(path.join(domain, ".opencode"), { recursive: true })
+    await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ enabled: ["pcb"] }))
+    const result = await maybeMigrateLegacyConfig(domain, homes)
+    expect(result.migrated).toBe(true)
+    expect(result.config.enabled).toEqual(["pcb"])
+    const global = await readStudioConfigFile(homes)
+    expect(global.enabled).toEqual(["pcb"])
+  })
+
+  test("does not overwrite existing global config", async () => {
+    const homes = await isolatedHome()
+    await writeStudioConfigFile({ enabled: ["cad"] }, homes)
+    const domain = path.join(homes.studioConfigHome, "domain")
+    await mkdir(path.join(domain, ".opencode"), { recursive: true })
+    await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ enabled: ["pcb"] }))
+    const result = await maybeMigrateLegacyConfig(domain, homes)
+    expect(result.migrated).toBe(false)
+    expect(result.config.enabled).toEqual(["cad"])
+  })
+
+  test("does not migrate when global file exists with empty enabled", async () => {
+    const homes = await isolatedHome()
+    await writeStudioConfigFile({ enabled: [] }, homes)
+    const domain = path.join(homes.studioConfigHome, "domain")
+    await mkdir(path.join(domain, ".opencode"), { recursive: true })
+    await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ enabled: ["pcb"] }))
+    const result = await maybeMigrateLegacyConfig(domain, homes)
+    expect(result.migrated).toBe(false)
+    expect(result.config.enabled).toEqual([])
   })
 })

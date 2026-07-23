@@ -25,6 +25,7 @@ type UpdateInfo = {
 
 type StudiosResponse = {
   workspace: string
+  configPath?: string
   enabled: string[]
   configError?: string
   packageVersion: string
@@ -101,8 +102,8 @@ function HomePage() {
       <div className="mb-6 space-y-2">
         <h1 className="text-2xl font-semibold">Studios</h1>
         <p className="max-w-2xl text-sm text-[var(--osc-text-muted)]">
-          Select which Studios this workspace uses, then apply. The studio host reloads APIs immediately; you still need to restart{" "}
-          <span className="font-mono">OpenCode</span> so plugins and skills match the new set.
+          Select which Studios are enabled for your user (global config), then apply. The studio host reloads APIs immediately; you still
+          need to restart <span className="font-mono">OpenCode</span> so plugins and skills match the new set.
         </p>
         {studiosQuery.isLoading && <p className="text-sm text-[var(--osc-text-muted)]">Loading studios…</p>}
         {studiosQuery.isError && (
@@ -117,7 +118,8 @@ function HomePage() {
         )}
         {studiosQuery.data && (
           <p className="font-mono text-xs text-[var(--osc-text-faint)]">
-            workspace {studiosQuery.data.workspace} · v{studiosQuery.data.packageVersion}
+            domain {studiosQuery.data.workspace}
+            {studiosQuery.data.configPath ? ` · config ${studiosQuery.data.configPath}` : ""} · v{studiosQuery.data.packageVersion}
             {studiosQuery.data.update?.latest ? ` · npm ${studiosQuery.data.update.latest}` : ""}
           </p>
         )}
