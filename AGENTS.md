@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Modular monolith: one npm package (`opencode-studio`), one CLI, one host, one Viewer. Studios are source modules under `studios/`, not separate packages.
+Modular monolith: one npm package (`@oguzkaganozt/opencode-studio`), one CLI (`opencode-studio`), one host, one Viewer. Studios are source modules under `studios/`, not separate packages.
 
 ## Commands
 

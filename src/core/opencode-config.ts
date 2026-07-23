@@ -163,18 +163,31 @@ export async function atomicWriteOpenCodeConfig(filePath: string, text: string, 
   }
 }
 
-export function pluginEntryMatches(entry: unknown, pluginSpecifier: string) {
-  if (typeof entry === "string")
-    return entry === pluginSpecifier || entry.startsWith(`${pluginSpecifier}@`) || entry.startsWith(`${pluginSpecifier}/`)
-  if (Array.isArray(entry) && typeof entry[0] === "string") {
-    const name = entry[0]
-    return name === pluginSpecifier || name.startsWith(`${pluginSpecifier}@`) || name.startsWith(`${pluginSpecifier}/`)
-  }
-  return false
-}
-
-export function pluginBaseName(entry: unknown): string | null {
-  if (typeof entry === "string") return entry.split("@")[0] ?? entry
-  if (Array.isArray(entry) && typeof entry[0] === "string") return entry[0].split("@")[0] ?? entry[0]
+function entryName(entry: unknown): string | null {
+  if (typeof entry === "string") return entry
+  if (Array.isArray(entry) && typeof entry[0] === "string") return entry[0]
   return null
 }
+
+export function pluginEntryMatches(entry: unknown, pluginSpecifier: string) {
+  const name = entryName(entry)
+  if (!name) return false
+  return name === pluginSpecifier || name.startsWith(`${pluginSpecifier}@`) || name.startsWith(`${pluginSpecifier}/`)
+}
+
+/**
+ * Package name from an OpenCode plugin entry (`name`, `name@version`, `@scope/name@version/subpath`).
+ * Scoped names keep the leading `@` (must not split on the first `@`).
+ */
+export function pluginBaseName(entry: unknown): string | null {
+  const name = entryName(entry)
+  if (!name) return null
+  if (name.startsWith("@")) {
+    const match = name.match(/^(@[^/]+\/[^@/]+)/)
+    return match?.[1] ?? name
+  }
+  return name.split("@")[0] ?? name
+}
+
+/** Former unscoped package name — strip on configure so workspaces migrate cleanly. */
+export const LEGACY_PACKAGE_NAMES = ["opencode-studio"] as const

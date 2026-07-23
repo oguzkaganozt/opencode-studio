@@ -6,6 +6,7 @@ import {
   atomicWriteOpenCodeConfig,
   configWithMcp,
   configWithPlugins,
+  LEGACY_PACKAGE_NAMES,
   mcpEntries,
   pluginBaseName,
   pluginEntries,
@@ -221,10 +222,11 @@ export async function configureStudios(input: {
   const openCode = await readOpenCodeConfig(configPath)
   let plugins = [...pluginEntries(openCode)]
 
-  // Strip any previous opencode-studio plugin entries (any version / subpath)
+  // Strip current + legacy package plugin entries (any version / subpath)
   plugins = plugins.filter((entry) => {
     const base = pluginBaseName(entry)
     if (!base) return true
+    if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
     return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
   plugins.push(meta.pluginSpecifier)

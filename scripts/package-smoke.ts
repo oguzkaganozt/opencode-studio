@@ -21,7 +21,8 @@ try {
   const installCode = await install.exited
   if (installCode !== 0) throw new Error(`install failed: ${await new Response(install.stderr).text()}`)
 
-  const pkg = path.join(staging, "node_modules/opencode-studio")
+  const pkgName = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).name as string
+  const pkg = path.join(staging, "node_modules", ...pkgName.split("/"))
   const plugin = await import(path.join(pkg, "dist/plugin.js"))
   if (typeof plugin.default !== "function") throw new Error("default export is not a plugin function")
 
@@ -76,6 +77,6 @@ try {
   console.log("package-smoke ok")
 } finally {
   await rm(staging, { recursive: true, force: true })
-  const tgz = Bun.spawn(["bash", "-lc", "rm -f opencode-studio-*.tgz"], { cwd: root })
+  const tgz = Bun.spawn(["bash", "-lc", "rm -f ./*.tgz oguzkaganozt-opencode-studio-*.tgz opencode-studio-*.tgz"], { cwd: root })
   await tgz.exited
 }

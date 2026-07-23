@@ -15,6 +15,13 @@ bun run serve
 
 Prerequisites: Bun ≥ 1.3. For `release:check` and CAD forge tests: Python 3.12 + [uv](https://docs.astral.sh/uv/). UI browser smoke needs Playwright Chromium once (`bun run test:browser:install`). Media needs `ffmpeg`/`ffprobe`. PCB authoring needs `tsci`.
 
+## Install
+
+```bash
+bun add -g @oguzkaganozt/opencode-studio
+# or: npm i -g @oguzkaganozt/opencode-studio
+```
+
 ## Configure
 
 Installing the package enables **no** Studio.
@@ -49,9 +56,9 @@ scripts/             build, package smoke, create-studio
 
 ## Package exports
 
-- `opencode-studio` — primary OpenCode plugin
-- `opencode-studio/media-provider` — native media AI SDK adapter
-- `opencode-studio/media-go` — auxiliary plugin for `opencode-go` provider hooks
+- `@oguzkaganozt/opencode-studio` — primary OpenCode plugin
+- `@oguzkaganozt/opencode-studio/media-provider` — native media AI SDK adapter
+- `@oguzkaganozt/opencode-studio/media-go` — auxiliary plugin for `opencode-go` provider hooks
 
 ## Docs
 

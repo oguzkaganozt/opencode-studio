@@ -44,7 +44,8 @@ describe("configureStudios", () => {
     const marker = JSON.parse(await readFile(path.join(workspace, ".opencode/skills/startup-studio/.opencode-studio-managed.json"), "utf8"))
     expect(marker.studioId).toBe("startup")
     const openCode = JSON.parse(await readFile(path.join(workspace, "opencode.json"), "utf8"))
-    expect(openCode.plugin.some((entry: string) => String(entry).startsWith("opencode-studio@"))).toBe(true)
+    const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
+    expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(true)
   })
 
   test("refuses unknown studio ids", async () => {
