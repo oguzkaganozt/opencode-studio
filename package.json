@@ -129,7 +129,6 @@
     "url": "git+https://github.com/oguzkaganozt/opencode-studio.git"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   }
 }
