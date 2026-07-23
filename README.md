@@ -51,10 +51,26 @@ Written by the home UI (or CLI). Project file: `.opencode/studio.json`
 
 Optional absolute `roots.<id>` overrides. Media defaults to XDG user-data (`~/.local/share/opencode-studio/media`), not the workspace.
 
+### Background service (Linux systemd user)
+
+Keep the host running without a terminal:
+
+```bash
+cd /path/to/project
+opencode-studio service install          # writes ~/.config/systemd/user/opencode-studio.service + enable --now
+opencode-studio service status
+opencode-studio service stop|start|restart
+opencode-studio service uninstall
+```
+
+Options: `--workspace`, `--host`, `--port`, `--name <unit>` (multiple workspaces).  
+After logout, if the unit stops: `loginctl enable-linger $USER`.
+
 ### CLI (optional)
 
 ```bash
 opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>]
+opencode-studio service install|uninstall|start|stop|restart|status [...]
 opencode-studio status|doctor|remove [--workspace <path>]
 opencode-studio configure <studios...> [--workspace <path>]   # same as home UI Apply
 ```

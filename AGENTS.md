@@ -18,6 +18,7 @@ bun run test:browser:install                      # once: Playwright Chromium fo
 bun run test:browser                              # HTTP + Chromium layout/CSS smoke (needs dist/ui)
 bun run serve                                     # host @ 127.0.0.1:4173
 bun run dev:ui                                    # Vite :5173, proxies /api → :4173
+# CLI background (Linux): opencode-studio service install|status|stop|uninstall
 ```
 
 CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` → `bun install --frozen-lockfile` → `bun run release:check`. Bun ≥ 1.3, Python 3.12 + uv for forge/MCP.
