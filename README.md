@@ -2,7 +2,9 @@
 
 OpenCode Studio is one configurable OpenCode package for focused CAD, media,
 PCB, and startup workflows. It provides one plugin, CLI, local backend, and web
-application while keeping each domain behind an explicit Studio module.
+application while keeping each domain behind an explicit Studio module. One
+primary OpenCode plugin composes only the modules enabled for the current
+project.
 
 This is a greenfield internal project for a small team. There are no legacy
 users or compatibility requirements. Existing Studio repositories are source
@@ -23,6 +25,7 @@ must not expose tools, skills, hooks, API routes, or Viewer pages to OpenCode.
 ## Target experience
 
 ```bash
+# Requires Bun for the CLI and runtime.
 npm install --global opencode-studio
 opencode-studio serve --workspace .
 ```
@@ -36,6 +39,9 @@ opencode-studio configure cad pcb
 
 Configuration is project-local in `.opencode/studio.json`. Missing or invalid
 configuration fails closed: no Studio is enabled automatically.
+
+After changing the enabled set, restart both OpenCode and the Studio host. The
+first release intentionally does not hot-load or unload Studio modules.
 
 ## Architecture at a glance
 
