@@ -678,7 +678,7 @@ describe("combined video plugin", () => {
       }),
     )
     await expect(abortFailure.tool!.fal_submit.execute({ endpoint: "fal-ai/abort", input: {} }, context(aborted.signal))).rejects.toThrow(
-      "submission aborted",
+      /aborted/i,
     )
 
     expect(abortedFetches).toBe(0)

@@ -18,6 +18,7 @@ import {
   falRequestID,
   formatToolJSON,
   requireFalKey,
+  throwIfAborted,
 } from "./fal"
 import { type ConvertPreset, convertArguments, extractAudioArguments, probeMedia, runMediaProcess, trimArguments } from "./ffmpeg"
 import { initializeLibrary, inspectManagedAsset, type LibraryModality, openManagedAsset, personalOutputPath, scanLibrary } from "./library"
@@ -706,7 +707,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
               bytes = Buffer.allocUnsafe(media.bytes)
               let offset = 0
               while (offset < bytes.length) {
-                toolContext.abort.throwIfAborted()
+                throwIfAborted(toolContext.abort)
                 const result = await media.handle.read(bytes, offset, bytes.length - offset, offset)
                 if (result.bytesRead === 0) break
                 offset += result.bytesRead
@@ -796,7 +797,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
           async execute(args, toolContext) {
             requireFalKey()
             const endpoint = falEndpoint(args.endpoint)
-            toolContext.abort.throwIfAborted()
+            throwIfAborted(toolContext.abort)
             await falPlatformGet(
               "/models",
               {
@@ -807,9 +808,9 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
               platformFetch,
               toolContext.abort,
             )
-            toolContext.abort.throwIfAborted()
+            throwIfAborted(toolContext.abort)
             await falPlatformGet("/models/pricing", { endpoint_id: endpoint }, platformFetch, toolContext.abort)
-            toolContext.abort.throwIfAborted()
+            throwIfAborted(toolContext.abort)
             const result = await fal.queue.submit(endpoint, { input: args.input, abortSignal: toolContext.abort })
             return formatToolJSON(result)
           },

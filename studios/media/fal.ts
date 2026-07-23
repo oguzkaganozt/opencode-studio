@@ -41,12 +41,22 @@ export function falJobStatus(value: unknown): "running" | "completed" | "failed"
   return "running"
 }
 
+/** Always throw an Error with a stable message (Bun/Node AbortSignal reason shapes differ). */
+export function throwIfAborted(signal: AbortSignal, fallback = "operation aborted"): void {
+  if (!signal.aborted) return
+  const reason = signal.reason
+  if (reason instanceof Error) throw reason
+  if (typeof reason === "string" && reason.length > 0) throw new Error(reason)
+  throw new Error(fallback)
+}
+
 export async function falPlatformGet(
   pathname: string,
   params: Record<string, string | number | undefined>,
   fetcher: FalPlatformFetcher = (input, init) => fetch(input, init),
   signal?: AbortSignal,
 ) {
+  if (signal) throwIfAborted(signal, "fal platform request aborted")
   const url = new URL(`${PLATFORM_URL}${pathname}`)
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") url.searchParams.set(key, String(value))
