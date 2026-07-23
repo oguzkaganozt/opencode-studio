@@ -1,67 +1,100 @@
 # OpenCode Studio
 
-One configurable OpenCode package for CAD, media, PCB, and startup workflows.
+Configurable OpenCode Studios for CAD, media, PCB, and startup workflows.
 
-## Develop
+**Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
-```bash
-bun install
-bun test
-bun run typecheck
-bun run lint
-bun run build
-bun run serve
-```
-
-Prerequisites: Bun ≥ 1.3. For `release:check` and CAD forge tests: Python 3.12 + [uv](https://docs.astral.sh/uv/). UI browser smoke needs Playwright Chromium once (`bun run test:browser:install`). Media needs `ffmpeg`/`ffprobe`. PCB authoring needs `tsci`.
+Installing the package enables **no** Studio until you configure one.
 
 ## Install
 
 ```bash
+npm i -g @oguzkaganozt/opencode-studio
+# or
 bun add -g @oguzkaganozt/opencode-studio
-# or: npm i -g @oguzkaganozt/opencode-studio
 ```
 
-## Configure
+Requires **Bun ≥ 1.3** (CLI runtime). Optional engines:
 
-Installing the package enables **no** Studio.
+| Studio | Needs |
+| --- | --- |
+| CAD | Python 3.12 + [uv](https://docs.astral.sh/uv/) |
+| Media | `ffmpeg` / `ffprobe` |
+| PCB | `tsci` (for real authoring builds) |
+
+## Quick start
+
+In a project workspace:
 
 ```bash
-opencode-studio configure cad pcb
+opencode-studio configure cad media pcb startup
 opencode-studio status
 opencode-studio doctor
 opencode-studio serve --workspace .
-opencode-studio remove
 ```
 
-Or open the home page at `http://127.0.0.1:4173` after `serve`.
+Open the Viewer: [http://127.0.0.1:4173](http://127.0.0.1:4173)
 
-Project config: `.opencode/studio.json`
+Then restart **OpenCode** so the plugin/skills load.
+
+### Config
+
+Project file: `.opencode/studio.json`
 
 ```json
 { "enabled": ["cad", "pcb"] }
 ```
 
-After any configure change, restart OpenCode and the Studio host.
+Optional absolute `roots.<id>` overrides. Media defaults to XDG user-data (`~/.local/share/opencode-studio/media`), not the workspace.
 
-## Layout
+After any configure change: restart OpenCode **and** `opencode-studio serve`.
 
-```text
-src/                 shared CLI, plugin, server, config, core
-studios/             cad | media | pcb | startup modules
-ui/                  shared Viewer shell + lazy studio pages
-test/                core + parity tests
-scripts/             build, package smoke, create-studio
+### CLI
+
+```bash
+opencode-studio configure <studios...> [--workspace <path>]
+opencode-studio status [--workspace <path>]
+opencode-studio doctor [--workspace <path>]
+opencode-studio serve --workspace <path> [--host <host>] [--port <port>]
+opencode-studio remove [--workspace <path>]
 ```
 
 ## Package exports
 
-- `@oguzkaganozt/opencode-studio` — primary OpenCode plugin
-- `@oguzkaganozt/opencode-studio/media-provider` — native media AI SDK adapter
-- `@oguzkaganozt/opencode-studio/media-go` — auxiliary plugin for `opencode-go` provider hooks
+| Export | Role |
+| --- | --- |
+| `@oguzkaganozt/opencode-studio` | Primary OpenCode plugin |
+| `@oguzkaganozt/opencode-studio/media-provider` | Native media AI SDK adapter |
+| `@oguzkaganozt/opencode-studio/media-go` | Auxiliary plugin for `opencode-go` provider hooks |
+
+OpenCode is also pinned via `configure` (plugin entries + managed skills under `.opencode/skills/`).
+
+## Develop (this repo)
+
+```bash
+bun install
+bun run check                 # typecheck + test + lint + build
+bun run release:check         # full gate (incl. forge, pack, browser smoke)
+bun run serve                 # host @ 127.0.0.1:4173
+bun run dev:ui                # Vite :5173 → proxies /api
+bun run test:browser:install  # once: Playwright Chromium
+```
+
+```text
+src/                 CLI, plugin, host, config, core
+studios/             cad | media | pcb | startup
+ui/                  Viewer shell + lazy studio pages
+test/                core + parity
+scripts/             build, smokes, create-studio
+```
 
 ## Docs
 
-- [PLAN.md](PLAN.md) — accepted decisions and definition of done
+- [PLAN.md](PLAN.md) — product decisions
 - [docs/architecture.md](docs/architecture.md)
 - [docs/new-studio.md](docs/new-studio.md)
+- [AGENTS.md](AGENTS.md) — agent/contributor guardrails
+
+## License
+
+MIT
