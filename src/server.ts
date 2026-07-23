@@ -16,6 +16,7 @@ import {
   sameOrigin,
   securityHeaders,
 } from "./core/security"
+import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
 import { configureStudios, doctorStudios, statusStudios } from "./lifecycle"
 import { apiLoaders } from "./studio-loaders"
 import { listStudioDefinitions } from "./studios"
@@ -118,6 +119,7 @@ export async function createHostApp(input: HostInput) {
 
   app.get("/api/studios", async (ctx) => {
     const status = await statusStudios({ workspace: input.workspace, packageRoot })
+    const update = await checkNpmUpdate({ packageName: meta.name, current: packageVersion })
     return ctx.json({
       workspace: status.workspace,
       enabled: status.enabled,
@@ -134,7 +136,13 @@ export async function createHostApp(input: HostInput) {
       })),
       restartRequiredHint: status.restartRequiredHint,
       hostHotReload: true,
+      update,
     })
+  })
+
+  app.get("/api/update", async (ctx) => {
+    const update = await checkNpmUpdate({ packageName: meta.name, current: packageVersion })
+    return ctx.json(update)
   })
 
   app.get("/api/doctor", async (ctx) => {
@@ -261,13 +269,26 @@ export async function createHostApp(input: HostInput) {
 }
 
 export async function startHost(input: HostInput) {
-  const { app, hostname, port } = await createHostApp(input)
+  const { app, hostname, port, packageVersion } = await createHostApp(input)
+  const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
+  const meta = await loadPackageMeta(packageRoot)
+  scheduleUpdateLog({ packageName: meta.name, current: input.packageVersion ?? packageVersion })
+  // Re-check daily while the host stays up (systemd).
+  const updateTimer = setInterval(
+    () => {
+      scheduleUpdateLog({ packageName: meta.name, current: input.packageVersion ?? packageVersion })
+    },
+    24 * 60 * 60 * 1000,
+  )
+  if (typeof updateTimer.unref === "function") updateTimer.unref()
+
   const server = Bun.serve({
     hostname,
     port,
     fetch: app.fetch,
   })
   const stop = () => {
+    clearInterval(updateTimer)
     server.stop(true)
   }
   process.on("SIGINT", () => {

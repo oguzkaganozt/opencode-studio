@@ -16,6 +16,13 @@ type StudioCard = {
   skillInstalled: boolean
 }
 
+type UpdateInfo = {
+  current: string
+  latest: string | null
+  updateAvailable: boolean
+  message?: string
+}
+
 type StudiosResponse = {
   workspace: string
   enabled: string[]
@@ -23,6 +30,7 @@ type StudiosResponse = {
   packageVersion: string
   studios: StudioCard[]
   restartRequiredHint: string
+  update?: UpdateInfo
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -110,7 +118,25 @@ function HomePage() {
         {studiosQuery.data && (
           <p className="font-mono text-xs text-[var(--osc-text-faint)]">
             workspace {studiosQuery.data.workspace} · v{studiosQuery.data.packageVersion}
+            {studiosQuery.data.update?.latest ? ` · npm ${studiosQuery.data.update.latest}` : ""}
           </p>
+        )}
+        {studiosQuery.data?.update?.updateAvailable && (
+          <div
+            className="max-w-2xl rounded-md border border-[var(--osc-accent)] bg-[var(--osc-bg-elevated)] px-4 py-3 text-sm"
+            role="status"
+          >
+            <p className="font-semibold text-[var(--osc-accent)]">
+              Update available: v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
+            </p>
+            <p className="mt-1 text-[var(--osc-text-muted)]">
+              Install the new package, then restart the background host (and OpenCode if plugins changed):
+            </p>
+            <pre className="mt-2 overflow-x-auto rounded bg-[var(--osc-bg)] px-3 py-2 font-mono text-xs text-[var(--osc-text)]">
+              {`npm i -g @oguzkaganozt/opencode-studio@latest
+opencode-studio service restart`}
+            </pre>
+          </div>
         )}
         {studiosQuery.data?.configError && (
           <p className="rounded border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-sm">

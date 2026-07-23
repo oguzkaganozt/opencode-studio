@@ -15,7 +15,7 @@ Usage:
   opencode-studio status [--workspace <path>]
   opencode-studio doctor [--workspace <path>]
   opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>] [--allow-non-loopback]
-  opencode-studio service install|uninstall|start|stop|restart|status [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
+  opencode-studio service install|uninstall|start|stop|restart|status|update [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
   opencode-studio remove [--workspace <path>]
 `)
 }
@@ -155,9 +155,9 @@ async function main(argv: string[]) {
 
   if (command === "service") {
     const action = rest[0] as ServiceAction | undefined
-    const allowed: ServiceAction[] = ["install", "uninstall", "start", "stop", "restart", "status"]
+    const allowed: ServiceAction[] = ["install", "uninstall", "start", "stop", "restart", "status", "update"]
     if (!action || !allowed.includes(action)) {
-      console.error("Usage: opencode-studio service install|uninstall|start|stop|restart|status [options]")
+      console.error("Usage: opencode-studio service install|uninstall|start|stop|restart|status|update [options]")
       return 2
     }
     const { values } = parseArgs({

@@ -61,10 +61,13 @@ opencode-studio service install          # writes ~/.config/systemd/user/opencod
 opencode-studio service status
 opencode-studio service stop|start|restart
 opencode-studio service uninstall
+opencode-studio service update           # npm i -g @latest + reinstall/restart unit
 ```
 
 Options: `--workspace`, `--host`, `--port`, `--name <unit>` (multiple workspaces).  
 After logout, if the unit stops: `loginctl enable-linger $USER`.
+
+While `serve` is running, the home page shows a banner when a newer npm version exists (also logged to the service journal).
 
 ### CLI (optional)
 

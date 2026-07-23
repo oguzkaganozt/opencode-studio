@@ -3,7 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { resolveWorkspace } from "./core/paths"
 
-export type ServiceAction = "install" | "uninstall" | "start" | "stop" | "restart" | "status"
+export type ServiceAction = "install" | "uninstall" | "start" | "stop" | "restart" | "status" | "update"
 
 export type ServiceOptions = {
   workspace?: string
@@ -144,21 +144,48 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
     return { action, unit, unitPath: file, message: `Removed ${unit}` }
   }
 
+  if (action === "update") {
+    const pkg = "@oguzkaganozt/opencode-studio"
+    const npm = Bun.which("npm")
+    if (!npm) throw new Error("npm not found on PATH")
+    const install = Bun.spawn([npm, "i", "-g", `${pkg}@latest`], { stdout: "pipe", stderr: "pipe" })
+    const [out, err, code] = await Promise.all([new Response(install.stdout).text(), new Response(install.stderr).text(), install.exited])
+    if (code !== 0) throw new Error(err.trim() || out.trim() || "npm i -g failed")
+    // Refresh unit ExecStart/PATH in case the global shim moved.
+    await manageService("install", options)
+    return {
+      action,
+      unit,
+      message: `Updated ${pkg} and restarted ${unit}.\n${out.trim() || err.trim()}`.trim(),
+    }
+  }
+
   if (action === "start" || action === "stop" || action === "restart") {
     const result = await runSystemctl([action, unit])
     if (!result.ok) throw new Error(result.stderr.trim() || `systemctl ${action} ${unit} failed`)
     return { action, unit, message: result.stdout.trim() || `${action} ${unit}` }
   }
 
-  // status
+  // status — include optional update hint when network is available
   const result = await runSystemctl(["status", "--no-pager", unit])
+  let updateLine = ""
+  try {
+    const { checkNpmUpdate } = await import("./core/update-check")
+    const { loadPackageMeta } = await import("./core/package-meta")
+    const { packageRootFrom } = await import("./core/paths")
+    const meta = await loadPackageMeta(packageRootFrom(import.meta.dir))
+    const update = await checkNpmUpdate({ packageName: meta.name, current: meta.version })
+    if (update.updateAvailable && update.message) updateLine = `\n${update.message}`
+  } catch {
+    // ignore
+  }
   return {
     action,
     unit,
     unitPath: file,
     ok: result.ok,
     code: result.code,
-    stdout: result.stdout,
+    stdout: `${result.stdout}${updateLine}`,
     stderr: result.stderr,
   }
 }
