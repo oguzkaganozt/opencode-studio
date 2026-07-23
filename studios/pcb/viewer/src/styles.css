@@ -1,0 +1,38 @@
+@import "tailwindcss";
+@import "@fontsource/barlow/400.css";
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "./tokens.css";
+
+/* Scoped to PCB shell — do not style host document */
+[data-studio="pcb"],
+.studio-shell[data-studio="pcb"] {
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  background: var(--osc-bg);
+  color: var(--osc-text);
+  font-family: var(--osc-font-ui);
+}
+
+[data-studio="pcb"] code,
+[data-studio="pcb"] .mono,
+[data-studio="pcb"] .font-mono {
+  font-family: var(--osc-font-mono);
+}
+
+[data-studio="pcb"] :focus-visible {
+  outline: none;
+  box-shadow: var(--osc-focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-studio="pcb"] *,
+  [data-studio="pcb"] *::before,
+  [data-studio="pcb"] *::after {
+    animation-duration: 0ms;
+    transition-duration: 0ms;
+  }
+}

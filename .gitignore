@@ -8,11 +8,18 @@ __pycache__/
 .venv/
 .pytest_cache/
 .turbo/
+*.tgz
 
 # Domain-generated data and local configuration
 .opencode/studio.local.json
+.opencode/skills/
 .artifacts/
 media/
 workspace/
 dogfood-output/
 .demo-library/
+designs/*/step/
+designs/*/stl/
+designs/*/glb/
+designs/*/manifest.json
+designs/*/.artifacts/

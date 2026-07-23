@@ -1,0 +1,63 @@
+/*
+ * OpenCode Studio Contract — canonical Viewer tokens
+ *
+ * Copy into each Studio Viewer. Do not import this file as a shared runtime
+ * dependency. Values are provisional for OSC 0.x.
+ */
+
+[data-studio="startup"] {
+  /* Typography */
+  --osc-font-ui: "Barlow", system-ui, sans-serif;
+  --osc-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Graphite application shell */
+  --osc-bg: #121417;
+  --osc-bg-elevated: #181b20;
+  --osc-bg-subtle: #1e2228;
+  --osc-surface: #22262d;
+  --osc-surface-hover: #2a2f37;
+  --osc-border: #2f353e;
+  --osc-border-strong: #3d4450;
+  --osc-text: #e8eaed;
+  --osc-text-muted: #9aa3ad;
+  --osc-text-faint: #6b7380;
+
+  /* Geometry */
+  --osc-radius-sm: 2px;
+  --osc-radius-md: 4px;
+  --osc-radius-lg: 6px;
+  --osc-separator: 1px;
+  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+
+  /* Focus */
+  --osc-focus-ring: 0 0 0 2px var(--osc-bg), 0 0 0 4px var(--osc-accent);
+
+  /* Semantic states */
+  --osc-warning: #e6b422;
+  --osc-warning-bg: rgba(230, 180, 34, 0.12);
+  --osc-error: #e35d6a;
+  --osc-error-bg: rgba(227, 93, 106, 0.12);
+  --osc-stale: #9aa3ad;
+  --osc-stale-bg: rgba(154, 163, 173, 0.12);
+  --osc-invalid: #c77dff;
+  --osc-invalid-bg: rgba(199, 125, 255, 0.12);
+  --osc-success: #3ecf8e;
+  --osc-success-bg: rgba(62, 207, 142, 0.12);
+
+  /* Domain accents */
+  --osc-accent-cad: #f0a202;
+  --osc-accent-media: #ff6f61;
+  --osc-accent-pcb: #22d3ee;
+  --osc-accent-startup: #34d399;
+  --osc-accent: var(--osc-accent-startup);
+
+  /* Domain canvas may diverge from the shell when content requires it */
+  --osc-canvas-bg: #0b0d10;
+  --osc-canvas-bg-light: #f4f5f7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-studio="startup"] {
+    --osc-motion-duration: 0ms;
+  }
+}

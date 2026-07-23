@@ -1,0 +1,23 @@
+{
+  "cad": ["tool.definition", "event", "tool"],
+  "media": [
+    "config",
+    "provider",
+    "event",
+    "experimental.chat.system.transform",
+    "tool.execute.before",
+    "experimental.session.compacting",
+    "experimental.chat.messages.transform",
+    "tool"
+  ],
+  "media-go": ["provider"],
+  "pcb": ["tool"],
+  "startup": ["tool"],
+  "composition": {
+    "order": ["cad", "media", "pcb", "startup"],
+    "mutableTransforms": "sequential catalog order",
+    "dispose": "reverse order",
+    "duplicateTools": "reject",
+    "unknownHooks": "reject"
+  }
+}

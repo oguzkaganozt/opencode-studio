@@ -1,0 +1,15 @@
+schema: 1
+id: microchip-at42qt1010-tshr
+manufacturer: Microchip Technology
+mpn: AT42QT1010-TSHR
+kind: capacitive-touch-controller
+datasheet: https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/40001946A.pdf
+symbol: Sensor_Touch:AT42QT1010-TSHR
+footprint: Package_TO_SOT_SMD:SOT-23-6
+limits:
+  supply_v: [1.8, 5.5]
+configuration:
+  supply_v: 3.3
+  series_resistor_ohm: 4700
+  sampling_capacitor_nf: 4.7
+  sync: ground

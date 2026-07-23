@@ -1,0 +1,49 @@
+import { mkdir, writeFile } from "node:fs/promises"
+import path from "node:path"
+
+const id = process.argv[2]
+if (!id || !/^[a-z][a-z0-9-]*$/.test(id)) {
+  console.error("Usage: bun run create-studio <id>")
+  process.exit(2)
+}
+
+const root = path.resolve(import.meta.dir, "..")
+const dir = path.join(root, "studios", id)
+await mkdir(path.join(dir, "skill"), { recursive: true })
+await mkdir(path.join(dir, "viewer", "src"), { recursive: true })
+await mkdir(path.join(dir, "test"), { recursive: true })
+
+await writeFile(
+  path.join(dir, "studio.ts"),
+  `import type { StudioDefinition } from "../../src/core/registry"
+
+export const ${id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}Studio: StudioDefinition = {
+  id: "${id}" as any,
+  label: "${id} Studio",
+  description: "TODO",
+  skill: "${id}-studio",
+  requiredEngines: [],
+  root: { default: "workspace", create: false },
+}
+`,
+)
+await writeFile(
+  path.join(dir, "skill/SKILL.md"),
+  `---
+name: ${id}-studio
+description: TODO
+license: MIT
+compatibility: opencode
+---
+
+# ${id} Studio
+
+TODO
+`,
+)
+await writeFile(
+  path.join(dir, "plugin.ts"),
+  `import type { Plugin } from "@opencode-ai/plugin"\nexport function loadPlugin(): Plugin {\n  return async () => ({ tool: {} })\n}\n`,
+)
+await writeFile(path.join(dir, "api.ts"), `import { Hono } from "hono"\nexport function createApi() {\n  return new Hono()\n}\n`)
+console.log(`Created studios/${id}. Register it in src/studios.ts and src/core/registry.ts.`)

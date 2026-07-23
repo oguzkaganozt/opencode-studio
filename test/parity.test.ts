@@ -1,0 +1,65 @@
+import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import { listComposedToolNames } from "../src/core/plugin-compose"
+import { configureStudios } from "../src/lifecycle"
+import { createOpenCodeStudioPlugin } from "../src/plugin"
+import hooks from "./parity/plugin-hooks.json"
+import digests from "./parity/skill-digests.json"
+import tools from "./parity/tools.json"
+
+const packageRoot = path.join(import.meta.dir, "..")
+
+describe("parity fixtures", () => {
+  test("tool inventory is frozen", () => {
+    expect(tools.count).toBe(42)
+    expect(Object.keys(tools.tools).sort()).toContain("read_media")
+    expect(Object.keys(tools.tools).sort()).toContain("design_build")
+    expect(Object.keys(tools.tools).sort()).toContain("pcb_circuit_build")
+    expect(Object.keys(tools.tools).sort()).toContain("startup_upsert")
+  })
+
+  test("skill digests match packaged sources", async () => {
+    for (const [_name, meta] of Object.entries(digests as Record<string, { path: string; sha256: string }>)) {
+      const file = path.join(packageRoot, meta.path)
+      const hash = createHash("sha256")
+        .update(await readFile(file))
+        .digest("hex")
+      expect(hash).toBe(meta.sha256)
+    }
+  })
+
+  test("hook composition policy is defined", () => {
+    expect(hooks.composition.order).toEqual(["cad", "media", "pcb", "startup"])
+    expect(hooks.media).toContain("provider")
+    expect(hooks["media-go"]).toEqual(["provider"])
+  })
+})
+
+describe("live tool inventory", () => {
+  test("enabling all studios exposes every parity tool name", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "osc-tools-"))
+    try {
+      await configureStudios({
+        workspace,
+        enabled: ["cad", "media", "pcb", "startup"],
+        packageRoot,
+        validateOpenCode: false,
+        roots: {
+          media: path.join(workspace, "media-library"),
+        },
+      })
+      const plugin = createOpenCodeStudioPlugin({ workspace, packageRoot })
+      const composed = await plugin({ directory: workspace } as any, {})
+      const names = listComposedToolNames(composed)
+      for (const toolName of Object.keys(tools.tools)) {
+        expect(names).toContain(toolName)
+      }
+      expect(names.length).toBe(tools.count)
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  }, 60_000)
+})

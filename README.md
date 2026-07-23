@@ -1,67 +1,58 @@
 # OpenCode Studio
 
-OpenCode Studio is one configurable OpenCode package for focused CAD, media,
-PCB, and startup workflows. It provides one plugin, CLI, local backend, and web
-application while keeping each domain behind an explicit Studio module. One
-primary OpenCode plugin composes only the modules enabled for the current
-project.
+One configurable OpenCode package for CAD, media, PCB, and startup workflows.
 
-This is a greenfield internal project for a small team. There are no legacy
-users or compatibility requirements. Existing Studio repositories are source
-material only; their Git histories, package boundaries, CLIs, and release
-pipelines will not be carried forward.
-
-The compatibility surface that must be preserved during consolidation is:
-
-- Existing agent tool names, argument schemas, and core behavior
-- Existing skill names, instructions, and domain rules
-- Media provider and OpenCode hook behavior
-- Domain safety, validation, cancellation, and output guarantees
-
-Installing the package does not activate every Studio. A project explicitly
-selects its enabled Studios from the web application or CLI. Disabled Studios
-must not expose tools, skills, hooks, API routes, or Viewer pages to OpenCode.
-
-## Target experience
+## Develop
 
 ```bash
-# Requires Bun for the CLI and runtime.
-npm install --global opencode-studio
-opencode-studio serve --workspace .
+bun install
+bun test
+bun run typecheck
+bun run lint
+bun run build
+bun src/cli.ts serve --workspace .
 ```
 
-The home page then lets the user enable the Studios needed by the current
-project. The equivalent non-interactive command is:
+## Configure
+
+Installing the package enables **no** Studio.
 
 ```bash
 opencode-studio configure cad pcb
+opencode-studio status
+opencode-studio doctor
+opencode-studio serve --workspace .
+opencode-studio remove
 ```
 
-Configuration is project-local in `.opencode/studio.json`. Missing or invalid
-configuration fails closed: no Studio is enabled automatically.
+Or open the home page at `http://127.0.0.1:4173` after `serve`.
 
-After changing the enabled set, restart both OpenCode and the Studio host. The
-first release intentionally does not hot-load or unload Studio modules.
+Project config: `.opencode/studio.json`
 
-## Architecture at a glance
+```json
+{ "enabled": ["cad", "pcb"] }
+```
+
+After any configure change, restart OpenCode and the Studio host.
+
+## Layout
 
 ```text
-opencode-studio/
-|-- src/                 shared CLI, plugin, server, config, and core
-|-- studios/             cad, media, pcb, and startup modules
-|-- ui/                  shared Viewer shell and navigation
-|-- scripts/             build, package checks, and Studio scaffolding
-|-- test/                cross-cutting and browser tests
-|-- docs/                durable architecture and onboarding documentation
-`-- .github/workflows/   one CI and one release pipeline
+src/                 shared CLI, plugin, server, config, core
+studios/             cad | media | pcb | startup modules
+ui/                  shared Viewer shell + lazy studio pages
+test/                core + parity tests
+scripts/             build, package smoke, create-studio
 ```
 
-There is one Git repository, one `package.json`, one lockfile, one npm package,
-one version, and one release pipeline. Studio modules are source directories,
-not separately versioned workspace packages.
+## Package exports
 
-## Start here
+- `opencode-studio` — primary OpenCode plugin
+- `opencode-studio/media-provider` — native media AI SDK adapter
+- `opencode-studio/media-go` — auxiliary plugin for `opencode-go` provider hooks
 
-Read [PLAN.md](PLAN.md) before implementing or moving code. It records the
-accepted product model, architecture boundaries, migration plan, validation
-requirements, and definition of done.
+## Docs
+
+- [PLAN.md](PLAN.md) — accepted decisions and definition of done
+- [docs/architecture.md](docs/architecture.md)
+- [docs/new-studio.md](docs/new-studio.md)

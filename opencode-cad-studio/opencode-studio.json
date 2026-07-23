@@ -1,8 +1,0 @@
-{
-  "schemaVersion": 1,
-  "id": "cad",
-  "contractVersion": "1.0.0",
-  "minimumOpenCode": "1.18.2",
-  "plugin": ".",
-  "skill": "./skills/cad-studio"
-}

@@ -1,0 +1,82 @@
+function apiBase() {
+  return (window as any).__OPENCODE_STUDIO__?.apiBase ?? "/api/studios/cad"
+}
+
+function api(path: string) {
+  return `${apiBase().replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`
+}
+
+export function studioHref(path = "") {
+  const runtime = (window as any).__OPENCODE_STUDIO__ as { uiBase?: string } | undefined
+  const base = (runtime?.uiBase ?? "").replace(/\/$/, "")
+  const suffix = path.replace(/^\//, "")
+  if (!base) return suffix ? `/${suffix}` : "/"
+  return suffix ? `${base}/${suffix}` : base
+}
+
+export type DesignSummary = {
+  id: string
+  directory: string
+  buildStatus: "built" | "unbuilt" | "stale"
+  partCount: number
+  revision: string | null
+  renderRevision: string | null
+}
+
+export type ArtifactPart = {
+  id: string
+  files: { step: string; stl: string; glb: string }
+  metrics: {
+    volume_mm3: number
+    size_mm: { x: number; y: number; z: number }
+  }
+}
+
+export type DesignDetail = DesignSummary & {
+  design: {
+    schema: number
+    id: string
+    params?: string
+    parts: Array<{ id: string; source: string }>
+  }
+  artifact: {
+    schema: number
+    id: string
+    parts: ArtifactPart[]
+  } | null
+  renders: string[]
+}
+
+export type StudioInfo = {
+  id: string
+  packageVersion: string
+  contractVersion?: string
+}
+
+export async function listDesigns(): Promise<DesignSummary[]> {
+  const response = await fetch(api("/designs"))
+  if (!response.ok) throw new Error(`listDesigns failed: ${response.status}`)
+  const data = (await response.json()) as { designs?: DesignSummary[] }
+  return data.designs ?? []
+}
+
+export async function readDesign(id: string): Promise<DesignDetail> {
+  const response = await fetch(api(`/designs/${encodeURIComponent(id)}`))
+  if (!response.ok) throw new Error(`readDesign failed: ${response.status}`)
+  return response.json() as Promise<DesignDetail>
+}
+
+export async function fetchStudio(): Promise<StudioInfo> {
+  const response = await fetch("/api/studios")
+  if (!response.ok) throw new Error(`fetchStudio failed: ${response.status}`)
+  const body = (await response.json()) as { packageVersion?: string; enabled?: string[] }
+  return { id: "cad", packageVersion: body.packageVersion ?? "0.0.0" }
+}
+
+export function artifactUrl(designId: string, file: string) {
+  return api(`/artifact?design=${encodeURIComponent(designId)}&file=${encodeURIComponent(file)}`)
+}
+
+export function renderUrl(designId: string, file: string) {
+  return api(`/render?design=${encodeURIComponent(designId)}&file=${encodeURIComponent(file)}`)
+}

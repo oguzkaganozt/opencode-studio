@@ -1,0 +1,145 @@
+{
+  "tools": {
+    "design_list": {
+      "studio": "cad",
+      "args": {}
+    },
+    "design_create": {
+      "studio": "cad",
+      "args": {
+        "id": "string",
+        "parts": "array"
+      }
+    },
+    "design_read": {
+      "studio": "cad",
+      "args": {
+        "id": "string"
+      }
+    },
+    "design_build": {
+      "studio": "cad",
+      "args": {
+        "id": "string"
+      }
+    },
+    "design_view": {
+      "studio": "cad",
+      "args": {
+        "id": "string"
+      }
+    },
+    "pcb_workspace_list": {
+      "studio": "pcb"
+    },
+    "pcb_project_create": {
+      "studio": "pcb"
+    },
+    "pcb_catalog_list": {
+      "studio": "pcb"
+    },
+    "pcb_catalog_get": {
+      "studio": "pcb"
+    },
+    "pcb_component_search": {
+      "studio": "pcb"
+    },
+    "pcb_circuit_build": {
+      "studio": "pcb"
+    },
+    "pcb_circuit_export": {
+      "studio": "pcb"
+    },
+    "pcb_bom_generate": {
+      "studio": "pcb"
+    },
+    "pcb_assembly_export": {
+      "studio": "pcb"
+    },
+    "pcb_circuit_read": {
+      "studio": "pcb"
+    },
+    "pcb_schematic_svg": {
+      "studio": "pcb"
+    },
+    "pcb_pcb_svg": {
+      "studio": "pcb"
+    },
+    "startup_list": {
+      "studio": "startup"
+    },
+    "startup_read": {
+      "studio": "startup"
+    },
+    "startup_upsert": {
+      "studio": "startup"
+    },
+    "startup_reject": {
+      "studio": "startup"
+    },
+    "startup_check_evidence": {
+      "studio": "startup"
+    },
+    "startup_status": {
+      "studio": "startup"
+    },
+    "startup_view": {
+      "studio": "startup"
+    },
+    "read_media": {
+      "studio": "media"
+    },
+    "chatgpt_image_generate": {
+      "studio": "media"
+    },
+    "media_import": {
+      "studio": "media"
+    },
+    "media_list": {
+      "studio": "media"
+    },
+    "media_info": {
+      "studio": "media"
+    },
+    "media_probe": {
+      "studio": "media"
+    },
+    "media_convert": {
+      "studio": "media"
+    },
+    "media_trim": {
+      "studio": "media"
+    },
+    "media_extract_audio": {
+      "studio": "media"
+    },
+    "fal_upload": {
+      "studio": "media"
+    },
+    "fal_models": {
+      "studio": "media"
+    },
+    "fal_model_schema": {
+      "studio": "media"
+    },
+    "fal_pricing": {
+      "studio": "media"
+    },
+    "fal_submit": {
+      "studio": "media"
+    },
+    "fal_status": {
+      "studio": "media"
+    },
+    "fal_result": {
+      "studio": "media"
+    },
+    "fal_cancel": {
+      "studio": "media"
+    },
+    "media_download": {
+      "studio": "media"
+    }
+  },
+  "count": 42
+}

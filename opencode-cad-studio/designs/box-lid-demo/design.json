@@ -1,9 +1,0 @@
-{
-  "schema": 1,
-  "id": "box-lid-demo",
-  "params": "params.py",
-  "parts": [
-    {"id": "box", "source": "parts/box.py"},
-    {"id": "lid", "source": "parts/lid.py"}
-  ]
-}
