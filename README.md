@@ -13,7 +13,7 @@ bun run build
 bun run serve
 ```
 
-Prerequisites: Bun ≥ 1.3. For `release:check` and CAD forge tests: Python 3.12 + [uv](https://docs.astral.sh/uv/). Media needs `ffmpeg`/`ffprobe`. PCB authoring needs `tsci`.
+Prerequisites: Bun ≥ 1.3. For `release:check` and CAD forge tests: Python 3.12 + [uv](https://docs.astral.sh/uv/). UI browser smoke needs Playwright Chromium once (`bun run test:browser:install`). Media needs `ffmpeg`/`ffprobe`. PCB authoring needs `tsci`.
 
 ## Configure
 

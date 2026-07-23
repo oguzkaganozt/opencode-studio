@@ -14,6 +14,8 @@ bun run build                                     # runtime (dist/) + UI (dist/u
 bun run check                                     # typecheck + test + lint + build
 bun run release:check                             # full gate (CI)
 bun run test:python                               # CAD forge (needs uv)
+bun run test:browser:install                      # once: Playwright Chromium for UI smoke
+bun run test:browser                              # HTTP + Chromium layout/CSS smoke (needs dist/ui)
 bun run serve                                     # host @ 127.0.0.1:4173
 bun run dev:ui                                    # Vite :5173, proxies /api → :4173
 ```

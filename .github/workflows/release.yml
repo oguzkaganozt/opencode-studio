@@ -24,6 +24,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: uv sync --locked --project studios/cad/forge
       - run: bun install --frozen-lockfile
+      - run: bun run test:browser:install
       - run: |
           TAG=${GITHUB_REF_NAME}
           VERSION=$(node -p "require('./package.json').version")

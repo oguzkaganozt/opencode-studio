@@ -231,5 +231,6 @@ export async function startHost(input: HostInput) {
     stop()
     process.exit(0)
   })
-  return { server, url: `http://${hostname}:${port}`, stop }
+  // Bun may assign an ephemeral port when `port` is 0 — always report the bound port.
+  return { server, url: `http://${hostname}:${server.port}`, stop }
 }

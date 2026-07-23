@@ -21,3 +21,4 @@ __pycache__/
 dogfood-output/
 .demo-library/
 # CAD design build artifacts: studios/cad/designs/.gitignore
+/designs/
