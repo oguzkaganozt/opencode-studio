@@ -14,13 +14,17 @@ npm i -g @oguzkaganozt/opencode-studio
 bun add -g @oguzkaganozt/opencode-studio
 ```
 
-Requires **Bun ≥ 1.3** (CLI runtime). Optional engines:
+Requires **Bun ≥ 1.3** (CLI runtime).
 
-| Studio | Needs |
+Domain engines ship with the npm package (not tied to which Studio you enable):
+
+| Engine | Source |
 | --- | --- |
-| CAD | Python 3.12 + [uv](https://docs.astral.sh/uv/) |
-| Media | `ffmpeg` / `ffprobe` |
-| PCB | `tsci` (for real authoring builds) |
+| `ffmpeg` / `ffprobe` | `ffmpeg-static` / `ffprobe-static` |
+| `tsci` | bundled `tscircuit` CLI |
+| `uv` | downloaded once into XDG cache on first CAD/doctor use |
+
+Enable/disable Studios only toggles tools/skills/APIs — it does not install or remove engines.
 
 ## Quick start
 

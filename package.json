@@ -81,6 +81,8 @@
     "debug": "4.4.3",
     "env-paths": "4.0.0",
     "eventsource-parser": "3.0.8",
+    "ffmpeg-static": "5.2.0",
+    "ffprobe-static": "3.1.0",
     "file-type": "22.0.1",
     "flatbush": "4.6.2",
     "graphics-debug": "0.0.95",
@@ -98,6 +100,7 @@
     "spicets": "0.0.2",
     "spicey": "0.0.14",
     "tailwind-merge": "3.6.0",
+    "tscircuit": "0.0.2140",
     "zod": "3.25.76"
   },
   "devDependencies": {

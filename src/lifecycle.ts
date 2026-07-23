@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { defaultMediaRoot, parseStudioConfig, readStudioConfigFile, resolveStudioRoot, writeStudioConfigFile } from "./config"
+import { ensureUv, resolveEngine } from "./core/engines"
 import {
   atomicWriteOpenCodeConfig,
   configWithMcp,
@@ -380,10 +381,6 @@ export async function statusStudios(input: { workspace?: string; packageRoot?: s
   }
 }
 
-function commandExists(command: string) {
-  return Boolean(Bun.which(command))
-}
-
 export async function doctorStudios(input: { workspace?: string; packageRoot?: string }) {
   const workspace = await resolveWorkspace(input.workspace)
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
@@ -462,12 +459,30 @@ export async function doctorStudios(input: { workspace?: string; packageRoot?: s
     }
 
     for (const engine of def.requiredEngines) {
-      const ok = commandExists(engine)
-      checks.push({
-        id: `engine:${studioId}:${engine}`,
-        status: ok ? "pass" : "warn",
-        message: ok ? `${engine} available` : `${engine} not found on PATH`,
-      })
+      try {
+        const resolved = engine === "uv" ? await ensureUv() : resolveEngine(engine as "ffmpeg" | "ffprobe" | "tsci" | "uv")
+        if (!resolved) {
+          checks.push({
+            id: `engine:${studioId}:${engine}`,
+            status: "fail",
+            message: `${engine} missing (expected bundled with the package)`,
+            repair: "Reinstall @oguzkaganozt/opencode-studio",
+          })
+        } else {
+          checks.push({
+            id: `engine:${studioId}:${engine}`,
+            status: "pass",
+            message: `${engine} available (${resolved.source}: ${resolved.path})`,
+          })
+        }
+      } catch (error) {
+        checks.push({
+          id: `engine:${studioId}:${engine}`,
+          status: "fail",
+          message: error instanceof Error ? error.message : String(error),
+          repair: "Reinstall @oguzkaganozt/opencode-studio or install the engine on PATH",
+        })
+      }
     }
   }
 

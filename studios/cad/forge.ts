@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { ensureUv } from "../../src/core/engines"
 import { resolveDesignDirectory, type StudioLayout } from "./library"
 import { readArtifactManifest, readDesignManifest, scaffoldDesignManifest } from "./manifest"
 import { isInside } from "./studio-path"
@@ -22,7 +23,8 @@ export type ForgeBuildResult = {
 export type ForgeRunner = (input: { forgeProjectDir: string; designDir: string; signal?: AbortSignal }) => Promise<ForgeBuildResult>
 
 export const defaultForgeRunner: ForgeRunner = async ({ forgeProjectDir, designDir, signal }) => {
-  const child = spawn("uv", ["--project", forgeProjectDir, "run", "forge", "build", designDir], {
+  const uv = await ensureUv()
+  const child = spawn(uv.path, ["--project", forgeProjectDir, "run", "forge", "build", designDir], {
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   })

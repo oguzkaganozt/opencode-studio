@@ -5,6 +5,7 @@ import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import type { Part } from "@opencode-ai/sdk"
 import manifest from "../../package.json" with { type: "json" }
+import { resolveFfmpeg, resolveFfprobe } from "../../src/core/engines"
 import { importMediaAsset, inspectCreatedMedia } from "./assets"
 import { loadChatGPTAuth } from "./chatgpt-auth"
 import { decodeGeneratedPng, generateChatGPTImage, readReferenceImages } from "./chatgpt-image"
@@ -70,8 +71,8 @@ function options(input: PluginOptions | undefined): Options {
     libraryRoot: libraryRootOption(input?.libraryRoot),
     downloadHosts: downloadHosts.map((value) => value.toLowerCase()),
     providerPackage: typeof input?.providerPackage === "string" ? input.providerPackage : PROVIDER_PACKAGE,
-    ffmpegPath: typeof input?.ffmpegPath === "string" ? input.ffmpegPath : "ffmpeg",
-    ffprobePath: typeof input?.ffprobePath === "string" ? input.ffprobePath : "ffprobe",
+    ffmpegPath: typeof input?.ffmpegPath === "string" ? input.ffmpegPath : (resolveFfmpeg()?.path ?? "ffmpeg"),
+    ffprobePath: typeof input?.ffprobePath === "string" ? input.ffprobePath : (resolveFfprobe()?.path ?? "ffprobe"),
   }
 }
 

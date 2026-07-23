@@ -26,8 +26,6 @@ export type ComponentLoadability = {
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
-const SEARCH_TSCIRCUIT_VERSION = "0.0.2116"
-
 export type ComponentSearchEntry =
   | {
       source: "jlcpcb"
@@ -134,7 +132,10 @@ async function runCommand(command: string[], cwd: string, signal?: AbortSignal):
 }
 
 async function run(args: string[], cwd: string, signal?: AbortSignal): Promise<TsciResult> {
-  // Prefer the project's local tsci binary; fall back to npx.
+  const { engineCommand, resolveTsci } = await import("../../src/core/engines")
+  const engine = resolveTsci()
+  if (engine) return runCommand([...engineCommand(engine), ...args], cwd, signal)
+  // Last resort: npx (offline installs should hit the bundled tscircuit dependency).
   return runCommand(["npx", "--yes", "tsci", ...args], cwd, signal)
 }
 
@@ -313,11 +314,8 @@ async function searchComponentsOnce(
   const sourceArgs = scope === "all" ? [] : [`--${scope}`]
   const result = await serializeNpmExec(() => {
     signal?.throwIfAborted()
-    return runCommand(
-      ["npm", "exec", "--yes", `--package=tscircuit@${SEARCH_TSCIRCUIT_VERSION}`, "--", "tsci", "search", ...sourceArgs, "--json", query],
-      searchCwd,
-      signal,
-    )
+    // Prefer package-bundled tsci; run() falls back to npx if needed.
+    return run(["search", ...sourceArgs, "--json", query], searchCwd, signal)
   })
   if (!result.success) {
     return {
