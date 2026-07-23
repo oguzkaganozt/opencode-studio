@@ -14,8 +14,8 @@ __pycache__/
 .opencode/studio.local.json
 .opencode/skills/
 .artifacts/
-media/
-workspace/
+/media/
+/workspace/
 dogfood-output/
 .demo-library/
 designs/*/step/
