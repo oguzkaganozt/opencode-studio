@@ -1,0 +1,12 @@
+schema: 1
+id: jst-b2p-vh-lf-sn
+manufacturer: JST
+mpn: B2P-VH(LF)(SN)
+kind: wire-to-board-connector
+datasheet: https://www.jst-mfg.com/product/pdf/eng/eVH.pdf
+symbol: Connector_Generic:Conn_01x02
+footprint: Connector_JST:JST_VH_B2P-VH_1x02_P3.96mm_Vertical
+limits:
+  current_a_max: 10
+  voltage_v_max: 250
+  wire_awg: [22, 16]

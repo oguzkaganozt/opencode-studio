@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    [
+      "opencode-startup-studio",
+      {
+        "dataRoot": "/absolute/path/to/workspace",
+        "companionUrl": "http://127.0.0.1:4190"
+      }
+    ]
+  ]
+}

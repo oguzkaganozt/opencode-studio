@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "organizer-box",
+  "params": "params.py",
+  "parts": [
+    {"id": "body", "source": "parts/body.py"},
+    {"id": "lid", "source": "parts/lid.py"},
+    {"id": "divider-x", "source": "parts/divider_x.py"},
+    {"id": "divider-y", "source": "parts/divider_y.py"},
+    {"id": "tray", "source": "parts/tray.py"}
+  ]
+}

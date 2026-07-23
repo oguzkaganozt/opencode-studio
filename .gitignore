@@ -3,9 +3,16 @@ dist/
 coverage/
 .DS_Store
 *.log
+*.pyc
+__pycache__/
+.venv/
+.pytest_cache/
+.turbo/
 
 # Domain-generated data and local configuration
 .opencode/studio.local.json
 .artifacts/
 media/
 workspace/
+dogfood-output/
+.demo-library/

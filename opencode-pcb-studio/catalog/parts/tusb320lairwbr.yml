@@ -1,0 +1,11 @@
+schema: 1
+id: ti-tusb320lairwbr
+manufacturer: Texas Instruments
+mpn: TUSB320LAIRWBR
+kind: usb-c-configuration-channel-controller
+datasheet: https://www.ti.com/lit/ds/symlink/tusb320lai.pdf
+symbol: project-local:TUSB320LAI
+footprint: Package_DFN_QFN:WQFN-12-1EP_1.6x1.6mm_P0.4mm_EP0.4x0.4mm
+configuration:
+  port_role: ufp
+  current_advertisement_required_a: 3.0

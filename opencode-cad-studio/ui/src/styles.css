@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "@fontsource/barlow/400.css";
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "./tokens.css";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--osc-bg);
+  color: var(--osc-text);
+  font-family: var(--osc-font-ui);
+}
+
+code,
+.mono {
+  font-family: var(--osc-font-mono);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--osc-focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms;
+    transition-duration: 0ms;
+  }
+}

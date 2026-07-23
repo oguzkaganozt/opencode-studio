@@ -1,0 +1,13 @@
+schema: 1
+id: aos-ao3400a
+manufacturer: Alpha & Omega Semiconductor
+mpn: AO3400A
+kind: n-channel-mosfet
+datasheet: https://www.aosmd.com/res/data_sheets/AO3400A.pdf
+symbol: Transistor_FET:AO3400A
+footprint: Package_TO_SOT_SMD:SOT-23
+limits:
+  drain_source_v_max: 30
+configuration:
+  gate_series_ohm: 33
+  gate_pulldown_ohm: 100000
