@@ -11,8 +11,10 @@ __pycache__/
 *.tgz
 
 # Domain-generated data and local configuration
+.opencode/studio.json
 .opencode/studio.local.json
 .opencode/skills/
+/opencode.json
 .artifacts/
 /media/
 /workspace/
