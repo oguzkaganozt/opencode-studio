@@ -123,5 +123,13 @@
     "pcb",
     "startup",
     "studio"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oguzkaganozt/opencode-studio.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }

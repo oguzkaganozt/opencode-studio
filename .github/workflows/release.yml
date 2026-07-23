@@ -4,7 +4,7 @@ on:
     tags: ["v*"]
 permissions:
   contents: write
-  id-token: write
+  id-token: write # required for npm Trusted Publishing (OIDC)
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -20,8 +20,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          # Trusted Publishing needs Node ≥ 22.14 and a recent npm CLI
+          node-version: "24"
           registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
       - run: uv sync --locked --project studios/cad/forge
       - run: bun install --frozen-lockfile
       - run: bun run test:browser:install
@@ -30,7 +32,10 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           test "$TAG" = "v$VERSION"
       - run: bun run release:check
-      # Trusted publishing with provenance when OIDC is configured; falls back to NPM_TOKEN.
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # OIDC only — do not set NODE_AUTH_TOKEN (legacy token path blocks trusted publish).
+      # Configure Trusted Publisher on npmjs.com for this package first:
+      #   Organization/user: oguzkaganozt
+      #   Repository: opencode-studio
+      #   Workflow filename: release.yml
+      #   Environment name: npm
+      - run: npm publish --access public --provenance
