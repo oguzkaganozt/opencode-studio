@@ -1,6 +1,8 @@
-import { readdir, readFile } from "node:fs/promises"
+import { lstat, readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 import yaml from "js-yaml"
+import { isInside } from "../../src/core/paths"
+import { safeExternalHref } from "../../src/core/security"
 
 export type CatalogPart = {
   mpn: string
@@ -24,6 +26,9 @@ export type CatalogState = {
 }
 
 const CATALOG_SUBDIR = path.join("catalog", "parts")
+const MAX_PART_FILE_BYTES = 256 * 1024
+const MAX_CATALOG_PARTS = 2000
+const MPN_FILE_RE = /^[A-Za-z0-9._+-]+$/
 
 function catalogPartsDir(workspaceRoot: string): string {
   return path.join(workspaceRoot, CATALOG_SUBDIR)
@@ -38,9 +43,15 @@ function parsePart(raw: unknown, mpnFallback: string): CatalogPart {
     return { mpn: mpnFallback }
   }
   const record = raw as Record<string, unknown>
+  const mpn = typeof record.mpn === "string" && record.mpn.trim() ? record.mpn.trim() : mpnFallback
+  const datasheetRaw = typeof record.datasheet === "string" ? record.datasheet : undefined
+  const datasheet = datasheetRaw ? (safeExternalHref(datasheetRaw) ?? undefined) : undefined
   return {
-    mpn: typeof record.mpn === "string" ? record.mpn : mpnFallback,
-    ...record,
+    mpn,
+    ...(typeof record.manufacturer === "string" ? { manufacturer: record.manufacturer } : {}),
+    ...(typeof record.description === "string" ? { description: record.description } : {}),
+    ...(typeof record.category === "string" ? { category: record.category } : {}),
+    ...(datasheet ? { datasheet } : {}),
   }
 }
 
@@ -65,12 +76,33 @@ export async function inspectCatalog(workspaceRoot: string): Promise<CatalogStat
   const yamlFiles = entries.filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")).sort()
   const parts: CatalogPart[] = []
   let malformedCount = 0
+  let skippedCount = entries.length - yamlFiles.length
 
-  for (const file of yamlFiles) {
+  for (let i = 0; i < yamlFiles.length; i++) {
+    if (parts.length >= MAX_CATALOG_PARTS) {
+      skippedCount += yamlFiles.length - i
+      break
+    }
+    const file = yamlFiles[i]!
+    const mpnFallback = mpnFromFilename(file)
+    if (!MPN_FILE_RE.test(mpnFallback) || mpnFallback.includes("..")) {
+      skippedCount++
+      continue
+    }
+    const filePath = path.join(dir, file)
+    if (!isInside(workspaceRoot, filePath)) {
+      skippedCount++
+      continue
+    }
     try {
-      const content = await readFile(path.join(dir, file), "utf8")
+      const info = await lstat(filePath)
+      if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_PART_FILE_BYTES) {
+        skippedCount++
+        continue
+      }
+      const content = await readFile(filePath, "utf8")
       const raw = yaml.load(content)
-      parts.push(parsePart(raw, mpnFromFilename(file)))
+      parts.push(parsePart(raw, mpnFallback))
     } catch {
       malformedCount++
     }
@@ -83,7 +115,7 @@ export async function inspectCatalog(workspaceRoot: string): Promise<CatalogStat
     reason: yamlFiles.length === 0 ? "catalog_empty" : null,
     parts,
     malformedCount,
-    skippedCount: entries.length - yamlFiles.length,
+    skippedCount,
   }
 }
 
@@ -92,12 +124,17 @@ export async function loadCatalogParts(workspaceRoot: string): Promise<CatalogPa
 }
 
 export async function getCatalogPart(workspaceRoot: string, mpn: string): Promise<CatalogPart | null> {
-  if (!mpn || mpn.includes("/") || mpn.includes("\\") || mpn.includes("\0")) return null
+  if (!mpn || !MPN_FILE_RE.test(mpn) || mpn.includes("..") || mpn.includes("/") || mpn.includes("\\") || mpn.includes("\0")) {
+    return null
+  }
   const dir = catalogPartsDir(workspaceRoot)
 
   for (const ext of [".yml", ".yaml"]) {
     const filePath = path.join(dir, `${mpn}${ext}`)
+    if (!isInside(workspaceRoot, filePath)) continue
     try {
+      const info = await lstat(filePath)
+      if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_PART_FILE_BYTES) continue
       const content = await readFile(filePath, "utf8")
       const raw = yaml.load(content)
       return parsePart(raw, mpn)
@@ -106,7 +143,6 @@ export async function getCatalogPart(workspaceRoot: string, mpn: string): Promis
     }
   }
 
-  // Fallback: scan all parts for matching mpn field
   const parts = await loadCatalogParts(workspaceRoot)
   return parts.find((p) => p.mpn.toLowerCase() === mpn.toLowerCase()) ?? null
 }

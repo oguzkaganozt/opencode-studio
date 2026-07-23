@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto"
 import { constants } from "node:fs"
-import { lstat, open, realpath, stat } from "node:fs/promises"
+import { lstat, mkdir, open, realpath, rename, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import { StudioError } from "./errors"
 
@@ -100,4 +101,27 @@ export function packageRootFrom(importMetaDir: string) {
   if (path.basename(dir) === "dist" || path.basename(dir) === "src") return path.dirname(dir)
   if (path.basename(path.dirname(dir)) === "core") return path.resolve(dir, "../..")
   return dir
+}
+
+/** Write JSON via temp file + fsync + rename. Target must stay inside root when root is set. */
+export async function atomicWriteJson(targetPath: string, value: unknown, opts?: { root?: string; mode?: number }) {
+  const target = path.resolve(targetPath)
+  if (opts?.root && !isInside(opts.root, target)) {
+    throw new StudioError("path_escape", "Path escapes root")
+  }
+  await mkdir(path.dirname(target), { recursive: true })
+  const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${process.pid}.${randomUUID()}.tmp`)
+  const mode = opts?.mode ?? 0o644
+  const handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, mode)
+  try {
+    try {
+      await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`)
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+    await rename(temporary, target)
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {})
+  }
 }

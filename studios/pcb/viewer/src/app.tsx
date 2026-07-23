@@ -3,6 +3,17 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { Link, Route, Routes, useParams } from "react-router"
 import { api, type CircuitDiagnostics, type DiagnosticGroup, type PartSummary, type ProjectSummary, studioHref } from "./api"
 
+function safeHref(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null
+  try {
+    const url = new URL(raw.trim())
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
 const CadViewerTab = lazy(() => import("./cad-viewer-tab"))
 const SchematicTab = lazy(() => import("./schematic-tab"))
 const PcbTab = lazy(() => import("./pcb-tab"))
@@ -471,9 +482,9 @@ function PartRow({ part, onClick }: { part: PartSummary; onClick: () => void }) 
       <td className="px-4 py-2.5 text-sm text-zinc-400">{part.description ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm text-zinc-500 whitespace-nowrap">{part.category ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm">
-        {part.datasheet && (
+        {part.datasheet && safeHref(part.datasheet) && (
           <a
-            href={part.datasheet}
+            href={safeHref(part.datasheet)!}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-400 hover:text-blue-300 text-xs"

@@ -74,6 +74,21 @@ function clampScore(n: number, label: string) {
   return n
 }
 
+/** Validate an http(s) evidence URL; rejects javascript:, data:, and other schemes. */
+export function normalizeEvidenceUrl(raw: string): string {
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("evidence url required")
+  try {
+    const url = new URL(raw.trim())
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("evidence url must be http(s)")
+    }
+    return url.toString()
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("evidence url")) throw error
+    throw new Error("evidence url must be a valid http(s) URL")
+  }
+}
+
 export function normalizePoolEntry(raw: unknown): PoolEntry {
   if (!raw || typeof raw !== "object") throw new Error("Pool entry must be an object")
   const o = raw as Record<string, unknown>
@@ -90,10 +105,10 @@ export function normalizePoolEntry(raw: unknown): PoolEntry {
   const evidence: Evidence[] = o.evidence.map((item, i) => {
     if (!item || typeof item !== "object") throw new Error(`evidence[${i}] invalid`)
     const e = item as Record<string, unknown>
-    if (typeof e.url !== "string" || !e.url) throw new Error(`evidence[${i}].url required`)
+    const url = normalizeEvidenceUrl(String(e.url ?? ""))
     if (typeof e.summary !== "string") throw new Error(`evidence[${i}].summary required`)
     return {
-      url: e.url,
+      url,
       summary: e.summary,
       ...(typeof e.date === "string" ? { date: e.date } : {}),
       ...(typeof e.engagement === "string" ? { engagement: e.engagement } : {}),

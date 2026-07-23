@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import { StudioError } from "./core/errors"
-import { canonicalExistingDirectory, ensureDirectory, resolveWorkspace } from "./core/paths"
+import { atomicWriteJson, canonicalExistingDirectory, ensureDirectory, resolveWorkspace } from "./core/paths"
 import { assertStudioIds, isStudioId, STUDIO_IDS, type StudioId } from "./core/registry"
+import { getStudioDefinition } from "./studios"
 
 export type StudioConfig = {
   enabled: StudioId[]
@@ -80,19 +80,11 @@ export async function readStudioConfigFile(workspace: string): Promise<ResolvedS
 export async function writeStudioConfigFile(workspace: string, config: StudioConfig) {
   const validated = parseStudioConfig(config)
   const configPath = studioConfigPath(workspace)
-  await mkdir(path.dirname(configPath), { recursive: true })
   const payload = {
     enabled: validated.enabled,
     ...(validated.roots && Object.keys(validated.roots).length > 0 ? { roots: validated.roots } : {}),
   }
-  const text = `${JSON.stringify(payload, null, 2)}\n`
-  const temporary = `${configPath}.${process.pid}.${randomUUID()}.tmp`
-  try {
-    await writeFile(temporary, text, { mode: 0o644 })
-    await rename(temporary, configPath)
-  } finally {
-    await rm(temporary, { force: true }).catch(() => {})
-  }
+  await atomicWriteJson(configPath, payload, { mode: 0o644 })
   return { configPath, config: validated }
 }
 
@@ -100,21 +92,26 @@ export async function resolveStudioRoot(input: {
   studioId: StudioId
   workspace: string
   roots?: Partial<Record<StudioId, string>>
+  /** @deprecated use create from StudioDefinition.root; kept for call-site clarity */
+  create?: boolean
   createMedia?: boolean
   env?: NodeJS.ProcessEnv
 }): Promise<string> {
+  const def = getStudioDefinition(input.studioId)
+  const shouldCreate = input.create ?? input.createMedia ?? def.root.create
   const override = input.roots?.[input.studioId]
+
   if (override) {
-    if (input.studioId === "media" && input.createMedia) {
-      return ensureDirectory(override, 0o700)
-    }
+    if (shouldCreate && def.root.create) return ensureDirectory(override, 0o700)
     return canonicalExistingDirectory(override, `${input.studioId} root`)
   }
-  if (input.studioId === "media") {
+
+  if (def.root.default === "user-data") {
     const root = defaultMediaRoot(input.env)
-    if (input.createMedia) return ensureDirectory(root, 0o700)
-    return canonicalExistingDirectory(root, "media root")
+    if (shouldCreate) return ensureDirectory(root, 0o700)
+    return canonicalExistingDirectory(root, `${input.studioId} root`)
   }
+
   return input.workspace
 }
 

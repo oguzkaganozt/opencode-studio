@@ -5,8 +5,16 @@ import { readStudioConfigFile, resolveStudioRoot } from "./config"
 import { errorBody } from "./core/errors"
 import { loadPackageMeta } from "./core/package-meta"
 import { isInside, packageRootFrom } from "./core/paths"
-import type { StudioId } from "./core/registry"
-import { allowedHost, assertNotRoot, BASE_CSP, createCsrfToken, PCB_CSP, sameOrigin, securityHeaders } from "./core/security"
+import {
+  allowedHost,
+  assertNotRoot,
+  BASE_CSP,
+  createCsrfToken,
+  csrfTokensEqual,
+  PCB_CSP,
+  sameOrigin,
+  securityHeaders,
+} from "./core/security"
 import { configureStudios, doctorStudios, statusStudios } from "./lifecycle"
 import { apiLoaders } from "./studio-loaders"
 import { listStudioDefinitions } from "./studios"
@@ -89,7 +97,7 @@ export async function createHostApp(input: HostInput) {
       return ctx.json(errorBody("invalid_origin", "Origin header rejected."), 403)
     }
     const token = ctx.req.header("x-csrf-token")
-    if (!token || token !== csrfToken) {
+    if (!token || !csrfTokensEqual(token, csrfToken)) {
       return ctx.json(errorBody("invalid_csrf", "CSRF token rejected."), 403)
     }
     return null
@@ -98,15 +106,18 @@ export async function createHostApp(input: HostInput) {
   app.put("/api/config", async (ctx) => {
     const denied = await writeGuard(ctx)
     if (denied) return denied
-    const body = (await ctx.req.json().catch(() => null)) as { enabled?: string[]; roots?: Record<string, string> } | null
+    const body = (await ctx.req.json().catch(() => null)) as { enabled?: string[]; roots?: unknown } | null
     if (!body || !Array.isArray(body.enabled)) {
       return ctx.json(errorBody("invalid_body", "Body must include enabled: string[]"), 400)
+    }
+    // roots are CLI-only — HTTP configure must not repoint studio roots.
+    if (body.roots !== undefined) {
+      return ctx.json(errorBody("invalid_body", "roots cannot be set via HTTP; use opencode-studio configure / studio.json"), 400)
     }
     try {
       const result = await configureStudios({
         workspace: input.workspace,
         enabled: body.enabled,
-        roots: body.roots as Partial<Record<StudioId, string>> | undefined,
         packageRoot,
       })
       return ctx.json(result)

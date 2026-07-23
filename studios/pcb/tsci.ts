@@ -441,7 +441,7 @@ async function finalizeBuild(result: TsciResult, projectDir: string): Promise<Ci
 
   const circuitJsonPath = path.join(projectDir, "dist", "src", "circuit", "circuit.json")
   try {
-    const inspection = inspectCircuitJson(await readCircuitJson(circuitJsonPath))
+    const inspection = inspectCircuitJson(await readCircuitJson(projectDir, circuitJsonPath))
     return {
       ...result,
       success: inspection.designValid,
@@ -481,7 +481,7 @@ export async function exportCircuit(
   let lastResult: TsciResult = { success: true, stdout: "", stderr: "", exitCode: 0 }
   const absoluteCircuitJsonPath = path.join(projectDir, "dist", "src", "circuit", "circuit.json")
   await assertFreshCircuitJson(projectDir, absoluteCircuitJsonPath)
-  const circuitJson = await readCircuitJson(absoluteCircuitJsonPath)
+  const circuitJson = await readCircuitJson(projectDir, absoluteCircuitJsonPath)
   const inspection = inspectCircuitJson(circuitJson)
   const blockers = manufacturingBlockers(circuitJson)
   const artifacts: BuildArtifacts = {

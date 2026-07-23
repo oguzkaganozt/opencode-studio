@@ -1,5 +1,6 @@
-import { readdir, stat } from "node:fs/promises"
+import { lstat, readdir, realpath } from "node:fs/promises"
 import path from "node:path"
+import { isInside } from "../../src/core/paths"
 import { generateBom } from "./bom"
 import { type CircuitInspection, inspectCircuitJson, manufacturingBlockers, readCircuitJson } from "./circuit-json"
 
@@ -25,13 +26,16 @@ export type CircuitProject = {
 const SKIP_DIRS = new Set(["node_modules", ".venv", ".git", "dist", "__pycache__", ".pytest_cache"])
 
 export async function discoverProjects(workspaceRoot: string): Promise<CircuitProject[]> {
+  const root = path.resolve(workspaceRoot)
   const projects: CircuitProject[] = []
-  await walkDir(workspaceRoot, workspaceRoot, projects, 0)
+  await walkDir(root, root, projects, 0)
   return projects.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProject[], depth: number) {
   if (depth > 6) return
+  if (!isInside(workspaceRoot, dir) && path.resolve(dir) !== path.resolve(workspaceRoot)) return
+
   const base = path.basename(dir)
   if (base.startsWith(".") || SKIP_DIRS.has(base)) return
 
@@ -44,25 +48,35 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
 
   // A directory is a circuit project if it has src/circuit.tsx
   const circuitSource = path.join(dir, "src", "circuit.tsx")
-  if (await fileExists(circuitSource)) {
-    const relativePath = path.relative(workspaceRoot, dir) || "."
-    const circuitJsonPath = path.join(dir, "dist", "src", "circuit", "circuit.json")
-    const schematicSvgPath = path.join(dir, "dist", "schematic.svg")
-    const pcbSvgPath = path.join(dir, "dist", "pcb.svg")
-    const gerbersZipPath = path.join(dir, "dist", "circuit-gerbers.zip")
+  if (await regularFileExists(circuitSource)) {
+    let canonicalDir: string
+    try {
+      canonicalDir = await realpath(dir)
+    } catch {
+      return
+    }
+    if (!isInside(workspaceRoot, canonicalDir) && canonicalDir !== path.resolve(workspaceRoot)) return
+
+    const relativePath = path.relative(workspaceRoot, canonicalDir) || "."
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return
+
+    const circuitJsonPath = path.join(canonicalDir, "dist", "src", "circuit", "circuit.json")
+    const schematicSvgPath = path.join(canonicalDir, "dist", "schematic.svg")
+    const pcbSvgPath = path.join(canonicalDir, "dist", "pcb.svg")
+    const gerbersZipPath = path.join(canonicalDir, "dist", "circuit-gerbers.zip")
 
     const [hasCircuitJson, hasSchematicSvg, hasPcbSvg, hasGerbersZip] = await Promise.all([
-      fileExists(circuitJsonPath),
-      fileExists(schematicSvgPath),
-      fileExists(pcbSvgPath),
-      fileExists(gerbersZipPath),
+      regularFileExists(circuitJsonPath),
+      regularFileExists(schematicSvgPath),
+      regularFileExists(pcbSvgPath),
+      regularFileExists(gerbersZipPath),
     ])
     let inspection: CircuitInspection | null = null
     let fabricationReady: boolean | null = null
     let assemblyReady: boolean | null = null
     if (hasCircuitJson) {
       try {
-        const circuit = await readCircuitJson(circuitJsonPath)
+        const circuit = await readCircuitJson(workspaceRoot, circuitJsonPath)
         inspection = inspectCircuitJson(circuit)
         fabricationReady = manufacturingBlockers(circuit).length === 0
         assemblyReady = fabricationReady && generateBom(circuit).bomComplete
@@ -73,10 +87,10 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
 
     projects.push({
       id: encodeProjectId(relativePath),
-      name: path.basename(dir),
+      name: path.basename(canonicalDir),
       relativePath,
-      absolutePath: dir,
-      circuitSource,
+      absolutePath: canonicalDir,
+      circuitSource: path.join(canonicalDir, "src", "circuit.tsx"),
       hasCircuitJson,
       hasSchematicSvg,
       hasPcbSvg,
@@ -95,7 +109,8 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
   for (const entry of entries) {
     const entryPath = path.join(dir, entry)
     try {
-      const info = await stat(entryPath)
+      const info = await lstat(entryPath)
+      if (info.isSymbolicLink()) continue
       if (info.isDirectory()) await walkDir(workspaceRoot, entryPath, projects, depth + 1)
     } catch {
       // skip unreadable entries
@@ -103,10 +118,10 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
   }
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
+async function regularFileExists(filePath: string): Promise<boolean> {
   try {
-    const info = await stat(filePath)
-    return info.isFile()
+    const info = await lstat(filePath)
+    return info.isFile() && !info.isSymbolicLink()
   } catch {
     return false
   }

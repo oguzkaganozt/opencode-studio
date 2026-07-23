@@ -32,28 +32,64 @@ describe("host server", () => {
     expect(response.status).toBe(400)
   })
 
-  test("configure requires csrf and origin", async () => {
+  test("configure requires csrf and origin (matrix)", async () => {
     const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
     temps.push(workspace)
     const { app, csrfToken } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
-    const denied = await app.request("http://127.0.0.1:4173/api/config", {
+
+    // Neither origin nor token → 403
+    const noOriginNoToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", "content-type": "application/json" },
       body: JSON.stringify({ enabled: ["startup"] }),
     })
-    expect(denied.status).toBe(403)
+    expect(noOriginNoToken.status).toBe(403)
 
-    const ok = await app.request("http://127.0.0.1:4173/api/config", {
+    // Good origin, bad token → 403
+    const goodOriginBadToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
-      headers: {
-        host: "127.0.0.1:4173",
-        origin: "http://127.0.0.1:4173",
-        "content-type": "application/json",
-        "x-csrf-token": csrfToken,
-      },
+      headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": "wrong" },
       body: JSON.stringify({ enabled: ["startup"] }),
     })
-    expect(ok.status).toBe(200)
+    expect(goodOriginBadToken.status).toBe(403)
+
+    // Bad origin, good token → 403
+    const badOriginGoodToken = await app.request("http://127.0.0.1:4173/api/config", {
+      method: "PUT",
+      headers: { host: "127.0.0.1:4173", origin: "http://evil.com:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ enabled: ["startup"] }),
+    })
+    expect(badOriginGoodToken.status).toBe(403)
+
+    // Vite dev origin (:5173) with valid token → 200
+    const devOrigin = await app.request("http://127.0.0.1:4173/api/config", {
+      method: "PUT",
+      headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:5173", "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ enabled: ["startup"] }),
+    })
+    expect(devOrigin.status).toBe(200)
+
+    // Bare loopback origin (no port) → 403 (port-strict)
+    const bareOrigin = await app.request("http://127.0.0.1:4173/api/config", {
+      method: "PUT",
+      headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1", "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ enabled: ["startup"] }),
+    })
+    expect(bareOrigin.status).toBe(403)
+  })
+
+  test("configure rejects roots via HTTP", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
+    temps.push(workspace)
+    const { app, csrfToken } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
+    const response = await app.request("http://127.0.0.1:4173/api/config", {
+      method: "PUT",
+      headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ enabled: ["startup"], roots: { startup: "/tmp/evil" } }),
+    })
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.error.code).toBe("invalid_body")
   })
 
   test("mounts startup routes when enabled", async () => {

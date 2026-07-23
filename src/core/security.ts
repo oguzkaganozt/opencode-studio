@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto"
+import { randomBytes, timingSafeEqual } from "node:crypto"
 import { isIP } from "node:net"
 
 export function assertNotRoot(action: string) {
@@ -19,6 +19,9 @@ export const PCB_CSP =
   "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data: https://kicad-mod-cache.tscircuit.com; worker-src 'self' blob:; child-src 'self' blob:; media-src 'self' blob:"
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"])
+
+/** Default Vite dev UI port; allowed as Origin when the host binds loopback. */
+export const DEFAULT_DEV_UI_PORTS = [5173]
 
 export function isLoopbackHost(hostname: string) {
   const host = hostname.trim().toLowerCase()
@@ -62,18 +65,77 @@ export function createCsrfToken() {
   return randomBytes(32).toString("base64url")
 }
 
-export function sameOrigin(origin: string | undefined, hostname: string, port: number) {
+export function csrfTokensEqual(a: string, b: string) {
+  if (a.length !== b.length) return false
+  try {
+    return timingSafeEqual(Buffer.from(a), Buffer.from(b))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Origins allowed for mutating requests.
+ * - Exact bind host:port (and loopback aliases on that port)
+ * - When bind is loopback: Vite default port(s) on loopback hosts
+ * - Extra absolute origins from OPENCODE_STUDIO_ALLOWED_ORIGINS (comma-separated)
+ */
+export function allowedOrigins(hostname: string, port: number, env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const origins = new Set<string>()
+  const add = (host: string, p: number) => {
+    origins.add(`http://${host}:${p}`)
+    origins.add(`https://${host}:${p}`)
+  }
+
+  add(hostname, port)
+  if (isLoopbackHost(hostname)) {
+    for (const name of ["127.0.0.1", "localhost", "[::1]"]) {
+      add(name, port)
+      for (const devPort of DEFAULT_DEV_UI_PORTS) add(name, devPort)
+    }
+  }
+
+  const extra = env.OPENCODE_STUDIO_ALLOWED_ORIGINS
+  if (extra) {
+    for (const part of extra.split(",")) {
+      const trimmed = part.trim()
+      if (!trimmed) continue
+      try {
+        const url = new URL(trimmed)
+        if (url.protocol === "http:" || url.protocol === "https:") {
+          origins.add(`${url.protocol}//${url.host}`)
+        }
+      } catch {
+        // ignore malformed entries
+      }
+    }
+  }
+  return origins
+}
+
+export function sameOrigin(origin: string | undefined, hostname: string, port: number, env: NodeJS.ProcessEnv = process.env) {
   if (!origin) return false
   try {
     const url = new URL(origin)
     if (url.protocol !== "http:" && url.protocol !== "https:") return false
-    const host = url.port ? `${url.hostname}:${url.port}` : url.hostname
-    return (
-      allowedHost(host, hostname, port) ||
-      allowedHost(`${url.hostname}:${url.port || (url.protocol === "https:" ? "443" : "80")}`, hostname, port)
-    )
+    // Use url.host (keeps IPv6 brackets) with explicit port so IPv6 origins match.
+    const explicitPort = url.port || (url.protocol === "https:" ? "443" : "80")
+    const normalized = `${url.protocol}//${url.host.split(":")[0]}:${explicitPort}`
+    return allowedOrigins(hostname, port, env).has(normalized)
   } catch {
     return false
+  }
+}
+
+/** Safe http(s) URL for viewer links; rejects javascript:/data:/etc. */
+export function safeExternalHref(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null
+  try {
+    const url = new URL(raw.trim())
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    return url.toString()
+  } catch {
+    return null
   }
 }
 

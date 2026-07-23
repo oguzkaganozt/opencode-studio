@@ -40,13 +40,13 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*` (tsconfig + Vite).
 - `opencode-studio configure …` also writes managed skills under `.opencode/skills/<id>-studio/` (marker `.opencode-studio-managed.json`), pins plugin entries in OpenCode config, and (when cad enabled) manages MCP key `build123d`.
 - After configure: restart OpenCode **and** the studio host.
 - Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts.
-- Host is loopback-only by default; CSRF on mutating APIs. Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`.
+- Host is loopback-only by default; CSRF + Origin on `PUT /api/config` only (studio APIs are read-only GETs). Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`. Multi-user hosts are out of scope without additional auth.
 
 ## Hard rules
 
 - **No cross-studio imports.** Shared behavior only in `src/core/` when ≥2 studios need it.
 - Tool names must not collide across studios; `provider`/`auth` hooks are singletons (media-go is the only auxiliary plugin export).
-- New studio: `bun run create-studio <id>` scaffolds only — still register in `registry.ts`, `studios.ts`, and `studio-loaders.ts` (plugin + API). See `docs/new-studio.md`.
+- New studio: `bun run create-studio <id>` scaffolds only — still register in `registry.ts`, `studios.ts`, `studio-loaders.ts` (plugin + API), and `ui/app.tsx` (`viewerLoaders`). See `docs/new-studio.md`.
 - Changing tools or packaged skills: update `test/parity/tools.json` and/or `test/parity/skill-digests.json` or parity tests fail.
 - Domain agent workflows live in `studios/*/skill/SKILL.md` (copied into workspaces on configure). Prefer those over inventing tool flows.
 - CAD forge runs from XDG cache (`ensureForgeRuntimeDir`), not in-package; source is `studios/cad/forge/` (Python, excluded from tsc/biome).

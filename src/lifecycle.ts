@@ -193,16 +193,13 @@ export async function configureStudios(input: {
   const previous = await readStudioConfigFile(workspace)
   const desiredRoots = input.roots ?? previous.roots
 
-  // Preflight roots
+  // Preflight roots from StudioDefinition.root
   for (const studioId of enabled) {
-    const _def = getStudioDefinition(studioId)
-    if (studioId === "media") {
-      const root = desiredRoots.media ?? defaultMediaRoot()
-      if (input.dryRun) continue
-      await resolveStudioRoot({ studioId, workspace, roots: { ...desiredRoots, media: root }, createMedia: true })
-    } else {
-      await resolveStudioRoot({ studioId, workspace, roots: desiredRoots, createMedia: false })
-    }
+    const def = getStudioDefinition(studioId)
+    if (input.dryRun) continue
+    const roots =
+      def.root.default === "user-data" ? { ...desiredRoots, [studioId]: desiredRoots[studioId] ?? defaultMediaRoot() } : desiredRoots
+    await resolveStudioRoot({ studioId, workspace, roots, create: def.root.create })
   }
 
   // Preflight skills for enable and disable

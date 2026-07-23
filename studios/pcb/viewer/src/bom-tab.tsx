@@ -1,6 +1,17 @@
 import { useQuery } from "@tanstack/react-query"
 import { api, type BomEntry } from "./api"
 
+function safeHref(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null
+  try {
+    const url = new URL(raw.trim())
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
 function BomRow({ entry }: { entry: BomEntry }) {
   return (
     <tr className="border-b border-zinc-800 hover:bg-zinc-800/40 transition-colors">
@@ -12,8 +23,8 @@ function BomRow({ entry }: { entry: BomEntry }) {
         {entry.description ?? "—"}
       </td>
       <td className="px-4 py-2.5 text-sm">
-        {entry.datasheet && (
-          <a href={entry.datasheet} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 text-xs">
+        {entry.datasheet && safeHref(entry.datasheet) && (
+          <a href={safeHref(entry.datasheet)!} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 text-xs">
             Datasheet ↗
           </a>
         )}

@@ -1,6 +1,10 @@
-import { readFile } from "node:fs/promises"
+import { lstat } from "node:fs/promises"
+import { readRegularFileAt } from "../../src/core/paths"
 
 export type CircuitElement = Record<string, unknown> & { type?: unknown }
+
+/** Soft cap to avoid OOM when discovering many/huge circuit.json files. */
+export const MAX_CIRCUIT_JSON_BYTES = 20 * 1024 * 1024
 
 export type DiagnosticGroup = {
   type: string
@@ -56,8 +60,19 @@ export function parseCircuitJson(value: unknown): CircuitElement[] {
   return value as CircuitElement[]
 }
 
-export async function readCircuitJson(filePath: string): Promise<CircuitElement[]> {
-  return parseCircuitJson(JSON.parse(await readFile(filePath, "utf8")))
+/**
+ * Read circuit JSON confined to root (rejects symlinks and path escape).
+ * Prefer workspace root for API/tools; project dir is acceptable for in-project build finals.
+ */
+export async function readCircuitJson(root: string, filePath: string): Promise<CircuitElement[]> {
+  // Pre-check file size to avoid loading huge files into memory.
+  const info = await lstat(filePath)
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error("Circuit JSON file is not a regular file")
+  if (info.size > MAX_CIRCUIT_JSON_BYTES) {
+    throw new Error(`Circuit JSON exceeds ${MAX_CIRCUIT_JSON_BYTES} bytes`)
+  }
+  const buffer = await readRegularFileAt(root, filePath)
+  return parseCircuitJson(JSON.parse(buffer.toString("utf8")))
 }
 
 const WARNING_SAMPLE_LIMIT = 3

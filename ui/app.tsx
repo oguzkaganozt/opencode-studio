@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useEffect, useState } from "react"
 import { Link, Navigate, Route, Routes, useParams } from "react-router"
+import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 
 type StudioCard = {
@@ -91,6 +92,17 @@ function HomePage() {
           Installing the package does not enable Studios. Select the exact set for this workspace, apply, then restart OpenCode and the
           Studio host.
         </p>
+        {studiosQuery.isLoading && <p className="text-sm text-[var(--osc-text-muted)]">Loading studios…</p>}
+        {studiosQuery.isError && (
+          <p className="rounded border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-sm" role="alert">
+            Failed to load studios: {(studiosQuery.error as Error)?.message ?? "unknown error"}
+          </p>
+        )}
+        {csrfQuery.isError && (
+          <p className="rounded border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-sm" role="alert">
+            Failed to load CSRF token; configuration is unavailable until the host is reachable.
+          </p>
+        )}
         {studiosQuery.data && (
           <p className="font-mono text-xs text-[var(--osc-text-subtle)]">
             workspace {studiosQuery.data.workspace} · v{studiosQuery.data.packageVersion}
@@ -107,25 +119,28 @@ function HomePage() {
         {cards.map((studio) => {
           const on = enabled.includes(studio.id)
           return (
-            <button
+            <div
               key={studio.id}
-              type="button"
-              onClick={() => {
-                setSelected((current) => {
-                  const base = current ?? studiosQuery.data?.enabled ?? []
-                  return on ? base.filter((id) => id !== studio.id) : [...base, studio.id]
-                })
-              }}
-              className={`rounded-md border p-4 text-left transition ${
+              className={`rounded-md border p-4 transition ${
                 on ? "border-[var(--osc-accent)] bg-[var(--osc-bg-elevated)]" : "border-[var(--osc-border)] bg-[var(--osc-bg-subtle)]"
               }`}
               data-studio={studio.id}
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-medium">{studio.label}</h2>
-                <span className="rounded px-2 py-0.5 font-mono text-xs uppercase tracking-wide text-[var(--osc-text-muted)]">
-                  {on ? "enabled" : "disabled"}
-                </span>
+                <label className="flex items-center gap-2 text-xs text-[var(--osc-text-muted)]">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => {
+                      setSelected((current) => {
+                        const base = current ?? studiosQuery.data?.enabled ?? []
+                        return on ? base.filter((id) => id !== studio.id) : [...base, studio.id]
+                      })
+                    }}
+                  />
+                  <span className="font-mono uppercase tracking-wide">{on ? "enabled" : "disabled"}</span>
+                </label>
               </div>
               <p className="mb-3 text-sm text-[var(--osc-text-muted)]">{studio.description}</p>
               <dl className="space-y-1 font-mono text-xs text-[var(--osc-text-subtle)]">
@@ -144,16 +159,12 @@ function HomePage() {
               </dl>
               {on && (
                 <div className="mt-3">
-                  <Link
-                    to={`/studios/${studio.id}`}
-                    className="text-sm text-[var(--osc-accent)] underline-offset-2 hover:underline"
-                    onClick={(event) => event.stopPropagation()}
-                  >
+                  <Link to={`/studios/${studio.id}`} className="text-sm text-[var(--osc-accent)] underline-offset-2 hover:underline">
                     Open viewer
                   </Link>
                 </div>
               )}
-            </button>
+            </div>
           )
         })}
       </div>
@@ -182,7 +193,7 @@ function HomePage() {
   )
 }
 
-const viewerLoaders: Record<string, React.LazyExoticComponent<() => React.ReactNode>> = {
+const viewerLoaders: Record<StudioId, React.LazyExoticComponent<() => React.ReactNode>> = {
   cad: lazy(async () => {
     await import("@studios/cad/viewer/src/styles.css")
     const mod = await import("@studios/cad/viewer/src/app")
@@ -204,6 +215,15 @@ const viewerLoaders: Record<string, React.LazyExoticComponent<() => React.ReactN
     return { default: mod.App }
   }),
 }
+
+function assertViewerLoadersComplete() {
+  const expected = [...STUDIO_IDS].sort()
+  const actual = Object.keys(viewerLoaders).sort()
+  if (expected.length !== actual.length || expected.some((id, i) => id !== actual[i])) {
+    throw new Error(`viewerLoaders must match catalog exactly. expected=${expected.join(",")} actual=${actual.join(",")}`)
+  }
+}
+assertViewerLoadersComplete()
 
 function StudioFrame() {
   const { studioId = "" } = useParams()
@@ -239,7 +259,7 @@ function StudioFrame() {
     return <Navigate to="/" replace />
   }
 
-  const Viewer = viewerLoaders[studioId]
+  const Viewer = isStudioId(studioId) ? viewerLoaders[studioId] : undefined
   const page = Viewer ? <Viewer /> : <p>Unknown studio</p>
 
   return (

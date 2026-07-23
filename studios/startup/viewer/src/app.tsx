@@ -11,6 +11,16 @@ function studioHref(path = "") {
   if (!base) return suffix ? `/${suffix}` : "/"
   return suffix ? `${base}/${suffix}` : base
 }
+function safeHref(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null
+  try {
+    const url = new URL(raw.trim())
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}
 
 import { useQuery } from "@tanstack/react-query"
 import { Link, Route, Routes, useParams, useSearchParams } from "react-router"
@@ -185,23 +195,30 @@ function CandidateViewport({ id }: { id?: string }) {
       <section className="mb-6">
         <h2 className="mb-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">Evidence</h2>
         <ul className="space-y-3">
-          {c.evidence.map((e) => (
-            <li key={e.url} className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-3">
-              <a
-                className="mono text-xs text-[var(--osc-accent)] underline-offset-2 hover:underline"
-                href={e.url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {e.url}
-              </a>
+          {c.evidence.map((e) => {
+            const href = safeHref(e.url)
+            return (
+              <li key={e.url} className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-3">
+                {href ? (
+                  <a
+                    className="mono text-xs text-[var(--osc-accent)] underline-offset-2 hover:underline"
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {e.url}
+                  </a>
+                ) : (
+                  <span className="mono text-xs text-[var(--osc-text-muted)]">{e.url}</span>
+                )}
               <p className="mt-1 text-sm text-[var(--osc-text-muted)]">{e.summary}</p>
               <div className="mono mt-1 flex gap-3 text-[11px] text-[var(--osc-text-faint)]">
                 {e.date ? <span>{e.date}</span> : null}
                 {e.engagement ? <span>{e.engagement}</span> : null}
               </div>
             </li>
-          ))}
+            )
+          })}
         </ul>
         {c.verify_summary ? (
           <p className="mt-3 text-sm text-[var(--osc-text-muted)]">

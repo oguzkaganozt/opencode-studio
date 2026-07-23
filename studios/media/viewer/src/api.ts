@@ -49,8 +49,9 @@ export type AssetList = {
 async function request<T>(url: string) {
   const response = await fetch(url)
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string }
-    throw new Error(body.error ?? `Request failed with ${response.status}`)
+    const body = (await response.json().catch(() => null)) as { error?: string | { message?: string } } | null
+    const message = typeof body?.error === "string" ? body.error : body?.error?.message ?? `Request failed: ${response.status}`
+    throw new Error(message)
   }
   return response.json() as Promise<T>
 }

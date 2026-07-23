@@ -78,7 +78,7 @@ export function createPcbApi(workspaceRoot: string) {
     const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
     if (!project) return ctx.json({ error: "Project not found" }, 404)
     if (!project.circuitJsonPath) return ctx.json({ error: "Circuit JSON not built yet. Run pcb_circuit_build first." }, 404)
-    const json = await readCircuitJson(project.circuitJsonPath)
+    const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
     const catalogParts = await loadCatalogParts(workspaceRoot)
     const bom = generateBom(json, catalogParts)
     return ctx.json({
@@ -94,7 +94,7 @@ export function createPcbApi(workspaceRoot: string) {
     const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
     if (!project) return ctx.json({ error: "Project not found" }, 404)
     if (!project.circuitJsonPath) return ctx.json({ error: "Circuit JSON not built yet. Run pcb_circuit_build first." }, 404)
-    const json = await readCircuitJson(project.circuitJsonPath)
+    const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
     const catalogParts = await loadCatalogParts(workspaceRoot)
     const bom = generateBom(json, catalogParts)
     const csv = toBomCsv(bom.entries)
@@ -111,7 +111,7 @@ export function createPcbApi(workspaceRoot: string) {
     const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
     if (!project) return ctx.json({ error: "Project not found" }, 404)
     if (!project.circuitJsonPath) return ctx.json({ error: "Circuit JSON not built yet. Run pcb_circuit_build first." }, 404)
-    const json = await readCircuitJson(project.circuitJsonPath)
+    const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
     const fabricationBlockers = manufacturingBlockers(json)
     const bomBlocker = bomIdentityBlocker(generateBom(json))
     const assemblyBlockers = [...fabricationBlockers, ...(bomBlocker ? [bomBlocker] : [])]

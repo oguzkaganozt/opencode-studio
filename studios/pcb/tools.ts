@@ -162,7 +162,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
           async execute(args, ctx) {
             const project = await resolveProject(workspaceRoot, args.projectId)
             const result = await runProjectBuild(project.absolutePath, ctx.abort)
-            const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(result.artifacts.circuitJsonPath) : null
+            const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
             const blockers = circuit ? manufacturingBlockers(circuit) : []
             const fabricationReady = result.inspection !== null && blockers.length === 0
             const assemblyReady = fabricationReady && circuit !== null && generateBom(circuit).bomComplete
@@ -199,7 +199,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const project = await resolveProject(workspaceRoot, args.projectId)
             const formats = args.formats as Array<"schematic" | "pcb" | "gerber">
             const result = await exportCircuit(project.absolutePath, formats, ctx.abort)
-            const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(result.artifacts.circuitJsonPath) : null
+            const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
             const fabricationReady = result.manufacturingBlockers.length === 0
             return formatToolJSON({
               projectId: args.projectId,
@@ -236,7 +236,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               throw new Error(`Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
             const { readCircuitJson } = await import("./circuit-json")
-            const json = await readCircuitJson(project.circuitJsonPath)
+            const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
             const catalogParts = await loadCatalogParts(workspaceRoot)
             const bom = generateBom(json, catalogParts)
@@ -269,7 +269,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               throw new Error(`Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
             const { readCircuitJson } = await import("./circuit-json")
-            const json = await readCircuitJson(project.circuitJsonPath)
+            const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
             const fabricationBlockers = manufacturingBlockers(json)
             const bomBlocker = bomIdentityBlocker(generateBom(json))
@@ -327,7 +327,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             if (!project.circuitJsonPath) {
               throw new Error(`Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
-            const json = await readCircuitJson(project.circuitJsonPath)
+            const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             return formatToolJSON({
               projectId: args.projectId,
               name: project.name,

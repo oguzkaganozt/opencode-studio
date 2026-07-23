@@ -46,4 +46,9 @@ await writeFile(
   `import type { Plugin } from "@opencode-ai/plugin"\nexport function loadPlugin(): Plugin {\n  return async () => ({ tool: {} })\n}\n`,
 )
 await writeFile(path.join(dir, "api.ts"), `import { Hono } from "hono"\nexport function createApi() {\n  return new Hono()\n}\n`)
-console.log(`Created studios/${id}. Register it in src/studios.ts and src/core/registry.ts.`)
+console.log(`Created studios/${id}. Register it in:`)
+console.log(`  src/core/registry.ts (STUDIO_IDS)`)
+console.log(`  src/studios.ts (definition)`)
+console.log(`  src/studio-loaders.ts (plugin + API loaders)`)
+console.log(`  ui/app.tsx (viewerLoaders)`)
+console.log(`  test/parity/* (if tools/skills change)`)

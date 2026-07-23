@@ -1,4 +1,5 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { isInside } from "./studio-path"
 import { basicProjectTemplate } from "./templates"
@@ -27,7 +28,7 @@ export function validateProjectName(name: string): void {
 
 /**
  * Write a minimal tscircuit project into the workspace.
- * Refuses to touch an existing non-empty directory.
+ * Stages into a temp directory then renames onto the target (atomic when target is new).
  */
 export async function scaffoldProject(workspaceRoot: string, name: string, directory?: string): Promise<ScaffoldResult> {
   validateProjectName(name)
@@ -44,10 +45,36 @@ export async function scaffoldProject(workspaceRoot: string, name: string, direc
   }
 
   const files = basicProjectTemplate(name)
-  for (const [relativeFile, content] of Object.entries(files)) {
-    const filePath = path.join(target, relativeFile)
-    await mkdir(path.dirname(filePath), { recursive: true })
-    await writeFile(filePath, content, "utf8")
+  const staging = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`)
+  try {
+    for (const [relativeFile, content] of Object.entries(files)) {
+      const filePath = path.join(staging, relativeFile)
+      await mkdir(path.dirname(filePath), { recursive: true })
+      await writeFile(filePath, content, "utf8")
+    }
+    await mkdir(path.dirname(target), { recursive: true })
+    try {
+      await rename(staging, target)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOTEMPTY" || (error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new Error(`Directory already exists and is not empty: ${relative}`)
+      }
+      // If target exists empty, remove and retry once
+      try {
+        const entries = await readdir(target)
+        if (entries.length === 0) {
+          await rm(target, { recursive: true, force: true })
+          await rename(staging, target)
+        } else {
+          throw error
+        }
+      } catch (inner) {
+        if (inner === error) throw error
+        throw inner
+      }
+    }
+  } finally {
+    await rm(staging, { recursive: true, force: true }).catch(() => {})
   }
 
   return {

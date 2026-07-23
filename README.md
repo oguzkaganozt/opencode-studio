@@ -10,8 +10,10 @@ bun test
 bun run typecheck
 bun run lint
 bun run build
-bun src/cli.ts serve --workspace .
+bun run serve
 ```
+
+Prerequisites: Bun ≥ 1.3. For `release:check` and CAD forge tests: Python 3.12 + [uv](https://docs.astral.sh/uv/). Media needs `ffmpeg`/`ffprobe`. PCB authoring needs `tsci`.
 
 ## Configure
 
