@@ -32,10 +32,8 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           test "$TAG" = "v$VERSION"
       - run: bun run release:check
-      # OIDC only — do not set NODE_AUTH_TOKEN (legacy token path blocks trusted publish).
-      # Configure Trusted Publisher on npmjs.com for this package first:
-      #   Organization/user: oguzkaganozt
-      #   Repository: opencode-studio
-      #   Workflow filename: release.yml
-      #   Environment name: npm
-      - run: npm publish --access public --provenance
+      # OIDC Trusted Publishing only — do not set NODE_AUTH_TOKEN.
+      # Provenance requires a *public* GitHub repo; this repo is private, so no --provenance.
+      # Trusted Publisher on npmjs.com must match:
+      #   user=oguzkaganozt repo=opencode-studio workflow=release.yml environment=npm
+      - run: npm publish --access public
