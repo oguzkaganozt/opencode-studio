@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source ".";
 @import "@fontsource/barlow/400.css";
 @import "@fontsource/barlow/500.css";
 @import "@fontsource/barlow/600.css";
@@ -6,12 +7,9 @@
 @import "@fontsource/ibm-plex-mono/500.css";
 @import "./tokens.css";
 
-/* Scoped to CAD shell — do not style host document */
-[data-studio="cad"],
-.studio-shell[data-studio="cad"] {
-  height: 100%;
-  min-height: 100%;
-  margin: 0;
+/* Scoped to CAD viewer root — the host .studio-shell owns framing (flex column,
+   min-h-dvh); never set height/min-height on it here or the shell chain breaks. */
+[data-studio="cad"] {
   background: var(--osc-bg);
   color: var(--osc-text);
   font-family: var(--osc-font-ui);

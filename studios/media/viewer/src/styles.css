@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source ".";
 @import "@fontsource/barlow/400.css";
 @import "@fontsource/barlow/500.css";
 @import "@fontsource/barlow/600.css";
@@ -21,7 +22,10 @@
   --rust: var(--osc-accent-media);
   position: relative;
   min-width: 320px;
-  min-height: 100vh;
+  /* Fill the host shell's remaining height (flex child of .studio-shell);
+     grow with content so the page scrolls instead of clipping. */
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0;
   overflow: hidden;
   background: radial-gradient(circle at 84% -10%, rgba(200, 255, 50, 0.08), transparent 32%), var(--ink);

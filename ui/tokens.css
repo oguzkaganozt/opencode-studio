@@ -48,6 +48,7 @@
   --osc-accent-cad: #f0a202;
   --osc-accent-media: #ff6f61;
   --osc-accent-pcb: #22d3ee;
+  --osc-accent-startup: #34d399;
   --osc-accent: var(--osc-accent-cad);
 
   /* Domain canvas may diverge from the shell when content requires it */
@@ -65,6 +66,10 @@
 
 [data-studio="pcb"] {
   --osc-accent: var(--osc-accent-pcb);
+}
+
+[data-studio="startup"] {
+  --osc-accent: var(--osc-accent-startup);
 }
 
 @media (prefers-reduced-motion: reduce) {

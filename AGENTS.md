@@ -49,6 +49,8 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*` (tsconfig + Vite).
 - New studio: `bun run create-studio <id>` scaffolds only — still register in `registry.ts`, `studios.ts`, `studio-loaders.ts` (plugin + API), and `ui/app.tsx` (`viewerLoaders`). See `docs/new-studio.md`.
 - Changing tools or packaged skills: update `test/parity/tools.json` and/or `test/parity/skill-digests.json` or parity tests fail.
 - Domain agent workflows live in `studios/*/skill/SKILL.md` (copied into workspaces on configure). Prefer those over inventing tool flows.
+- Viewer CSS: Vite root is `ui/`, so Tailwind only auto-scans `ui/**`. `ui/styles.css` registers `@source "../studios"` and each studio `styles.css` carries `@source "."` — keep both when adding a studio or its utilities silently never generate.
+- Viewer framing: `.studio-shell` is `flex min-h-dvh flex-col`; studio viewer roots must be `flex-1 min-h-0` (media uses `flex: 1 1 auto`). Never `h-full`/`min-h-screen` on viewer roots and never style `.studio-shell` from studio CSS — that breaks the height chain.
 - CAD forge runs from XDG cache (`ensureForgeRuntimeDir`), not in-package; source is `studios/cad/forge/` (Python, excluded from tsc/biome).
 - PCB authoring fixtures under `studios/pcb/authoring/` are excluded from tsc/biome; need `tsci` for real PCB work. Media needs `ffmpeg`/`ffprobe`.
 - Exports: `.` plugin, `./media-provider`, `./media-go`. Build entrypoints in `scripts/build.ts`; do not commit `dist/`.

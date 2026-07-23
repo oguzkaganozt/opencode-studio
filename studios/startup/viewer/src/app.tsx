@@ -376,7 +376,7 @@ function PoolShell() {
   const candidates = listQuery.data ?? []
 
   return (
-    <div className="flex h-full flex-col" data-studio="startup">
+    <div className="flex min-h-0 flex-1 flex-col" data-studio="startup">
       <StudioBar studio={studioQuery.data} />
       <FilterBar />
       <div className="flex min-h-0 flex-1">
@@ -401,7 +401,7 @@ function RejectsShell() {
   const rejects = rejectsQuery.data ?? []
 
   return (
-    <div className="flex h-full flex-col" data-studio="startup">
+    <div className="flex min-h-0 flex-1 flex-col" data-studio="startup">
       <StudioBar studio={studioQuery.data} />
       <main className="flex-1 overflow-auto p-4">
         <h1 className="mb-3 text-lg font-semibold">Rejects</h1>
@@ -433,7 +433,7 @@ export function App() {
       <Route
         path="*"
         element={
-          <div className="flex h-full items-center justify-center text-[var(--osc-error)]" role="alert">
+          <div className="flex min-h-0 flex-1 items-center justify-center text-[var(--osc-error)]" role="alert">
             Route not found.
           </div>
         }

@@ -521,7 +521,7 @@ function DesignRoute() {
 
 export function App() {
   return (
-    <div className="flex h-full flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]" data-studio="cad">
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]" data-studio="cad">
       <HashRedirect />
       <StudioBar />
       <Routes>

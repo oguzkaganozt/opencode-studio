@@ -4,6 +4,9 @@
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "./tokens.css";
 @import "tailwindcss";
+/* Vite root is ui/, so Tailwind's automatic scan misses studio viewers.
+   Register them explicitly (biome's CSS parser rejects `@import … source()`). */
+@source "../studios";
 
 *,
 *::before,

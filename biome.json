@@ -17,6 +17,11 @@
     "indentStyle": "space",
     "lineWidth": 140
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "javascript": {
     "formatter": {
       "quoteStyle": "double",

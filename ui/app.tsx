@@ -104,7 +104,7 @@ function HomePage() {
           </p>
         )}
         {studiosQuery.data && (
-          <p className="font-mono text-xs text-[var(--osc-text-subtle)]">
+          <p className="font-mono text-xs text-[var(--osc-text-faint)]">
             workspace {studiosQuery.data.workspace} · v{studiosQuery.data.packageVersion}
           </p>
         )}
@@ -143,7 +143,7 @@ function HomePage() {
                 </label>
               </div>
               <p className="mb-3 text-sm text-[var(--osc-text-muted)]">{studio.description}</p>
-              <dl className="space-y-1 font-mono text-xs text-[var(--osc-text-subtle)]">
+              <dl className="space-y-1 font-mono text-xs text-[var(--osc-text-faint)]">
                 <div>
                   <dt className="inline text-[var(--osc-text-muted)]">root </dt>
                   <dd className="inline break-all">{studio.root ?? studio.rootError ?? "—"}</dd>
@@ -263,12 +263,12 @@ function StudioFrame() {
   const page = Viewer ? <Viewer /> : <p>Unknown studio</p>
 
   return (
-    <div data-studio={studioId} className="studio-shell min-h-screen">
-      <div className="border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 py-2 text-sm">
+    <div data-studio={studioId} className="studio-shell flex min-h-dvh flex-col">
+      <div className="shrink-0 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 py-2 text-sm">
         <Link to="/" className="text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]">
           ← Studios
         </Link>
-        <span className="mx-2 text-[var(--osc-text-subtle)]">/</span>
+        <span className="mx-2 text-[var(--osc-text-faint)]">/</span>
         <span className="font-medium">{studioId}</span>
       </div>
       <Suspense fallback={<div className="p-6 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>}>{page}</Suspense>

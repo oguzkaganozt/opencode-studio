@@ -31,7 +31,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div
       data-studio="pcb"
-      className="min-h-screen bg-[var(--osc-bg)] text-[var(--osc-text)] flex flex-col font-[family-name:var(--osc-font-ui)]"
+      className="min-h-0 flex-1 bg-[var(--osc-bg)] text-[var(--osc-text)] flex flex-col"
     >
       <header className="border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-6 py-3 flex items-center gap-4 shrink-0">
         <span className="text-lg font-semibold tracking-tight text-[var(--osc-accent)]">PCB Studio</span>
