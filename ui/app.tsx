@@ -61,13 +61,17 @@ function HomePage() {
   })
 
   const [selected, setSelected] = useState<string[] | null>(null)
-  const enabled = selected ?? studiosQuery.data?.enabled ?? []
+  const saved = studiosQuery.data?.enabled ?? []
+  const enabled = selected ?? saved
+  const dirty =
+    selected !== null &&
+    (selected.length !== saved.length || selected.some((id) => !saved.includes(id)) || saved.some((id) => !selected.includes(id)))
 
   const configure = useMutation({
     mutationFn: async (next: string[]) => {
       const token = csrfQuery.data?.token
       if (!token) throw new Error("CSRF token unavailable")
-      return fetchJson("/api/config", {
+      return fetchJson<{ message?: string; restartRequired?: boolean }>("/api/config", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -89,8 +93,8 @@ function HomePage() {
       <div className="mb-6 space-y-2">
         <h1 className="text-2xl font-semibold">Studios</h1>
         <p className="max-w-2xl text-sm text-[var(--osc-text-muted)]">
-          Installing the package does not enable Studios. Select the exact set for this workspace, apply, then restart OpenCode and the
-          Studio host.
+          Select which Studios this workspace uses, then apply. Enabling or disabling a Studio always requires a restart of both OpenCode
+          and <span className="font-mono">opencode-studio serve</span> before tools, skills, and viewers match the new set.
         </p>
         {studiosQuery.isLoading && <p className="text-sm text-[var(--osc-text-muted)]">Loading studios…</p>}
         {studiosQuery.isError && (
@@ -133,6 +137,7 @@ function HomePage() {
                     type="checkbox"
                     checked={on}
                     onChange={() => {
+                      configure.reset()
                       setSelected((current) => {
                         const base = current ?? studiosQuery.data?.enabled ?? []
                         return on ? base.filter((id) => id !== studio.id) : [...base, studio.id]
@@ -169,22 +174,48 @@ function HomePage() {
         })}
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={configure.isPending || !csrfQuery.data}
-          onClick={() => configure.mutate(enabled)}
-          className="rounded bg-[var(--osc-accent)] px-4 py-2 text-sm font-medium text-black disabled:opacity-50"
-        >
-          {configure.isPending ? "Applying…" : "Apply selection"}
-        </button>
+      <div className="mt-6 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={configure.isPending || !csrfQuery.data || !dirty}
+            onClick={() => configure.mutate(enabled)}
+            className="rounded bg-[var(--osc-accent)] px-4 py-2 text-sm font-medium text-black disabled:opacity-50"
+          >
+            {configure.isPending ? "Applying…" : "Apply selection"}
+          </button>
+          {dirty && !configure.isSuccess && (
+            <p className="text-sm text-[var(--osc-text-muted)]">
+              Unsaved selection — apply writes config, then both processes must restart.
+            </p>
+          )}
+        </div>
+
         {configure.isSuccess && (
-          <p className="text-sm text-[var(--osc-warning)]" role="status">
-            Applied. Restart OpenCode and opencode-studio serve.
-          </p>
+          <div
+            className="max-w-2xl rounded-md border border-[var(--osc-warning)] bg-[var(--osc-warning-bg)] px-4 py-3 text-sm text-[var(--osc-text)]"
+            role="status"
+          >
+            <p className="font-semibold text-[var(--osc-warning)]">Configuration saved — restart required</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-[var(--osc-text-muted)]">
+              <li>
+                Stop and start <span className="font-mono text-[var(--osc-text)]">opencode-studio serve</span> in this workspace.
+              </li>
+              <li>
+                Restart <span className="font-mono text-[var(--osc-text)]">OpenCode</span> so plugins and skills reload.
+              </li>
+            </ol>
+            <p className="mt-2 text-xs text-[var(--osc-text-faint)]">
+              Until both restart, tools, skills, and studio APIs may not match what you just enabled or disabled.
+            </p>
+          </div>
         )}
+
         {configure.isError && (
-          <p className="text-sm text-[var(--osc-error)]" role="alert">
+          <p
+            className="rounded border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-sm text-[var(--osc-error)]"
+            role="alert"
+          >
             {(configure.error as Error).message}
           </p>
         )}
