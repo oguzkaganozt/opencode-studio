@@ -20,8 +20,4 @@ __pycache__/
 /workspace/
 dogfood-output/
 .demo-library/
-designs/*/step/
-designs/*/stl/
-designs/*/glb/
-designs/*/manifest.json
-designs/*/.artifacts/
+# CAD design build artifacts: studios/cad/designs/.gitignore

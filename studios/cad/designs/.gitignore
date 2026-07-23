@@ -1,0 +1,10 @@
+*/step
+*/stl
+*/glb
+*/renders
+*/.artifacts
+*/.build.lock
+*/manifest.json
+*/.step.tmp/
+*/.stl.tmp/
+*/.glb.tmp/
