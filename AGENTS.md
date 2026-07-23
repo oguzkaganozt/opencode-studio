@@ -40,7 +40,7 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*` (tsconfig + Vite).
 - Project: `<workspace>/.opencode/studio.json` → `{ "enabled": ["cad", "pcb"] }`. Missing/invalid → **no** studios.
 - Optional `roots.<id>` must be **absolute** paths. Media default root is XDG user-data (`~/.local/share/opencode-studio/media`), not the workspace.
 - `opencode-studio configure …` also writes managed skills under `.opencode/skills/<id>-studio/` (marker `.opencode-studio-managed.json`), pins plugin entries in OpenCode config, and (when cad enabled) manages MCP key `build123d`.
-- After configure: restart OpenCode **and** the studio host.
+- After configure via home UI Apply: host hot-reloads studio APIs; restart **OpenCode** only. CLI `configure` does not notify a running host — restart serve too (or Apply from the UI).
 - Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts.
 - Host is loopback-only by default; CSRF + Origin on `PUT /api/config` only (studio APIs are read-only GETs). Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`. Multi-user hosts are out of scope without additional auth.
 

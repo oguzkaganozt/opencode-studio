@@ -317,7 +317,11 @@ export async function configureStudios(input: {
       configPath: path.join(workspace, ".opencode", "studio.json"),
       openCodeConfigPath: configPath,
       restartRequired: true,
-      message: "Configuration applied. Restart OpenCode and opencode-studio serve.",
+      restartOpenCode: true,
+      // Host hot-reloads when configure is applied via the running serve UI/API.
+      restartHost: true,
+      message:
+        "Configuration applied. Restart OpenCode. If serve is running, it reloads on Apply from the home UI; otherwise restart serve too.",
     }
   } catch (error) {
     for (const rollback of rollbacks.reverse()) {
@@ -377,7 +381,7 @@ export async function statusStudios(input: { workspace?: string; packageRoot?: s
     enabled: config.enabled,
     plugin: meta.pluginSpecifier,
     studios,
-    restartRequiredHint: "After configure changes, restart OpenCode and opencode-studio serve.",
+    restartRequiredHint: "After configure changes, restart OpenCode. The studio host hot-reloads when you Apply from the home UI.",
   }
 }
 

@@ -93,8 +93,8 @@ function HomePage() {
       <div className="mb-6 space-y-2">
         <h1 className="text-2xl font-semibold">Studios</h1>
         <p className="max-w-2xl text-sm text-[var(--osc-text-muted)]">
-          Select which Studios this workspace uses, then apply. Enabling or disabling a Studio always requires a restart of both OpenCode
-          and <span className="font-mono">opencode-studio serve</span> before tools, skills, and viewers match the new set.
+          Select which Studios this workspace uses, then apply. The studio host reloads APIs immediately; you still need to restart{" "}
+          <span className="font-mono">OpenCode</span> so plugins and skills match the new set.
         </p>
         {studiosQuery.isLoading && <p className="text-sm text-[var(--osc-text-muted)]">Loading studios…</p>}
         {studiosQuery.isError && (
@@ -186,7 +186,7 @@ function HomePage() {
           </button>
           {dirty && !configure.isSuccess && (
             <p className="text-sm text-[var(--osc-text-muted)]">
-              Unsaved selection — apply writes config, then both processes must restart.
+              Unsaved selection — apply writes config and reloads the host; then restart OpenCode.
             </p>
           )}
         </div>
@@ -196,17 +196,13 @@ function HomePage() {
             className="max-w-2xl rounded-md border border-[var(--osc-warning)] bg-[var(--osc-warning-bg)] px-4 py-3 text-sm text-[var(--osc-text)]"
             role="status"
           >
-            <p className="font-semibold text-[var(--osc-warning)]">Configuration saved — restart required</p>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-[var(--osc-text-muted)]">
-              <li>
-                Stop and start <span className="font-mono text-[var(--osc-text)]">opencode-studio serve</span> in this workspace.
-              </li>
-              <li>
-                Restart <span className="font-mono text-[var(--osc-text)]">OpenCode</span> so plugins and skills reload.
-              </li>
-            </ol>
+            <p className="font-semibold text-[var(--osc-warning)]">Configuration saved — restart OpenCode</p>
+            <p className="mt-2 text-[var(--osc-text-muted)]">
+              Studio host APIs reloaded. Restart <span className="font-mono text-[var(--osc-text)]">OpenCode</span> so plugins and skills
+              pick up the new enable set.
+            </p>
             <p className="mt-2 text-xs text-[var(--osc-text-faint)]">
-              Until both restart, tools, skills, and studio APIs may not match what you just enabled or disabled.
+              You do not need to restart <span className="font-mono">opencode-studio serve</span> after Apply from this page.
             </p>
           </div>
         )}

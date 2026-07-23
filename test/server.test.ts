@@ -104,4 +104,55 @@ describe("host server", () => {
     const body = await response.json()
     expect(Array.isArray(body.candidates)).toBe(true)
   })
+
+  test("configure hot-reloads studio API mounts without process restart", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "osc-srv-"))
+    temps.push(workspace)
+    const { app, csrfToken } = await createHostApp({ workspace, packageRoot, hostname: "127.0.0.1", port: 4173 })
+
+    const before = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
+      headers: { host: "127.0.0.1:4173" },
+    })
+    expect(before.status).toBe(404)
+
+    const applied = await app.request("http://127.0.0.1:4173/api/config", {
+      method: "PUT",
+      headers: {
+        host: "127.0.0.1:4173",
+        origin: "http://127.0.0.1:4173",
+        "content-type": "application/json",
+        "x-csrf-token": csrfToken,
+      },
+      body: JSON.stringify({ enabled: ["startup"] }),
+    })
+    expect(applied.status).toBe(200)
+    const appliedBody = await applied.json()
+    expect(appliedBody.hostReloaded).toBe(true)
+    expect(appliedBody.restartHost).toBe(false)
+    expect(appliedBody.restartOpenCode).toBe(true)
+
+    const after = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
+      headers: { host: "127.0.0.1:4173" },
+    })
+    expect(after.status).toBe(200)
+    const afterBody = await after.json()
+    expect(Array.isArray(afterBody.candidates)).toBe(true)
+
+    const disabled = await app.request("http://127.0.0.1:4173/api/config", {
+      method: "PUT",
+      headers: {
+        host: "127.0.0.1:4173",
+        origin: "http://127.0.0.1:4173",
+        "content-type": "application/json",
+        "x-csrf-token": csrfToken,
+      },
+      body: JSON.stringify({ enabled: [] }),
+    })
+    expect(disabled.status).toBe(200)
+
+    const gone = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
+      headers: { host: "127.0.0.1:4173" },
+    })
+    expect(gone.status).toBe(404)
+  })
 })

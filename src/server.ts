@@ -5,6 +5,7 @@ import { readStudioConfigFile, resolveStudioRoot } from "./config"
 import { errorBody } from "./core/errors"
 import { loadPackageMeta } from "./core/package-meta"
 import { isInside, packageRootFrom } from "./core/paths"
+import type { StudioId } from "./core/registry"
 import {
   allowedHost,
   assertNotRoot,
@@ -34,6 +35,43 @@ function cspForPath(requestPath: string, pcbEnabled: boolean) {
   return BASE_CSP
 }
 
+type StudioMountState = {
+  pcbEnabled: boolean
+  /** Routes live under /:studioId/... relative to this app */
+  studios: Hono
+}
+
+async function buildStudioMounts(input: {
+  workspace: string
+  packageRoot: string
+}): Promise<{ state: StudioMountState; mountErrors: string[] }> {
+  const config = await readStudioConfigFile(input.workspace)
+  const studios = new Hono()
+  const mountErrors: string[] = []
+  const pcbEnabled = !config.error && config.enabled.includes("pcb")
+
+  if (!config.error) {
+    const loadCtx = {
+      workspace: input.workspace,
+      roots: config.roots,
+      resolveStudioRoot,
+    }
+    for (const studioId of config.enabled) {
+      try {
+        const createApi = apiLoaders[studioId as StudioId]
+        const studioApp = await createApi(loadCtx)
+        studios.route(`/${studioId}`, studioApp)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[opencode-studio] failed to mount ${studioId}:`, error)
+        mountErrors.push(`${studioId}: ${message}`)
+      }
+    }
+  }
+
+  return { state: { pcbEnabled, studios }, mountErrors }
+}
+
 export async function createHostApp(input: HostInput) {
   assertNotRoot("start the studio host")
   const hostname = input.hostname ?? "127.0.0.1"
@@ -42,9 +80,21 @@ export async function createHostApp(input: HostInput) {
   const meta = await loadPackageMeta(packageRoot)
   const packageVersion = input.packageVersion ?? meta.version
   const csrfToken = createCsrfToken()
-  const config = await readStudioConfigFile(input.workspace)
 
-  const pcbEnabled = config.enabled.includes("pcb")
+  const initial = await buildStudioMounts({ workspace: input.workspace, packageRoot })
+  if (initial.mountErrors.length > 0) {
+    throw new Error(`Failed to mount enabled studio API(s): ${initial.mountErrors.join("; ")}`)
+  }
+
+  const mount = { current: initial.state }
+
+  const reloadStudios = async () => {
+    const next = await buildStudioMounts({ workspace: input.workspace, packageRoot })
+    // Swap even if some mounts failed so disable still takes effect; surface errors to caller.
+    mount.current = next.state
+    return next
+  }
+
   const app = new Hono()
 
   app.use("*", async (ctx, next) => {
@@ -60,7 +110,7 @@ export async function createHostApp(input: HostInput) {
       // keep default
     }
     ctx.header("X-Content-Type-Options", "nosniff")
-    ctx.header("Content-Security-Policy", cspForPath(requestPath, pcbEnabled))
+    ctx.header("Content-Security-Policy", cspForPath(requestPath, mount.current.pcbEnabled))
   })
 
   app.get("/api/health", (ctx) => ctx.json({ status: "ok" }))
@@ -83,6 +133,7 @@ export async function createHostApp(input: HostInput) {
         rootDefault: def.root.default,
       })),
       restartRequiredHint: status.restartRequiredHint,
+      hostHotReload: true,
     })
   })
 
@@ -120,35 +171,30 @@ export async function createHostApp(input: HostInput) {
         enabled: body.enabled,
         packageRoot,
       })
-      return ctx.json(result)
+      const reloaded = await reloadStudios()
+      return ctx.json({
+        ...result,
+        hostReloaded: true,
+        restartHost: false,
+        restartOpenCode: true,
+        restartRequired: true,
+        mountErrors: reloaded.mountErrors,
+        message:
+          reloaded.mountErrors.length > 0
+            ? `Configuration applied; host reloaded with mount errors: ${reloaded.mountErrors.join("; ")}. Restart OpenCode.`
+            : "Configuration applied. Studio host reloaded — restart OpenCode only.",
+      })
     } catch (error) {
       return ctx.json(errorBody("configure_failed", error instanceof Error ? error.message : String(error)), 400)
     }
   })
 
-  // Mount enabled studio APIs — any failure aborts host creation
-  if (!config.error) {
-    const mountErrors: string[] = []
-    const loadCtx = {
-      workspace: input.workspace,
-      roots: config.roots,
-      resolveStudioRoot,
-    }
-    for (const studioId of config.enabled) {
-      try {
-        const createApi = apiLoaders[studioId]
-        const studioApp = await createApi(loadCtx)
-        app.route(`/api/studios/${studioId}`, studioApp)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        console.error(`[opencode-studio] failed to mount ${studioId}:`, error)
-        mountErrors.push(`${studioId}: ${message}`)
-      }
-    }
-    if (mountErrors.length > 0) {
-      throw new Error(`Failed to mount enabled studio API(s): ${mountErrors.join("; ")}`)
-    }
-  }
+  // Dispatch to the hot-swappable studio mount table.
+  app.all("/api/studios/*", async (ctx) => {
+    const url = new URL(ctx.req.url)
+    const suffix = url.pathname.replace(/^\/api\/studios/, "") || "/"
+    return mount.current.studios.request(suffix + url.search, ctx.req.raw)
+  })
 
   app.all("/api/*", (ctx) => ctx.json(errorBody("not_found", "API route was not found."), 404))
 
@@ -187,7 +233,7 @@ export async function createHostApp(input: HostInput) {
               headers: {
                 "Content-Type": type,
                 "Cache-Control": relative.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache",
-                ...securityHeaders(cspForPath(requestPath, pcbEnabled)),
+                ...securityHeaders(cspForPath(requestPath, mount.current.pcbEnabled)),
               },
             })
           }
@@ -201,7 +247,7 @@ export async function createHostApp(input: HostInput) {
           headers: {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-cache",
-            ...securityHeaders(cspForPath(requestPath, pcbEnabled)),
+            ...securityHeaders(cspForPath(requestPath, mount.current.pcbEnabled)),
           },
         })
       } catch {
@@ -210,7 +256,8 @@ export async function createHostApp(input: HostInput) {
     })
   }
 
-  return { app, csrfToken, hostname, port, packageVersion, config }
+  const config = await readStudioConfigFile(input.workspace)
+  return { app, csrfToken, hostname, port, packageVersion, config, reloadStudios }
 }
 
 export async function startHost(input: HostInput) {

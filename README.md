@@ -37,7 +37,7 @@ opencode-studio serve
 
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173) → tick the Studios you want → **Apply selection**.
 
-Then restart **OpenCode** and `opencode-studio serve` so plugin, skills, and APIs reload.
+The host reloads studio APIs on Apply. Restart **OpenCode** so plugins and skills match.
 
 `serve` defaults to the current working directory (`--workspace` only if you need another path).
 

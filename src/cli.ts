@@ -48,7 +48,9 @@ async function main(argv: string[]) {
     if (values.json) console.log(JSON.stringify(result, null, 2))
     else {
       console.log(`Configured studios: ${result.enabled.join(", ") || "(none)"}`)
-      console.log("Restart OpenCode and opencode-studio serve.")
+      console.log(
+        "Restart OpenCode. If opencode-studio serve is already running, restart it too (CLI configure does not hot-reload the host).",
+      )
     }
     return 0
   }
