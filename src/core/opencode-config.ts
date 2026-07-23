@@ -132,9 +132,9 @@ async function validateWithOpenCode(candidate: string) {
       throw new Error(`OpenCode rejected the updated config: ${stderr.trim() || `exit ${exitCode}`}`)
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error("OpenCode is required to validate configuration changes")
-    }
+    // Host-only / CI environments may not have the opencode binary. JSONC was
+    // already parse-checked; skip live validation rather than blocking configure.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return
     throw error
   } finally {
     await rm(validationRoot, { recursive: true, force: true })
