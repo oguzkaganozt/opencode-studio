@@ -24,22 +24,22 @@ Requires **Bun ≥ 1.3** (CLI runtime). Optional engines:
 
 ## Quick start
 
-In a project workspace:
+In any project directory:
 
 ```bash
-opencode-studio configure cad media pcb startup
-opencode-studio status
-opencode-studio doctor
-opencode-studio serve --workspace .
+cd /path/to/project
+opencode-studio serve
 ```
 
-Open the Viewer: [http://127.0.0.1:4173](http://127.0.0.1:4173)
+Open [http://127.0.0.1:4173](http://127.0.0.1:4173) → tick the Studios you want → **Apply selection**.
 
-Then restart **OpenCode** so the plugin/skills load.
+Then restart **OpenCode** and `opencode-studio serve` so plugin, skills, and APIs reload.
+
+`serve` defaults to the current working directory (`--workspace` only if you need another path).
 
 ### Config
 
-Project file: `.opencode/studio.json`
+Written by the home UI (or CLI). Project file: `.opencode/studio.json`
 
 ```json
 { "enabled": ["cad", "pcb"] }
@@ -47,16 +47,12 @@ Project file: `.opencode/studio.json`
 
 Optional absolute `roots.<id>` overrides. Media defaults to XDG user-data (`~/.local/share/opencode-studio/media`), not the workspace.
 
-After any configure change: restart OpenCode **and** `opencode-studio serve`.
-
-### CLI
+### CLI (optional)
 
 ```bash
-opencode-studio configure <studios...> [--workspace <path>]
-opencode-studio status [--workspace <path>]
-opencode-studio doctor [--workspace <path>]
-opencode-studio serve --workspace <path> [--host <host>] [--port <port>]
-opencode-studio remove [--workspace <path>]
+opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>]
+opencode-studio status|doctor|remove [--workspace <path>]
+opencode-studio configure <studios...> [--workspace <path>]   # same as home UI Apply
 ```
 
 ## Package exports
@@ -67,7 +63,7 @@ opencode-studio remove [--workspace <path>]
 | `@oguzkaganozt/opencode-studio/media-provider` | Native media AI SDK adapter |
 | `@oguzkaganozt/opencode-studio/media-go` | Auxiliary plugin for `opencode-go` provider hooks |
 
-OpenCode is also pinned via `configure` (plugin entries + managed skills under `.opencode/skills/`).
+Apply/configure also pins OpenCode plugins and managed skills under `.opencode/skills/`.
 
 ## Develop (this repo)
 

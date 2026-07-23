@@ -13,7 +13,7 @@ Usage:
   opencode-studio configure <studio...> [--workspace <path>]
   opencode-studio status [--workspace <path>]
   opencode-studio doctor [--workspace <path>]
-  opencode-studio serve --workspace <path> [--host <host>] [--port <port>] [--allow-non-loopback]
+  opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>] [--allow-non-loopback]
   opencode-studio remove [--workspace <path>]
 `)
 }
@@ -126,12 +126,9 @@ async function main(argv: string[]) {
       allowPositionals: false,
       strict: true,
     })
-    if (!values.workspace) {
-      console.error("serve requires --workspace <path>")
-      return 2
-    }
     const hostname = values.host ?? "127.0.0.1"
     assertLoopbackBind(hostname, values["allow-non-loopback"])
+    // Default workspace is cwd (same as configure/status/doctor).
     const workspace = await resolveWorkspace(values.workspace)
     const uiDirectory = values["ui-directory"] ?? path.join(packageRoot, "dist", "ui")
     const port = Number(values.port)
