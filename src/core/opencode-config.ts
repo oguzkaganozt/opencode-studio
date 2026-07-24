@@ -85,9 +85,10 @@ export function pluginEntries(config: OpenCodeConfig) {
   return value
 }
 
-export function configWithPlugins(config: OpenCodeConfig, plugins: unknown[]) {
-  validatePluginEntries(plugins)
-  const edits = modify(config.text, ["plugin"], plugins, {
+export function configWithPlugins(config: OpenCodeConfig, plugins: unknown[] | undefined) {
+  if (plugins !== undefined) validatePluginEntries(plugins)
+  const value = plugins && plugins.length > 0 ? plugins : undefined
+  const edits = modify(config.text, ["plugin"], value, {
     formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
   })
   const text = applyEdits(config.text, edits)

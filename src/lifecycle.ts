@@ -252,16 +252,33 @@ async function scrubProjectLocalManagedState(input: {
       return base !== input.meta.name && !base.startsWith(`${input.meta.name}/`)
     })
     let nextText = configWithPlugins(openCode, plugins)
-    let workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
+    let workingValue: Record<string, unknown> = { ...openCode.value }
+    if (plugins.length > 0) workingValue.plugin = plugins
+    else delete workingValue.plugin
     let working = { ...openCode, text: nextText, value: workingValue }
     const mcp = mcpEntries(working)
     if (mcp[MANAGED_MCP_KEY] && isManagedBuild123dEntry(mcp[MANAGED_MCP_KEY])) {
       delete mcp[MANAGED_MCP_KEY]
-      nextText = configWithMcp({ ...working, text: nextText }, mcp)
-      workingValue = { ...workingValue, mcp }
+      nextText = configWithMcp({ ...working, text: nextText }, Object.keys(mcp).length > 0 ? mcp : undefined)
+      if (Object.keys(mcp).length > 0) workingValue = { ...workingValue, mcp }
+      else {
+        delete workingValue.mcp
+      }
       working = { ...working, text: nextText, value: workingValue }
     }
-    if (nextText !== openCode.text) {
+    // If the file is only $schema, delete it entirely (project no longer needs a pin).
+    const remainingKeys = Object.keys(workingValue).filter((k) => {
+      if (k === "$schema") return false
+      const v = workingValue[k]
+      if (v === undefined) return false
+      if (k === "mcp" && v && typeof v === "object" && !Array.isArray(v) && Object.keys(v as object).length === 0) return false
+      if (k === "plugin" && Array.isArray(v) && v.length === 0) return false
+      return true
+    })
+    if (remainingKeys.length === 0) {
+      await rm(projectConfigPath, { force: true })
+      cleaned.push(projectConfigPath)
+    } else if (nextText !== openCode.text) {
       await atomicWriteOpenCodeConfig(projectConfigPath, nextText, openCode.exists ? openCode.text : "", {
         validate: input.validateOpenCode !== false,
       })
@@ -274,6 +291,9 @@ async function scrubProjectLocalManagedState(input: {
     await rm(legacyPath, { force: true })
     cleaned.push(legacyPath)
   }
+  // Drop empty skill parent dirs left after scrub.
+  await rmdir(path.join(input.domainRoot, ".opencode", "skills")).catch(() => {})
+  await rmdir(path.join(input.domainRoot, ".opencode")).catch(() => {})
   return cleaned
 }
 

@@ -137,7 +137,8 @@ describe("configureStudios", () => {
 
     expect(await Bun.file(path.join(skillDir, "SKILL.md")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.workspace, ".opencode/studio.json")).exists()).toBe(false)
-    const projectOc = JSON.parse(await readFile(path.join(ctx.workspace, "opencode.json"), "utf8"))
-    expect(projectOc.plugin ?? []).not.toEqual(expect.arrayContaining([expect.stringContaining("opencode-studio")]))
+    // Schema-only project pin is removed entirely after scrub.
+    expect(await Bun.file(path.join(ctx.workspace, "opencode.json")).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.workspace, ".opencode")).exists()).toBe(false)
   })
 })
