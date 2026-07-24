@@ -66,6 +66,5 @@ Prefer `bun run check` for code changes. Touching forge Python → also `bun run
 
 ## Docs
 
-- `PLAN.md` — accepted product decisions (no multi-package / no legacy OSC contract)
 - `docs/architecture.md` — surfaces and URL namespaces
 - `docs/new-studio.md` — add-a-studio checklist
