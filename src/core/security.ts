@@ -11,12 +11,14 @@ export const BASE_CSP =
   "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:"
 
 /**
- * PCB 3D needs wasm-eval for local Emscripten Manifold/OCCT glue.
+ * PCB 3D (local Manifold/OCCT glue) needs both:
+ * - 'wasm-unsafe-eval' for WebAssembly compile
+ * - 'unsafe-eval' for Emscripten/Manifold string→JS glue (eval)
+ * Scoped to PCB viewer paths only — not the whole host.
  * Domain STEP models may load from the kicad-mod-cache allowlist (connect-src only).
- * Applied only to PCB viewer document paths, not the whole host.
  */
 export const PCB_CSP =
-  "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data: https://kicad-mod-cache.tscircuit.com; worker-src 'self' blob:; child-src 'self' blob:; media-src 'self' blob:"
+  "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data: https://kicad-mod-cache.tscircuit.com; worker-src 'self' blob:; child-src 'self' blob:; media-src 'self' blob:"
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"])
 

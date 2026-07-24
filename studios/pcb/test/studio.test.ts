@@ -888,6 +888,7 @@ describe("companion OSC host security", () => {
       const csp = health.headers.get("content-security-policy") ?? ""
       expect(csp).toContain("default-src 'self'")
       expect(csp).toContain("wasm-unsafe-eval")
+      expect(csp).toContain("unsafe-eval")
       expect(csp).toContain("https://kicad-mod-cache.tscircuit.com")
 
       const studio = (await (await api(app, "/api/studio")).json()) as {
