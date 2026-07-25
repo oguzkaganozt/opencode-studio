@@ -20,7 +20,7 @@ function statusBadge(status: DesignSummary["buildStatus"]) {
 function ResourceRail({ designs, selectedId }: { designs: DesignSummary[]; selectedId?: string }) {
   return (
     <aside className="hidden w-56 shrink-0 overflow-auto border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:block">
-      <div className="border-b border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
+      <div className="border-b border-[var(--osc-border)] px-4 py-3.5 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
         Designs
       </div>
       <nav className="flex flex-col gap-0.5 p-2" aria-label="Designs">
@@ -507,7 +507,7 @@ function DesignRoute() {
 
 export function App() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]" data-studio="cad">
+    <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--osc-border)] bg-[var(--osc-bg)] text-[var(--osc-text)]" data-studio="cad">
       <HashRedirect />
       <div className="sr-only">CAD Studio</div>
       <Routes>

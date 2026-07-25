@@ -30,7 +30,7 @@ function cn(...classes: (string | false | undefined | null)[]) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div data-studio="pcb" className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]">
-      <header className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--osc-border)] bg-[var(--osc-bg)] px-3">
+      <header className="studio-subnav">
         <span className="sr-only">PCB Studio</span>
         <nav className="flex items-center gap-0.5">
           <NavLink to={studioHref()}>Projects</NavLink>
@@ -49,15 +49,7 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
   const home = studioHref().replace(/\/$/, "") || "/"
   const active = target === home ? path === home : path === target || path.startsWith(`${target}/`)
   return (
-    <Link
-      to={to}
-      className={cn(
-        "rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
-        active
-          ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
-          : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]",
-      )}
-    >
+    <Link to={to} aria-current={active ? "page" : undefined} className={cn(active && "font-medium")}>
       {children}
     </Link>
   )
@@ -232,9 +224,12 @@ function ProjectsPage() {
   const { data, isLoading, error } = useQuery({ queryKey: ["pcb", "projects"], queryFn: () => api.projects({ limit: 100 }) })
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-[var(--osc-text)]">Projects</h1>
+    <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mb-8 flex items-end justify-between gap-4">
+        <div>
+          <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Workspace</p>
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--osc-text)]">Projects</h1>
+        </div>
         {data && (
           <span className="text-sm text-[var(--osc-text-muted)]">
             {data.total} project{data.total !== 1 ? "s" : ""}

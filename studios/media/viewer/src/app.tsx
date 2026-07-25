@@ -30,9 +30,9 @@ function Shell() {
   })
   return (
     <div className="media-root flex min-h-0 flex-1 flex-col" data-studio="media">
-      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-[var(--osc-border)] bg-[var(--osc-bg)] px-4">
-        <span className="text-[12px] text-[var(--osc-text-muted)]">Library · read-only</span>
-        <div className="flex items-center gap-2 text-[11px] tracking-wide text-[var(--osc-text-muted)] uppercase">
+      <div className="studio-subnav justify-between">
+        <span className="px-1 text-[12px] text-[var(--osc-text-muted)]">Library · read-only</span>
+        <div className="flex items-center gap-2 pr-1 text-[11px] tracking-wide text-[var(--osc-text-muted)] uppercase">
           <span
             className={`size-1.5 rounded-full ${health.isSuccess ? "bg-[var(--osc-success)]" : "bg-[var(--osc-error)]"}`}
             aria-hidden

@@ -76,7 +76,7 @@ function verdictClass(verdict: string) {
 
 function SubNav({ active }: { active: "pool" | "rejects" }) {
   return (
-    <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-[var(--osc-border)] bg-[var(--osc-bg)] px-3">
+    <div className="studio-subnav">
       <span className="sr-only">Startup Studio</span>
       {(
         [
@@ -84,15 +84,7 @@ function SubNav({ active }: { active: "pool" | "rejects" }) {
           ["rejects", "Rejects", studioHref("rejects")],
         ] as const
       ).map(([id, label, to]) => (
-        <Link
-          key={id}
-          to={to}
-          className={`rounded-md px-3 py-1.5 text-[13px] transition-colors ${
-            active === id
-              ? "bg-[var(--osc-surface)] font-medium text-[var(--osc-text)]"
-              : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
-          }`}
-        >
+        <Link key={id} to={to} aria-current={active === id ? "page" : undefined}>
           {label}
         </Link>
       ))}

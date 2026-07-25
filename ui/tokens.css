@@ -25,7 +25,7 @@
   --osc-radius-md: 8px;
   --osc-radius-lg: 12px;
   --osc-separator: 1px;
-  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 4px 16px rgba(0, 0, 0, 0.04);
 
   --osc-focus-ring: 0 0 0 2px var(--osc-bg-elevated), 0 0 0 4px var(--osc-text);
 
