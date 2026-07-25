@@ -7,19 +7,6 @@ export function assertNotRoot(action: string) {
   }
 }
 
-export const BASE_CSP =
-  "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:"
-
-/**
- * PCB 3D (local Manifold/OCCT glue) needs both:
- * - 'wasm-unsafe-eval' for WebAssembly compile
- * - 'unsafe-eval' for Emscripten/Manifold string→JS glue (eval)
- * Scoped to PCB viewer paths only — not the whole host.
- * Domain STEP models may load from the kicad-mod-cache allowlist (connect-src only).
- */
-export const PCB_CSP =
-  "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data: https://kicad-mod-cache.tscircuit.com; worker-src 'self' blob:; child-src 'self' blob:; media-src 'self' blob:"
-
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"])
 
 /** Default Vite dev UI port; allowed as Origin when the host binds loopback. */
@@ -141,9 +128,9 @@ export function safeExternalHref(raw: string | null | undefined): string | null 
   }
 }
 
-export function securityHeaders(csp = BASE_CSP): HeadersInit {
+/** Minimal headers only — no CSP (loopback internal tool; Manifold/3D needs eval+wasm). */
+export function securityHeaders(): HeadersInit {
   return {
     "X-Content-Type-Options": "nosniff",
-    "Content-Security-Policy": csp,
   }
 }

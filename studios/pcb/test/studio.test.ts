@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { Hono } from "hono"
-import { allowedHost, PCB_CSP } from "../../../src/core/security"
+import { allowedHost } from "../../../src/core/security"
 import { createPcbApi } from "../api"
 import { generatePickAndPlace, toCplCsv } from "../assembly"
 import { generateBom, toBomCsv } from "../bom"
@@ -43,7 +43,6 @@ function testApp(workspaceRoot: string) {
     }
     await next()
     ctx.header("X-Content-Type-Options", "nosniff")
-    ctx.header("Content-Security-Policy", PCB_CSP)
   })
   app.get("/api/health", (ctx) => ctx.json({ status: "ok" }))
   app.get("/api/studio", (ctx) => ctx.json({ id: "pcb", packageVersion: "0.0.0-test", contractVersion: "1.0.0" }))
@@ -885,11 +884,7 @@ describe("companion OSC host security", () => {
       const health = await api(app, "/api/health")
       expect(health.status).toBe(200)
       expect(health.headers.get("x-content-type-options")).toBe("nosniff")
-      const csp = health.headers.get("content-security-policy") ?? ""
-      expect(csp).toContain("default-src 'self'")
-      expect(csp).toContain("wasm-unsafe-eval")
-      expect(csp).toContain("unsafe-eval")
-      expect(csp).toContain("https://kicad-mod-cache.tscircuit.com")
+      expect(health.headers.get("content-security-policy")).toBeNull()
 
       const studio = (await (await api(app, "/api/studio")).json()) as {
         id: string

@@ -6,16 +6,7 @@ import { errorBody } from "./core/errors"
 import { loadPackageMeta } from "./core/package-meta"
 import { isInside, packageRootFrom } from "./core/paths"
 import type { StudioId } from "./core/registry"
-import {
-  allowedHost,
-  assertNotRoot,
-  BASE_CSP,
-  createCsrfToken,
-  csrfTokensEqual,
-  PCB_CSP,
-  sameOrigin,
-  securityHeaders,
-} from "./core/security"
+import { allowedHost, assertNotRoot, createCsrfToken, csrfTokensEqual, sameOrigin, securityHeaders } from "./core/security"
 import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { configureStudios, doctorStudios, statusStudios } from "./lifecycle"
@@ -31,14 +22,7 @@ export type HostInput = UserPathOptions & {
   packageVersion?: string
 }
 
-function cspForPath(requestPath: string, pcbEnabled: boolean) {
-  if (!pcbEnabled) return BASE_CSP
-  if (requestPath.startsWith("/studios/pcb") || requestPath.startsWith("/api/studios/pcb")) return PCB_CSP
-  return BASE_CSP
-}
-
 type StudioMountState = {
-  pcbEnabled: boolean
   /** Routes live under /:studioId/... relative to this app */
   studios: Hono
 }
@@ -57,7 +41,6 @@ async function buildStudioMounts(input: {
   const config = await readStudioConfigFile(input.userPaths)
   const studios = new Hono()
   const mountErrors: string[] = []
-  const pcbEnabled = !config.error && config.enabled.includes("pcb")
 
   if (!config.error) {
     const loadCtx = {
@@ -78,7 +61,7 @@ async function buildStudioMounts(input: {
     }
   }
 
-  return { state: { pcbEnabled, studios }, mountErrors }
+  return { state: { studios }, mountErrors }
 }
 
 export async function createHostApp(input: HostInput) {
@@ -114,14 +97,7 @@ export async function createHostApp(input: HostInput) {
       return ctx.json(errorBody("invalid_host", "Host header rejected."), 400)
     }
     await next()
-    let requestPath = "/"
-    try {
-      requestPath = new URL(ctx.req.url).pathname
-    } catch {
-      // keep default
-    }
     ctx.header("X-Content-Type-Options", "nosniff")
-    ctx.header("Content-Security-Policy", cspForPath(requestPath, mount.current.pcbEnabled))
   })
 
   app.get("/api/health", (ctx) => ctx.json({ status: "ok" }))
@@ -253,7 +229,7 @@ export async function createHostApp(input: HostInput) {
               headers: {
                 "Content-Type": type,
                 "Cache-Control": relative.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache",
-                ...securityHeaders(cspForPath(requestPath, mount.current.pcbEnabled)),
+                ...securityHeaders(),
               },
             })
           }
@@ -267,7 +243,7 @@ export async function createHostApp(input: HostInput) {
           headers: {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-cache",
-            ...securityHeaders(cspForPath(requestPath, mount.current.pcbEnabled)),
+            ...securityHeaders(),
           },
         })
       } catch {
