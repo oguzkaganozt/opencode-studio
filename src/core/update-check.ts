@@ -76,9 +76,7 @@ export async function checkNpmUpdate(input: {
       ...base,
       latest,
       updateAvailable,
-      message: updateAvailable
-        ? `Update available: ${input.current} → ${latest}. Run: npm i -g ${input.packageName}@latest && opencode-studio service restart`
-        : undefined,
+      message: updateAvailable ? `Update available: ${input.current} → ${latest}. Run: opencode-studio upgrade` : undefined,
     }
     cache.set(key, { ...info, expiresAt: now + ttlMs })
     return info

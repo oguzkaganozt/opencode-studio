@@ -1,9 +1,11 @@
-import { mkdir, rm, writeFile } from "node:fs/promises"
+import { access, mkdir, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { resolveWorkspace } from "./core/paths"
 
-export type ServiceAction = "install" | "uninstall" | "start" | "stop" | "restart" | "status" | "update"
+export type ServiceAction = "install" | "uninstall" | "start" | "stop" | "restart" | "status"
+
+export const PACKAGE_NAME = "@oguzkaganozt/opencode-studio"
 
 export type ServiceOptions = {
   workspace?: string
@@ -98,6 +100,116 @@ function requireSystemdUser() {
   }
 }
 
+async function unitFileExists(name?: string): Promise<boolean> {
+  try {
+    await access(unitPath(name))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export const OPENCODE_RESTART_HINT = "Restart OpenCode so the plugin and managed skills match the new package version."
+
+/** Read-only registry check against the installed package version. */
+export async function checkPackageUpgrade(input?: { packageRoot?: string; ttlMs?: number }): Promise<{
+  action: "check"
+  packageName: string
+  current: string
+  latest: string | null
+  updateAvailable: boolean
+  message: string
+  error?: string
+}> {
+  const { checkNpmUpdate } = await import("./core/update-check")
+  const { loadPackageMeta } = await import("./core/package-meta")
+  const { packageRootFrom } = await import("./core/paths")
+  const packageRoot = input?.packageRoot ?? packageRootFrom(import.meta.dir)
+  const meta = await loadPackageMeta(packageRoot)
+  const info = await checkNpmUpdate({
+    packageName: meta.name,
+    current: meta.version,
+    ttlMs: input?.ttlMs ?? 0,
+  })
+  if (info.error && !info.latest) {
+    return {
+      action: "check",
+      packageName: meta.name,
+      current: meta.version,
+      latest: null,
+      updateAvailable: false,
+      message: `Could not check for updates: ${info.error}`,
+      error: info.error,
+    }
+  }
+  if (info.updateAvailable && info.latest) {
+    return {
+      action: "check",
+      packageName: meta.name,
+      current: meta.version,
+      latest: info.latest,
+      updateAvailable: true,
+      message: `Update available: ${meta.version} → ${info.latest}. Run: opencode-studio upgrade`,
+    }
+  }
+  return {
+    action: "check",
+    packageName: meta.name,
+    current: meta.version,
+    latest: info.latest ?? meta.version,
+    updateAvailable: false,
+    message: `Up to date (${meta.version}).`,
+  }
+}
+
+/** npm i -g @latest; if a user systemd unit exists, refresh and restart it. */
+export async function upgradePackage(options: ServiceOptions = {}): Promise<{
+  action: "upgrade"
+  packageName: string
+  serviceRestarted: boolean
+  unit?: string
+  npmOutput: string
+  message: string
+  restartOpenCode: true
+}> {
+  const npm = Bun.which("npm")
+  if (!npm) throw new Error("npm not found on PATH")
+  const install = Bun.spawn([npm, "i", "-g", `${PACKAGE_NAME}@latest`], { stdout: "pipe", stderr: "pipe" })
+  const [out, err, code] = await Promise.all([new Response(install.stdout).text(), new Response(install.stderr).text(), install.exited])
+  if (code !== 0) throw new Error(err.trim() || out.trim() || "npm i -g failed")
+  const npmOutput = (out.trim() || err.trim()).trim()
+
+  const hasUnit = await unitFileExists(options.name)
+  if (!hasUnit) {
+    return {
+      action: "upgrade",
+      packageName: PACKAGE_NAME,
+      serviceRestarted: false,
+      npmOutput,
+      restartOpenCode: true,
+      message: [`Updated ${PACKAGE_NAME} (no systemd unit found — skip service restart).`, npmOutput, "", OPENCODE_RESTART_HINT]
+        .filter(Boolean)
+        .join("\n")
+        .trim(),
+    }
+  }
+
+  // Refresh unit ExecStart/PATH in case the global shim moved.
+  const service = await manageService("install", options)
+  return {
+    action: "upgrade",
+    packageName: PACKAGE_NAME,
+    serviceRestarted: true,
+    unit: "unit" in service ? String(service.unit) : unitName(options.name),
+    npmOutput,
+    restartOpenCode: true,
+    message: [`Updated ${PACKAGE_NAME} and restarted ${unitName(options.name)}.`, npmOutput, "", OPENCODE_RESTART_HINT]
+      .filter(Boolean)
+      .join("\n")
+      .trim(),
+  }
+}
+
 export async function manageService(action: ServiceAction, options: ServiceOptions = {}) {
   requireSystemdUser()
   const workspace = await resolveWorkspace(options.workspace)
@@ -142,22 +254,6 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
     await rm(file, { force: true })
     await runSystemctl(["daemon-reload"])
     return { action, unit, unitPath: file, message: `Removed ${unit}` }
-  }
-
-  if (action === "update") {
-    const pkg = "@oguzkaganozt/opencode-studio"
-    const npm = Bun.which("npm")
-    if (!npm) throw new Error("npm not found on PATH")
-    const install = Bun.spawn([npm, "i", "-g", `${pkg}@latest`], { stdout: "pipe", stderr: "pipe" })
-    const [out, err, code] = await Promise.all([new Response(install.stdout).text(), new Response(install.stderr).text(), install.exited])
-    if (code !== 0) throw new Error(err.trim() || out.trim() || "npm i -g failed")
-    // Refresh unit ExecStart/PATH in case the global shim moved.
-    await manageService("install", options)
-    return {
-      action,
-      unit,
-      message: `Updated ${pkg} and restarted ${unit}.\n${out.trim() || err.trim()}`.trim(),
-    }
   }
 
   if (action === "start" || action === "stop" || action === "restart") {

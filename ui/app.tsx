@@ -538,8 +538,7 @@ function HomePage() {
               Update available · v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
             </p>
             <pre className="mt-2 overflow-x-auto rounded-lg bg-[var(--osc-bg-subtle)] px-3 py-2 font-mono text-[11px] text-[var(--osc-text-muted)]">
-              {`npm i -g @oguzkaganozt/opencode-studio@latest
-opencode-studio service restart`}
+              {`opencode-studio upgrade`}
             </pre>
           </div>
         )}

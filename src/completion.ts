@@ -1,8 +1,8 @@
 import { STUDIO_IDS } from "./core/registry"
 
-const COMMANDS = ["configure", "status", "doctor", "serve", "service", "remove", "completion"] as const
+const COMMANDS = ["configure", "status", "doctor", "serve", "service", "upgrade", "remove", "completion"] as const
 // completion subcommands completed via shell scripts below
-const SERVICE_ACTIONS = ["install", "uninstall", "start", "stop", "restart", "status", "update"] as const
+const SERVICE_ACTIONS = ["install", "uninstall", "start", "stop", "restart", "status"] as const
 const SHELLS = ["bash", "zsh"] as const
 
 export type CompletionShell = (typeof SHELLS)[number]
@@ -36,6 +36,7 @@ export function bashCompletionScript(): string {
     `  local global_opts="--workspace --help -h"`,
     `  local serve_opts="--workspace --host --port --ui-directory --allow-non-loopback --help -h"`,
     `  local service_opts="--workspace --host --port --name --allow-non-loopback --json --help -h"`,
+    `  local upgrade_opts="--check --workspace --host --port --name --allow-non-loopback --json --help -h"`,
     `  local configure_opts="--workspace --dry-run --json --help -h"`,
     `  local status_opts="--workspace --json --help -h"`,
     ``,
@@ -86,6 +87,7 @@ export function bashCompletionScript(): string {
     `      status|doctor|remove) COMPREPLY=($(compgen -W "$status_opts" -- "$cur")) ;;`,
     `      serve) COMPREPLY=($(compgen -W "$serve_opts" -- "$cur")) ;;`,
     `      service) COMPREPLY=($(compgen -W "$service_opts" -- "$cur")) ;;`,
+    `      upgrade) COMPREPLY=($(compgen -W "$upgrade_opts" -- "$cur")) ;;`,
     `      completion) COMPREPLY=($(compgen -W "--help -h" -- "$cur")) ;;`,
     `      *) COMPREPLY=($(compgen -W "$global_opts" -- "$cur")) ;;`,
     `    esac`,
@@ -161,6 +163,16 @@ export function zshCompletionScript(): string {
     `            '--port[Bind port]:port:(4173 4174 8080)' \\`,
     `            '--ui-directory[UI dist path]:dir:_files -/' \\`,
     `            '--allow-non-loopback[Allow non-loopback bind]'`,
+    `          ;;`,
+    `        upgrade)`,
+    `          _arguments \\`,
+    `            '--check[Only check whether an update is available]' \\`,
+    `            '--workspace[Domain data root]:dir:_files -/' \\`,
+    `            '--host[Bind host]:host:(127.0.0.1 localhost 0.0.0.0)' \\`,
+    `            '--port[Bind port]:port:(4173 4174 8080)' \\`,
+    `            '--name[systemd unit name]:name:(opencode-studio)' \\`,
+    `            '--allow-non-loopback[Allow non-loopback bind]' \\`,
+    `            '--json[JSON output]'`,
     `          ;;`,
     `        service)`,
     `          _arguments \\`,

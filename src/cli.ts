@@ -7,7 +7,7 @@ import { resolveWorkspace } from "./core/paths"
 import { assertLoopbackBind } from "./core/security"
 import { configureStudios, doctorStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { startHost } from "./server"
-import { manageService, type ServiceAction } from "./service"
+import { checkPackageUpgrade, manageService, type ServiceAction, upgradePackage } from "./service"
 
 function printHelp() {
   console.log(`opencode-studio
@@ -20,10 +20,14 @@ Usage:
   opencode-studio status [--workspace <path>]
   opencode-studio doctor [--workspace <path>]
   opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>] [--allow-non-loopback]
-  opencode-studio service install|uninstall|start|stop|restart|status|update [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
+  opencode-studio service install|uninstall|start|stop|restart|status [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
+  opencode-studio upgrade [--check] [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
   opencode-studio remove
   opencode-studio completion bash|zsh
   opencode-studio completion install
+
+  upgrade         npm i -g @latest; restarts systemd unit if installed; reminds to restart OpenCode
+  upgrade --check only report whether a newer npm version exists (exit 1 if yes)
 
 Shell tab completion:
   Global npm install tries to append eval lines to ~/.bashrc and ~/.zshrc.
@@ -202,11 +206,54 @@ async function main(argv: string[]) {
     return 0
   }
 
+  if (command === "upgrade") {
+    const { values } = parseArgs({
+      args: rest,
+      options: {
+        check: { type: "boolean", default: false },
+        workspace: { type: "string" },
+        host: { type: "string", default: "127.0.0.1" },
+        port: { type: "string", default: "4173" },
+        name: { type: "string" },
+        "allow-non-loopback": { type: "boolean", default: false },
+        json: { type: "boolean", default: false },
+      },
+      allowPositionals: false,
+      strict: true,
+    })
+
+    if (values.check) {
+      const result = await checkPackageUpgrade({ packageRoot })
+      if (values.json) console.log(JSON.stringify(result, null, 2))
+      else console.log(result.message)
+      if (result.error && !result.latest) return 2
+      return result.updateAvailable ? 1 : 0
+    }
+
+    const hostname = values.host ?? "127.0.0.1"
+    const port = Number(values.port)
+    if (!Number.isInteger(port) || port <= 0) {
+      console.error("Invalid --port")
+      return 2
+    }
+    const result = await upgradePackage({
+      workspace: values.workspace,
+      host: hostname,
+      port,
+      name: values.name,
+      allowNonLoopback: values["allow-non-loopback"],
+      json: values.json,
+    })
+    if (values.json) console.log(JSON.stringify(result, null, 2))
+    else console.log(result.message)
+    return 0
+  }
+
   if (command === "service") {
     const action = rest[0] as ServiceAction | undefined
-    const allowed: ServiceAction[] = ["install", "uninstall", "start", "stop", "restart", "status", "update"]
+    const allowed: ServiceAction[] = ["install", "uninstall", "start", "stop", "restart", "status"]
     if (!action || !allowed.includes(action)) {
-      console.error("Usage: opencode-studio service install|uninstall|start|stop|restart|status|update [options]")
+      console.error("Usage: opencode-studio service install|uninstall|start|stop|restart|status [options]")
       return 2
     }
     const { values } = parseArgs({

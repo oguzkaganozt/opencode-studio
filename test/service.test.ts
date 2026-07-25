@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { renderUserUnit, resolveServeExecutable } from "../src/service"
+import { checkPackageUpgrade, OPENCODE_RESTART_HINT, renderUserUnit, resolveServeExecutable } from "../src/service"
 
 describe("systemd user unit", () => {
   test("renderUserUnit pins workspace host port and PATH", () => {
@@ -35,5 +35,20 @@ describe("systemd user unit", () => {
   test("resolveServeExecutable returns a command", () => {
     const exe = resolveServeExecutable()
     expect(exe.command.length).toBeGreaterThan(0)
+  })
+})
+
+describe("upgrade check", () => {
+  test("OPENCODE_RESTART_HINT mentions OpenCode", () => {
+    expect(OPENCODE_RESTART_HINT.toLowerCase()).toContain("opencode")
+  })
+
+  test("checkPackageUpgrade reports installed version", async () => {
+    const result = await checkPackageUpgrade({ packageRoot: process.cwd(), ttlMs: 1 })
+    expect(result.action).toBe("check")
+    expect(result.current.length).toBeGreaterThan(0)
+    expect(result.message.length).toBeGreaterThan(0)
+    // Network may fail in sandbox; still a structured result.
+    expect(["check"]).toContain(result.action)
   })
 })

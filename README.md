@@ -68,7 +68,8 @@ opencode-studio service install          # writes ~/.config/systemd/user/opencod
 opencode-studio service status
 opencode-studio service stop|start|restart
 opencode-studio service uninstall
-opencode-studio service update           # npm i -g @latest + reinstall/restart unit
+opencode-studio upgrade                  # npm i -g @latest (+ restart unit if installed)
+opencode-studio upgrade --check          # report only (exit 1 if update available)
 ```
 
 Options: `--workspace` (domain data root), `--host`, `--port`, `--name <unit>` (multiple hosts/ports).  
@@ -80,7 +81,8 @@ While `serve` is running, the home page shows a banner when a newer npm version 
 
 ```bash
 opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>]
-opencode-studio service install|uninstall|start|stop|restart|status|update [...]
+opencode-studio service install|uninstall|start|stop|restart|status [...]
+opencode-studio upgrade [--check]                              # npm i -g @latest; restart unit if present
 opencode-studio status|doctor [--workspace <path>]
 opencode-studio configure <studios...> [--workspace <path>]   # same as home UI Apply (global)
 opencode-studio remove                                         # clear all studios (global)
