@@ -84,7 +84,23 @@ opencode-studio service install|uninstall|start|stop|restart|status|update [...]
 opencode-studio status|doctor [--workspace <path>]
 opencode-studio configure <studios...> [--workspace <path>]   # same as home UI Apply (global)
 opencode-studio remove                                         # clear all studios (global)
+opencode-studio completion bash|zsh                            # print shell tab-completion script
 ```
+
+Tab completion:
+
+```bash
+# Automatic on: npm i -g @oguzkaganozt/opencode-studio
+# (appends eval lines to ~/.bashrc and ~/.zshrc when missing)
+
+# Manual / repair
+opencode-studio completion install
+
+# Skip automatic install
+OPENCODE_STUDIO_SKIP_COMPLETION=1 npm i -g @oguzkaganozt/opencode-studio
+```
+
+Open a new shell after install (or `source ~/.bashrc`).
 
 ## Package exports
 

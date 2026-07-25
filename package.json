@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@oguzkaganozt/opencode-studio",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Configurable OpenCode Studios for CAD, media, PCB, and startup workflows",
   "type": "module",
   "license": "MIT",
@@ -15,6 +15,7 @@
   },
   "files": [
     "dist",
+    "scripts/postinstall-completion.mjs",
     "studios/cad/forge/forge_cli.py",
     "studios/cad/forge/pyproject.toml",
     "studios/cad/forge/uv.lock",
@@ -27,6 +28,7 @@
     "README.md"
   ],
   "scripts": {
+    "postinstall": "node scripts/postinstall-completion.mjs",
     "test": "bun test ./test/ ./studios/cad/test/ ./studios/media/test/ ./studios/pcb/test/ ./studios/startup/test/",
     "test:python": "uv run --project studios/cad/forge python -m unittest discover -s studios/cad/forge/tests -v",
     "test:pcb-fixture": "bun scripts/pcb-fixture.ts",

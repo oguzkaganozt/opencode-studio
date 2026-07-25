@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import path from "node:path"
 import { parseArgs } from "node:util"
+import { completionScript, isCompletionShell } from "./completion"
+import { ensureShellCompletions } from "./completion-install"
 import { resolveWorkspace } from "./core/paths"
 import { assertLoopbackBind } from "./core/security"
 import { configureStudios, doctorStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
@@ -20,6 +22,15 @@ Usage:
   opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>] [--allow-non-loopback]
   opencode-studio service install|uninstall|start|stop|restart|status|update [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
   opencode-studio remove
+  opencode-studio completion bash|zsh
+  opencode-studio completion install
+
+Shell tab completion:
+  Global npm install tries to append eval lines to ~/.bashrc and ~/.zshrc.
+  Manual:
+    opencode-studio completion install
+    # or: eval "$(opencode-studio completion bash)"  # → ~/.bashrc
+  Skip auto-install: OPENCODE_STUDIO_SKIP_COMPLETION=1
 `)
 }
 
@@ -155,6 +166,39 @@ async function main(argv: string[]) {
     console.log(`opencode-studio listening on ${url}`)
     console.log(`workspace: ${workspace}`)
     await new Promise(() => {})
+    return 0
+  }
+
+  if (command === "completion") {
+    const sub = rest[0]
+    if (sub === "install") {
+      const quiet = rest.includes("--quiet") || rest.includes("-q")
+      // OPENCODE_STUDIO_COMPLETION_HOME isolates tests from the real $HOME.
+      const home = process.env.OPENCODE_STUDIO_COMPLETION_HOME
+      const result = await ensureShellCompletions(home ? { home } : undefined)
+      if (result.skipped) {
+        if (!quiet) console.log(`Completion install skipped: ${result.reason ?? "unknown"}`)
+        return 0
+      }
+      if (!quiet) {
+        for (const p of result.updated) console.log(`Added completion to ${p}`)
+        for (const p of result.already) console.log(`Already configured: ${p}`)
+        for (const p of result.missing) console.log(`No rc file (skipped): ${p}`)
+        if (result.updated.length > 0) {
+          console.log("Open a new shell (or source the rc file) for tab completion.")
+        } else if (result.already.length === 0) {
+          console.log('No shell rc updated. Add manually: eval "$(opencode-studio completion bash)"')
+        }
+      } else if (result.updated.length > 0) {
+        console.log(`[opencode-studio] shell completion → ${result.updated.join(", ")}`)
+      }
+      return 0
+    }
+    if (!sub || !isCompletionShell(sub)) {
+      console.error("Usage: opencode-studio completion bash|zsh|install")
+      return 2
+    }
+    process.stdout.write(completionScript(sub))
     return 0
   }
 
