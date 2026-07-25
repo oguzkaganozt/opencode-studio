@@ -83,10 +83,11 @@ While `serve` is running, the home page shows a banner when a newer npm version 
 opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>]
 opencode-studio service install|uninstall|start|stop|restart|status [...]
 opencode-studio upgrade [--check]                              # npm i -g @latest; restart unit if present
-opencode-studio status|doctor [--workspace <path>]
+opencode-studio status|doctor|version [--workspace <path>]
 opencode-studio configure <studios...> [--workspace <path>]   # same as home UI Apply (global)
 opencode-studio remove                                         # clear all studios (global)
-opencode-studio completion bash|zsh                            # print shell tab-completion script
+opencode-studio completion bash|zsh|install
+opencode-studio --help | --version
 ```
 
 Tab completion:

@@ -1,6 +1,6 @@
 import { STUDIO_IDS } from "./core/registry"
 
-const COMMANDS = ["configure", "status", "doctor", "serve", "service", "upgrade", "remove", "completion"] as const
+const COMMANDS = ["configure", "status", "doctor", "serve", "service", "upgrade", "remove", "completion", "version"] as const
 // completion subcommands completed via shell scripts below
 const SERVICE_ACTIONS = ["install", "uninstall", "start", "stop", "restart", "status"] as const
 const SHELLS = ["bash", "zsh"] as const

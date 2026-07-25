@@ -3,62 +3,229 @@ import path from "node:path"
 import { parseArgs } from "node:util"
 import { completionScript, isCompletionShell } from "./completion"
 import { ensureShellCompletions } from "./completion-install"
+import { loadPackageMeta } from "./core/package-meta"
 import { resolveWorkspace } from "./core/paths"
+import { STUDIO_IDS } from "./core/registry"
 import { assertLoopbackBind } from "./core/security"
 import { configureStudios, doctorStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { startHost } from "./server"
 import { checkPackageUpgrade, manageService, type ServiceAction, upgradePackage } from "./service"
 
+const SERVICE_ACTIONS: ServiceAction[] = ["install", "uninstall", "start", "stop", "restart", "status"]
+
 function printHelp() {
   console.log(`opencode-studio
 
-Config is user-global (~/.config/opencode-studio + ~/.config/opencode).
+User-global config (~/.config/opencode-studio + ~/.config/opencode).
 --workspace is the domain data root for CAD/PCB/startup (default: cwd).
 
-Usage:
-  opencode-studio configure <studio...> [--workspace <path>]
-  opencode-studio status [--workspace <path>]
-  opencode-studio doctor [--workspace <path>]
-  opencode-studio serve [--workspace <path>] [--host <host>] [--port <port>] [--allow-non-loopback]
-  opencode-studio service install|uninstall|start|stop|restart|status [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
-  opencode-studio upgrade [--check] [--workspace <path>] [--host <host>] [--port <port>] [--name <unit>]
-  opencode-studio remove
-  opencode-studio completion bash|zsh
-  opencode-studio completion install
+Commands:
+  configure <studio...>   Enable studios globally (cad|media|pcb|startup)
+  status                  Show enablement, roots, package version
+  doctor                  Health checks (exit 1 if any fail)
+  serve                   Run the loopback host + viewer
+  service <action>        systemd user unit (install|uninstall|start|stop|restart|status)
+  upgrade [--check]       npm i -g @latest; restart unit if installed
+  remove                  Disable all studios (global)
+  completion bash|zsh     Print shell completion script
+  completion install      Append completion to shell rc
+  version                 Print package version
 
-  upgrade         npm i -g @latest; restarts systemd unit if installed; reminds to restart OpenCode
-  upgrade --check only report whether a newer npm version exists (exit 1 if yes)
+Common flags:
+  --workspace <path>   Domain data root (default: cwd)
+  --json               Machine-readable output (where supported)
+  -h, --help           Help
+  -v, --version        Version
 
-Shell tab completion:
-  Global npm install tries to append eval lines to ~/.bashrc and ~/.zshrc.
-  Manual:
-    opencode-studio completion install
-    # or: eval "$(opencode-studio completion bash)"  # → ~/.bashrc
-  Skip auto-install: OPENCODE_STUDIO_SKIP_COMPLETION=1
+Examples:
+  opencode-studio configure cad pcb
+  opencode-studio serve --workspace ~/project
+  opencode-studio upgrade --check
+  opencode-studio upgrade
+  opencode-studio service install --workspace ~/project
+
+Notes:
+  upgrade restarts the systemd unit when present, then reminds you to restart OpenCode.
+  upgrade --check exits 1 if an update is available, 2 on registry error.
+  Global npm install may auto-append shell completion (OPENCODE_STUDIO_SKIP_COMPLETION=1 to skip).
 `)
 }
 
-async function main(argv: string[]) {
-  if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") {
+function printCommandHelp(command: string) {
+  const studios = STUDIO_IDS.join("|")
+  const texts: Record<string, string> = {
+    configure: `opencode-studio configure <studio...> [options]
+
+Enable studios in user-global config and pin plugins/skills.
+Studios: ${studios}
+
+Options:
+  --workspace <path>   Domain data root (required when enabling studios)
+  --dry-run            Print actions without writing
+  --json               JSON result
+  -h, --help
+
+To clear all studios, use: opencode-studio remove
+`,
+    status: `opencode-studio status [options]
+
+Show package version, config path, domain root, and per-studio enablement.
+
+Options:
+  --workspace <path>   Domain data root (default: cwd)
+  --json
+  -h, --help
+`,
+    doctor: `opencode-studio doctor [options]
+
+Run health checks. Exit 0 if ok, 1 if any check fails.
+
+Options:
+  --workspace <path>
+  --json
+  -h, --help
+`,
+    serve: `opencode-studio serve [options]
+
+Start the loopback host and static viewer (foreground).
+
+Options:
+  --workspace <path>     Domain data root (default: cwd)
+  --host <host>          Default 127.0.0.1
+  --port <port>          Default 4173
+  --ui-directory <path>  Override UI dist
+  --allow-non-loopback   Allow non-loopback bind
+  -h, --help
+`,
+    service: `opencode-studio service <action> [options]
+
+Manage the systemd user unit for a background host.
+
+Actions: ${SERVICE_ACTIONS.join("|")}
+
+Options:
+  --workspace <path>   Domain data root (used on install)
+  --host <host>        Default 127.0.0.1
+  --port <port>        Default 4173
+  --name <unit>        Unit name without .service (default opencode-studio)
+  --allow-non-loopback
+  --json
+  -h, --help
+`,
+    upgrade: `opencode-studio upgrade [options]
+
+Install @oguzkaganozt/opencode-studio@latest via npm.
+If a systemd user unit exists, reinstall/restart it.
+Always reminds you to restart OpenCode.
+
+Options:
+  --check              Only check registry (exit 1 if update available, 2 on error)
+  --workspace <path>   Passed through when refreshing the unit
+  --host <host>        Default 127.0.0.1
+  --port <port>        Default 4173
+  --name <unit>
+  --allow-non-loopback
+  --json
+  -h, --help
+`,
+    remove: `opencode-studio remove [options]
+
+Disable all studios in user-global config (same as configure with an empty set).
+
+Options:
+  --workspace <path>   Optional domain root for local scrub during remove
+  --json
+  -h, --help
+`,
+    completion: `opencode-studio completion bash|zsh|install
+
+  bash|zsh   Print completion script (eval into your shell rc)
+  install    Append eval line to the active shell rc if missing
+
+Options (install):
+  -q, --quiet
+  -h, --help
+`,
+    version: `opencode-studio version
+
+Print the installed package version.
+`,
+  }
+  const text = texts[command]
+  if (!text) {
     printHelp()
+    return
+  }
+  console.log(`${text.trimEnd()}\n`)
+}
+
+function wantsHelp(args: string[]) {
+  return args.includes("-h") || args.includes("--help")
+}
+
+function wantsVersion(args: string[]) {
+  return args.length === 1 && (args[0] === "-v" || args[0] === "--version" || args[0] === "version")
+}
+
+function parsePort(raw: string | undefined, fallback = 4173): number | null {
+  const port = Number(raw ?? fallback)
+  if (!Number.isInteger(port) || port <= 0) return null
+  return port
+}
+
+function failParse(command: string, error: unknown) {
+  console.error(error instanceof Error ? error.message : error)
+  printCommandHelp(command)
+  return 2
+}
+
+async function main(argv: string[]) {
+  if (argv.length === 0 || (argv.length === 1 && wantsHelp(argv))) {
+    printHelp()
+    return 0
+  }
+
+  const packageRoot = getPackageRoot()
+
+  if (wantsVersion(argv)) {
+    const meta = await loadPackageMeta(packageRoot)
+    console.log(meta.version)
     return 0
   }
 
   const command = argv[0]!
   const rest = argv.slice(1)
-  const packageRoot = getPackageRoot()
+
+  // Any -h/--help on a known command shows that command's help.
+  if (wantsHelp(rest)) {
+    printCommandHelp(command)
+    return 0
+  }
 
   if (command === "configure") {
-    const { values, positionals } = parseArgs({
-      args: rest,
-      options: {
-        workspace: { type: "string" },
-        "dry-run": { type: "boolean", default: false },
-        json: { type: "boolean", default: false },
-      },
-      allowPositionals: true,
-      strict: true,
-    })
+    let values: { workspace?: string; "dry-run"?: boolean; json?: boolean }
+    let positionals: string[]
+    try {
+      const parsed = parseArgs({
+        args: rest,
+        options: {
+          workspace: { type: "string" },
+          "dry-run": { type: "boolean", default: false },
+          json: { type: "boolean", default: false },
+        },
+        allowPositionals: true,
+        strict: true,
+      })
+      values = parsed.values
+      positionals = parsed.positionals
+    } catch (error) {
+      return failParse("configure", error)
+    }
+    if (positionals.length === 0) {
+      console.error(`Usage: opencode-studio configure <studio...>  (studios: ${STUDIO_IDS.join(", ")})`)
+      console.error("To disable all studios, run: opencode-studio remove")
+      return 2
+    }
     const result = await configureStudios({
       workspace: values.workspace,
       enabled: positionals,
@@ -77,18 +244,26 @@ async function main(argv: string[]) {
   }
 
   if (command === "status") {
-    const { values } = parseArgs({
-      args: rest,
-      options: {
-        workspace: { type: "string" },
-        json: { type: "boolean", default: false },
-      },
-      allowPositionals: false,
-      strict: true,
-    })
+    let values: { workspace?: string; json?: boolean }
+    try {
+      const parsed = parseArgs({
+        args: rest,
+        options: {
+          workspace: { type: "string" },
+          json: { type: "boolean", default: false },
+        },
+        allowPositionals: false,
+        strict: true,
+      })
+      values = parsed.values
+    } catch (error) {
+      return failParse("status", error)
+    }
     const result = await statusStudios({ workspace: values.workspace, packageRoot })
-    if (values.json) console.log(JSON.stringify(result, null, 2))
+    const meta = await loadPackageMeta(packageRoot)
+    if (values.json) console.log(JSON.stringify({ packageVersion: meta.version, packageName: meta.name, ...result }, null, 2))
     else {
+      console.log(`Package: ${meta.name}@${meta.version}`)
       console.log(`Config: ${result.configPath}`)
       console.log(`Domain root: ${result.workspace}`)
       if (result.configError) console.log(`Config error: ${result.configError}`)
@@ -102,15 +277,21 @@ async function main(argv: string[]) {
   }
 
   if (command === "doctor") {
-    const { values } = parseArgs({
-      args: rest,
-      options: {
-        workspace: { type: "string" },
-        json: { type: "boolean", default: false },
-      },
-      allowPositionals: false,
-      strict: true,
-    })
+    let values: { workspace?: string; json?: boolean }
+    try {
+      const parsed = parseArgs({
+        args: rest,
+        options: {
+          workspace: { type: "string" },
+          json: { type: "boolean", default: false },
+        },
+        allowPositionals: false,
+        strict: true,
+      })
+      values = parsed.values
+    } catch (error) {
+      return failParse("doctor", error)
+    }
     const result = await doctorStudios({ workspace: values.workspace, packageRoot })
     if (values.json) console.log(JSON.stringify(result, null, 2))
     else {
@@ -122,15 +303,21 @@ async function main(argv: string[]) {
   }
 
   if (command === "remove") {
-    const { values } = parseArgs({
-      args: rest,
-      options: {
-        workspace: { type: "string" },
-        json: { type: "boolean", default: false },
-      },
-      allowPositionals: false,
-      strict: true,
-    })
+    let values: { workspace?: string; json?: boolean }
+    try {
+      const parsed = parseArgs({
+        args: rest,
+        options: {
+          workspace: { type: "string" },
+          json: { type: "boolean", default: false },
+        },
+        allowPositionals: false,
+        strict: true,
+      })
+      values = parsed.values
+    } catch (error) {
+      return failParse("remove", error)
+    }
     const result = await removeStudios({ workspace: values.workspace, packageRoot })
     if (values.json) console.log(JSON.stringify(result, null, 2))
     else console.log("Removed all Studios (user-global). Restart OpenCode and the host.")
@@ -138,25 +325,36 @@ async function main(argv: string[]) {
   }
 
   if (command === "serve") {
-    const { values } = parseArgs({
-      args: rest,
-      options: {
-        workspace: { type: "string" },
-        host: { type: "string", default: "127.0.0.1" },
-        port: { type: "string", default: "4173" },
-        "ui-directory": { type: "string" },
-        "allow-non-loopback": { type: "boolean", default: false },
-      },
-      allowPositionals: false,
-      strict: true,
-    })
+    let values: {
+      workspace?: string
+      host?: string
+      port?: string
+      "ui-directory"?: string
+      "allow-non-loopback"?: boolean
+    }
+    try {
+      const parsed = parseArgs({
+        args: rest,
+        options: {
+          workspace: { type: "string" },
+          host: { type: "string", default: "127.0.0.1" },
+          port: { type: "string", default: "4173" },
+          "ui-directory": { type: "string" },
+          "allow-non-loopback": { type: "boolean", default: false },
+        },
+        allowPositionals: false,
+        strict: true,
+      })
+      values = parsed.values
+    } catch (error) {
+      return failParse("serve", error)
+    }
     const hostname = values.host ?? "127.0.0.1"
     assertLoopbackBind(hostname, values["allow-non-loopback"])
-    // Default workspace is cwd (same as configure/status/doctor).
     const workspace = await resolveWorkspace(values.workspace)
     const uiDirectory = values["ui-directory"] ?? path.join(packageRoot, "dist", "ui")
-    const port = Number(values.port)
-    if (!Number.isInteger(port) || port <= 0) {
+    const port = parsePort(values.port)
+    if (port === null) {
       console.error("Invalid --port")
       return 2
     }
@@ -177,7 +375,6 @@ async function main(argv: string[]) {
     const sub = rest[0]
     if (sub === "install") {
       const quiet = rest.includes("--quiet") || rest.includes("-q")
-      // OPENCODE_STUDIO_COMPLETION_HOME isolates tests from the real $HOME.
       const home = process.env.OPENCODE_STUDIO_COMPLETION_HOME
       const result = await ensureShellCompletions(home ? { home } : undefined)
       if (result.skipped) {
@@ -207,20 +404,34 @@ async function main(argv: string[]) {
   }
 
   if (command === "upgrade") {
-    const { values } = parseArgs({
-      args: rest,
-      options: {
-        check: { type: "boolean", default: false },
-        workspace: { type: "string" },
-        host: { type: "string", default: "127.0.0.1" },
-        port: { type: "string", default: "4173" },
-        name: { type: "string" },
-        "allow-non-loopback": { type: "boolean", default: false },
-        json: { type: "boolean", default: false },
-      },
-      allowPositionals: false,
-      strict: true,
-    })
+    let values: {
+      check?: boolean
+      workspace?: string
+      host?: string
+      port?: string
+      name?: string
+      "allow-non-loopback"?: boolean
+      json?: boolean
+    }
+    try {
+      const parsed = parseArgs({
+        args: rest,
+        options: {
+          check: { type: "boolean", default: false },
+          workspace: { type: "string" },
+          host: { type: "string", default: "127.0.0.1" },
+          port: { type: "string", default: "4173" },
+          name: { type: "string" },
+          "allow-non-loopback": { type: "boolean", default: false },
+          json: { type: "boolean", default: false },
+        },
+        allowPositionals: false,
+        strict: true,
+      })
+      values = parsed.values
+    } catch (error) {
+      return failParse("upgrade", error)
+    }
 
     if (values.check) {
       const result = await checkPackageUpgrade({ packageRoot })
@@ -231,8 +442,8 @@ async function main(argv: string[]) {
     }
 
     const hostname = values.host ?? "127.0.0.1"
-    const port = Number(values.port)
-    if (!Number.isInteger(port) || port <= 0) {
+    const port = parsePort(values.port)
+    if (port === null) {
       console.error("Invalid --port")
       return 2
     }
@@ -251,28 +462,40 @@ async function main(argv: string[]) {
 
   if (command === "service") {
     const action = rest[0] as ServiceAction | undefined
-    const allowed: ServiceAction[] = ["install", "uninstall", "start", "stop", "restart", "status"]
-    if (!action || !allowed.includes(action)) {
+    if (!action || !SERVICE_ACTIONS.includes(action)) {
       console.error("Usage: opencode-studio service install|uninstall|start|stop|restart|status [options]")
       return 2
     }
-    const { values } = parseArgs({
-      args: rest.slice(1),
-      options: {
-        workspace: { type: "string" },
-        host: { type: "string", default: "127.0.0.1" },
-        port: { type: "string", default: "4173" },
-        name: { type: "string" },
-        "allow-non-loopback": { type: "boolean", default: false },
-        json: { type: "boolean", default: false },
-      },
-      allowPositionals: false,
-      strict: true,
-    })
+    let values: {
+      workspace?: string
+      host?: string
+      port?: string
+      name?: string
+      "allow-non-loopback"?: boolean
+      json?: boolean
+    }
+    try {
+      const parsed = parseArgs({
+        args: rest.slice(1),
+        options: {
+          workspace: { type: "string" },
+          host: { type: "string", default: "127.0.0.1" },
+          port: { type: "string", default: "4173" },
+          name: { type: "string" },
+          "allow-non-loopback": { type: "boolean", default: false },
+          json: { type: "boolean", default: false },
+        },
+        allowPositionals: false,
+        strict: true,
+      })
+      values = parsed.values
+    } catch (error) {
+      return failParse("service", error)
+    }
     const hostname = values.host ?? "127.0.0.1"
     if (action === "install") assertLoopbackBind(hostname, values["allow-non-loopback"])
-    const port = Number(values.port)
-    if (!Number.isInteger(port) || port <= 0) {
+    const port = parsePort(values.port)
+    if (port === null) {
       console.error("Invalid --port")
       return 2
     }
@@ -290,6 +513,12 @@ async function main(argv: string[]) {
       if ("stderr" in result && result.stderr) process.stderr.write(result.stderr)
       return "ok" in result && result.ok === false ? 1 : 0
     } else if ("message" in result && result.message) console.log(result.message)
+    return 0
+  }
+
+  if (command === "version") {
+    const meta = await loadPackageMeta(packageRoot)
+    console.log(meta.version)
     return 0
   }
 
