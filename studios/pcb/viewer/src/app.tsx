@@ -29,13 +29,10 @@ function cn(...classes: (string | false | undefined | null)[]) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      data-studio="pcb"
-      className="min-h-0 flex-1 bg-[var(--osc-bg)] text-[var(--osc-text)] flex flex-col"
-    >
-      <header className="border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-6 py-3 flex items-center gap-4 shrink-0">
-        <span className="text-lg font-semibold tracking-tight text-[var(--osc-accent)]">PCB Studio</span>
-        <nav className="flex items-center gap-1 ml-4">
+    <div data-studio="pcb" className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]">
+      <header className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--osc-border)] bg-[var(--osc-bg)] px-3">
+        <span className="sr-only">PCB Studio</span>
+        <nav className="flex items-center gap-0.5">
           <NavLink to={studioHref()}>Projects</NavLink>
           <NavLink to={studioHref("catalog")}>Catalog</NavLink>
         </nav>
@@ -55,8 +52,10 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
     <Link
       to={to}
       className={cn(
-        "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-        active ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50",
+        "rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
+        active
+          ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
+          : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]",
       )}
     >
       {children}
@@ -68,7 +67,7 @@ function WorkspaceBadge() {
   const { data } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: api.workspace })
   if (!data) return null
   return (
-    <span className="ml-auto text-xs text-zinc-500 truncate max-w-xs" title={data.root}>
+    <span className="ml-auto text-xs text-[var(--osc-text-faint)] truncate max-w-xs" title={data.root}>
       {data.root}
     </span>
   )
@@ -81,10 +80,10 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
-        ok ? "bg-emerald-950 text-emerald-400" : "bg-zinc-800 text-zinc-500",
+        ok ? "bg-[var(--osc-success-bg)] text-[var(--osc-success)]" : "bg-[var(--osc-surface)] text-[var(--osc-text-faint)]",
       )}
     >
-      <span className={cn("w-1.5 h-1.5 rounded-full", ok ? "bg-emerald-400" : "bg-zinc-600")} />
+      <span className={cn("w-1.5 h-1.5 rounded-full", ok ? "bg-[var(--osc-success)]" : "bg-[var(--osc-text-faint)]")} />
       {label}
     </span>
   )
@@ -121,11 +120,11 @@ function HealthBadges({ project }: { project: ProjectSummary }) {
 
 function StatusBadge({ tone, label }: { tone: "success" | "warning" | "error"; label: string }) {
   const colors = {
-    success: "bg-emerald-950 text-emerald-400",
-    warning: "bg-amber-950 text-amber-400",
-    error: "bg-red-950 text-red-400",
+    success: "bg-[var(--osc-success-bg)] text-[var(--osc-success)]",
+    warning: "bg-[var(--osc-warning-bg)] text-[var(--osc-warning)]",
+    error: "bg-[var(--osc-error-bg)] text-[var(--osc-error)]",
   }
-  const dots = { success: "bg-emerald-400", warning: "bg-amber-400", error: "bg-red-400" }
+  const dots = { success: "bg-[var(--osc-success)]", warning: "bg-[var(--osc-warning)]", error: "bg-[var(--osc-error)]" }
   return (
     <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", colors[tone])}>
       <span className={cn("w-1.5 h-1.5 rounded-full", dots[tone])} />
@@ -138,7 +137,7 @@ function StatusBadge({ tone, label }: { tone: "success" | "warning" | "error"; l
 
 function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center py-24 text-zinc-500 text-sm">
+    <div className="flex items-center justify-center py-24 text-[var(--osc-text-muted)] text-sm">
       <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" aria-label="Loading" role="img">
         <title>Loading</title>
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -150,11 +149,11 @@ function LoadingState({ label = "Loading…" }: { label?: string }) {
 }
 
 function ErrorState({ message }: { message: string }) {
-  return <div className="flex items-center justify-center py-24 text-red-400 text-sm">{message}</div>
+  return <div className="flex items-center justify-center py-24 text-[var(--osc-error)] text-sm">{message}</div>
 }
 
 function EmptyState({ label }: { label: string }) {
-  return <div className="flex items-center justify-center py-24 text-zinc-600 text-sm">{label}</div>
+  return <div className="flex items-center justify-center py-24 text-[var(--osc-text-faint)] text-sm">{label}</div>
 }
 
 // ── Projects Page ─────────────────────────────────────────────────────────────
@@ -162,14 +161,14 @@ function EmptyState({ label }: { label: string }) {
 function ProjectCard({ project }: { project: ProjectSummary }) {
   return (
     <Link to={studioHref(`projects/${encodeURIComponent(project.id)}`)} className="block group">
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 hover:border-zinc-600 hover:bg-zinc-800/50 transition-colors">
+      <div className="rounded-lg border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 hover:border-[var(--osc-border-strong)] hover:bg-[var(--osc-surface-hover)] transition-colors">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-medium text-white truncate group-hover:text-zinc-100">{project.name}</p>
-            <p className="text-xs text-zinc-500 mt-0.5 truncate">{project.path}</p>
+            <p className="font-medium text-[var(--osc-text)] truncate">{project.name}</p>
+            <p className="text-xs text-[var(--osc-text-faint)] mt-0.5 truncate">{project.path}</p>
           </div>
           <svg
-            className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 shrink-0 mt-0.5"
+            className="w-4 h-4 text-[var(--osc-text-faint)] group-hover:text-[var(--osc-text-muted)] shrink-0 mt-0.5"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -195,12 +194,12 @@ function DiagnosticGroupList({ groups, tone }: { groups: DiagnosticGroup[]; tone
   return (
     <div className="space-y-2">
       {groups.map((group) => (
-        <details key={group.type} open={tone === "error"} className="rounded border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-mono text-zinc-300">
-            {group.type} <span className={tone === "error" ? "text-red-400" : "text-amber-400"}>({group.count})</span>
+        <details key={group.type} open={tone === "error"} className="rounded border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2">
+          <summary className="cursor-pointer text-xs font-mono text-[var(--osc-text)]">
+            {group.type} <span className={tone === "error" ? "text-[var(--osc-error)]" : "text-[var(--osc-warning)]"}>({group.count})</span>
           </summary>
           {group.messages.length > 0 && (
-            <ul className="mt-2 space-y-1 text-xs text-zinc-400">
+            <ul className="mt-2 space-y-1 text-xs text-[var(--osc-text-muted)]">
               {group.messages.map((message, index) => (
                 <li key={`${group.type}-${index}`}>{message}</li>
               ))}
@@ -215,9 +214,9 @@ function DiagnosticGroupList({ groups, tone }: { groups: DiagnosticGroup[]; tone
 function DiagnosticsPanel({ diagnostics }: { diagnostics: CircuitDiagnostics }) {
   if (diagnostics.errorCount === 0 && diagnostics.warningCount === 0) return null
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4" aria-label="Design diagnostics">
+    <section className="rounded-lg border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4" aria-label="Design diagnostics">
       <div className="flex items-center gap-2 mb-3">
-        <h2 className="text-sm font-semibold text-white">Design diagnostics</h2>
+        <h2 className="text-sm font-semibold text-[var(--osc-text)]">Design diagnostics</h2>
         {diagnostics.errorCount > 0 && <StatusBadge tone="error" label={`${diagnostics.errorCount} errors`} />}
         {diagnostics.warningCount > 0 && <StatusBadge tone="warning" label={`${diagnostics.warningCount} warnings`} />}
       </div>
@@ -235,9 +234,9 @@ function ProjectsPage() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-white">Projects</h1>
+        <h1 className="text-xl font-semibold text-[var(--osc-text)]">Projects</h1>
         {data && (
-          <span className="text-sm text-zinc-500">
+          <span className="text-sm text-[var(--osc-text-muted)]">
             {data.total} project{data.total !== 1 ? "s" : ""}
           </span>
         )}
@@ -302,15 +301,15 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex flex-col h-full min-h-[480px]">
-      <div className="flex items-center gap-3 p-3 border-b border-zinc-800 shrink-0">
+      <div className="flex items-center gap-3 p-3 border-b border-[var(--osc-border)] shrink-0">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter elements…"
-          className="flex-1 bg-zinc-800 text-zinc-200 text-sm rounded px-3 py-1.5 outline-none placeholder-zinc-600 focus:ring-1 focus:ring-zinc-600"
+          className="flex-1 bg-[var(--osc-surface)] text-[var(--osc-text)] text-sm rounded px-3 py-1.5 outline-none placeholder:text-[var(--osc-text-faint)] focus:ring-1 focus:ring-[var(--osc-border-strong)]"
         />
-        <span className="text-xs text-zinc-500 shrink-0">
+        <span className="text-xs text-[var(--osc-text-muted)] shrink-0">
           {filtered.length} / {elements.length} elements
         </span>
       </div>
@@ -320,17 +319,17 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
           if (!group) return null
           return (
             <details key={type} open={group.length <= 10}>
-              <summary className="cursor-pointer text-zinc-400 hover:text-zinc-200 py-1 select-none">
-                <span className="text-emerald-400">{type}</span>
-                <span className="text-zinc-600 ml-2">({group.length})</span>
+              <summary className="cursor-pointer text-[var(--osc-text-muted)] hover:text-[var(--osc-text)] py-1 select-none">
+                <span className="text-[var(--osc-accent)]">{type}</span>
+                <span className="text-[var(--osc-text-faint)] ml-2">({group.length})</span>
               </summary>
-              <div className="mt-1 space-y-1 pl-3 border-l border-zinc-800">
+              <div className="mt-1 space-y-1 pl-3 border-l border-[var(--osc-border)]">
                 {group.map((el: any, i: number) => (
                   <details key={i} className="group">
-                    <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 py-0.5 select-none">
+                    <summary className="cursor-pointer text-[var(--osc-text-muted)] hover:text-[var(--osc-text)] py-0.5 select-none">
                       {el.name ?? el.source_component_id ?? el.source_net_id ?? `[${i}]`}
                     </summary>
-                    <pre className="mt-1 bg-zinc-900 rounded p-2 text-zinc-300 overflow-auto text-xs leading-relaxed">
+                    <pre className="mt-1 bg-[var(--osc-bg)] rounded p-2 text-[var(--osc-text-muted)] overflow-auto text-xs leading-relaxed">
                       {JSON.stringify(el, null, 2)}
                     </pre>
                   </details>
@@ -339,7 +338,7 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
             </details>
           )
         })}
-        {Object.keys(byType).length === 0 && <p className="text-zinc-600">No elements match the filter.</p>}
+        {Object.keys(byType).length === 0 && <p className="text-[var(--osc-text-faint)]">No elements match the filter.</p>}
       </div>
     </div>
   )
@@ -378,12 +377,12 @@ function ProjectPage() {
       <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col gap-4 h-full">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Link to={studioHref()} className="text-zinc-500 hover:text-zinc-300 text-sm">
+          <Link to={studioHref()} className="text-[var(--osc-text-muted)] hover:text-[var(--osc-text)] text-sm">
             ← Projects
           </Link>
-          <span className="text-zinc-700">/</span>
-          <h1 className="text-lg font-semibold text-white">{project.name}</h1>
-          <span className="text-xs text-zinc-600 font-mono">{project.path}</span>
+          <span className="text-[var(--osc-border-strong)]">/</span>
+          <h1 className="text-lg font-semibold text-[var(--osc-text)]">{project.name}</h1>
+          <span className="text-xs text-[var(--osc-text-faint)] font-mono">{project.path}</span>
         </div>
 
         {/* Status row */}
@@ -403,7 +402,7 @@ function ProjectPage() {
             <a
               href={api.gerbersZipUrl(id)}
               download
-              className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--osc-border-strong)] px-2 py-0.5 text-xs text-[var(--osc-text-muted)] hover:border-[var(--osc-text-faint)] hover:text-[var(--osc-text)] transition-colors"
             >
               Download Gerbers ↓
             </a>
@@ -412,14 +411,14 @@ function ProjectPage() {
             <a
               href={api.assemblyCsvUrl(id)}
               download
-              className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--osc-border-strong)] px-2 py-0.5 text-xs text-[var(--osc-text-muted)] hover:border-[var(--osc-text-faint)] hover:text-[var(--osc-text)] transition-colors"
             >
               Pick & Place ↓
             </a>
           )}
           {!project.built && (
-            <p className="text-xs text-amber-400 ml-1">
-              Run <code className="bg-zinc-800 px-1 rounded">pcb_circuit_build</code> in OpenCode to build this project.
+            <p className="text-xs text-[var(--osc-warning)] ml-1">
+              Run <code className="bg-[var(--osc-surface)] px-1 rounded">pcb_circuit_build</code> in OpenCode to build this project.
             </p>
           )}
         </div>
@@ -427,7 +426,7 @@ function ProjectPage() {
         {project.diagnostics && <DiagnosticsPanel diagnostics={project.diagnostics} />}
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-zinc-800">
+        <div className="flex gap-1 border-b border-[var(--osc-border)]">
           {(["schematic", "pcb", "bom", "3d", "json"] as ViewTab[]).map((t) => (
             <button
               key={t}
@@ -435,7 +434,7 @@ function ProjectPage() {
               onClick={() => setTab(t)}
               className={cn(
                 "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-                tab === t ? "border-emerald-500 text-white" : "border-transparent text-zinc-500 hover:text-zinc-300",
+                tab === t ? "border-[var(--osc-text)] text-[var(--osc-text)]" : "border-transparent text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]",
               )}
             >
               {t === "json" ? "Circuit JSON" : t === "schematic" ? "Schematic" : t === "pcb" ? "PCB Layout" : t === "bom" ? "BOM" : "3D"}
@@ -476,18 +475,18 @@ function ProjectPage() {
 
 function PartRow({ part, onClick }: { part: PartSummary; onClick: () => void }) {
   return (
-    <tr className="border-b border-zinc-800 hover:bg-zinc-800/40 cursor-pointer transition-colors" onClick={onClick}>
-      <td className="px-4 py-2.5 font-mono text-sm text-emerald-400 whitespace-nowrap">{part.mpn}</td>
-      <td className="px-4 py-2.5 text-sm text-zinc-300 whitespace-nowrap">{part.manufacturer ?? "—"}</td>
-      <td className="px-4 py-2.5 text-sm text-zinc-400">{part.description ?? "—"}</td>
-      <td className="px-4 py-2.5 text-sm text-zinc-500 whitespace-nowrap">{part.category ?? "—"}</td>
+    <tr className="border-b border-[var(--osc-border)] hover:bg-[var(--osc-surface-hover)] cursor-pointer transition-colors" onClick={onClick}>
+      <td className="px-4 py-2.5 font-mono text-sm text-[var(--osc-accent)] whitespace-nowrap">{part.mpn}</td>
+      <td className="px-4 py-2.5 text-sm text-[var(--osc-text)] whitespace-nowrap">{part.manufacturer ?? "—"}</td>
+      <td className="px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.description ?? "—"}</td>
+      <td className="px-4 py-2.5 text-sm text-[var(--osc-text-muted)] whitespace-nowrap">{part.category ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm">
         {part.datasheet && safeHref(part.datasheet) && (
           <a
             href={safeHref(part.datasheet)!}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-400 hover:text-blue-300 text-xs"
+            className="text-[var(--osc-accent)] hover:opacity-80 text-xs"
             onClick={(e) => e.stopPropagation()}
           >
             Datasheet ↗
@@ -523,13 +522,13 @@ function PartDetailModal({ mpn, onClose }: { mpn: string; onClose: () => void })
         role="dialog"
         aria-modal="true"
         aria-label={`Part detail: ${mpn}`}
-        className="bg-zinc-900 border border-zinc-700 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-auto shadow-2xl"
+        className="bg-[var(--osc-bg-elevated)] border border-[var(--osc-border-strong)] rounded-xl max-w-2xl w-full max-h-[80vh] overflow-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <span className="font-mono font-semibold text-emerald-400">{mpn}</span>
-          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-200 text-lg leading-none">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--osc-border)]">
+          <span className="font-mono font-semibold text-[var(--osc-accent)]">{mpn}</span>
+          <button type="button" onClick={onClose} className="text-[var(--osc-text-muted)] hover:text-[var(--osc-text)] text-lg leading-none">
             ×
           </button>
         </div>
@@ -537,7 +536,7 @@ function PartDetailModal({ mpn, onClose }: { mpn: string; onClose: () => void })
           {isLoading && <LoadingState />}
           {error && <ErrorState message="Failed to load part details" />}
           {data && (
-            <pre className="text-xs font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed">{JSON.stringify(data, null, 2)}</pre>
+            <pre className="text-xs font-mono text-[var(--osc-text)] whitespace-pre-wrap leading-relaxed">{JSON.stringify(data, null, 2)}</pre>
           )}
         </div>
       </div>
@@ -559,9 +558,9 @@ function CatalogPage() {
     <Shell>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold text-white">Component Catalog</h1>
+          <h1 className="text-xl font-semibold text-[var(--osc-text)]">Component Catalog</h1>
           {data && (
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-[var(--osc-text-muted)]">
               {data.total} part{data.total !== 1 ? "s" : ""}
             </span>
           )}
@@ -573,7 +572,7 @@ function CatalogPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by MPN, manufacturer, description…"
-            className="w-full bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-zinc-500 placeholder-zinc-600"
+            className="w-full bg-[var(--osc-surface)] border border-[var(--osc-border-strong)] text-[var(--osc-text)] rounded-lg px-4 py-2.5 text-sm outline-none focus:border-[var(--osc-border-strong)] placeholder:text-[var(--osc-text-faint)]"
           />
         </div>
 
@@ -584,15 +583,15 @@ function CatalogPage() {
         )}
 
         {data && data.parts.length > 0 && (
-          <div className="border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="border border-[var(--osc-border)] rounded-lg overflow-hidden">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-zinc-900 border-b border-zinc-800">
-                  <th className="px-4 py-2.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider">MPN</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Manufacturer</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Description</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Category</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider"></th>
+                <tr className="bg-[var(--osc-bg-elevated)] border-b border-[var(--osc-border)]">
+                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider">MPN</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider">Manufacturer</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider">Description</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider">Category</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider"></th>
                 </tr>
               </thead>
               <tbody>

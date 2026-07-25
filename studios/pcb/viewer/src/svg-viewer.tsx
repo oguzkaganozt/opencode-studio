@@ -10,9 +10,9 @@ export function SvgViewer({ url, label }: { url: string; label: string }) {
 
   return (
     <div className="relative w-full h-full min-h-[480px] bg-white rounded-md overflow-auto flex items-center justify-center">
-      {!loaded && !error && <div className="flex items-center justify-center py-24 text-zinc-500 text-sm">Loading {label}…</div>}
+      {!loaded && !error && <div className="flex items-center justify-center py-24 text-[var(--osc-text-muted)] text-sm">Loading {label}…</div>}
       {error && (
-        <div className="flex items-center justify-center py-24 text-red-400 text-sm">
+        <div className="flex items-center justify-center py-24 text-[var(--osc-error)] text-sm">
           {label} not available. Run pcb_circuit_export first.
         </div>
       )}

@@ -13,6 +13,7 @@
   background: var(--osc-bg);
   color: var(--osc-text);
   font-family: var(--osc-font-ui);
+  color-scheme: light;
 }
 
 [data-studio="cad"] code,

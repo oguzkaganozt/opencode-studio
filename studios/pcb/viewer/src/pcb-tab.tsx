@@ -10,7 +10,7 @@ export default function PcbTab({ projectId }: { projectId: string }) {
   const fallback = <SvgViewer url={api.pcbSvgUrl(projectId)} label="PCB Layout" />
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-24 text-zinc-500 text-sm">Loading PCB layout…</div>
+    return <div className="flex items-center justify-center py-24 text-[var(--osc-text-muted)] text-sm">Loading PCB layout…</div>
   }
   if (error) return fallback
   return (

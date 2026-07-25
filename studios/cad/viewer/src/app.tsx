@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router"
-import { artifactUrl, type DesignSummary, fetchStudio, listDesigns, readDesign, renderUrl, studioHref } from "./api"
+import { artifactUrl, type DesignSummary, listDesigns, readDesign, renderUrl, studioHref } from "./api"
 import { type ClickInfo, type LoadPart, PART_COLORS, type SceneHandle } from "./assembly-types"
 
 const AssemblyViewport = lazy(async () => {
@@ -17,30 +17,17 @@ function statusBadge(status: DesignSummary["buildStatus"]) {
   return { label: "unbuilt", className: "text-[var(--osc-text-faint)]" }
 }
 
-function StudioBar() {
-  const studio = useQuery({ queryKey: ["cad", "studio"], queryFn: fetchStudio, staleTime: 60_000 })
-  return (
-    <header className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--osc-border)] px-3" data-studio="cad">
-      <div className="flex items-baseline gap-3">
-        <span className="text-sm font-semibold tracking-wide">CAD Studio</span>
-        <span className="mono text-xs text-[var(--osc-text-muted)]">
-          {studio.data ? `${studio.data.id}@${studio.data.packageVersion}` : "loading"}
-        </span>
-      </div>
-      <span className="mono text-xs text-[var(--osc-text-faint)]">OSC {studio.data?.contractVersion ?? "…"}</span>
-    </header>
-  )
-}
-
 function ResourceRail({ designs, selectedId }: { designs: DesignSummary[]; selectedId?: string }) {
   return (
     <aside className="hidden w-56 shrink-0 overflow-auto border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:block">
-      <div className="border-b border-[var(--osc-border)] px-3 py-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">
+      <div className="border-b border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
         Designs
       </div>
-      <nav className="flex flex-col p-1" aria-label="Designs">
+      <nav className="flex flex-col gap-0.5 p-2" aria-label="Designs">
         {designs.length === 0 ? (
-          <p className="px-2 py-3 text-sm text-[var(--osc-text-muted)]">No designs in Data Root.</p>
+          <p className="px-2 py-6 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">
+            No designs yet. Build with the agent, then they appear here.
+          </p>
         ) : (
           designs.map((design) => {
             const active = design.id === selectedId
@@ -49,17 +36,17 @@ function ResourceRail({ designs, selectedId }: { designs: DesignSummary[]; selec
               <Link
                 key={design.id}
                 to={studioHref(`designs/${design.id}`)}
-                className={`rounded-[var(--osc-radius-md)] px-2 py-1.5 text-sm ${
+                className={`rounded-[var(--osc-radius-md)] px-2.5 py-2 text-[13px] transition-colors ${
                   active
-                    ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
+                    ? "bg-[var(--osc-surface)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
                     : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span>{design.id}</span>
-                  <span className={`mono text-[11px] ${badge.className}`}>{badge.label}</span>
+                  <span className="truncate font-medium">{design.id}</span>
+                  <span className={`mono text-[10px] ${badge.className}`}>{badge.label}</span>
                 </div>
-                <div className="mono text-[11px] text-[var(--osc-text-faint)]">{design.partCount} part(s)</div>
+                <div className="mono mt-0.5 text-[10px] text-[var(--osc-text-faint)]">{design.partCount} part(s)</div>
               </Link>
             )
           })
@@ -86,18 +73,18 @@ function Inspector({
 }) {
   return (
     <aside className="flex w-full shrink-0 flex-col border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:w-60 md:border-t-0 md:border-l">
-      <div className="border-b border-[var(--osc-border)] px-3 py-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">
+      <div className="border-b border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
         Parts
       </div>
-      <ul className="max-h-40 flex-1 overflow-auto p-1 md:max-h-none">
+      <ul className="max-h-40 flex-1 overflow-auto p-2 md:max-h-none">
         {parts.length === 0 ? (
-          <li className="px-2 py-3 text-sm text-[var(--osc-text-muted)]">No parts loaded.</li>
+          <li className="px-2 py-6 text-[13px] text-[var(--osc-text-muted)]">No parts loaded.</li>
         ) : (
           parts.map((part, index) => (
             <li key={`${part.name}-${index}`}>
               <label
-                className={`flex cursor-pointer items-center gap-2 rounded-[var(--osc-radius-md)] px-2 py-1.5 text-sm hover:bg-[var(--osc-surface-hover)] ${
-                  highlights === index ? "text-[var(--osc-accent)]" : ""
+                className={`flex cursor-pointer items-center gap-2.5 rounded-[var(--osc-radius-md)] px-2 py-1.5 text-[13px] hover:bg-[var(--osc-surface-hover)] ${
+                  highlights === index ? "text-[var(--osc-accent)]" : "text-[var(--osc-text)]"
                 }`}
               >
                 <input
@@ -105,9 +92,10 @@ function Inspector({
                   checked={part.visible}
                   aria-label={`Show ${part.name}`}
                   onChange={(event) => onTogglePart(index, event.target.checked)}
+                  className="accent-[var(--osc-primary)]"
                 />
                 <span
-                  className="inline-block size-3 shrink-0 rounded-full border border-[var(--osc-border)]"
+                  className="inline-block size-2.5 shrink-0 rounded-full ring-1 ring-black/10"
                   style={{ background: `#${part.color.toString(16).padStart(6, "0")}` }}
                 />
                 <span className="truncate">{part.name}</span>
@@ -116,10 +104,10 @@ function Inspector({
           ))
         )}
       </ul>
-      <div className="border-y border-[var(--osc-border)] px-3 py-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">
+      <div className="border-y border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
         Renders
       </div>
-      <div className="grid max-h-40 grid-cols-2 gap-1.5 overflow-auto p-2 md:max-h-none md:flex-1">
+      <div className="grid max-h-40 grid-cols-2 gap-2 overflow-auto p-2 md:max-h-none md:flex-1">
         {designId && renders.length > 0 ? (
           renders.map((file) => {
             const label = file.replace(/\.png$/, "")
@@ -129,18 +117,18 @@ function Inspector({
                 key={file}
                 type="button"
                 title={label}
-                className="relative overflow-hidden rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-surface)] hover:border-[var(--osc-accent)]"
+                className="relative overflow-hidden rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-surface)] transition-colors hover:border-[var(--osc-border-strong)]"
                 onClick={() => onOpenRender(url, label)}
               >
                 <img src={url} alt={label} loading="lazy" className="block w-full" />
-                <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-center text-[10px] text-[var(--osc-text)]">
+                <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-center text-[10px] text-white">
                   {label}
                 </span>
               </button>
             )
           })
         ) : (
-          <p className="col-span-2 py-3 text-center text-xs text-[var(--osc-text-faint)]">no renders</p>
+          <p className="col-span-2 py-6 text-center text-[12px] text-[var(--osc-text-faint)]">No renders yet</p>
         )}
       </div>
     </aside>
@@ -274,23 +262,23 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const info = click ? (
     <>
-      <span className="text-[var(--osc-accent)]">{click.part}</span> pos:{" "}
-      <span className="mono text-[var(--osc-accent)]">
+      <span className="text-amber-300">{click.part}</span> pos:{" "}
+      <span className="mono text-amber-300">
         ({click.position.x}, {click.position.y}, {click.position.z})
       </span>{" "}
       normal:{" "}
-      <span className="mono text-[var(--osc-accent)]">
+      <span className="mono text-amber-300">
         ({click.normal.x.toFixed(3)}, {click.normal.y.toFixed(3)}, {click.normal.z.toFixed(3)})
       </span>{" "}
-      <span className="text-[var(--osc-text-faint)]">← {click.direction}</span>
-      <div className="mt-0.5 text-[10px] text-[var(--osc-text-faint)]">Copy or Prompt to paste into agent chat</div>
+      <span className="text-white/40">← {click.direction}</span>
+      <div className="mt-0.5 text-[10px] text-white/40">Copy or Prompt to paste into agent chat</div>
     </>
   ) : (
     <>
-      <span className="text-[var(--osc-text-muted)]">
+      <span className="text-white/70">
         {serverParts ? "click a surface to inspect it" : "select a design or open a .glb"}
       </span>
-      <div className="mt-0.5 text-[10px] text-[var(--osc-text-faint)]">orbit: drag · zoom: scroll · pan: right-drag</div>
+      <div className="mt-0.5 text-[10px] text-white/40">orbit: drag · zoom: scroll · pan: right-drag</div>
     </>
   )
 
@@ -298,13 +286,13 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <ResourceRail designs={designs} selectedId={localParts ? undefined : designId} />
       <div className="relative min-h-0 min-w-0 flex-1 bg-[var(--osc-canvas-bg)]">
-        <div className="absolute top-2 left-2 z-10 flex flex-wrap items-center gap-1">
+        <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1.5">
           <label className="sr-only" htmlFor="design-select">
             Design
           </label>
           <select
             id="design-select"
-            className="min-w-40 rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-black/75 px-2 py-1 text-xs"
+            className="min-w-40 rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[12px] text-white backdrop-blur-md"
             value={localParts ? "" : (designId ?? "")}
             onChange={(event) => {
               setLocalParts(null)
@@ -321,13 +309,31 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               )
             })}
           </select>
-          <button
-            type="button"
-            className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-black/75 px-2 py-1 text-xs hover:border-[var(--osc-accent)]"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Open
-          </button>
+          {(
+            [
+              ["Open", () => fileInputRef.current?.click()],
+              [
+                "Reload",
+                () => {
+                  if (localParts) {
+                    setLocalParts([...localParts])
+                    return
+                  }
+                  void designQuery.refetch()
+                },
+              ],
+              ["Fit", () => sceneRef.current?.fitCamera()],
+            ] as const
+          ).map(([label, onClick]) => (
+            <button
+              key={label}
+              type="button"
+              className="rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[12px] text-white/90 backdrop-blur-md transition-colors hover:border-white/25 hover:text-white"
+              onClick={onClick}
+            >
+              {label}
+            </button>
+          ))}
           <input
             ref={fileInputRef}
             type="file"
@@ -341,27 +347,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           />
           <button
             type="button"
-            className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-black/75 px-2 py-1 text-xs hover:border-[var(--osc-accent)]"
-            onClick={() => {
-              if (localParts) {
-                setLocalParts([...localParts])
-                return
-              }
-              void designQuery.refetch()
-            }}
-          >
-            Reload
-          </button>
-          <button
-            type="button"
-            className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-black/75 px-2 py-1 text-xs hover:border-[var(--osc-accent)]"
-            onClick={() => sceneRef.current?.fitCamera()}
-          >
-            Fit
-          </button>
-          <button
-            type="button"
-            className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-black/75 px-2 py-1 text-xs hover:border-[var(--osc-accent)]"
+            className="rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[12px] text-white/90 backdrop-blur-md transition-colors hover:border-white/25 disabled:opacity-40"
             disabled={!click}
             onClick={() => {
               if (!click) return
@@ -375,7 +361,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           </button>
           <button
             type="button"
-            className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-black/75 px-2 py-1 text-xs hover:border-[var(--osc-accent)]"
+            className="rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[12px] text-white/90 backdrop-blur-md transition-colors hover:border-white/25 disabled:opacity-40"
             disabled={!click}
             onClick={() => {
               if (!click) return
@@ -388,12 +374,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             Prompt
           </button>
           <span
-            className={`rounded-[var(--osc-radius-md)] px-2 py-1 text-xs ${
+            className={`rounded-full px-3 py-1.5 text-[12px] backdrop-blur-md ${
               statusTone === "ok"
-                ? "bg-[var(--osc-success-bg)] text-[var(--osc-success)]"
+                ? "bg-emerald-500/20 text-emerald-300"
                 : statusTone === "waiting"
-                  ? "bg-[var(--osc-warning-bg)] text-[var(--osc-warning)]"
-                  : "bg-[var(--osc-surface)] text-[var(--osc-text-muted)]"
+                  ? "bg-amber-500/20 text-amber-200"
+                  : "bg-black/70 text-white/50"
             }`}
             aria-live="polite"
           >
@@ -402,9 +388,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         </div>
 
         {!serverParts && (
-          <div className="pointer-events-none absolute top-1/2 left-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 text-center text-sm text-[var(--osc-text-faint)]">
-            load a design or .glb file
-            <span className="mt-1.5 block text-xs text-[var(--osc-text-faint)]">drop a file anywhere to open</span>
+          <div className="pointer-events-none absolute top-1/2 left-1/2 z-[1] w-[min(20rem,90%)] -translate-x-1/2 -translate-y-1/2 text-center">
+            <p className="text-[15px] font-medium tracking-tight text-white/80">Load a design or .glb</p>
+            <p className="mt-2 text-[12px] text-white/40">Drop a file anywhere · or pick from the rail</p>
           </div>
         )}
 
@@ -437,7 +423,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           />
         </Suspense>
 
-        <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 w-[calc(100%-1.25rem)] max-w-xl -translate-x-1/2 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-black/88 px-3.5 py-2 text-center text-xs">
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 w-[calc(100%-1.25rem)] max-w-xl -translate-x-1/2 rounded-[var(--osc-radius-lg)] border border-white/10 bg-black/80 px-4 py-2.5 text-center text-[12px] text-white/90 backdrop-blur-md">
           {info}
         </div>
 
@@ -448,7 +434,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         )}
         {toast && (
           <div
-            className="absolute top-12 left-1/2 z-50 -translate-x-1/2 rounded-[var(--osc-radius-md)] bg-[var(--osc-success-bg)] px-3 py-1 text-xs text-[var(--osc-success)]"
+            className="absolute top-12 left-1/2 z-50 -translate-x-1/2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs text-emerald-200 backdrop-blur-md"
             role="status"
             aria-live="polite"
           >
@@ -523,15 +509,15 @@ export function App() {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]" data-studio="cad">
       <HashRedirect />
-      <StudioBar />
+      <div className="sr-only">CAD Studio</div>
       <Routes>
         <Route index element={<Home />} />
         <Route path="designs/:id" element={<DesignRoute />} />
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
-      <footer className="flex h-7 shrink-0 items-center justify-between border-t border-[var(--osc-border)] px-3 text-[11px] text-[var(--osc-text-faint)]">
+      <footer className="flex h-8 shrink-0 items-center justify-between border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 text-[11px] text-[var(--osc-text-faint)]">
         <span>Read-only assembly inspection</span>
-        <span className="mono">Data Root unchanged by Viewer</span>
+        <span className="mono">Viewer does not mutate Data Root</span>
       </footer>
     </div>
   )

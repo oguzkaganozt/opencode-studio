@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { lazy, Suspense, useEffect, useState } from "react"
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
@@ -34,6 +34,13 @@ type StudiosResponse = {
   update?: UpdateInfo
 }
 
+const STUDIO_META: Record<string, { short: string; blurb: string }> = {
+  cad: { short: "CAD", blurb: "Parts, assemblies, renders" },
+  media: { short: "Media", blurb: "Library browse & preview" },
+  pcb: { short: "PCB", blurb: "Schematic, layout, BOM" },
+  startup: { short: "Startup", blurb: "Idea pool & evidence" },
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
   if (!response.ok) {
@@ -43,40 +50,40 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function MenuIcon() {
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 py-3">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-          <Link to="/" className="text-lg font-semibold tracking-tight">
-            OpenCode Studio
-          </Link>
-        </div>
-      </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-    </div>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
   )
 }
 
-function HomePage() {
-  const queryClient = useQueryClient()
-  const studiosQuery = useQuery({
+function CloseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M5 5l8 8M13 5l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function useStudios() {
+  return useQuery({
     queryKey: ["host", "studios"],
     queryFn: () => fetchJson<StudiosResponse>("/api/studios"),
   })
-  const csrfQuery = useQuery({
+}
+
+function useCsrf() {
+  return useQuery({
     queryKey: ["host", "csrf"],
     queryFn: () => fetchJson<{ token: string }>("/api/csrf"),
   })
+}
 
-  const [selected, setSelected] = useState<string[] | null>(null)
-  const saved = studiosQuery.data?.enabled ?? []
-  const enabled = selected ?? saved
-  const dirty =
-    selected !== null &&
-    (selected.length !== saved.length || selected.some((id) => !saved.includes(id)) || saved.some((id) => !selected.includes(id)))
-
-  const configure = useMutation({
+function useConfigure() {
+  const queryClient = useQueryClient()
+  const csrfQuery = useCsrf()
+  return useMutation({
     mutationFn: async (next: string[]) => {
       const token = csrfQuery.data?.token
       if (!token) throw new Error("CSRF token unavailable")
@@ -90,161 +97,453 @@ function HomePage() {
       })
     },
     onSuccess: async () => {
-      setSelected(null)
       await queryClient.invalidateQueries({ queryKey: ["host"] })
     },
   })
+}
+
+/** Survives drawer unmount across routes so toggles aren't lost mid-edit. */
+let enablementDraft: string[] | null = null
+
+function SideDrawer({
+  open,
+  onClose,
+  studioId,
+  initialPanel = "nav",
+}: {
+  open: boolean
+  onClose: () => void
+  studioId?: string
+  initialPanel?: "nav" | "settings"
+}) {
+  const titleId = useId()
+  const asideRef = useRef<HTMLElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const studiosQuery = useStudios()
+  const csrfQuery = useCsrf()
+  const configure = useConfigure()
+  const [panel, setPanel] = useState<"nav" | "settings">(initialPanel)
+  const [selected, setSelected] = useState<string[] | null>(() => enablementDraft)
+
+  useEffect(() => {
+    if (open) setPanel(initialPanel)
+  }, [open, initialPanel])
+
+  useEffect(() => {
+    enablementDraft = selected
+  }, [selected])
+
+  useEffect(() => {
+    if (!open) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    const t = window.setTimeout(() => closeRef.current?.focus(), 0)
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose()
+        return
+      }
+      if (e.key !== "Tab" || !asideRef.current) return
+      const nodes = [
+        ...asideRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((el) => !el.hasAttribute("disabled") && el.tabIndex !== -1)
+      if (nodes.length === 0) return
+      const first = nodes[0]!
+      const last = nodes[nodes.length - 1]!
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener("keydown", onKey)
+    return () => {
+      window.clearTimeout(t)
+      document.body.style.overflow = prevOverflow
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open, onClose])
 
   const cards = studiosQuery.data?.studios ?? []
+  const saved = studiosQuery.data?.enabled ?? []
+  const enabledIds = selected ?? saved
+  const enabledCards = cards.filter((s) => saved.includes(s.id))
+  const dirty =
+    selected !== null &&
+    (selected.length !== saved.length || selected.some((id) => !saved.includes(id)) || saved.some((id) => !selected.includes(id)))
 
   return (
-    <Shell>
-      <div className="mb-6 space-y-2">
-        <h1 className="text-2xl font-semibold">Studios</h1>
-        <p className="max-w-2xl text-sm text-[var(--osc-text-muted)]">
-          Select which Studios are enabled for your user (global config), then apply. The studio host reloads APIs immediately; you still
-          need to restart <span className="font-mono">OpenCode</span> so plugins and skills match the new set.
-        </p>
+    <>
+      <div
+        className={`fixed inset-0 z-50 bg-black/25 transition-opacity ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        aria-hidden={!open}
+        onClick={onClose}
+      />
+      <aside
+        ref={asideRef}
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(20rem,92vw)] flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-xl transition-transform duration-[var(--osc-motion-duration)] ease-out ${
+          open ? "translate-x-0" : "pointer-events-none -translate-x-full"
+        }`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-hidden={!open}
+        inert={open ? undefined : true}
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--osc-border)] px-4">
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-7 place-items-center rounded-md bg-[var(--osc-primary)] text-[10px] font-semibold text-[var(--osc-primary-fg)]">
+              os
+            </span>
+            <span id={titleId} className="text-[13px] font-semibold tracking-tight">
+              opencode<span className="font-normal text-[var(--osc-text-muted)]"> studio</span>
+            </span>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className="grid size-8 place-items-center rounded-md text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]"
+            aria-label="Close menu"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="flex gap-1 border-b border-[var(--osc-border)] p-2">
+          {(
+            [
+              ["nav", "Studios"],
+              ["settings", "Settings"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setPanel(id)}
+              className={`flex-1 rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors ${
+                panel === id
+                  ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
+                  : "text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {panel === "nav" && (
+            <nav className="flex flex-col gap-0.5 p-2" aria-label="Enabled studios">
+              <Link
+                to="/"
+                onClick={onClose}
+                className={`rounded-[var(--osc-radius-md)] px-3 py-2.5 text-[13px] transition-colors ${
+                  !studioId
+                    ? "bg-[var(--osc-surface)] font-medium text-[var(--osc-text)]"
+                    : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
+                }`}
+              >
+                Home
+              </Link>
+              {enabledCards.length === 0 ? (
+                <p className="px-3 py-6 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
+                  No studios enabled. Open Settings to turn some on.
+                </p>
+              ) : (
+                enabledCards.map((s) => {
+                  const active = s.id === studioId
+                  const meta = STUDIO_META[s.id]
+                  return (
+                    <Link
+                      key={s.id}
+                      to={`/studios/${s.id}`}
+                      onClick={onClose}
+                      className={`rounded-[var(--osc-radius-md)] px-3 py-2.5 transition-colors ${
+                        active
+                          ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
+                          : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="size-1.5 rounded-full" style={{ background: `var(--osc-accent-${s.id})` }} aria-hidden />
+                        <span className="text-[13px] font-medium">{s.label}</span>
+                      </div>
+                      <p className="mt-0.5 pl-3.5 text-[11px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
+                    </Link>
+                  )
+                })
+              )}
+            </nav>
+          )}
+
+          {panel === "settings" && (
+            <div className="flex flex-col gap-4 p-4">
+              <div>
+                <h2 className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Enable studios</h2>
+                <p className="mt-1 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
+                  Apply writes your user config. Restart OpenCode so plugins match.
+                </p>
+              </div>
+
+              {csrfQuery.isError && (
+                <p
+                  className="rounded-md border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
+                  role="alert"
+                >
+                  CSRF unavailable — cannot save config.
+                </p>
+              )}
+              {studiosQuery.data?.configError && (
+                <p className="rounded-md border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-[12px]" role="alert">
+                  Config error: {studiosQuery.data.configError}
+                </p>
+              )}
+
+              <ul className="space-y-1">
+                {cards.map((studio) => {
+                  const on = enabledIds.includes(studio.id)
+                  return (
+                    <li key={studio.id}>
+                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-[var(--osc-radius-md)] px-2 py-2.5 hover:bg-[var(--osc-surface)]">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="size-1.5 shrink-0 rounded-full"
+                            style={{ background: on ? `var(--osc-accent-${studio.id})` : "var(--osc-border-strong)" }}
+                            aria-hidden
+                          />
+                          <span className="truncate text-[13px] font-medium">{studio.label}</span>
+                        </span>
+                        <span className="relative inline-flex shrink-0 items-center">
+                          <span className="sr-only">{on ? "enabled" : "disabled"}</span>
+                          <input
+                            type="checkbox"
+                            className="peer sr-only"
+                            checked={on}
+                            onChange={() => {
+                              configure.reset()
+                              setSelected((current) => {
+                                const base = current ?? saved
+                                return on ? base.filter((id) => id !== studio.id) : [...base, studio.id]
+                              })
+                            }}
+                          />
+                          <span className="h-5 w-9 rounded-full bg-[var(--osc-border-strong)] transition-colors peer-checked:bg-[var(--osc-primary)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--osc-text)] peer-focus-visible:ring-offset-2" />
+                          <span className="absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+                        </span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <button
+                type="button"
+                disabled={configure.isPending || !csrfQuery.data || !dirty}
+                onClick={() => {
+                  configure.mutate(enabledIds, {
+                    onSuccess: () => {
+                      setSelected(null)
+                      enablementDraft = null
+                    },
+                  })
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-full bg-[var(--osc-primary)] px-4 text-[12px] font-medium text-[var(--osc-primary-fg)] hover:bg-[var(--osc-primary-hover)] disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                {configure.isPending ? "Applying…" : "Apply selection"}
+              </button>
+
+              {dirty && <p className="text-[12px] text-[var(--osc-text-muted)]">Unsaved changes</p>}
+              {configure.isSuccess && (
+                <div
+                  className="rounded-md border border-[var(--osc-warning)]/30 bg-[var(--osc-warning-bg)] px-3 py-2 text-[12px] text-[var(--osc-warning)]"
+                  role="status"
+                >
+                  <p className="font-medium">Configuration saved</p>
+                  <p className="mt-1 text-[var(--osc-text-muted)]">
+                    {studiosQuery.data?.restartRequiredHint ?? "Host APIs reloaded. Restart OpenCode so plugins and skills match."}
+                  </p>
+                </div>
+              )}
+              {configure.isError && (
+                <p className="text-[12px] text-[var(--osc-error)]" role="alert">
+                  {(configure.error as Error).message}
+                </p>
+              )}
+
+              {studiosQuery.data && (
+                <div className="space-y-2 border-t border-[var(--osc-border)] pt-4 font-mono text-[10px] leading-relaxed text-[var(--osc-text-faint)]">
+                  <p>v{studiosQuery.data.packageVersion}</p>
+                  <p className="break-all" title={studiosQuery.data.workspace}>
+                    {studiosQuery.data.workspace}
+                  </p>
+                  {studiosQuery.data.configPath && (
+                    <p className="break-all" title={studiosQuery.data.configPath}>
+                      {studiosQuery.data.configPath}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {cards.map((s) =>
+                saved.includes(s.id) ? (
+                  <details key={s.id} className="rounded-md border border-[var(--osc-border)] px-3 py-2">
+                    <summary className="cursor-pointer text-[12px] font-medium text-[var(--osc-text)]">{s.label}</summary>
+                    <dl className="mt-2 space-y-1 font-mono text-[10px] text-[var(--osc-text-faint)]">
+                      <div>
+                        <dt className="inline text-[var(--osc-text-muted)]">root </dt>
+                        <dd className="inline break-all">{s.root ?? s.rootError ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="inline text-[var(--osc-text-muted)]">skill </dt>
+                        <dd className="inline">{s.skillInstalled ? s.skill : `${s.skill} (not installed)`}</dd>
+                      </div>
+                      <div>
+                        <dt className="inline text-[var(--osc-text-muted)]">engines </dt>
+                        <dd className="inline">{s.requiredEngines.join(", ") || "none"}</dd>
+                      </div>
+                    </dl>
+                  </details>
+                ) : null,
+              )}
+            </div>
+          )}
+        </div>
+      </aside>
+    </>
+  )
+}
+
+function TopBar({ studioLabel, onMenu }: { studioLabel?: string; onMenu: () => void }) {
+  return (
+    <header className="sticky top-0 z-40 shrink-0 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)]/90 backdrop-blur-md">
+      <div className="flex h-12 items-center gap-3 px-3 sm:px-4">
+        <button
+          type="button"
+          onClick={onMenu}
+          className="grid size-9 place-items-center rounded-md text-[var(--osc-text)] hover:bg-[var(--osc-surface)]"
+          aria-label="Open menu"
+        >
+          <MenuIcon />
+        </button>
+        {studioLabel ? (
+          <div className="min-w-0">
+            <p className="truncate text-[14px] font-semibold tracking-tight text-[var(--osc-text)]">{studioLabel}</p>
+          </div>
+        ) : (
+          <Link to="/" className="flex min-w-0 items-center gap-2">
+            <span className="grid size-7 place-items-center rounded-md bg-[var(--osc-primary)] text-[10px] font-semibold text-[var(--osc-primary-fg)]">
+              os
+            </span>
+            <span className="truncate text-[13px] font-semibold tracking-tight">
+              opencode<span className="font-normal text-[var(--osc-text-muted)]"> studio</span>
+            </span>
+          </Link>
+        )}
+      </div>
+    </header>
+  )
+}
+
+function HomePage() {
+  const studiosQuery = useStudios()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerPanel, setDrawerPanel] = useState<"nav" | "settings">("nav")
+
+  const openSettings = () => {
+    setDrawerPanel("settings")
+    setDrawerOpen(true)
+  }
+  const openMenu = () => {
+    setDrawerPanel("nav")
+    setDrawerOpen(true)
+  }
+
+  const cards = (studiosQuery.data?.studios ?? []).filter((s) => s.enabled)
+
+  return (
+    <div className="min-h-dvh bg-[var(--osc-bg)]">
+      <TopBar onMenu={openMenu} />
+      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} initialPanel={drawerPanel} />
+
+      <main className="mx-auto max-w-[880px] px-4 py-12 sm:px-6 sm:py-16">
+        <div className="osc-reveal mb-10">
+          <h1 className="text-[2rem] leading-tight font-semibold tracking-[-0.035em] text-[var(--osc-text)] sm:text-[2.25rem]">Studios</h1>
+          <p className="mt-2 max-w-md text-[14px] leading-relaxed text-[var(--osc-text-muted)]">
+            Open a companion viewer. Enable or disable domains from the menu.
+          </p>
+        </div>
+
         {studiosQuery.isLoading && <p className="text-sm text-[var(--osc-text-muted)]">Loading studios…</p>}
         {studiosQuery.isError && (
-          <p className="rounded border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-sm" role="alert">
+          <p
+            className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-4 py-3 text-sm text-[var(--osc-error)]"
+            role="alert"
+          >
             Failed to load studios: {(studiosQuery.error as Error)?.message ?? "unknown error"}
           </p>
         )}
-        {csrfQuery.isError && (
-          <p className="rounded border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-sm" role="alert">
-            Failed to load CSRF token; configuration is unavailable until the host is reachable.
-          </p>
-        )}
-        {studiosQuery.data && (
-          <p className="font-mono text-xs text-[var(--osc-text-faint)]">
-            domain {studiosQuery.data.workspace}
-            {studiosQuery.data.configPath ? ` · config ${studiosQuery.data.configPath}` : ""} · v{studiosQuery.data.packageVersion}
-            {studiosQuery.data.update?.latest ? ` · npm ${studiosQuery.data.update.latest}` : ""}
-          </p>
-        )}
+
         {studiosQuery.data?.update?.updateAvailable && (
           <div
-            className="max-w-2xl rounded-md border border-[var(--osc-accent)] bg-[var(--osc-bg-elevated)] px-4 py-3 text-sm"
+            className="mb-8 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-5 py-4 shadow-[var(--osc-shadow)]"
             role="status"
           >
-            <p className="font-semibold text-[var(--osc-accent)]">
-              Update available: v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
+            <p className="text-sm font-medium">
+              Update available · v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
             </p>
-            <p className="mt-1 text-[var(--osc-text-muted)]">
-              Install the new package, then restart the background host (and OpenCode if plugins changed):
-            </p>
-            <pre className="mt-2 overflow-x-auto rounded bg-[var(--osc-bg)] px-3 py-2 font-mono text-xs text-[var(--osc-text)]">
+            <pre className="mt-2 overflow-x-auto rounded-md bg-[var(--osc-bg-subtle)] px-3 py-2 font-mono text-[11px]">
               {`npm i -g @oguzkaganozt/opencode-studio@latest
 opencode-studio service restart`}
             </pre>
           </div>
         )}
-        {studiosQuery.data?.configError && (
-          <p className="rounded border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-sm">
-            Config error: {studiosQuery.data.configError}
-          </p>
-        )}
-      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {cards.map((studio) => {
-          const on = enabled.includes(studio.id)
-          return (
-            <div
-              key={studio.id}
-              className={`rounded-md border p-4 transition ${
-                on ? "border-[var(--osc-accent)] bg-[var(--osc-bg-elevated)]" : "border-[var(--osc-border)] bg-[var(--osc-bg-subtle)]"
-              }`}
-              data-studio={studio.id}
+        {!studiosQuery.isLoading && cards.length === 0 && (
+          <div className="rounded-[var(--osc-radius-lg)] border border-dashed border-[var(--osc-border-strong)] px-6 py-16 text-center">
+            <p className="text-[15px] font-medium text-[var(--osc-text)]">No studios enabled</p>
+            <p className="mt-1.5 text-[13px] text-[var(--osc-text-muted)]">Turn on CAD, Media, PCB, or Startup in Settings.</p>
+            <button
+              type="button"
+              onClick={openSettings}
+              className="mt-5 inline-flex h-9 items-center rounded-full bg-[var(--osc-primary)] px-5 text-[12px] font-medium text-[var(--osc-primary-fg)] hover:bg-[var(--osc-primary-hover)]"
             >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-medium">{studio.label}</h2>
-                <label className="flex items-center gap-2 text-xs text-[var(--osc-text-muted)]">
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => {
-                      configure.reset()
-                      setSelected((current) => {
-                        const base = current ?? studiosQuery.data?.enabled ?? []
-                        return on ? base.filter((id) => id !== studio.id) : [...base, studio.id]
-                      })
-                    }}
-                  />
-                  <span className="font-mono uppercase tracking-wide">{on ? "enabled" : "disabled"}</span>
-                </label>
-              </div>
-              <p className="mb-3 text-sm text-[var(--osc-text-muted)]">{studio.description}</p>
-              <dl className="space-y-1 font-mono text-xs text-[var(--osc-text-faint)]">
-                <div>
-                  <dt className="inline text-[var(--osc-text-muted)]">root </dt>
-                  <dd className="inline break-all">{studio.root ?? studio.rootError ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="inline text-[var(--osc-text-muted)]">engines </dt>
-                  <dd className="inline">{studio.requiredEngines.join(", ") || "none"}</dd>
-                </div>
-                <div>
-                  <dt className="inline text-[var(--osc-text-muted)]">skill </dt>
-                  <dd className="inline">{studio.skillInstalled ? studio.skill : `${studio.skill} (not installed)`}</dd>
-                </div>
-              </dl>
-              {on && (
-                <div className="mt-3">
-                  <Link to={`/studios/${studio.id}`} className="text-sm text-[var(--osc-accent)] underline-offset-2 hover:underline">
-                    Open viewer
-                  </Link>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="mt-6 space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            disabled={configure.isPending || !csrfQuery.data || !dirty}
-            onClick={() => configure.mutate(enabled)}
-            className="rounded bg-[var(--osc-accent)] px-4 py-2 text-sm font-medium text-black disabled:opacity-50"
-          >
-            {configure.isPending ? "Applying…" : "Apply selection"}
-          </button>
-          {dirty && !configure.isSuccess && (
-            <p className="text-sm text-[var(--osc-text-muted)]">
-              Unsaved selection — apply writes config and reloads the host; then restart OpenCode.
-            </p>
-          )}
-        </div>
-
-        {configure.isSuccess && (
-          <div
-            className="max-w-2xl rounded-md border border-[var(--osc-warning)] bg-[var(--osc-warning-bg)] px-4 py-3 text-sm text-[var(--osc-text)]"
-            role="status"
-          >
-            <p className="font-semibold text-[var(--osc-warning)]">Configuration saved — restart OpenCode</p>
-            <p className="mt-2 text-[var(--osc-text-muted)]">
-              Studio host APIs reloaded. Restart <span className="font-mono text-[var(--osc-text)]">OpenCode</span> so plugins and skills
-              pick up the new enable set.
-            </p>
-            <p className="mt-2 text-xs text-[var(--osc-text-faint)]">
-              You do not need to restart <span className="font-mono">opencode-studio serve</span> after Apply from this page.
-            </p>
+              Open settings
+            </button>
           </div>
         )}
 
-        {configure.isError && (
-          <p
-            className="rounded border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-sm text-[var(--osc-error)]"
-            role="alert"
-          >
-            {(configure.error as Error).message}
-          </p>
-        )}
-      </div>
-    </Shell>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {cards.map((studio, index) => {
+            const meta = STUDIO_META[studio.id]
+            return (
+              <Link
+                key={studio.id}
+                to={`/studios/${studio.id}`}
+                data-studio={studio.id}
+                className="osc-reveal group flex flex-col rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-5 shadow-[var(--osc-shadow)] transition-[border-color,transform] hover:-translate-y-0.5 hover:border-[var(--osc-border-strong)]"
+                style={{ animationDelay: `${Math.min(index, 6) * 40}ms` }}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="size-1.5 rounded-full" style={{ background: `var(--osc-accent-${studio.id})` }} aria-hidden />
+                  <h2 className="text-[15px] font-semibold tracking-tight">{studio.label}</h2>
+                </div>
+                <p className="mb-1 text-[12px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
+                <p className="mb-5 flex-1 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">{studio.description}</p>
+                <span className="inline-flex h-9 items-center justify-center rounded-full bg-[var(--osc-primary)] text-[12px] font-medium text-[var(--osc-primary-fg)] transition-colors group-hover:bg-[var(--osc-primary-hover)]">
+                  Open viewer
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      </main>
+    </div>
   )
 }
 
@@ -282,15 +581,12 @@ assertViewerLoadersComplete()
 
 function StudioFrame() {
   const { studioId = "" } = useParams()
-  const studiosQuery = useQuery({
-    queryKey: ["host", "studios"],
-    queryFn: () => fetchJson<StudiosResponse>("/api/studios"),
-  })
+  const studiosQuery = useStudios()
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const uiBasePath = `/studios/${studioId}`
   const apiBasePath = `/api/studios/${studioId}`
 
-  // Synchronous so first paint / first fetch see the correct mount bases.
   if (studioId) {
     setStudioRuntime({ studioId, uiBase: uiBasePath, apiBase: apiBasePath })
   }
@@ -305,28 +601,30 @@ function StudioFrame() {
 
   if (studiosQuery.isLoading) {
     return (
-      <Shell>
-        <p>Loading…</p>
-      </Shell>
+      <div className="flex min-h-dvh flex-col bg-[var(--osc-bg)]">
+        <TopBar studioLabel="Loading…" onMenu={() => setDrawerOpen(true)} />
+        <p className="p-8 text-sm text-[var(--osc-text-muted)]">Loading…</p>
+      </div>
     )
   }
   if (!studiosQuery.data?.enabled.includes(studioId)) {
     return <Navigate to="/" replace />
   }
 
+  const card = studiosQuery.data.studios.find((s) => s.id === studioId)
   const Viewer = isStudioId(studioId) ? viewerLoaders[studioId] : undefined
-  const page = Viewer ? <Viewer /> : <p>Unknown studio</p>
+  const page = Viewer ? <Viewer /> : <p className="p-8 text-sm">Unknown studio</p>
+  const label = card?.label ?? studioId
 
   return (
-    <div data-studio={studioId} className="studio-shell flex min-h-dvh flex-col">
-      <div className="shrink-0 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 py-2 text-sm">
-        <Link to="/" className="text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]">
-          ← Studios
-        </Link>
-        <span className="mx-2 text-[var(--osc-text-faint)]">/</span>
-        <span className="font-medium">{studioId}</span>
-      </div>
-      <Suspense fallback={<div className="p-6 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>}>{page}</Suspense>
+    <div data-studio={studioId} className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
+      <TopBar studioLabel={label} onMenu={() => setDrawerOpen(true)} />
+      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
+      <Suspense
+        fallback={<div className="flex flex-1 items-center justify-center p-8 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>}
+      >
+        {page}
+      </Suspense>
     </div>
   )
 }

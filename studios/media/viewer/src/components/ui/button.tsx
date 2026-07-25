@@ -3,13 +3,15 @@ import type { ButtonHTMLAttributes } from "react"
 import { cn } from "../../lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-full border text-xs font-semibold uppercase tracking-[0.14em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8ff32] disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 rounded-full border text-[12px] font-medium tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--osc-text)] disabled:pointer-events-none disabled:opacity-40",
   {
     variants: {
       variant: {
-        default: "border-[#c8ff32] bg-[#c8ff32] px-4 py-2 text-[#111310] hover:bg-[#dcff7c]",
-        outline: "border-white/18 bg-white/[0.03] px-4 py-2 text-[#f2efe6] hover:border-white/38 hover:bg-white/[0.07]",
-        ghost: "border-transparent px-3 py-2 text-[#9da397] hover:bg-white/[0.06] hover:text-[#f2efe6]",
+        default:
+          "border-[var(--osc-primary)] bg-[var(--osc-primary)] px-4 py-2 text-[var(--osc-primary-fg)] hover:bg-[var(--osc-primary-hover)]",
+        outline:
+          "border-[var(--osc-border-strong)] bg-[var(--osc-bg-elevated)] px-4 py-2 text-[var(--osc-text)] hover:bg-[var(--osc-surface)]",
+        ghost: "border-transparent px-3 py-2 text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]",
       },
     },
     defaultVariants: { variant: "default" },

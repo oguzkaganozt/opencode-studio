@@ -110,7 +110,10 @@ async function browserSmoke(base: string) {
     await page.goto(base, { waitUntil: "networkidle" })
     await page.waitForSelector("text=Studios")
     await page.waitForSelector("text=CAD Studio")
+    await page.getByRole("button", { name: "Open menu" }).click()
+    await page.getByRole("button", { name: "Settings" }).click()
     await page.waitForSelector("text=Apply selection")
+    await page.getByRole("button", { name: "Close menu" }).click()
     await assertTailwindUtilities(page)
     console.log("home ok")
 

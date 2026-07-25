@@ -4,36 +4,41 @@ import { cn } from "../lib/utils"
 
 export function MediaPreview({ asset, compact = false }: { asset: Asset; compact?: boolean }) {
   if (asset.modality === "image") {
-    return <img className={cn("media-object", compact && "media-object-compact")} src={asset.mediaUrl} alt={asset.path} loading="lazy" />
+    return (
+      <img
+        className={cn(
+          "block bg-[var(--osc-canvas-bg)] object-contain",
+          compact ? "h-full w-full object-cover" : "max-h-[76vh] w-full",
+        )}
+        src={asset.mediaUrl}
+        alt={asset.path}
+        loading="lazy"
+      />
+    )
   }
   if (asset.modality === "video") {
     return compact ? (
-      <div className="media-placeholder">
-        <span>
-          <Film size={16} /> Video
+      <div className="grid h-full w-full place-items-center bg-[var(--osc-bg-subtle)]">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--osc-primary)] px-2.5 py-1 text-[10px] font-medium tracking-wide text-[var(--osc-primary-fg)] uppercase">
+          <Film size={14} /> Video
         </span>
       </div>
     ) : (
-      <video className="media-object" src={asset.mediaUrl} controls playsInline preload="metadata" />
+      <video className="block max-h-[76vh] w-full bg-[var(--osc-canvas-bg)] object-contain" src={asset.mediaUrl} controls playsInline preload="metadata" />
     )
   }
   return compact ? (
-    <div className="media-placeholder audio-placeholder">
-      <div className="frequency-bars" aria-hidden="true">
-        {Array.from({ length: 22 }, (_, index) => (
-          <i key={index} />
-        ))}
-      </div>
-      <span>
-        <AudioLines size={16} /> Audio
+    <div className="grid h-full w-full place-items-center bg-[var(--osc-bg-subtle)]">
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--osc-primary)] px-2.5 py-1 text-[10px] font-medium tracking-wide text-[var(--osc-primary-fg)] uppercase">
+        <AudioLines size={14} /> Audio
       </span>
     </div>
   ) : (
-    <div className="audio-player">
-      <AudioLines size={42} strokeWidth={1.25} />
-      <div>
-        <p>Audio asset</p>
-        <audio src={asset.mediaUrl} controls preload="metadata" />
+    <div className="flex w-full max-w-lg items-center gap-4 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-6">
+      <AudioLines size={36} strokeWidth={1.25} className="text-[var(--osc-accent)]" />
+      <div className="min-w-0 flex-1">
+        <p className="mb-2 text-[13px] text-[var(--osc-text-muted)]">Audio asset</p>
+        <audio className="w-full" src={asset.mediaUrl} controls preload="metadata" />
       </div>
     </div>
   )

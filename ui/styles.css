@@ -2,10 +2,9 @@
 @import "@fontsource/barlow/500.css";
 @import "@fontsource/barlow/600.css";
 @import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
 @import "./tokens.css";
 @import "tailwindcss";
-/* Vite root is ui/, so Tailwind's automatic scan misses studio viewers.
-   Register them explicitly (biome's CSS parser rejects `@import … source()`). */
 @source "../studios";
 
 *,
@@ -25,7 +24,9 @@ body {
   font-family: var(--osc-font-ui);
   background: var(--osc-bg);
   color: var(--osc-text);
-  line-height: 1.45;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -34,12 +35,39 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--osc-accent);
+  outline: 2px solid var(--osc-text);
   outline-offset: 2px;
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+  color: inherit;
+}
+
+.mono {
+  font-family: var(--osc-font-mono);
+}
+
+@keyframes osc-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.osc-reveal {
+  animation: osc-fade-up var(--osc-motion-duration) ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .osc-reveal {
+    animation: none;
+  }
 }

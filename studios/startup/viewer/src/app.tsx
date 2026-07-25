@@ -25,8 +25,6 @@ function safeHref(raw: string | null | undefined): string | null {
 import { useQuery } from "@tanstack/react-query"
 import { Link, Route, Routes, useParams, useSearchParams } from "react-router"
 
-type StudioInfo = { id: string; packageVersion: string; contractVersion?: string }
-
 type CandidateSummary = {
   name: string
   total: number
@@ -76,37 +74,46 @@ function verdictClass(verdict: string) {
   return "text-[var(--osc-text-faint)]"
 }
 
-function StudioBar({ studio }: { studio?: StudioInfo }) {
+function SubNav({ active }: { active: "pool" | "rejects" }) {
   return (
-    <header className="flex h-10 items-center justify-between border-b border-[var(--osc-border)] px-3">
-      <div className="flex items-baseline gap-3">
-        <span className="text-sm font-semibold tracking-wide" data-studio="startup">
-          Startup Studio
-        </span>
-        <span className="mono text-xs text-[var(--osc-text-muted)]">{studio ? `${studio.id}@${studio.packageVersion}` : "loading"}</span>
-      </div>
-      <nav className="flex items-center gap-3 text-xs">
-        <Link className="text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]" to={studioHref()}>
-          Pool
+    <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-[var(--osc-border)] bg-[var(--osc-bg)] px-3">
+      <span className="sr-only">Startup Studio</span>
+      {(
+        [
+          ["pool", "Pool", studioHref()],
+          ["rejects", "Rejects", studioHref("rejects")],
+        ] as const
+      ).map(([id, label, to]) => (
+        <Link
+          key={id}
+          to={to}
+          className={`rounded-md px-3 py-1.5 text-[13px] transition-colors ${
+            active === id
+              ? "bg-[var(--osc-surface)] font-medium text-[var(--osc-text)]"
+              : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
+          }`}
+        >
+          {label}
         </Link>
-        <Link className="text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]" to={studioHref("rejects")}>
-          Rejects
-        </Link>
-        <span className="mono text-[var(--osc-text-faint)]">OSC {studio?.contractVersion ?? "…"}</span>
-      </nav>
-    </header>
+      ))}
+    </div>
   )
 }
 
 function CandidateRail({ candidates, selectedId }: { candidates: CandidateSummary[]; selectedId?: string }) {
   return (
     <aside className="w-72 shrink-0 overflow-auto border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)]">
-      <div className="border-b border-[var(--osc-border)] px-3 py-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">
+      <div className="border-b border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
         Candidates
       </div>
-      <nav className="flex flex-col p-1">
+      <nav className="flex flex-col gap-0.5 p-2">
         {candidates.length === 0 ? (
-          <p className="px-2 py-3 text-sm text-[var(--osc-text-muted)]">No candidates in pool.</p>
+          <div className="px-2 py-10 text-center">
+            <p className="text-[13px] font-medium text-[var(--osc-text)]">Pool is empty</p>
+            <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
+              Mine and score candidates with agent tools, then refresh.
+            </p>
+          </div>
         ) : (
           candidates.map((c) => {
             const active = c.name === selectedId
@@ -114,9 +121,9 @@ function CandidateRail({ candidates, selectedId }: { candidates: CandidateSummar
               <Link
                 key={c.name}
                 to={studioHref(`candidates/${c.name}`)}
-                className={`rounded-[var(--osc-radius-md)] px-2 py-1.5 text-sm ${
+                className={`rounded-[var(--osc-radius-md)] px-2.5 py-2 text-[13px] transition-colors ${
                   active
-                    ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
+                    ? "bg-[var(--osc-surface)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
                     : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
                 }`}
               >
@@ -124,11 +131,11 @@ function CandidateRail({ candidates, selectedId }: { candidates: CandidateSummar
                   <span className="truncate font-medium">{c.name}</span>
                   <span className="mono text-[11px] text-[var(--osc-accent)]">{c.total}</span>
                 </div>
-                <div className="mono mt-0.5 flex gap-2 text-[11px] text-[var(--osc-text-faint)]">
+                <div className="mono mt-0.5 flex gap-2 text-[10px] text-[var(--osc-text-faint)]">
                   <span>{c.signal_class}</span>
                   <span className={verdictClass(c.verdict)}>{c.verdict}</span>
                 </div>
-                <div className="mt-0.5 line-clamp-2 text-xs text-[var(--osc-text-muted)]">{c.one_liner}</div>
+                <div className="mt-1 line-clamp-2 text-[12px] text-[var(--osc-text-muted)]">{c.one_liner}</div>
               </Link>
             )
           })
@@ -147,19 +154,22 @@ function CandidateViewport({ id }: { id?: string }) {
 
   if (!id) {
     return (
-      <main className="flex flex-1 items-center justify-center bg-[var(--osc-canvas-bg)] text-[var(--osc-text-muted)]">
-        Select a candidate to inspect.
+      <main className="flex flex-1 flex-col items-center justify-center bg-[var(--osc-bg)] px-6 text-center">
+        <p className="text-[15px] font-medium tracking-tight text-[var(--osc-text)]">Select a candidate</p>
+        <p className="mt-1.5 max-w-xs text-[13px] text-[var(--osc-text-muted)]">
+          Inspect evidence, rubric scores, and paper evaluation in the detail pane.
+        </p>
       </main>
     )
   }
 
   if (query.isLoading) {
-    return <main className="flex flex-1 items-center justify-center text-[var(--osc-text-muted)]">Loading…</main>
+    return <main className="flex flex-1 items-center justify-center text-[13px] text-[var(--osc-text-muted)]">Loading…</main>
   }
 
   if (query.isError || !query.data) {
     return (
-      <main className="flex flex-1 items-center justify-center text-[var(--osc-error)]" role="alert">
+      <main className="flex flex-1 items-center justify-center text-[13px] text-[var(--osc-error)]" role="alert">
         Candidate not found.
       </main>
     )
@@ -167,41 +177,44 @@ function CandidateViewport({ id }: { id?: string }) {
 
   const c = query.data
   return (
-    <main className="flex flex-1 flex-col overflow-auto bg-[var(--osc-canvas-bg)] p-6">
+    <main className="flex flex-1 flex-col overflow-auto bg-[var(--osc-bg)] p-6 sm:p-8">
       <div className="mb-1 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-2xl font-semibold">{c.name}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{c.name}</h1>
         <span className="mono text-lg text-[var(--osc-accent)]">{c.total}/10</span>
-        <span className={`mono text-xs ${verdictClass(c.verdict)}`}>{c.verdict}</span>
-        <span className="mono text-xs text-[var(--osc-text-faint)]">class {c.signal_class}</span>
+        <span className={`mono text-[11px] ${verdictClass(c.verdict)}`}>{c.verdict}</span>
+        <span className="mono text-[11px] text-[var(--osc-text-faint)]">class {c.signal_class}</span>
       </div>
-      <p className="mb-4 text-[var(--osc-text-muted)]">{c.one_liner}</p>
+      <p className="mb-6 text-[14px] text-[var(--osc-text-muted)]">{c.one_liner}</p>
 
       <section className="mb-6">
-        <h2 className="mb-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">Problem</h2>
-        <p className="text-sm leading-relaxed">{c.problem}</p>
+        <h2 className="mb-2 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Problem</h2>
+        <p className="text-[14px] leading-relaxed">{c.problem}</p>
       </section>
 
       <section className="mb-6 grid gap-4 sm:grid-cols-2">
-        <div>
-          <h2 className="mb-1 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">Buyer</h2>
-          <p className="text-sm">{c.buyer}</p>
+        <div className="rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4">
+          <h2 className="mb-1 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Buyer</h2>
+          <p className="text-[13px]">{c.buyer}</p>
         </div>
-        <div>
-          <h2 className="mb-1 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">Shelf</h2>
-          <p className="text-sm">{c.shelf}</p>
+        <div className="rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4">
+          <h2 className="mb-1 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Shelf</h2>
+          <p className="text-[13px]">{c.shelf}</p>
         </div>
       </section>
 
       <section className="mb-6">
-        <h2 className="mb-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">Evidence</h2>
-        <ul className="space-y-3">
+        <h2 className="mb-2 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Evidence</h2>
+        <ul className="space-y-2">
           {c.evidence.map((e) => {
             const href = safeHref(e.url)
             return (
-              <li key={e.url} className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-3">
+              <li
+                key={e.url}
+                className="rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 shadow-[var(--osc-shadow)]"
+              >
                 {href ? (
                   <a
-                    className="mono text-xs text-[var(--osc-accent)] underline-offset-2 hover:underline"
+                    className="mono text-[12px] text-[var(--osc-accent)] underline-offset-2 hover:underline"
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -209,20 +222,20 @@ function CandidateViewport({ id }: { id?: string }) {
                     {e.url}
                   </a>
                 ) : (
-                  <span className="mono text-xs text-[var(--osc-text-muted)]">{e.url}</span>
+                  <span className="mono text-[12px] text-[var(--osc-text-muted)]">{e.url}</span>
                 )}
-              <p className="mt-1 text-sm text-[var(--osc-text-muted)]">{e.summary}</p>
-              <div className="mono mt-1 flex gap-3 text-[11px] text-[var(--osc-text-faint)]">
-                {e.date ? <span>{e.date}</span> : null}
-                {e.engagement ? <span>{e.engagement}</span> : null}
-              </div>
-            </li>
+                <p className="mt-1.5 text-[13px] text-[var(--osc-text-muted)]">{e.summary}</p>
+                <div className="mono mt-1.5 flex gap-3 text-[10px] text-[var(--osc-text-faint)]">
+                  {e.date ? <span>{e.date}</span> : null}
+                  {e.engagement ? <span>{e.engagement}</span> : null}
+                </div>
+              </li>
             )
           })}
         </ul>
         {c.verify_summary ? (
-          <p className="mt-3 text-sm text-[var(--osc-text-muted)]">
-            <span className="text-[var(--osc-text-faint)]">Verify: </span>
+          <p className="mt-3 text-[13px] text-[var(--osc-text-muted)]">
+            <span className="text-[var(--osc-text-faint)]">Verify · </span>
             {c.verify_summary}
           </p>
         ) : null}
@@ -230,23 +243,25 @@ function CandidateViewport({ id }: { id?: string }) {
 
       {c.evaluation ? (
         <section className="mb-6">
-          <h2 className="mb-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">Paper evaluation</h2>
-          <dl className="space-y-3 text-sm">
+          <h2 className="mb-2 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
+            Paper evaluation
+          </h2>
+          <dl className="space-y-3 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 text-[13px]">
             <div>
               <dt className="text-[var(--osc-text-faint)]">Pros</dt>
-              <dd>{c.evaluation.pros}</dd>
+              <dd className="mt-0.5">{c.evaluation.pros}</dd>
             </div>
             <div>
               <dt className="text-[var(--osc-text-faint)]">Cons</dt>
-              <dd>{c.evaluation.cons}</dd>
+              <dd className="mt-0.5">{c.evaluation.cons}</dd>
             </div>
             <div>
               <dt className="text-[var(--osc-text-faint)]">Risks</dt>
-              <dd>{c.evaluation.risks}</dd>
+              <dd className="mt-0.5">{c.evaluation.risks}</dd>
             </div>
             <div>
               <dt className="text-[var(--osc-text-faint)]">Recommendation</dt>
-              <dd>{c.evaluation.recommendation}</dd>
+              <dd className="mt-0.5">{c.evaluation.recommendation}</dd>
             </div>
           </dl>
         </section>
@@ -258,34 +273,34 @@ function CandidateViewport({ id }: { id?: string }) {
 function Inspector({ entry }: { entry?: PoolEntry }) {
   const r = entry?.rubric
   return (
-    <aside className="hidden w-64 shrink-0 overflow-auto border-l border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:block">
-      <div className="border-b border-[var(--osc-border)] px-3 py-2 text-xs uppercase tracking-wider text-[var(--osc-text-muted)]">
+    <aside className="hidden w-60 shrink-0 overflow-auto border-l border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:block">
+      <div className="border-b border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
         Inspector
       </div>
-      <dl className="space-y-3 p-3 text-sm">
+      <dl className="space-y-4 p-4 text-[13px]">
         <div>
-          <dt className="text-[var(--osc-text-muted)]">Total</dt>
-          <dd className="mono text-[var(--osc-accent)]">{entry ? `${entry.total}/10` : "—"}</dd>
+          <dt className="text-[11px] text-[var(--osc-text-faint)]">Total</dt>
+          <dd className="mono mt-0.5 text-[var(--osc-accent)]">{entry ? `${entry.total}/10` : "—"}</dd>
         </div>
         {r
           ? (["pain", "payment", "shelf", "freshness", "fit"] as const).map((key) => (
               <div key={key}>
-                <dt className="text-[var(--osc-text-muted)]">{key}</dt>
-                <dd className="mono">{r[key]}</dd>
+                <dt className="text-[11px] text-[var(--osc-text-faint)]">{key}</dt>
+                <dd className="mono mt-0.5">{r[key]}</dd>
               </div>
             ))
           : null}
         <div>
-          <dt className="text-[var(--osc-text-muted)]">Batch</dt>
-          <dd className="mono text-xs">{entry?.batch ?? "—"}</dd>
+          <dt className="text-[11px] text-[var(--osc-text-faint)]">Batch</dt>
+          <dd className="mono mt-0.5 text-[12px]">{entry?.batch ?? "—"}</dd>
         </div>
         <div>
-          <dt className="text-[var(--osc-text-muted)]">First seen</dt>
-          <dd className="mono text-xs">{entry?.first_seen ?? "—"}</dd>
+          <dt className="text-[11px] text-[var(--osc-text-faint)]">First seen</dt>
+          <dd className="mono mt-0.5 text-[12px]">{entry?.first_seen ?? "—"}</dd>
         </div>
         <div>
-          <dt className="text-[var(--osc-text-muted)]">Status</dt>
-          <dd className="mono text-xs">{entry?.status ?? "—"}</dd>
+          <dt className="text-[11px] text-[var(--osc-text-faint)]">Status</dt>
+          <dd className="mono mt-0.5 text-[12px]">{entry?.status ?? "—"}</dd>
         </div>
       </dl>
     </aside>
@@ -294,12 +309,12 @@ function Inspector({ entry }: { entry?: PoolEntry }) {
 
 function StatusStrip({ count, label }: { count: number; label: string }) {
   return (
-    <footer className="flex h-7 items-center border-t border-[var(--osc-border)] px-3 text-xs text-[var(--osc-text-muted)]">
+    <footer className="flex h-8 shrink-0 items-center border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 text-[11px] text-[var(--osc-text-faint)]">
       <span className="mono">
         {count} {label}
       </span>
-      <span className="mx-2 text-[var(--osc-text-faint)]">|</span>
-      <span>Read-only Companion</span>
+      <span className="mx-2">·</span>
+      <span>Read-only companion</span>
     </footer>
   )
 }
@@ -317,11 +332,11 @@ function FilterBar() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-[var(--osc-border)] px-3 py-1.5 text-xs">
-      <label className="flex items-center gap-1 text-[var(--osc-text-muted)]">
+    <div className="flex flex-wrap items-center gap-3 border-b border-[var(--osc-border)] bg-[var(--osc-bg)] px-4 py-2 text-[12px]">
+      <label className="flex items-center gap-1.5 text-[var(--osc-text-muted)]">
         Class
         <select
-          className="rounded border border-[var(--osc-border)] bg-[var(--osc-surface)] px-1.5 py-0.5 text-[var(--osc-text)]"
+          className="rounded-md border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-2 py-1 text-[var(--osc-text)]"
           value={signalClass}
           onChange={(e) => set("signalClass", e.target.value)}
         >
@@ -330,10 +345,10 @@ function FilterBar() {
           <option value="B">B</option>
         </select>
       </label>
-      <label className="flex items-center gap-1 text-[var(--osc-text-muted)]">
+      <label className="flex items-center gap-1.5 text-[var(--osc-text-muted)]">
         Verdict
         <select
-          className="rounded border border-[var(--osc-border)] bg-[var(--osc-surface)] px-1.5 py-0.5 text-[var(--osc-text)]"
+          className="rounded-md border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-2 py-1 text-[var(--osc-text)]"
           value={verdict}
           onChange={(e) => set("verdict", e.target.value)}
         >
@@ -359,10 +374,6 @@ function PoolShell() {
   if (verdict) qs.set("verdict", verdict)
   const listUrl = api(`/candidates${qs.toString() ? `?${qs}` : ""}`)
 
-  const studioQuery = useQuery({
-    queryKey: ["startup", "studio"],
-    queryFn: () => fetchJson<{ packageVersion: string }>("/api/studios").then((b) => ({ id: "startup" as const, packageVersion: b.packageVersion })),
-  })
   const listQuery = useQuery({
     queryKey: ["startup", "candidates", signalClass, verdict],
     queryFn: async () => (await fetchJson<{ candidates: CandidateSummary[] }>(listUrl)).candidates,
@@ -377,7 +388,7 @@ function PoolShell() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-studio="startup">
-      <StudioBar studio={studioQuery.data} />
+      <SubNav active="pool" />
       <FilterBar />
       <div className="flex min-h-0 flex-1">
         <CandidateRail candidates={candidates} selectedId={selectedId} />
@@ -390,10 +401,6 @@ function PoolShell() {
 }
 
 function RejectsShell() {
-  const studioQuery = useQuery({
-    queryKey: ["startup", "studio"],
-    queryFn: () => fetchJson<{ packageVersion: string }>("/api/studios").then((b) => ({ id: "startup" as const, packageVersion: b.packageVersion })),
-  })
   const rejectsQuery = useQuery({
     queryKey: ["startup", "rejects"],
     queryFn: async () => (await fetchJson<{ rejects: RejectSummary[] }>(api("/rejects"))).rejects,
@@ -402,18 +409,25 @@ function RejectsShell() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-studio="startup">
-      <StudioBar studio={studioQuery.data} />
-      <main className="flex-1 overflow-auto p-4">
-        <h1 className="mb-3 text-lg font-semibold">Rejects</h1>
+      <SubNav active="rejects" />
+      <main className="flex-1 overflow-auto p-6 sm:p-8">
+        <h1 className="mb-1 text-xl font-semibold tracking-tight">Rejects</h1>
+        <p className="mb-6 text-[13px] text-[var(--osc-text-muted)]">Ideas that did not clear the bar.</p>
         {rejects.length === 0 ? (
-          <p className="text-sm text-[var(--osc-text-muted)]">No rejects.</p>
+          <div className="rounded-[var(--osc-radius-lg)] border border-dashed border-[var(--osc-border-strong)] px-6 py-16 text-center">
+            <p className="text-[14px] font-medium text-[var(--osc-text)]">No rejects</p>
+            <p className="mt-1 text-[13px] text-[var(--osc-text-muted)]">Rejected candidates will list here.</p>
+          </div>
         ) : (
           <ul className="space-y-2">
             {rejects.map((r) => (
-              <li key={r.name} className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-3">
-                <div className="mono text-sm font-medium">{r.name}</div>
-                <p className="mt-1 text-sm text-[var(--osc-text-muted)]">{r.problem}</p>
-                <p className="mt-1 text-xs text-[var(--osc-error)]">{r.reason}</p>
+              <li
+                key={r.name}
+                className="rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 shadow-[var(--osc-shadow)]"
+              >
+                <div className="mono text-[13px] font-medium">{r.name}</div>
+                <p className="mt-1 text-[13px] text-[var(--osc-text-muted)]">{r.problem}</p>
+                <p className="mt-1.5 text-[12px] text-[var(--osc-error)]">{r.reason}</p>
               </li>
             ))}
           </ul>
