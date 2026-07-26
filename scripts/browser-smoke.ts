@@ -19,14 +19,14 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function httpSmoke(base: string) {
-  const core = [`${base}/api/health`, `${base}/`, `${base}/api/studios`]
+  const core = [`${base}/studio-api/health`, `${base}/studio`, `${base}/api/studios`]
   for (const url of core) {
     const res = await fetch(url)
     assert(res.ok, `${url} -> ${res.status}`)
   }
   for (const id of STUDIO_IDS) {
-    const ui = await fetch(`${base}/studios/${id}`)
-    assert(ui.ok, `/studios/${id} -> ${ui.status}`)
+    const ui = await fetch(`${base}/studio/studios/${id}`)
+    assert(ui.ok, `/studio/studios/${id} -> ${ui.status}`)
   }
   const apiProbes: Array<[string, string]> = [
     ["cad", "/api/studios/cad/designs"],
@@ -107,7 +107,7 @@ async function browserSmoke(base: string) {
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 
-    await page.goto(base, { waitUntil: "networkidle" })
+    await page.goto(`${base}/studio`, { waitUntil: "networkidle" })
     await page.waitForSelector("text=Studios")
     await page.waitForSelector("text=CAD Studio")
     await page.getByRole("button", { name: "Open menu" }).click()
@@ -146,8 +146,12 @@ async function browserSmoke(base: string) {
     for (const id of STUDIO_IDS) {
       const check = studioChecks[id]
       assert(check, `missing studio check for ${id}`)
-      await page.goto(`${base}/studios/${id}`, { waitUntil: "networkidle" })
+      await page.goto(`${base}/studio/studios/${id}`, { waitUntil: "networkidle" })
       await page.waitForSelector(`text=${check.wait}`, { timeout: 15_000 })
+      await page.getByLabel("OpenCode agent").waitFor()
+      await page.getByRole("button", { name: "Agent", exact: true }).waitFor()
+      const uiBase = await page.evaluate(() => (window as any).__OPENCODE_STUDIO__?.uiBase)
+      assert(uiBase === `/studios/${id}`, `${id}: router uiBase should be basename-relative, got ${String(uiBase)}`)
       if (check.extra) await check.extra(page)
       await assertShellFillsViewport(page, id)
       // Studio utilities still present after lazy CSS load

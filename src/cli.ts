@@ -23,7 +23,7 @@ Commands:
   configure <studio...>   Enable studios globally (cad|media|pcb|startup)
   status                  Show enablement, roots, package version
   doctor                  Health checks (exit 1 if any fail)
-  serve                   Run the loopback host + viewer
+  serve                   Run OpenCode + integrated Studio host
   service <action>        systemd user unit (install|uninstall|start|stop|restart|status)
   upgrade [--check]       npm i -g @latest; restart unit if installed
   remove                  Disable all studios (global)
@@ -87,7 +87,7 @@ Options:
 `,
     serve: `opencode-studio serve [options]
 
-Start the loopback host and static viewer (foreground).
+Start OpenCode and the integrated Studio viewer (foreground).
 
 Options:
   --workspace <path>     Domain data root (default: cwd)
@@ -353,14 +353,16 @@ async function main(argv: string[]) {
       console.error("Invalid --port")
       return 2
     }
-    const { url } = await startHost({
+    const { studioUrl, opencodeUrl } = await startHost({
       workspace,
       hostname,
       port,
       uiDirectory,
       packageRoot,
     })
-    console.log(`opencode-studio listening on ${url}`)
+    console.log(`Studio: ${studioUrl}`)
+    if (opencodeUrl) console.log(`OpenCode: ${opencodeUrl}`)
+    else console.log("OpenCode: attached server (native proxy disabled)")
     console.log(`workspace: ${workspace}`)
     await new Promise(() => {})
     return 0

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { allowedHost, createCsrfToken, csrfTokensEqual, isLoopbackHost, safeExternalHref, sameOrigin } from "../src/core/security"
+import {
+  allowedHost,
+  basicAuthMatches,
+  createCsrfToken,
+  csrfTokensEqual,
+  isLoopbackHost,
+  safeExternalHref,
+  sameOrigin,
+} from "../src/core/security"
 
 describe("security", () => {
   describe("sameOrigin", () => {
@@ -49,6 +57,13 @@ describe("security", () => {
     test("empty", () => {
       expect(csrfTokensEqual("", "")).toBe(true)
     })
+  })
+
+  test("basicAuthMatches validates exact credentials", () => {
+    const valid = `Basic ${Buffer.from("opencode-studio:secret").toString("base64")}`
+    expect(basicAuthMatches(valid, "opencode-studio", "secret")).toBe(true)
+    expect(basicAuthMatches(valid, "opencode-studio", "wrong")).toBe(false)
+    expect(basicAuthMatches(undefined, "opencode-studio", "secret")).toBe(false)
   })
 
   describe("safeExternalHref", () => {

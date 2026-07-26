@@ -6,7 +6,7 @@ import { defineConfig, type Plugin } from "vite"
 /** Rewrite @tscircuit/3d-viewer CDN OCCT loads to same-origin vendored assets. */
 function localOcctCdn(): Plugin {
   const fromBase = "https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23"
-  const toBase = "/vendor/occt-import-js"
+  const toBase = "/studio/vendor/occt-import-js"
   return {
     name: "local-occt-cdn",
     transform(code, id) {
@@ -25,6 +25,7 @@ function localOcctCdn(): Plugin {
 
 export default defineConfig({
   root: "ui",
+  base: "/studio/",
   publicDir: "public",
   plugins: [react(), tailwindcss(), localOcctCdn()],
   resolve: {
@@ -43,6 +44,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://127.0.0.1:4173",
+      "/studio-api": "http://127.0.0.1:4173",
     },
   },
 })

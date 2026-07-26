@@ -28,7 +28,7 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
     const root = await ctx.resolveStudioRoot({ studioId: "cad", workspace: ctx.workspace, roots: ctx.roots, createMedia: false })
     return loadCadPlugin({
       root,
-      companionUrl: `${ctx.hostUrl}/studios/cad`,
+      companionUrl: `${ctx.hostUrl}/studio/studios/cad`,
       forgeProjectDir: await ctx.ensureForgeRuntimeDir(ctx.packageRoot),
     })
   },
@@ -50,7 +50,7 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
     const root = await ctx.resolveStudioRoot({ studioId: "startup", workspace: ctx.workspace, roots: ctx.roots, createMedia: false })
     return loadStartupPlugin({
       root,
-      companionUrl: `${ctx.hostUrl}/studios/startup`,
+      companionUrl: `${ctx.hostUrl}/studio/studios/startup`,
     })
   },
 }

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
+import { AgentPanel } from "./agent-panel"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 
 type StudioCard = {
@@ -31,6 +32,7 @@ type StudiosResponse = {
   packageVersion: string
   studios: StudioCard[]
   restartRequiredHint: string
+  nativeOpenCodeAvailable: boolean
   update?: UpdateInfo
 }
 
@@ -445,12 +447,14 @@ function TopBar({
   studioId,
   onMenu,
   edge = "border",
+  actions,
 }: {
   studioLabel?: string
   studioId?: string
   onMenu: () => void
   /** studio pages stack a subnav — drop the bottom border to avoid a double line */
   edge?: "border" | "flush"
+  actions?: React.ReactNode
 }) {
   return (
     <header
@@ -484,6 +488,7 @@ function TopBar({
             </span>
           </Link>
         )}
+        {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </div>
     </header>
   )
@@ -507,7 +512,19 @@ function HomePage() {
 
   return (
     <div className="min-h-dvh bg-[var(--osc-bg)]">
-      <TopBar onMenu={openMenu} />
+      <TopBar
+        onMenu={openMenu}
+        actions={
+          studiosQuery.data?.nativeOpenCodeAvailable ? (
+            <a
+              href="/"
+              className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
+            >
+              OpenCode
+            </a>
+          ) : undefined
+        }
+      />
       <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} initialPanel={drawerPanel} />
 
       <main className="mx-auto max-w-[820px] px-5 py-14 sm:px-8 sm:py-20">
@@ -633,6 +650,8 @@ function StudioFrame() {
   const { studioId = "" } = useParams()
   const studiosQuery = useStudios()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [agentOpen, setAgentOpen] = useState(true)
+  const csrfQuery = useCsrf()
 
   const uiBasePath = `/studios/${studioId}`
   const apiBasePath = `/api/studios/${studioId}`
@@ -669,13 +688,53 @@ function StudioFrame() {
   return (
     <div data-studio={studioId} className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
       {/* Always flush: first studio chrome (.studio-subnav or content) owns the bottom edge */}
-      <TopBar studioLabel={label} studioId={studioId} onMenu={() => setDrawerOpen(true)} edge="flush" />
+      <TopBar
+        studioLabel={label}
+        studioId={studioId}
+        onMenu={() => setDrawerOpen(true)}
+        edge="flush"
+        actions={
+          <>
+            {studiosQuery.data.nativeOpenCodeAvailable && (
+              <a
+                href="/"
+                className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
+              >
+                OpenCode
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => setAgentOpen((value) => !value)}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
+              aria-pressed={agentOpen}
+            >
+              <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
+              Agent
+            </button>
+          </>
+        }
+      />
       <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
-      <Suspense
-        fallback={<div className="flex flex-1 items-center justify-center p-8 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>}
-      >
-        {page}
-      </Suspense>
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <AgentPanel
+          key={studioId}
+          studioId={studioId}
+          studioLabel={label}
+          csrfToken={csrfQuery.data?.token}
+          open={agentOpen}
+          onClose={() => setAgentOpen(false)}
+        />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <Suspense
+            fallback={
+              <div className="flex flex-1 items-center justify-center p-8 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>
+            }
+          >
+            {page}
+          </Suspense>
+        </div>
+      </div>
     </div>
   )
 }

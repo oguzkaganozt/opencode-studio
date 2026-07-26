@@ -34,9 +34,27 @@ opencode-studio serve
 opencode-studio serve --workspace /path/to/project
 ```
 
-Open [http://127.0.0.1:4173](http://127.0.0.1:4173) → tick the Studios you want → **Apply selection**.
+Open [http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio) → tick the Studios you want → **Apply selection**.
 
 The host reloads studio APIs on Apply. Restart **OpenCode** so plugins and skills match.
+
+Each Studio combines an OpenCode agent on the left with the domain viewer on the right. The host lazily starts one loopback OpenCode sidecar for the selected `--workspace`, using your existing OpenCode configuration, providers, plugins, and skills. Native OpenCode requests are pinned to that same workspace.
+
+Set `OPENCODE_STUDIO_OPENCODE_URL` to attach the integrated agent panel to an existing OpenCode server instead. Native UI proxying is intentionally disabled in attach mode because a shared server can carry events from other workspaces; use that server's own URL for its native UI.
+
+The same address also exposes the complete OpenCode web experience:
+
+- `http://127.0.0.1:4173/` — native OpenCode web UI
+- `http://127.0.0.1:4173/studio` — OpenCode Studio
+
+For remote access, the read-only Studio viewers can bind directly, but the integrated agent and native OpenCode UI require a password because they can edit files and run tools:
+
+```bash
+OPENCODE_STUDIO_PASSWORD='choose-a-strong-password' \
+  opencode-studio serve --workspace /path/to/project --host 0.0.0.0
+```
+
+Open `http://<server-ip>:4173/studio` and enter that password in the Agent panel. Opening `http://<server-ip>:4173/` uses the same credentials through HTTP Basic authentication (username `opencode-studio`). Keep the host behind a trusted network or VPN; this password does not add TLS.
 
 Enablement is **user-global** — you only configure once. `--workspace` is the domain data root (where designs/boards live), not a per-project config file.
 
@@ -72,7 +90,7 @@ opencode-studio upgrade                  # npm i -g @latest (+ restart unit if i
 opencode-studio upgrade --check          # report only (exit 1 if update available)
 ```
 
-Options: `--workspace` (domain data root), `--host`, `--port`, `--name <unit>` (multiple hosts/ports).  
+Options: `--workspace` (domain data root), `--host`, `--port`, `--name <unit>` (multiple hosts/ports). For a remotely bound service, set `OPENCODE_STUDIO_PASSWORD` on the `service install` command; it is copied into the user unit.
 After logout, if the unit stops: `loginctl enable-linger $USER`.
 
 While `serve` is running, the home page shows a banner when a newer npm version exists (also logged to the service journal).

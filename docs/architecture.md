@@ -8,7 +8,8 @@ OpenCode Studio is a modular monolith: one package, one plugin, one host, one Vi
 | --- | --- | --- |
 | CLI / config / lifecycle | `src/` | `configure`, `status`, `doctor`, `serve`, `remove` |
 | OpenCode plugin | `src/plugin.ts` | Composes only enabled Studios |
-| Host HTTP | `src/server.ts` | Loopback, Host, CSRF on writes, static UI |
+| Host HTTP | `src/server.ts` | Host checks, CSRF on writes, agent API, static UI |
+| OpenCode bridge | `src/opencode-bridge.ts` | Lazy loopback sidecar or configured server, workspace-pinned sessions |
 | Studio modules | `studios/*` | Domain tools, API routers, skills, viewers |
 | Viewer shell | `ui/` | Home page + per-Studio pages |
 
@@ -32,9 +33,11 @@ Fail-closed: missing or invalid config enables nothing.
 
 ## Namespaces
 
-- Viewer: `/studios/<id>/*`
+- OpenCode web UI/API: `/`, `/session/*`, `/api/*`, and other native routes proxied to the sidecar
+- Viewer shell: `/studio`
+- Viewer: `/studio/studios/<id>/*`
 - API: `/api/studios/<id>/*`
-- Host config API: `/api/studios`, `/api/config`, `/api/health`, `/api/csrf`
+- Host config API: `/api/studios`, `/api/config`, `/studio-api/health`, `/api/csrf`
 
 ## Domain exceptions
 

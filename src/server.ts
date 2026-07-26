@@ -6,10 +6,20 @@ import { errorBody } from "./core/errors"
 import { loadPackageMeta } from "./core/package-meta"
 import { isInside, packageRootFrom } from "./core/paths"
 import type { StudioId } from "./core/registry"
-import { allowedHost, assertNotRoot, createCsrfToken, csrfTokensEqual, sameOrigin, securityHeaders } from "./core/security"
+import {
+  allowedHost,
+  assertNotRoot,
+  basicAuthMatches,
+  createCsrfToken,
+  csrfTokensEqual,
+  isLoopbackHost,
+  sameOrigin,
+  securityHeaders,
+} from "./core/security"
 import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { configureStudios, doctorStudios, statusStudios } from "./lifecycle"
+import { createOpenCodeBridge, type OpenCodeBridge } from "./opencode-bridge"
 import { apiLoaders } from "./studio-loaders"
 import { listStudioDefinitions } from "./studios"
 
@@ -20,6 +30,7 @@ export type HostInput = UserPathOptions & {
   uiDirectory?: string
   packageRoot?: string
   packageVersion?: string
+  openCodeBridge?: OpenCodeBridge
 }
 
 type StudioMountState = {
@@ -72,6 +83,9 @@ export async function createHostApp(input: HostInput) {
   const meta = await loadPackageMeta(packageRoot)
   const packageVersion = input.packageVersion ?? meta.version
   const csrfToken = createCsrfToken()
+  const env = input.env ?? process.env
+  const nativeOpenCodeAvailable = !env.OPENCODE_STUDIO_OPENCODE_URL?.trim()
+  const openCode = input.openCodeBridge ?? createOpenCodeBridge(input.workspace, env)
   const userPaths = pickUserPaths(input)
   const domain = { workspace: input.workspace, packageRoot, userPaths }
 
@@ -100,7 +114,7 @@ export async function createHostApp(input: HostInput) {
     ctx.header("X-Content-Type-Options", "nosniff")
   })
 
-  app.get("/api/health", (ctx) => ctx.json({ status: "ok" }))
+  app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok" }))
   app.get("/api/csrf", (ctx) => ctx.json({ token: csrfToken }))
 
   app.get("/api/studios", async (ctx) => {
@@ -123,6 +137,7 @@ export async function createHostApp(input: HostInput) {
       })),
       restartRequiredHint: status.restartRequiredHint,
       hostHotReload: true,
+      nativeOpenCodeAvailable,
       update,
     })
   })
@@ -139,7 +154,7 @@ export async function createHostApp(input: HostInput) {
 
   const writeGuard = async (ctx: any) => {
     const origin = ctx.req.header("origin")
-    if (!sameOrigin(origin, hostname, port)) {
+    if (!sameOrigin(origin, hostname, port, env, ctx.req.header("host"))) {
       return ctx.json(errorBody("invalid_origin", "Origin header rejected."), 403)
     }
     const token = ctx.req.header("x-csrf-token")
@@ -149,7 +164,135 @@ export async function createHostApp(input: HostInput) {
     return null
   }
 
+  const chatPassword = env.OPENCODE_STUDIO_PASSWORD
+  const openCodeAuthorized = (authorization: string | undefined) =>
+    isLoopbackHost(hostname) || Boolean(chatPassword && basicAuthMatches(authorization, "opencode-studio", chatPassword))
+
+  const openCodeAuthResponse = () => {
+    if (!chatPassword) {
+      return new Response(
+        JSON.stringify(errorBody("chat_auth_required", "Set OPENCODE_STUDIO_PASSWORD before exposing OpenCode on a non-loopback host.")),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      )
+    }
+    return new Response(JSON.stringify(errorBody("unauthorized", "OpenCode Studio password required.")), {
+      status: 401,
+      headers: { "Content-Type": "application/json", "WWW-Authenticate": 'Basic realm="opencode-studio"' },
+    })
+  }
+
+  const remoteAuthGuard = (ctx: any) => {
+    if (openCodeAuthorized(ctx.req.header("authorization"))) return null
+    return openCodeAuthResponse()
+  }
+
+  app.use("/api/chat/*", async (ctx, next) => {
+    const denied = remoteAuthGuard(ctx)
+    if (denied) return denied
+    return next()
+  })
+
+  const chatError = (ctx: any, error: unknown) =>
+    ctx.json(errorBody("opencode_error", error instanceof Error ? error.message : String(error)), 502)
+
+  app.get("/api/chat/health", async (ctx) => {
+    try {
+      return ctx.json(await openCode.health())
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
+  app.get("/api/chat/sessions", async (ctx) => {
+    try {
+      return ctx.json({ sessions: await openCode.sessions() })
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
+  app.post("/api/chat/sessions", async (ctx) => {
+    const denied = await writeGuard(ctx)
+    if (denied) return denied
+    const body = (await ctx.req.json().catch(() => null)) as { title?: string; studioId?: string } | null
+    const title = body?.title?.trim()
+    if (!title || title.length > 120 || !body?.studioId) {
+      return ctx.json(errorBody("invalid_body", "title and studioId are required."), 400)
+    }
+    try {
+      return ctx.json(await openCode.createSession({ title, studioId: body.studioId }), 201)
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
+  app.get("/api/chat/sessions/:id/state", async (ctx) => {
+    try {
+      return ctx.json(await openCode.state(ctx.req.param("id")))
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
+  app.post("/api/chat/sessions/:id/prompts", async (ctx) => {
+    const denied = await writeGuard(ctx)
+    if (denied) return denied
+    const body = (await ctx.req.json().catch(() => null)) as { text?: string } | null
+    const text = body?.text?.trim()
+    if (!text || text.length > 50_000) return ctx.json(errorBody("invalid_body", "text is required."), 400)
+    try {
+      await openCode.prompt(ctx.req.param("id"), text)
+      return ctx.json({ accepted: true }, 202)
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
+  app.post("/api/chat/sessions/:id/abort", async (ctx) => {
+    const denied = await writeGuard(ctx)
+    if (denied) return denied
+    try {
+      await openCode.abort(ctx.req.param("id"))
+      return ctx.json({ aborted: true })
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
+  app.post("/api/chat/permissions/:id", async (ctx) => {
+    const denied = await writeGuard(ctx)
+    if (denied) return denied
+    const body = (await ctx.req.json().catch(() => null)) as { reply?: "once" | "always" | "reject" } | null
+    if (!body?.reply || !["once", "always", "reject"].includes(body.reply)) {
+      return ctx.json(errorBody("invalid_body", "reply must be once, always, or reject."), 400)
+    }
+    try {
+      await openCode.replyPermission(ctx.req.param("id"), body.reply)
+      return ctx.json({ replied: true })
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
+  app.post("/api/chat/questions/:id", async (ctx) => {
+    const denied = await writeGuard(ctx)
+    if (denied) return denied
+    const body = (await ctx.req.json().catch(() => null)) as { answers?: string[][] } | null
+    if (!body?.answers?.every((answer) => Array.isArray(answer) && answer.every((item) => typeof item === "string"))) {
+      return ctx.json(errorBody("invalid_body", "answers must be string[][]."), 400)
+    }
+    try {
+      await openCode.replyQuestion(ctx.req.param("id"), body.answers)
+      return ctx.json({ replied: true })
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
   app.put("/api/config", async (ctx) => {
+    if (!isLoopbackHost(hostname)) {
+      return ctx.json(errorBody("remote_config_disabled", "Configure studios locally on the server."), 403)
+    }
     const denied = await writeGuard(ctx)
     if (denied) return denied
     const body = (await ctx.req.json().catch(() => null)) as { enabled?: string[]; roots?: unknown } | null
@@ -168,6 +311,7 @@ export async function createHostApp(input: HostInput) {
         ...userPaths,
       })
       const reloaded = await reloadStudios()
+      openCode.close()
       return ctx.json({
         ...result,
         hostReloaded: true,
@@ -192,20 +336,18 @@ export async function createHostApp(input: HostInput) {
     return mount.current.studios.request(suffix + url.search, ctx.req.raw)
   })
 
-  app.all("/api/*", (ctx) => ctx.json(errorBody("not_found", "API route was not found."), 404))
-
   if (input.uiDirectory) {
     const uiRoot = path.resolve(input.uiDirectory)
-    app.get("*", async (ctx) => {
+    const serveStudioUi = async (ctx: any) => {
       let requestPath: string
       try {
         requestPath = decodeURIComponent(new URL(ctx.req.url).pathname)
       } catch {
         return ctx.json(errorBody("not_found", "Not found."), 404)
       }
-      const relative = requestPath === "/" ? "index.html" : requestPath.replace(/^\//, "")
+      const relative = requestPath === "/studio" || requestPath === "/studio/" ? "index.html" : requestPath.replace(/^\/studio\/?/, "")
       const candidate = path.resolve(uiRoot, relative)
-      if (!isInside(uiRoot, candidate) && requestPath !== "/") {
+      if (!isInside(uiRoot, candidate) && requestPath !== "/studio") {
         // SPA fallback
       } else {
         try {
@@ -249,15 +391,59 @@ export async function createHostApp(input: HostInput) {
       } catch {
         return ctx.json(errorBody("ui_missing", "Viewer UI build not found; run bun run build:ui"), 503)
       }
-    })
+    }
+    app.get("/studio", serveStudioUi)
+    app.get("/studio/*", serveStudioUi)
   }
 
+  app.get("/studios/*", (ctx) => {
+    const url = new URL(ctx.req.url)
+    return ctx.redirect(`/studio${url.pathname}${url.search}`, 308)
+  })
+
+  app.all("*", async (ctx) => {
+    const denied = remoteAuthGuard(ctx)
+    if (denied) return denied
+    const origin = ctx.req.header("origin")
+    if (origin && !sameOrigin(origin, hostname, port, env, ctx.req.header("host"))) {
+      return ctx.json(errorBody("invalid_origin", "Origin header rejected."), 403)
+    }
+    try {
+      return await openCode.proxy(ctx.req.raw)
+    } catch (error) {
+      return chatError(ctx, error)
+    }
+  })
+
   const config = await readStudioConfigFile(userPaths)
-  return { app, csrfToken, hostname, port, packageVersion, config, reloadStudios }
+  return {
+    app,
+    csrfToken,
+    hostname,
+    port,
+    packageVersion,
+    config,
+    reloadStudios,
+    closeOpenCode: () => openCode.close(),
+    openCodeAuthorized,
+    openCodeAuthResponse,
+    openCodeWebSocketTarget: (requestUrl: string) => openCode.webSocketTarget(requestUrl),
+    nativeOpenCodeAvailable,
+  }
 }
 
 export async function startHost(input: HostInput) {
-  const { app, hostname, port, packageVersion } = await createHostApp(input)
+  const {
+    app,
+    hostname,
+    port,
+    packageVersion,
+    closeOpenCode,
+    openCodeAuthorized,
+    openCodeAuthResponse,
+    openCodeWebSocketTarget,
+    nativeOpenCodeAvailable,
+  } = await createHostApp(input)
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
   const meta = await loadPackageMeta(packageRoot)
   scheduleUpdateLog({ packageName: meta.name, current: input.packageVersion ?? packageVersion })
@@ -270,13 +456,54 @@ export async function startHost(input: HostInput) {
   )
   if (typeof updateTimer.unref === "function") updateTimer.unref()
 
-  const server = Bun.serve({
+  type ProxySocketData = { target: string; upstream?: WebSocket; queued: Array<string | Buffer> }
+  const server = Bun.serve<ProxySocketData>({
     hostname,
     port,
-    fetch: app.fetch,
+    async fetch(request, bunServer) {
+      if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        const boundPort = bunServer.port
+        if (typeof boundPort !== "number") return new Response("Server port unavailable", { status: 500 })
+        const requestHost = request.headers.get("host") ?? undefined
+        if (!allowedHost(requestHost, hostname, boundPort)) return new Response("Host header rejected", { status: 400 })
+        const origin = request.headers.get("origin") ?? undefined
+        if (origin && !sameOrigin(origin, hostname, boundPort, input.env ?? process.env, requestHost)) {
+          return new Response("Origin header rejected", { status: 403 })
+        }
+        if (!openCodeAuthorized(request.headers.get("authorization") ?? undefined)) return openCodeAuthResponse()
+        const target = await openCodeWebSocketTarget(request.url)
+        const upgraded = bunServer.upgrade(request, { data: { target, queued: [] } })
+        return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 })
+      }
+      return app.fetch(request)
+    },
+    websocket: {
+      open(socket) {
+        const upstream = new WebSocket(socket.data.target)
+        socket.data.upstream = upstream
+        upstream.binaryType = "arraybuffer"
+        upstream.onopen = () => {
+          for (const message of socket.data.queued) upstream.send(message)
+          socket.data.queued.length = 0
+        }
+        upstream.onmessage = (event) => socket.send(event.data as string | ArrayBuffer)
+        upstream.onclose = (event) => socket.close(event.code, event.reason)
+        upstream.onerror = () => socket.close(1011, "OpenCode WebSocket proxy error")
+      },
+      message(socket, message) {
+        const upstream = socket.data.upstream
+        if (upstream?.readyState === WebSocket.OPEN) upstream.send(message)
+        else socket.data.queued.push(message)
+      },
+      close(socket, code, reason) {
+        const upstream = socket.data.upstream
+        if (upstream && upstream.readyState < WebSocket.CLOSING) upstream.close(code, reason)
+      },
+    },
   })
   const stop = () => {
     clearInterval(updateTimer)
+    closeOpenCode()
     server.stop(true)
   }
   process.on("SIGINT", () => {
@@ -288,5 +515,6 @@ export async function startHost(input: HostInput) {
     process.exit(0)
   })
   // Bun may assign an ephemeral port when `port` is 0 — always report the bound port.
-  return { server, url: `http://${hostname}:${server.port}`, stop }
+  const url = `http://${hostname}:${server.port}`
+  return { server, url, studioUrl: `${url}/studio`, opencodeUrl: nativeOpenCodeAvailable ? url : undefined, stop }
 }

@@ -208,7 +208,7 @@ export const StartupStudioPlugin: Plugin = async (context, rawOptions) => {
           const url = args.name ? `${companionUrl}/candidates/${args.name}` : companionUrl
           let healthy = false
           try {
-            const response = await fetch(new URL("/api/health", companionUrl).toString(), {
+            const response = await fetch(new URL("/studio-api/health", companionUrl).toString(), {
               signal: AbortSignal.timeout(1000),
             })
             healthy = response.ok

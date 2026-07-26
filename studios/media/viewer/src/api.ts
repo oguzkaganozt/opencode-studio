@@ -83,7 +83,8 @@ export function getAsset(ref: string) {
 }
 
 export function getHealth() {
-  return request<{ status: string }>("/api/health")
+  const hosted = Boolean((window as any).__OPENCODE_STUDIO__)
+  return request<{ status: string }>(hosted ? "/studio-api/health" : "/api/health")
 }
 
 export type VersionInfo = {

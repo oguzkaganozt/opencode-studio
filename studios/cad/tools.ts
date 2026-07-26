@@ -43,7 +43,7 @@ async function fileExists(filePath: string) {
 
 async function companionReachable(companionUrl: string) {
   try {
-    const response = await fetch(new URL("/api/health", companionUrl), { signal: AbortSignal.timeout(COMPANION_HEALTH_TIMEOUT_MS) })
+    const response = await fetch(new URL("/studio-api/health", companionUrl), { signal: AbortSignal.timeout(COMPANION_HEALTH_TIMEOUT_MS) })
     return response.ok
   } catch {
     return false

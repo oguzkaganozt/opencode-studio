@@ -48,7 +48,7 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*` (tsconfig + Vite).
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
 - After configure via home UI Apply: host hot-reloads studio APIs; restart **OpenCode** only. CLI `configure` does not notify a running host — restart serve too (or Apply from the UI).
 - Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` clears **user-global** enablement.
-- Host is loopback-only by default; CSRF + Origin on `PUT /api/config` only (studio APIs are read-only GETs). Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`. Multi-user hosts are out of scope without additional auth.
+- Host is loopback-only by default. The integrated agent lazily starts one loopback OpenCode sidecar per host (or attaches via `OPENCODE_STUDIO_OPENCODE_URL`) and pins requests to `serve --workspace`. Native OpenCode HTTP/SSE/WebSocket traffic from an owned sidecar is proxied at `/`; Studio lives at `/studio`. Native proxying is disabled in attach mode to prevent shared-server event leakage. All Studio HTTP writes use CSRF + Origin checks. Non-loopback agent and native OpenCode access additionally require `OPENCODE_STUDIO_PASSWORD`; read-only studio APIs remain public. Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`; TLS and multi-user authorization remain out of scope.
 
 ## Hard rules
 

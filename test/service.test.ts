@@ -23,11 +23,13 @@ describe("systemd user unit", () => {
       host: "0.0.0.0",
       port: 4199,
       pathEnv: "/usr/bin",
+      agentPassword: "%h test password",
       executable: { command: "/opt/bin/opencode-studio", argsPrefix: [] },
     })
     expect(unit).toContain('WorkingDirectory="/home/me/my project"')
     expect(unit).toContain("--host 0.0.0.0")
     expect(unit).toContain("--port 4199")
+    expect(unit).toContain('Environment=OPENCODE_STUDIO_PASSWORD="%%h test password"')
   })
 
   test("resolveServeExecutable returns a command", () => {

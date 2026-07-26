@@ -1,4 +1,4 @@
-import { access, mkdir, rm, writeFile } from "node:fs/promises"
+import { access, chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { resolveWorkspace } from "./core/paths"
@@ -50,11 +50,18 @@ export function renderUserUnit(input: {
   host: string
   port: number
   pathEnv: string
+  agentPassword?: string
+  agentPasswordEnvironment?: string
   executable: { command: string; argsPrefix: string[] }
 }) {
   const args = [...input.executable.argsPrefix, "serve", "--workspace", input.workspace, "--host", input.host, "--port", String(input.port)]
 
   const execStart = [input.executable.command, ...args].map(shellEscape).join(" ")
+  const agentPassword = input.agentPassword
+    ? `Environment=OPENCODE_STUDIO_PASSWORD=${shellEscape(input.agentPassword.replace(/%/g, "%%"))}\n`
+    : input.agentPasswordEnvironment
+      ? `${input.agentPasswordEnvironment}\n`
+      : ""
 
   return `[Unit]
 Description=OpenCode Studio host (${input.workspace})
@@ -65,7 +72,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=${shellEscape(input.workspace)}
 Environment=PATH=${shellEscape(input.pathEnv)}
-ExecStart=${execStart}
+${agentPassword}ExecStart=${execStart}
 Restart=on-failure
 RestartSec=3
 
@@ -79,6 +86,16 @@ function shellEscape(value: string) {
   if (/[\n\r]/.test(value)) throw new Error("Invalid character in service path")
   if (/[\s"$\\]/.test(value)) return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
   return value
+}
+
+async function existingAgentPasswordEnvironment(file: string) {
+  try {
+    const body = await readFile(file, "utf8")
+    return body.split("\n").find((line) => line.startsWith("Environment=OPENCODE_STUDIO_PASSWORD="))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw error
+  }
 }
 
 async function runSystemctl(args: string[]) {
@@ -219,15 +236,19 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
   if (action === "install") {
     const executable = resolveServeExecutable()
     const pathEnv = process.env.PATH ?? "/usr/bin:/bin"
+    const agentPassword = process.env.OPENCODE_STUDIO_PASSWORD
     const body = renderUserUnit({
       workspace,
       host,
       port,
       pathEnv,
+      agentPassword,
+      agentPasswordEnvironment: agentPassword ? undefined : await existingAgentPasswordEnvironment(file),
       executable,
     })
     await mkdir(userUnitDir(), { recursive: true, mode: 0o755 })
-    await writeFile(file, body, { mode: 0o644 })
+    await writeFile(file, body, { mode: 0o600 })
+    await chmod(file, 0o600)
     const reload = await runSystemctl(["daemon-reload"])
     if (!reload.ok) throw new Error(reload.stderr.trim() || "systemctl daemon-reload failed")
     const enable = await runSystemctl(["enable", "--now", unit])
@@ -239,8 +260,8 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
       workspace,
       host,
       port,
-      url: `http://${host}:${port}`,
-      message: `Installed and started ${unit}. Open ${`http://${host}:${port}`}. If the service dies after logout, run: loginctl enable-linger $USER`,
+      url: `http://${host}:${port}/studio`,
+      message: `Installed and started ${unit}. Open ${`http://${host}:${port}/studio`}. If the service dies after logout, run: loginctl enable-linger $USER`,
     }
   }
 

@@ -63,6 +63,19 @@ export function csrfTokensEqual(a: string, b: string) {
   }
 }
 
+export function basicAuthMatches(header: string | undefined, username: string, password: string) {
+  if (!header?.startsWith("Basic ")) return false
+  let decoded: string
+  try {
+    decoded = Buffer.from(header.slice(6), "base64").toString("utf8")
+  } catch {
+    return false
+  }
+  const separator = decoded.indexOf(":")
+  if (separator < 0) return false
+  return csrfTokensEqual(decoded.slice(0, separator), username) && csrfTokensEqual(decoded.slice(separator + 1), password)
+}
+
 /**
  * Origins allowed for mutating requests.
  * - Exact bind host:port (and loopback aliases on that port)
@@ -102,13 +115,20 @@ export function allowedOrigins(hostname: string, port: number, env: NodeJS.Proce
   return origins
 }
 
-export function sameOrigin(origin: string | undefined, hostname: string, port: number, env: NodeJS.ProcessEnv = process.env) {
+export function sameOrigin(
+  origin: string | undefined,
+  hostname: string,
+  port: number,
+  env: NodeJS.ProcessEnv = process.env,
+  requestHost?: string,
+) {
   if (!origin) return false
   try {
     const url = new URL(origin)
     if (url.protocol !== "http:" && url.protocol !== "https:") return false
     // Use url.host (keeps IPv6 brackets) with explicit port so IPv6 origins match.
     const explicitPort = url.port || (url.protocol === "https:" ? "443" : "80")
+    if (!isLoopbackHost(hostname) && requestHost && url.host === requestHost) return true
     const normalized = `${url.protocol}//${url.host.split(":")[0]}:${explicitPort}`
     return allowedOrigins(hostname, port, env).has(normalized)
   } catch {
