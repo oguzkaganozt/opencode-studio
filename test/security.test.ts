@@ -82,6 +82,11 @@ describe("security", () => {
     test("rejects missing host", () => {
       expect(allowedHost(undefined, "127.0.0.1", 4173)).toBe(false)
     })
+    test("accepts any host when binding non-loopback", () => {
+      expect(allowedHost("evil.com:9999", "0.0.0.0", 4173)).toBe(true)
+      expect(allowedHost(undefined, "0.0.0.0", 4173)).toBe(true)
+      expect(allowedHost("", "0.0.0.0", 4173)).toBe(true)
+    })
   })
 
   test("isLoopbackHost", () => {

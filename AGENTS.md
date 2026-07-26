@@ -15,6 +15,8 @@ bun run check                                     # typecheck + test + lint + bu
 bun run release:check                             # full gate (CI)
 bun run test:python                               # CAD forge (uv via PATH or package cache)
 bun run test:browser:install                      # once: Playwright Chromium for UI smoke
+bun run test:pcb-fixture                          # regenerate PCB authoring fixtures
+bun run test:package                              # pack + verify shipped files
 bun run test:browser                              # HTTP + Chromium layout/CSS smoke (needs dist/ui)
 bun run serve                                     # host @ 127.0.0.1:4173
 bun run dev:ui                                    # Vite :5173, proxies /api → :4173
@@ -27,10 +29,11 @@ CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` 
 
 | Path | Owns |
 | --- | --- |
-| `src/` | CLI, plugin, host HTTP, config, lifecycle, composition (`core/`) |
+| `src/` | CLI (`cli.ts`), plugin, host HTTP, config, lifecycle |
+| `src/core/` | Shared behaviors (engines, paths, security, plugin-compose, registry, MCP config, package meta) |
 | `studios/<id>/` | Domain: `studio.ts`, `plugin.ts`, `api.ts`, `tools.ts`, `skill/`, `viewer/`, `test/` |
-| `ui/` | Shared Viewer shell; lazy-loads `@studios/<id>/viewer` |
-| `test/parity/` | Frozen tool inventory, skill digests, hook policy |
+| `ui/` | Shared Viewer shell (`app.tsx`); lazy-loads `@studios/<id>/viewer` |
+| `test/parity/` | 4 frozen fixtures: `tools.json`, `skill-digests.json`, `plugin-hooks.json`, `source-commits.json` |
 
 Catalog IDs (`src/core/registry.ts`): `cad` \| `media` \| `pcb` \| `startup`. Order is composition order.
 

@@ -94,7 +94,6 @@ Options:
   --host <host>          Default 127.0.0.1
   --port <port>          Default 4173
   --ui-directory <path>  Override UI dist
-  --allow-non-loopback   Allow non-loopback bind
   -h, --help
 `,
     service: `opencode-studio service <action> [options]
@@ -108,7 +107,6 @@ Options:
   --host <host>        Default 127.0.0.1
   --port <port>        Default 4173
   --name <unit>        Unit name without .service (default opencode-studio)
-  --allow-non-loopback
   --json
   -h, --help
 `,
@@ -124,7 +122,6 @@ Options:
   --host <host>        Default 127.0.0.1
   --port <port>        Default 4173
   --name <unit>
-  --allow-non-loopback
   --json
   -h, --help
 `,
@@ -330,7 +327,6 @@ async function main(argv: string[]) {
       host?: string
       port?: string
       "ui-directory"?: string
-      "allow-non-loopback"?: boolean
     }
     try {
       const parsed = parseArgs({
@@ -340,7 +336,6 @@ async function main(argv: string[]) {
           host: { type: "string", default: "127.0.0.1" },
           port: { type: "string", default: "4173" },
           "ui-directory": { type: "string" },
-          "allow-non-loopback": { type: "boolean", default: false },
         },
         allowPositionals: false,
         strict: true,
@@ -350,7 +345,7 @@ async function main(argv: string[]) {
       return failParse("serve", error)
     }
     const hostname = values.host ?? "127.0.0.1"
-    assertLoopbackBind(hostname, values["allow-non-loopback"])
+    assertLoopbackBind(hostname)
     const workspace = await resolveWorkspace(values.workspace)
     const uiDirectory = values["ui-directory"] ?? path.join(packageRoot, "dist", "ui")
     const port = parsePort(values.port)
@@ -410,7 +405,6 @@ async function main(argv: string[]) {
       host?: string
       port?: string
       name?: string
-      "allow-non-loopback"?: boolean
       json?: boolean
     }
     try {
@@ -422,7 +416,6 @@ async function main(argv: string[]) {
           host: { type: "string", default: "127.0.0.1" },
           port: { type: "string", default: "4173" },
           name: { type: "string" },
-          "allow-non-loopback": { type: "boolean", default: false },
           json: { type: "boolean", default: false },
         },
         allowPositionals: false,
@@ -452,7 +445,6 @@ async function main(argv: string[]) {
       host: hostname,
       port,
       name: values.name,
-      allowNonLoopback: values["allow-non-loopback"],
       json: values.json,
     })
     if (values.json) console.log(JSON.stringify(result, null, 2))
@@ -471,7 +463,6 @@ async function main(argv: string[]) {
       host?: string
       port?: string
       name?: string
-      "allow-non-loopback"?: boolean
       json?: boolean
     }
     try {
@@ -482,7 +473,6 @@ async function main(argv: string[]) {
           host: { type: "string", default: "127.0.0.1" },
           port: { type: "string", default: "4173" },
           name: { type: "string" },
-          "allow-non-loopback": { type: "boolean", default: false },
           json: { type: "boolean", default: false },
         },
         allowPositionals: false,
@@ -493,7 +483,7 @@ async function main(argv: string[]) {
       return failParse("service", error)
     }
     const hostname = values.host ?? "127.0.0.1"
-    if (action === "install") assertLoopbackBind(hostname, values["allow-non-loopback"])
+    if (action === "install") assertLoopbackBind(hostname)
     const port = parsePort(values.port)
     if (port === null) {
       console.error("Invalid --port")
@@ -504,7 +494,6 @@ async function main(argv: string[]) {
       host: hostname,
       port,
       name: values.name,
-      allowNonLoopback: values["allow-non-loopback"],
       json: values.json,
     })
     if (values.json) console.log(JSON.stringify(result, null, 2))

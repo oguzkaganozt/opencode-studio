@@ -13,7 +13,6 @@ export type ServiceOptions = {
   port?: number
   /** systemd unit name without .service (default: opencode-studio) */
   name?: string
-  allowNonLoopback?: boolean
   json?: boolean
 }
 
@@ -50,12 +49,10 @@ export function renderUserUnit(input: {
   workspace: string
   host: string
   port: number
-  allowNonLoopback: boolean
   pathEnv: string
   executable: { command: string; argsPrefix: string[] }
 }) {
   const args = [...input.executable.argsPrefix, "serve", "--workspace", input.workspace, "--host", input.host, "--port", String(input.port)]
-  if (input.allowNonLoopback) args.push("--allow-non-loopback")
 
   const execStart = [input.executable.command, ...args].map(shellEscape).join(" ")
 
@@ -72,7 +69,6 @@ ExecStart=${execStart}
 Restart=on-failure
 RestartSec=3
 
-# Loopback-only by default; do not expose without --allow-non-loopback at install time.
 [Install]
 WantedBy=default.target
 `
@@ -227,7 +223,6 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
       workspace,
       host,
       port,
-      allowNonLoopback: Boolean(options.allowNonLoopback),
       pathEnv,
       executable,
     })

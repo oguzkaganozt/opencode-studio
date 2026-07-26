@@ -7,7 +7,6 @@ describe("systemd user unit", () => {
       workspace: "/home/me/project",
       host: "127.0.0.1",
       port: 4173,
-      allowNonLoopback: false,
       pathEnv: "/usr/bin:/bin",
       executable: { command: "/usr/bin/opencode-studio", argsPrefix: [] },
     })
@@ -21,14 +20,13 @@ describe("systemd user unit", () => {
   test("renderUserUnit quotes paths with spaces", () => {
     const unit = renderUserUnit({
       workspace: "/home/me/my project",
-      host: "127.0.0.1",
+      host: "0.0.0.0",
       port: 4199,
-      allowNonLoopback: true,
       pathEnv: "/usr/bin",
       executable: { command: "/opt/bin/opencode-studio", argsPrefix: [] },
     })
     expect(unit).toContain('WorkingDirectory="/home/me/my project"')
-    expect(unit).toContain("--allow-non-loopback")
+    expect(unit).toContain("--host 0.0.0.0")
     expect(unit).toContain("--port 4199")
   })
 

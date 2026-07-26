@@ -22,14 +22,14 @@ export function isLoopbackHost(hostname: string) {
   return false
 }
 
-export function assertLoopbackBind(hostname: string, allowNonLoopback = false) {
-  if (allowNonLoopback) return
+export function assertLoopbackBind(hostname: string) {
   if (isLoopbackHost(hostname)) return
-  throw new Error(`Refusing non-loopback bind "${hostname}". Use 127.0.0.1/localhost, or pass --allow-non-loopback (dangerous).`)
+  console.warn(`WARNING: binding to ${hostname} — accessible to other machines on the network`)
 }
 
 /** Host allowlist derived from the actual bind address (plus paired loopback names when binding loopback). */
 export function allowedHost(hostHeader: string | undefined, hostname: string, port: number) {
+  if (!isLoopbackHost(hostname)) return true
   if (!hostHeader || /[\0\r\n\s]/.test(hostHeader)) return false
   const allowed = new Set<string>([`${hostname}:${port}`, hostname])
   if (isLoopbackHost(hostname)) {
