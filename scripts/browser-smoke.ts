@@ -289,7 +289,7 @@ try {
   }
 } catch (error) {
   exitCode = 1
-  console.error(error instanceof Error ? error.stack ?? error.message : error)
+  console.error(error instanceof Error ? (error.stack ?? error.message) : error)
 } finally {
   await rm(workspace, { recursive: true, force: true })
 }
