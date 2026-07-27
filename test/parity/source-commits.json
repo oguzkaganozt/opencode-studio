@@ -5,22 +5,10 @@
     "contentSha256": "5153af3b9dc8f6ccddb6fad87e21538b555fdd06ea9a3e1410dceb62841ca0e8",
     "status": "retired"
   },
-  "media": {
-    "path": "opencode-media-studio",
-    "importCommit": "02a547dcf7433b0645833ad5d7013e49080a28fd",
-    "contentSha256": "b4aa2fca43246a510f7feb6fbb4cde9185c3dac26012f6e73dd077f33182d577",
-    "status": "retired"
-  },
   "pcb": {
     "path": "opencode-pcb-studio",
     "importCommit": "02a547dcf7433b0645833ad5d7013e49080a28fd",
     "contentSha256": "3812ef06ca943cfdf5914edc90b962221c61c1533a438ec0a416f830c3580e31",
-    "status": "retired"
-  },
-  "startup": {
-    "path": "opencode-startup-studio",
-    "importCommit": "02a547dcf7433b0645833ad5d7013e49080a28fd",
-    "contentSha256": "d7dc340a7398216e402bac4562d4d7e7ddf4ea2f281745c69e0ebf620cbfeee3",
     "status": "retired"
   },
   "contract": {

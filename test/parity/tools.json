@@ -65,81 +65,60 @@
     "pcb_pcb_svg": {
       "studio": "pcb"
     },
-    "startup_list": {
-      "studio": "startup"
-    },
-    "startup_read": {
-      "studio": "startup"
-    },
-    "startup_upsert": {
-      "studio": "startup"
-    },
-    "startup_reject": {
-      "studio": "startup"
-    },
-    "startup_check_evidence": {
-      "studio": "startup"
-    },
-    "startup_status": {
-      "studio": "startup"
-    },
-    "startup_view": {
-      "studio": "startup"
-    },
     "read_media": {
-      "studio": "media"
+      "studio": "platform"
     },
     "chatgpt_image_generate": {
-      "studio": "media"
+      "studio": "platform"
     },
     "media_import": {
-      "studio": "media"
+      "studio": "platform"
     },
     "media_list": {
-      "studio": "media"
+      "studio": "platform"
     },
     "media_info": {
-      "studio": "media"
+      "studio": "platform"
     },
     "media_probe": {
-      "studio": "media"
+      "studio": "platform"
     },
     "media_convert": {
-      "studio": "media"
+      "studio": "platform"
     },
     "media_trim": {
-      "studio": "media"
+      "studio": "platform"
     },
     "media_extract_audio": {
-      "studio": "media"
+      "studio": "platform"
     },
     "fal_upload": {
-      "studio": "media"
+      "studio": "platform"
     },
     "fal_models": {
-      "studio": "media"
+      "studio": "platform"
     },
     "fal_model_schema": {
-      "studio": "media"
+      "studio": "platform"
     },
     "fal_pricing": {
-      "studio": "media"
+      "studio": "platform"
     },
     "fal_submit": {
-      "studio": "media"
+      "studio": "platform"
     },
     "fal_status": {
-      "studio": "media"
+      "studio": "platform"
     },
     "fal_result": {
-      "studio": "media"
+      "studio": "platform"
     },
     "fal_cancel": {
-      "studio": "media"
+      "studio": "platform"
     },
     "media_download": {
-      "studio": "media"
+      "studio": "platform"
     }
   },
-  "count": 42
+  "count": 35
 }

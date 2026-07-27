@@ -1,4 +1,4 @@
-export type AgentHandoffSource = "cad" | "pcb" | "media" | "startup" | "shell"
+export type AgentHandoffSource = "cad" | "pcb" | "files" | "shell"
 
 export type AgentHandoffRequest = {
   text: string

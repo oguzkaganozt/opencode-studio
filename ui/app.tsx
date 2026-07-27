@@ -7,6 +7,7 @@ import { readAgentOpen, writeAgentOpen } from "./agent-open"
 import { type AgentStatus, agentStatusDotClass, agentStatusLabel } from "./agent-status"
 import { Button } from "./components/button"
 import { EmptyState } from "./components/empty-state"
+import { FilesExplorer } from "./files-explorer"
 import { NativeAgentFrame } from "./native-agent-frame"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 import { readThemePreference, setThemePreference, type ThemePreference } from "./theme"
@@ -44,9 +45,7 @@ type StudiosResponse = {
 
 const STUDIO_META: Record<string, { short: string; blurb: string }> = {
   cad: { short: "CAD", blurb: "Parts, assemblies, renders" },
-  media: { short: "Media", blurb: "Library browse & preview" },
   pcb: { short: "PCB", blurb: "Schematic, layout, BOM" },
-  startup: { short: "Startup", blurb: "Idea pool & evidence" },
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -304,9 +303,20 @@ function SideDrawer({
               >
                 Home
               </Link>
+              <Link
+                to="/files"
+                onClick={onClose}
+                className={`rounded-lg px-3 py-2.5 text-[13px] transition-colors ${
+                  studioId === "files"
+                    ? "bg-[var(--osc-surface)] font-medium text-[var(--osc-text)]"
+                    : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
+                }`}
+              >
+                Files
+              </Link>
               {enabledCards.length === 0 ? (
                 <p className="px-3 py-8 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
-                  No studios enabled. Open Settings to turn some on.
+                  No domain studios enabled. Media tools and Files stay available. Open Settings for CAD/PCB.
                 </p>
               ) : (
                 enabledCards.map((s) => {
@@ -612,7 +622,7 @@ function HomePage() {
           <EmptyState
             className="py-20"
             title="No studios enabled"
-            description="Turn on CAD, Media, PCB, or Startup so domain viewers and agent tools are available."
+            description="Turn on CAD or PCB for domain viewers. Media tools and the Files explorer are always available."
             action={
               <Button type="button" onClick={openSettings}>
                 Open settings
@@ -667,19 +677,9 @@ const viewerLoaders: Record<StudioId, React.LazyExoticComponent<() => React.Reac
     const mod = await import("@studios/cad/viewer/src/app")
     return { default: mod.App }
   }),
-  media: lazy(async () => {
-    await import("@studios/media/viewer/src/styles.css")
-    const mod = await import("@studios/media/viewer/src/app")
-    return { default: mod.App }
-  }),
   pcb: lazy(async () => {
     await import("@studios/pcb/viewer/src/styles.css")
     const mod = await import("@studios/pcb/viewer/src/app")
-    return { default: mod.App }
-  }),
-  startup: lazy(async () => {
-    await import("@studios/startup/viewer/src/styles.css")
-    const mod = await import("@studios/startup/viewer/src/app")
     return { default: mod.App }
   }),
 }
@@ -820,12 +820,90 @@ function SkipLink() {
   )
 }
 
+function FilesFrame() {
+  const studiosQuery = useStudios()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [agentOpen, setAgentOpen] = useState(() => readAgentOpen())
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (readAgentOpen() ? "loading" : "closed"))
+
+  useEffect(() => {
+    if (!agentOpen) setAgentStatus("closed")
+  }, [agentOpen])
+
+  const setAgentOpenPersisted = (next: boolean | ((value: boolean) => boolean)) => {
+    setAgentOpen((current) => {
+      const value = typeof next === "function" ? next(current) : next
+      return value
+    })
+  }
+
+  useEffect(() => {
+    writeAgentOpen(agentOpen)
+  }, [agentOpen])
+
+  useEffect(() => {
+    return subscribeAgentHandoff((request) => {
+      if (request.open) setAgentOpen(true)
+    })
+  }, [])
+
+  const nativeAvailable = studiosQuery.data?.nativeOpenCodeAvailable ?? false
+  const workspace = studiosQuery.data?.workspace ?? ""
+
+  return (
+    <div data-studio="files" className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
+      <TopBar
+        studioLabel="Files"
+        studioId="files"
+        onMenu={() => setDrawerOpen(true)}
+        edge="flush"
+        actions={
+          <>
+            {nativeAvailable && (
+              <a
+                href="/"
+                className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
+              >
+                OpenCode
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => setAgentOpenPersisted((value) => !value)}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
+              aria-pressed={agentOpen}
+              title={agentStatusLabel(agentStatus)}
+            >
+              <span className={`size-1.5 rounded-full ${agentStatusDotClass(agentStatus)}`} aria-hidden />
+              Agent
+            </button>
+          </>
+        }
+      />
+      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} studioId="files" initialPanel="nav" />
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <NativeAgentFrame
+          workspace={workspace}
+          available={nativeAvailable}
+          open={agentOpen}
+          onClose={() => setAgentOpenPersisted(false)}
+          onStatusChange={setAgentStatus}
+        />
+        <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
+          <FilesExplorer />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function App() {
   return (
     <>
       <SkipLink />
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/files/*" element={<FilesFrame />} />
         <Route path="/studios/:studioId/*" element={<StudioFrame />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

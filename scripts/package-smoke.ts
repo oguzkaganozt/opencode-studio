@@ -32,9 +32,12 @@ try {
   const mediaGo = await import(path.join(pkg, "dist/media-go.js"))
   if (typeof mediaGo.default !== "function") throw new Error("media-go export missing")
 
-  for (const skill of ["cad", "media", "pcb", "startup"]) {
+  for (const skill of ["cad", "pcb"]) {
     const skillPath = path.join(pkg, "studios", skill, "skill", "SKILL.md")
     if (!(await Bun.file(skillPath).exists())) throw new Error(`missing packed skill: ${skill}`)
+  }
+  if (!(await Bun.file(path.join(pkg, "src/platform/media/skill/SKILL.md")).exists())) {
+    throw new Error("missing packed platform media skill")
   }
   if (!(await Bun.file(path.join(pkg, "studios/cad/forge/forge_cli.py")).exists())) {
     throw new Error("missing packed forge_cli.py")
@@ -79,14 +82,17 @@ try {
     workspace: domain,
     studioConfigHome,
     openCodeHome,
-    enabled: ["startup"],
+    enabled: ["pcb"],
     packageRoot: pkg,
     validateOpenCode: false,
   })
   const studioJson = JSON.parse(await readFile(path.join(studioConfigHome, "studio.json"), "utf8"))
-  if (JSON.stringify(studioJson.enabled) !== JSON.stringify(["startup"])) throw new Error("configure failed in packed package")
-  if (!(await Bun.file(path.join(openCodeHome, "skills/startup-studio/SKILL.md")).exists())) {
-    throw new Error("packed configure did not install skill")
+  if (JSON.stringify(studioJson.enabled) !== JSON.stringify(["pcb"])) throw new Error("configure failed in packed package")
+  if (!(await Bun.file(path.join(openCodeHome, "skills/pcb-studio/SKILL.md")).exists())) {
+    throw new Error("packed configure did not install pcb skill")
+  }
+  if (!(await Bun.file(path.join(openCodeHome, "skills/media/SKILL.md")).exists())) {
+    throw new Error("packed configure did not install platform media skill")
   }
   if (await Bun.file(path.join(domain, "opencode.json")).exists()) {
     throw new Error("configure must not write opencode.json into the domain root")

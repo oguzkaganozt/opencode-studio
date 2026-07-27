@@ -1,22 +1,14 @@
 {
   "cad-studio": {
     "path": "studios/cad/skill/SKILL.md",
-    "sha256": "85bb3b9ee18287819b7cfe5581953651a9fc00cadc6189b638de5bb9deddb3f9",
-    "bytes": 20442
-  },
-  "media-studio": {
-    "path": "studios/media/skill/SKILL.md",
-    "sha256": "78f684db0ef92ae8f9d0b640968048924a8b473e026b015c7db961c5c977c62d",
-    "bytes": 2430
+    "sha256": "85bb3b9ee18287819b7cfe5581953651a9fc00cadc6189b638de5bb9deddb3f9"
   },
   "pcb-studio": {
     "path": "studios/pcb/skill/SKILL.md",
-    "sha256": "9123139a47e0e853ac6a4dc35ec3907e2d66d2ddd2c97986a3e35d8146820997",
-    "bytes": 3124
+    "sha256": "9123139a47e0e853ac6a4dc35ec3907e2d66d2ddd2c97986a3e35d8146820997"
   },
-  "startup-studio": {
-    "path": "studios/startup/skill/SKILL.md",
-    "sha256": "d4fb68ac798abba5a983e06e4dd4cf7f2309660af039c843f7a81fdb48bbba0d",
-    "bytes": 4817
+  "media": {
+    "path": "src/platform/media/skill/SKILL.md",
+    "sha256": "9af6a708c95f665b0e91ed192e381c13654bcafd7ea33cd066489e8bd3628ec5"
   }
 }

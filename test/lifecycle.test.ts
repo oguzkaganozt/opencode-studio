@@ -29,7 +29,7 @@ afterEach(async () => {
 })
 
 describe("configureStudios", () => {
-  test("fails closed with no config", async () => {
+  test("fails closed with no config for domain studios", async () => {
     const ctx = await isolated()
     const status = await statusStudios(ctx)
     expect(status.enabled).toEqual([])
@@ -40,20 +40,23 @@ describe("configureStudios", () => {
     const ctx = await isolated()
     const result = await configureStudios({
       ...ctx,
-      enabled: ["startup"],
+      enabled: ["pcb"],
       validateOpenCode: false,
     })
-    expect(result.enabled).toEqual(["startup"])
+    expect(result.enabled).toEqual(["pcb"])
     const config = await readStudioConfigFile(ctx)
-    expect(config.enabled).toEqual(["startup"])
+    expect(config.enabled).toEqual(["pcb"])
     expect(config.configPath.startsWith(ctx.studioConfigHome)).toBe(true)
-    const skill = path.join(ctx.openCodeHome, "skills/startup-studio/SKILL.md")
+    const skill = path.join(ctx.openCodeHome, "skills/pcb-studio/SKILL.md")
     expect(await Bun.file(skill).exists()).toBe(true)
-    const marker = JSON.parse(await readFile(path.join(ctx.openCodeHome, "skills/startup-studio/.opencode-studio-managed.json"), "utf8"))
-    expect(marker.studioId).toBe("startup")
+    const marker = JSON.parse(await readFile(path.join(ctx.openCodeHome, "skills/pcb-studio/.opencode-studio-managed.json"), "utf8"))
+    expect(marker.studioId).toBe("pcb")
+    // Platform media skill always installed
+    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/media/SKILL.md")).exists()).toBe(true)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
     expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(true)
+    expect(openCode.plugin.some((entry: string) => String(entry).includes("/media-go"))).toBe(true)
     // Domain root must stay clean of config clutter
     expect(await Bun.file(path.join(ctx.workspace, "opencode.json")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.workspace, ".opencode/studio.json")).exists()).toBe(false)
@@ -74,10 +77,10 @@ describe("configureStudios", () => {
     const ctx = await isolated()
     await configureStudios({
       ...ctx,
-      enabled: ["startup"],
+      enabled: ["pcb"],
       validateOpenCode: false,
     })
-    const skill = path.join(ctx.openCodeHome, "skills/startup-studio/SKILL.md")
+    const skill = path.join(ctx.openCodeHome, "skills/pcb-studio/SKILL.md")
     await writeFile(skill, `${await readFile(skill, "utf8")}\n# user edit\n`)
     await expect(
       configureStudios({
@@ -88,50 +91,54 @@ describe("configureStudios", () => {
     ).rejects.toThrow(/modified by the user/)
   })
 
-  test("remove clears managed state", async () => {
+  test("remove clears domain studios but keeps platform", async () => {
     const ctx = await isolated()
     await configureStudios({
       ...ctx,
-      enabled: ["startup"],
+      enabled: ["pcb"],
       validateOpenCode: false,
     })
     await removeStudios({ ...ctx, validateOpenCode: false })
     const config = await readStudioConfigFile(ctx)
     expect(config.enabled).toEqual([])
-    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/startup-studio/SKILL.md")).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/pcb-studio/SKILL.md")).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/media/SKILL.md")).exists()).toBe(true)
+    const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
+    expect(openCode.plugin.some((entry: string) => String(entry).includes("/media-go"))).toBe(true)
   })
 
-  test("doctor reports enabled studio", async () => {
+  test("doctor reports enabled studio and platform media", async () => {
     const ctx = await isolated()
     await configureStudios({
       ...ctx,
-      enabled: ["startup"],
+      enabled: ["pcb"],
       validateOpenCode: false,
     })
     const result = await doctorStudios(ctx)
-    expect(result.checks.some((c) => c.id === "skill:startup" && c.status === "pass")).toBe(true)
+    expect(result.checks.some((c) => c.id === "skill:pcb" && c.status === "pass")).toBe(true)
+    expect(result.checks.some((c) => c.id === "skill:media" && c.status === "pass")).toBe(true)
   })
 
   test("configure scrubs legacy project-local managed files", async () => {
     const ctx = await isolated()
-    const skillDir = path.join(ctx.workspace, ".opencode/skills/startup-studio")
+    const skillDir = path.join(ctx.workspace, ".opencode/skills/pcb-studio")
     await mkdir(skillDir, { recursive: true })
-    const skillBody = await readFile(path.join(packageRoot, "studios/startup/skill/SKILL.md"))
+    const skillBody = await readFile(path.join(packageRoot, "studios/pcb/skill/SKILL.md"))
     const digest = createHash("sha256").update(skillBody).digest("hex")
     await writeFile(path.join(skillDir, "SKILL.md"), skillBody)
     await writeFile(
       path.join(skillDir, ".opencode-studio-managed.json"),
-      JSON.stringify({ studioId: "startup", packageVersion: "0.0.0", digest }),
+      JSON.stringify({ studioId: "pcb", packageVersion: "0.0.0", digest }),
     )
     await writeFile(
       path.join(ctx.workspace, "opencode.json"),
       JSON.stringify({ plugin: ["@oguzkaganozt/opencode-studio@0.1.0"], mcp: {} }, null, 2),
     )
-    await writeFile(path.join(ctx.workspace, ".opencode/studio.json"), JSON.stringify({ enabled: ["startup"] }))
+    await writeFile(path.join(ctx.workspace, ".opencode/studio.json"), JSON.stringify({ enabled: ["pcb"] }))
 
     await configureStudios({
       ...ctx,
-      enabled: ["startup"],
+      enabled: ["pcb"],
       validateOpenCode: false,
     })
 

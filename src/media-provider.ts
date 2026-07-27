@@ -1,1 +1,1 @@
-export { createNativeMediaProvider } from "../studios/media/provider"
+export { createNativeMediaProvider } from "./platform/media/provider"

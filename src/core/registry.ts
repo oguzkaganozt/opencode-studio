@@ -1,7 +1,10 @@
-export const STUDIO_IDS = ["cad", "media", "pcb", "startup"] as const
+export const STUDIO_IDS = ["cad", "pcb"] as const
 export type StudioId = (typeof STUDIO_IDS)[number]
 
-export type StudioRootDefault = "workspace" | "user-data"
+/** Legacy studio ids stripped from config with a warning. */
+export const LEGACY_STUDIO_IDS = ["media", "startup"] as const
+
+export type StudioRootDefault = "workspace"
 
 export type StudioDoctorCheck = {
   id: string
@@ -28,6 +31,10 @@ export function isStudioId(value: string): value is StudioId {
   return (STUDIO_IDS as readonly string[]).includes(value)
 }
 
+export function isLegacyStudioId(value: string): boolean {
+  return (LEGACY_STUDIO_IDS as readonly string[]).includes(value)
+}
+
 export function assertStudioIds(values: string[]): StudioId[] {
   const seen = new Set<string>()
   const result: StudioId[] = []
@@ -42,3 +49,7 @@ export function assertStudioIds(values: string[]): StudioId[] {
 
 /** Catalog order used for deterministic hook composition. */
 export const CATALOG_ORDER: StudioId[] = [...STUDIO_IDS]
+
+/** Platform contribution owner (not a catalog studio). */
+export const PLATFORM_OWNER = "platform" as const
+export type PluginOwner = StudioId | typeof PLATFORM_OWNER

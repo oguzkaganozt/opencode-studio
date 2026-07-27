@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@oguzkaganozt/opencode-studio",
-  "version": "0.2.15",
-  "description": "Configurable OpenCode Studios for CAD, media, PCB, and startup workflows",
+  "version": "0.3.0",
+  "description": "OpenCode Studios for CAD and PCB, plus always-on workspace media tools",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -21,15 +21,14 @@
     "studios/cad/forge/uv.lock",
     "studios/cad/forge/.python-version",
     "studios/cad/skill/SKILL.md",
-    "studios/media/skill/SKILL.md",
     "studios/pcb/skill/SKILL.md",
-    "studios/startup/skill/SKILL.md",
+    "src/platform/media/skill/SKILL.md",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
     "postinstall": "node scripts/postinstall-completion.mjs",
-    "test": "bun test ./test/ ./ui/ ./studios/cad/test/ ./studios/media/test/ ./studios/pcb/test/ ./studios/startup/test/",
+    "test": "bun test ./test/ ./ui/ ./studios/cad/test/ ./src/platform/media/test/ ./studios/pcb/test/",
     "test:python": "uv run --project studios/cad/forge python -m unittest discover -s studios/cad/forge/tests -v",
     "test:pcb-fixture": "bun scripts/pcb-fixture.ts",
     "test:package": "bun scripts/package-smoke.ts",
@@ -126,8 +125,8 @@
     "cad",
     "media",
     "pcb",
-    "startup",
-    "studio"
+    "studio",
+    "files"
   ],
   "repository": {
     "type": "git",

@@ -2,9 +2,8 @@ import { createHash, randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import {
-  defaultMediaRoot,
   legacyStudioConfigPath,
-  parseStudioConfig,
+  parseStudioConfigStrict,
   readLegacyStudioConfig,
   readStudioConfigFile,
   resolveStudioRoot,
@@ -25,10 +24,14 @@ import {
 } from "./core/opencode-config"
 import {
   BUILD123D_MCP,
+  LEGACY_MEDIA_SKILL_NAME,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
   MANAGED_MCP_KEY,
   type PackageMeta,
+  PLATFORM_MEDIA_SKILL_ID,
+  platformMediaSkillName,
+  platformMediaSkillSourcePath,
   skillDigest,
   skillNameFor,
   skillSourcePath,
@@ -47,9 +50,15 @@ export type ManagedMarker = {
 }
 
 export type LifecyclePaths = UserPathOptions & {
-  /** Domain data root (CAD/PCB/startup). Defaults to cwd. Not used for enablement config. */
+  /** Domain data root (CAD/PCB). Defaults to cwd. Not used for enablement config. */
   workspace?: string
   packageRoot?: string
+}
+
+type SkillTarget = {
+  id: string
+  skillName: string
+  sourceSkillFile: string
 }
 
 async function readMarker(markerFile: string): Promise<ManagedMarker | null> {
@@ -88,20 +97,41 @@ async function restoreFile(filePath: string, content: Buffer | null) {
   }
 }
 
-function skillPaths(studioId: StudioId, packageRoot: string, userPaths: UserPathOptions = {}) {
-  const skillName = skillNameFor(studioId)
-  const skillDirectory = path.join(resolveOpenCodeSkillsHome(userPaths), skillName)
+function skillPathsFor(target: SkillTarget, userPaths: UserPathOptions = {}) {
+  const skillDirectory = path.join(resolveOpenCodeSkillsHome(userPaths), target.skillName)
   return {
-    skillName,
+    skillName: target.skillName,
     skillDirectory,
     skillFile: path.join(skillDirectory, "SKILL.md"),
     markerFile: path.join(skillDirectory, MANAGED_MARKER_NAME),
+    sourceSkillFile: target.sourceSkillFile,
+    id: target.id,
+  }
+}
+
+function studioSkillTarget(studioId: StudioId, packageRoot: string): SkillTarget {
+  return {
+    id: studioId,
+    skillName: skillNameFor(studioId),
     sourceSkillFile: skillSourcePath(packageRoot, studioId),
   }
 }
 
-async function preflightSkill(studioId: StudioId, packageRoot: string, userPaths: UserPathOptions = {}) {
-  const paths = skillPaths(studioId, packageRoot, userPaths)
+function platformMediaSkillTarget(packageRoot: string): SkillTarget {
+  return {
+    id: PLATFORM_MEDIA_SKILL_ID,
+    skillName: platformMediaSkillName(),
+    sourceSkillFile: platformMediaSkillSourcePath(packageRoot),
+  }
+}
+
+/** @deprecated path helper used by tests — studio skills only */
+function skillPaths(studioId: StudioId, packageRoot: string, userPaths: UserPathOptions = {}) {
+  return skillPathsFor(studioSkillTarget(studioId, packageRoot), userPaths)
+}
+
+async function preflightSkill(target: SkillTarget, userPaths: UserPathOptions = {}) {
+  const paths = skillPathsFor(target, userPaths)
   const existingDigest = await currentSkillDigest(paths.skillFile)
   const marker = await readMarker(paths.markerFile)
   if (existingDigest && !marker) {
@@ -110,13 +140,13 @@ async function preflightSkill(studioId: StudioId, packageRoot: string, userPaths
   if (marker && existingDigest && marker.digest !== existingDigest) {
     throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
   }
-  if (marker && marker.studioId !== studioId) {
+  if (marker && marker.studioId !== target.id) {
     throw new Error(`Conflict: skill owned by studio '${marker.studioId}' at ${paths.skillDirectory}`)
   }
 }
 
-async function writeManagedSkill(input: { studioId: StudioId; packageRoot: string; packageVersion: string; userPaths?: UserPathOptions }) {
-  const paths = skillPaths(input.studioId, input.packageRoot, input.userPaths)
+async function writeManagedSkill(input: { target: SkillTarget; packageRoot: string; packageVersion: string; userPaths?: UserPathOptions }) {
+  const paths = skillPathsFor(input.target, input.userPaths)
   const digest = await skillDigest(paths.sourceSkillFile)
   const existingDigest = await currentSkillDigest(paths.skillFile)
   const marker = await readMarker(paths.markerFile)
@@ -124,7 +154,7 @@ async function writeManagedSkill(input: { studioId: StudioId; packageRoot: strin
   if (marker && existingDigest && marker.digest !== existingDigest) {
     throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
   }
-  if (marker && marker.studioId !== input.studioId) {
+  if (marker && marker.studioId !== input.target.id) {
     throw new Error(`Conflict: skill owned by studio '${marker.studioId}' at ${paths.skillDirectory}`)
   }
 
@@ -135,7 +165,7 @@ async function writeManagedSkill(input: { studioId: StudioId; packageRoot: strin
   const skillTmp = `${paths.skillFile}.${process.pid}.${randomUUID()}.tmp`
   const markerTmp = `${paths.markerFile}.${process.pid}.${randomUUID()}.tmp`
   const nextMarker: ManagedMarker = {
-    studioId: input.studioId,
+    studioId: input.target.id,
     packageVersion: input.packageVersion,
     digest,
   }
@@ -154,8 +184,8 @@ async function writeManagedSkill(input: { studioId: StudioId; packageRoot: strin
   }
 }
 
-async function removeManagedSkill(studioId: StudioId, packageRoot: string, userPaths: UserPathOptions = {}) {
-  const paths = skillPaths(studioId, packageRoot, userPaths)
+async function removeManagedSkill(target: SkillTarget, userPaths: UserPathOptions = {}) {
+  const paths = skillPathsFor(target, userPaths)
   const existingDigest = await currentSkillDigest(paths.skillFile)
   if (!existingDigest) {
     await rm(paths.markerFile, { force: true })
@@ -165,7 +195,7 @@ async function removeManagedSkill(studioId: StudioId, packageRoot: string, userP
   const marker = await readMarker(paths.markerFile)
   if (!marker) throw new Error(`Conflict: unmarked skill already exists at ${paths.skillDirectory}`)
   if (marker.digest !== existingDigest) throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
-  if (marker.studioId !== studioId) throw new Error(`Conflict: skill owned by studio '${marker.studioId}' at ${paths.skillDirectory}`)
+  if (marker.studioId !== target.id) throw new Error(`Conflict: skill owned by studio '${marker.studioId}' at ${paths.skillDirectory}`)
 
   const skillBackup = `${paths.skillFile}.${process.pid}.bak`
   const markerBackup = `${paths.markerFile}.${process.pid}.bak`
@@ -183,6 +213,44 @@ async function removeManagedSkill(studioId: StudioId, packageRoot: string, userP
     await rename(markerBackup, paths.markerFile).catch(() => {})
     throw error
   }
+}
+
+/** Remove legacy media-studio skill if still managed. */
+async function scrubLegacyMediaSkill(userPaths: UserPathOptions = {}) {
+  const skillDirectory = path.join(resolveOpenCodeSkillsHome(userPaths), LEGACY_MEDIA_SKILL_NAME)
+  const skillFile = path.join(skillDirectory, "SKILL.md")
+  const markerFile = path.join(skillDirectory, MANAGED_MARKER_NAME)
+  const existingDigest = await currentSkillDigest(skillFile)
+  if (!existingDigest) {
+    await rm(markerFile, { force: true })
+    await rmdir(skillDirectory).catch(() => {})
+    return
+  }
+  const marker = await readMarker(markerFile)
+  if (!marker || marker.digest !== existingDigest) return
+  if (marker.studioId !== "media" && marker.studioId !== LEGACY_MEDIA_SKILL_NAME) return
+  await rm(skillFile, { force: true })
+  await rm(markerFile, { force: true })
+  await rmdir(skillDirectory).catch(() => {})
+}
+
+/** Remove legacy startup-studio skill if still managed. */
+async function scrubLegacyStartupSkill(userPaths: UserPathOptions = {}) {
+  const skillDirectory = path.join(resolveOpenCodeSkillsHome(userPaths), "startup-studio")
+  const skillFile = path.join(skillDirectory, "SKILL.md")
+  const markerFile = path.join(skillDirectory, MANAGED_MARKER_NAME)
+  const existingDigest = await currentSkillDigest(skillFile)
+  if (!existingDigest) {
+    await rm(markerFile, { force: true })
+    await rmdir(skillDirectory).catch(() => {})
+    return
+  }
+  const marker = await readMarker(markerFile)
+  if (!marker || marker.digest !== existingDigest) return
+  if (marker.studioId !== "startup") return
+  await rm(skillFile, { force: true })
+  await rm(markerFile, { force: true })
+  await rmdir(skillDirectory).catch(() => {})
 }
 
 function isManagedBuild123dEntry(value: unknown) {
@@ -308,11 +376,16 @@ export async function configureStudios(
   assertNotRoot("configure")
 
   const userPaths = pickUserPaths(input)
-  const enabled = parseStudioConfig({ enabled: input.enabled, roots: input.roots }).enabled
+  const enabled = parseStudioConfigStrict({ enabled: input.enabled, roots: input.roots }).enabled
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
   const meta = await loadPackageMeta(packageRoot)
   const previous = await readStudioConfigFile(userPaths)
-  const desiredRoots = input.roots ?? previous.roots
+  // Scrub legacy roots (media/startup) from previous config
+  const desiredRoots: Partial<Record<StudioId, string>> = {}
+  const rootSource = input.roots ?? previous.roots
+  for (const id of STUDIO_IDS) {
+    if (rootSource[id]) desiredRoots[id] = rootSource[id]!
+  }
 
   // Domain root is data-local. Optional when clearing all studios (remove).
   let domainRoot: string | null
@@ -327,15 +400,17 @@ export async function configureStudios(
     for (const studioId of enabled) {
       const def = getStudioDefinition(studioId)
       if (input.dryRun) continue
-      const roots =
-        def.root.default === "user-data" ? { ...desiredRoots, [studioId]: desiredRoots[studioId] ?? defaultMediaRoot() } : desiredRoots
-      await resolveStudioRoot({ studioId, workspace: domainRoot, roots, create: def.root.create })
+      await resolveStudioRoot({ studioId, workspace: domainRoot, roots: desiredRoots, create: def.root.create })
     }
   }
 
-  // Preflight skills for enable and disable
+  const platformTarget = platformMediaSkillTarget(packageRoot)
+
+  // Preflight skills for enable and disable (domain studios + always-on platform media)
+  await preflightSkill(platformTarget, userPaths)
   for (const studioId of STUDIO_IDS) {
-    const paths = skillPaths(studioId, packageRoot, userPaths)
+    const target = studioSkillTarget(studioId, packageRoot)
+    const paths = skillPathsFor(target, userPaths)
     const existingDigest = await currentSkillDigest(paths.skillFile)
     const marker = await readMarker(paths.markerFile)
     if (!enabled.includes(studioId)) {
@@ -344,7 +419,7 @@ export async function configureStudios(
         throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
       }
     } else {
-      await preflightSkill(studioId, packageRoot, userPaths)
+      await preflightSkill(target, userPaths)
     }
   }
 
@@ -359,11 +434,9 @@ export async function configureStudios(
     if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
     return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
+  // Platform is always pinned: main plugin + media-go (even when enabled is empty / remove).
   plugins.push(meta.pluginSpecifier)
-  // Media owns an auxiliary OpenCode plugin export for the opencode-go provider hook.
-  if (enabled.includes("media")) {
-    plugins.push(`${meta.name}@${meta.version}/media-go`)
-  }
+  plugins.push(`${meta.name}@${meta.version}/media-go`)
 
   let nextText = configWithPlugins(openCode, plugins)
   let workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
@@ -398,14 +471,29 @@ export async function configureStudios(
     }
   }
 
-  const installed: StudioId[] = []
-  const removed: StudioId[] = []
+  const installed: string[] = []
+  const removed: string[] = []
   const rollbacks: Array<() => Promise<void>> = []
 
   try {
+    // Always install platform media skill
+    {
+      const result = await writeManagedSkill({
+        target: platformTarget,
+        packageRoot,
+        packageVersion: meta.version,
+        userPaths,
+      })
+      installed.push(PLATFORM_MEDIA_SKILL_ID)
+      rollbacks.push(async () => {
+        await restoreFile(result.paths.skillFile, result.previousSkill)
+        await restoreFile(result.paths.markerFile, result.previousMarker)
+      })
+    }
+
     for (const studioId of enabled) {
       const result = await writeManagedSkill({
-        studioId,
+        target: studioSkillTarget(studioId, packageRoot),
         packageRoot,
         packageVersion: meta.version,
         userPaths,
@@ -418,11 +506,15 @@ export async function configureStudios(
     }
     for (const studioId of STUDIO_IDS) {
       if (enabled.includes(studioId)) continue
-      const paths = skillPaths(studioId, packageRoot, userPaths)
+      const target = studioSkillTarget(studioId, packageRoot)
+      const paths = skillPathsFor(target, userPaths)
       if (!(await Bun.file(paths.skillFile).exists()) && !(await Bun.file(paths.markerFile).exists())) continue
-      await removeManagedSkill(studioId, packageRoot, userPaths)
+      await removeManagedSkill(target, userPaths)
       removed.push(studioId)
     }
+
+    await scrubLegacyMediaSkill(userPaths)
+    await scrubLegacyStartupSkill(userPaths)
 
     if (nextText !== openCode.text) {
       await atomicWriteOpenCodeConfig(configPath, nextText, openCode.exists ? openCode.text : "", {
@@ -469,7 +561,7 @@ export async function configureStudios(
       // Host hot-reloads when configure is applied via the running serve UI/API.
       restartHost: true,
       message:
-        "Configuration applied (user-global). Restart OpenCode. If serve is running, it reloads on Apply from the home UI; otherwise restart serve too.",
+        "Configuration applied (user-global). Platform media stays on. Restart OpenCode. If serve is running, it reloads on Apply from the home UI; otherwise restart serve too.",
     }
   } catch (error) {
     for (const rollback of rollbacks.reverse()) {
@@ -502,7 +594,6 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         studioId,
         workspace: domainRoot,
         roots: config.roots,
-        createMedia: false,
       })
     } catch (error) {
       rootError = error instanceof Error ? error.message : String(error)
@@ -550,8 +641,8 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
   if (config.error) {
     checks.push({
       id: "config",
-      status: "fail",
-      message: config.error,
+      status: "warn",
+      message: `Domain config error (platform media still on): ${config.error}`,
       repair: `Fix or remove ${config.configPath}`,
     })
   } else {
@@ -560,7 +651,7 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
       status: "pass",
       message:
         config.enabled.length === 0
-          ? `No Studios enabled (fail-closed) — ${config.configPath}`
+          ? `No domain studios enabled (platform media on) — ${config.configPath}`
           : `Enabled: ${config.enabled.join(", ")} (${config.configPath})`,
     })
   }
@@ -618,14 +709,23 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
   const openCodePath = await resolveOpenCodeConfigPath(userPaths)
   try {
     const openCode = await readOpenCodeConfig(openCodePath)
-    const registered = pluginEntries(openCode).some(
-      (entry) => pluginEntryMatches(entry, meta.name) || pluginEntryMatches(entry, meta.pluginSpecifier),
-    )
+    const entries = pluginEntries(openCode)
+    const registered = entries.some((entry) => pluginEntryMatches(entry, meta.name) || pluginEntryMatches(entry, meta.pluginSpecifier))
+    const mediaGo = entries.some((entry) => {
+      const base = pluginBaseName(entry)
+      return base === `${meta.name}/media-go` || base?.endsWith("/media-go") === true || String(entry).includes("/media-go")
+    })
     checks.push({
       id: "plugin-registration",
-      status: registered || config.enabled.length === 0 ? "pass" : "warn",
+      status: registered ? "pass" : "warn",
       message: registered ? `Plugin registered in ${openCodePath}` : `Plugin not registered in ${openCodePath}`,
       repair: registered ? undefined : "Run opencode-studio configure <studios...>",
+    })
+    checks.push({
+      id: "plugin-media-go",
+      status: mediaGo || !registered ? (mediaGo ? "pass" : "warn") : "warn",
+      message: mediaGo ? "media-go auxiliary plugin pinned" : "media-go not pinned",
+      repair: mediaGo ? undefined : "Run opencode-studio configure …",
     })
   } catch (error) {
     checks.push({
@@ -635,9 +735,55 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
     })
   }
 
+  // Platform media skill + engines (always expected when configured)
+  {
+    const target = platformMediaSkillTarget(packageRoot)
+    const paths = skillPathsFor(target, userPaths)
+    const existingDigest = await currentSkillDigest(paths.skillFile)
+    const marker = await readMarker(paths.markerFile)
+    const sourceDigest = await skillDigest(paths.sourceSkillFile)
+    if (!existingDigest) {
+      checks.push({ id: "skill:media", status: "warn", message: `Missing skill ${paths.skillFile}`, repair: "Re-run configure" })
+    } else if (!marker) {
+      checks.push({ id: "skill:media", status: "fail", message: `Unmarked skill at ${paths.skillDirectory}` })
+    } else if (marker.digest !== existingDigest) {
+      checks.push({ id: "skill:media", status: "fail", message: `User-modified skill at ${paths.skillFile}` })
+    } else if (marker.digest !== sourceDigest) {
+      checks.push({ id: "skill:media", status: "warn", message: "Skill version drift for media", repair: "Re-run configure" })
+    } else {
+      checks.push({ id: "skill:media", status: "pass", message: "media skill installed" })
+    }
+    for (const engine of ["ffmpeg", "ffprobe"] as const) {
+      try {
+        const resolved = resolveEngine(engine)
+        if (!resolved) {
+          checks.push({
+            id: `engine:platform:${engine}`,
+            status: "fail",
+            message: `${engine} missing (expected bundled with the package)`,
+            repair: "Reinstall @oguzkaganozt/opencode-studio",
+          })
+        } else {
+          checks.push({
+            id: `engine:platform:${engine}`,
+            status: "pass",
+            message: `${engine} available (${resolved.source}: ${resolved.path})`,
+          })
+        }
+      } catch (error) {
+        checks.push({
+          id: `engine:platform:${engine}`,
+          status: "fail",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
+
   for (const studioId of config.enabled) {
     const def = getStudioDefinition(studioId)
-    const paths = skillPaths(studioId, packageRoot, userPaths)
+    const target = studioSkillTarget(studioId, packageRoot)
+    const paths = skillPathsFor(target, userPaths)
     const existingDigest = await currentSkillDigest(paths.skillFile)
     const marker = await readMarker(paths.markerFile)
     const sourceDigest = await skillDigest(paths.sourceSkillFile)
@@ -654,7 +800,7 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
     }
 
     try {
-      const root = await resolveStudioRoot({ studioId, workspace: domainRoot, roots: config.roots, createMedia: false })
+      const root = await resolveStudioRoot({ studioId, workspace: domainRoot, roots: config.roots })
       checks.push({ id: `root:${studioId}`, status: "pass", message: root })
     } catch (error) {
       checks.push({

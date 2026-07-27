@@ -1,5 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { CATALOG_ORDER, type StudioId } from "./registry"
+import { CATALOG_ORDER, PLATFORM_OWNER, type PluginOwner, type StudioId } from "./registry"
 
 const KNOWN_HOOK_KEYS = new Set([
   "tool",
@@ -43,8 +43,13 @@ const MUTABLE_TRANSFORMS = new Set([
 const SINGLETON_KEYS = new Set(["provider", "auth"])
 
 export type StudioPluginContribution = {
-  studioId: StudioId
+  studioId: PluginOwner
   hooks: Awaited<ReturnType<Plugin>>
+}
+
+function ownerOrderIndex(owner: PluginOwner) {
+  if (owner === PLATFORM_OWNER) return -1
+  return CATALOG_ORDER.indexOf(owner as StudioId)
 }
 
 function isFunction(value: unknown): value is (...args: any[]) => any {
@@ -70,25 +75,25 @@ function composeDispose(handlers: Array<(...args: any[]) => any>) {
 }
 
 export function composeStudioPlugins(contributions: StudioPluginContribution[]): Awaited<ReturnType<Plugin>> {
-  const ordered = [...contributions].sort((a, b) => CATALOG_ORDER.indexOf(a.studioId) - CATALOG_ORDER.indexOf(b.studioId))
+  const ordered = [...contributions].sort((a, b) => ownerOrderIndex(a.studioId) - ownerOrderIndex(b.studioId))
   const tools: Record<string, unknown> = {}
-  const toolOwners = new Map<string, StudioId>()
-  const hookBuckets = new Map<string, Array<{ studioId: StudioId; handler: unknown }>>()
-  const singletons = new Map<string, StudioId>()
+  const toolOwners = new Map<string, PluginOwner>()
+  const hookBuckets = new Map<string, Array<{ studioId: PluginOwner; handler: unknown }>>()
+  const singletons = new Map<string, PluginOwner>()
 
   for (const contribution of ordered) {
     const hooks = contribution.hooks as Record<string, unknown>
     for (const [key, value] of Object.entries(hooks)) {
       if (value === undefined) continue
       if (!KNOWN_HOOK_KEYS.has(key) && key !== "dispose") {
-        throw new Error(`Unknown OpenCode hook key "${key}" from studio "${contribution.studioId}"`)
+        throw new Error(`Unknown OpenCode hook key "${key}" from "${contribution.studioId}"`)
       }
       if (key === "tool") {
         const map = value as Record<string, unknown>
         for (const [toolName, toolDef] of Object.entries(map)) {
           const owner = toolOwners.get(toolName)
           if (owner) {
-            throw new Error(`Duplicate tool "${toolName}" from studios "${owner}" and "${contribution.studioId}"`)
+            throw new Error(`Duplicate tool "${toolName}" from "${owner}" and "${contribution.studioId}"`)
           }
           toolOwners.set(toolName, contribution.studioId)
           tools[toolName] = toolDef
@@ -96,15 +101,13 @@ export function composeStudioPlugins(contributions: StudioPluginContribution[]):
         continue
       }
       if (SINGLETON_KEYS.has(key)) {
-        // Media is allowed to contribute distinct provider ids via auxiliary export;
-        // within one composed plugin, only one provider object is supported.
         const owner = singletons.get(key)
         if (owner && owner !== contribution.studioId) {
-          throw new Error(`Conflicting singleton hook "${key}" from studios "${owner}" and "${contribution.studioId}"`)
+          throw new Error(`Conflicting singleton hook "${key}" from "${owner}" and "${contribution.studioId}"`)
         }
         if (owner && owner === contribution.studioId && key === "provider") {
           throw new Error(
-            `Studio "${contribution.studioId}" contributed multiple provider hooks in one plugin; use the Media auxiliary export for opencode-go`,
+            `"${contribution.studioId}" contributed multiple provider hooks in one plugin; use the media-go auxiliary export for opencode-go`,
           )
         }
         singletons.set(key, contribution.studioId)
@@ -148,7 +151,7 @@ export function composeStudioPlugins(contributions: StudioPluginContribution[]):
       composed[key] = composeSequential(handlers)
       continue
     }
-    throw new Error(`Cannot compose non-function hook "${key}" from multiple studios`)
+    throw new Error(`Cannot compose non-function hook "${key}" from multiple owners`)
   }
 
   return composed as Awaited<ReturnType<Plugin>>

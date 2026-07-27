@@ -17,16 +17,16 @@ function printHelp() {
   console.log(`opencode-studio
 
 User-global config (~/.config/opencode-studio + ~/.config/opencode).
---workspace is the domain data root for CAD/PCB/startup (default: cwd).
+--workspace is the domain data root for CAD/PCB (default: cwd).
 
 Commands:
-  configure <studio...>   Enable studios globally (cad|media|pcb|startup)
+  configure <studio...>   Enable studios globally (cad|pcb)
   status                  Show enablement, roots, package version
   doctor                  Health checks (exit 1 if any fail)
   serve                   Run OpenCode + integrated Studio host
   service <action>        systemd user unit (install|uninstall|start|stop|restart|status)
   upgrade [--check]       npm i -g @latest; restart unit if installed
-  remove                  Disable all studios (global)
+  remove                  Disable domain studios (platform media stays on)
   completion bash|zsh     Print shell completion script
   completion install      Append completion to shell rc
   version                 Print package version
@@ -132,7 +132,7 @@ Options:
 `,
     remove: `opencode-studio remove [options]
 
-Disable all studios in user-global config (same as configure with an empty set).
+Disable domain studios (cad/pcb). Platform media tools, media-go, and the media skill stay installed.
 
 Options:
   --workspace <path>   Optional domain root for local scrub during remove

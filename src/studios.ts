@@ -1,15 +1,11 @@
 import { cadStudio } from "../studios/cad/studio"
-import { mediaStudio } from "../studios/media/studio"
 import { pcbStudio } from "../studios/pcb/studio"
-import { startupStudio } from "../studios/startup/studio"
 import type { StudioDefinition, StudioId } from "./core/registry"
 import { STUDIO_IDS } from "./core/registry"
 
 const CATALOG: Record<StudioId, StudioDefinition> = {
   cad: cadStudio,
-  media: mediaStudio,
   pcb: pcbStudio,
-  startup: startupStudio,
 }
 
 export function getStudioDefinition(id: StudioId): StudioDefinition {

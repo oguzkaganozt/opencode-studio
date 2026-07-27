@@ -103,6 +103,9 @@ export async function createHostApp(input: HostInput) {
     return next
   }
 
+  const { createFilesApi } = await import("./platform/media/files-api")
+  const filesApi = await createFilesApi(input.workspace)
+
   const app = new Hono()
 
   app.use("*", async (ctx, next) => {
@@ -228,6 +231,15 @@ export async function createHostApp(input: HostInput) {
       return ctx.json(errorBody("configure_failed", error instanceof Error ? error.message : String(error)), 400)
     }
   })
+
+  // Workspace file explorer (always on platform). Off-loopback requires the same Basic auth as OpenCode.
+  app.use("/api/files/*", async (ctx, next) => {
+    if (isLoopbackHost(hostname)) return next()
+    const denied = remoteAuthGuard(ctx)
+    if (denied) return denied
+    return next()
+  })
+  app.route("/api/files", filesApi)
 
   // Dispatch to the hot-swappable studio mount table.
   app.all("/api/studios/*", async (ctx) => {

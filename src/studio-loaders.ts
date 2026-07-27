@@ -25,33 +25,17 @@ export type ApiLoader = (ctx: ApiLoadContext) => Promise<Hono>
 export const pluginLoaders: Record<StudioId, PluginLoader> = {
   cad: async (ctx) => {
     const { loadCadPlugin } = await import("../studios/cad/plugin")
-    const root = await ctx.resolveStudioRoot({ studioId: "cad", workspace: ctx.workspace, roots: ctx.roots, createMedia: false })
+    const root = await ctx.resolveStudioRoot({ studioId: "cad", workspace: ctx.workspace, roots: ctx.roots })
     return loadCadPlugin({
       root,
       companionUrl: `${ctx.hostUrl}/studio/studios/cad`,
       forgeProjectDir: await ctx.ensureForgeRuntimeDir(ctx.packageRoot),
     })
   },
-  media: async (ctx) => {
-    const { loadMediaPlugin } = await import("../studios/media/plugin")
-    const root = await ctx.resolveStudioRoot({ studioId: "media", workspace: ctx.workspace, roots: ctx.roots, createMedia: true })
-    return loadMediaPlugin({
-      libraryRoot: root,
-      providerPackage: ctx.mediaProviderPackage,
-    })
-  },
   pcb: async (ctx) => {
     const { loadPcbPlugin } = await import("../studios/pcb/plugin")
-    const root = await ctx.resolveStudioRoot({ studioId: "pcb", workspace: ctx.workspace, roots: ctx.roots, createMedia: false })
+    const root = await ctx.resolveStudioRoot({ studioId: "pcb", workspace: ctx.workspace, roots: ctx.roots })
     return loadPcbPlugin({ root })
-  },
-  startup: async (ctx) => {
-    const { loadStartupPlugin } = await import("../studios/startup/plugin")
-    const root = await ctx.resolveStudioRoot({ studioId: "startup", workspace: ctx.workspace, roots: ctx.roots, createMedia: false })
-    return loadStartupPlugin({
-      root,
-      companionUrl: `${ctx.hostUrl}/studio/studios/startup`,
-    })
   },
 }
 
@@ -62,21 +46,19 @@ export const apiLoaders: Record<StudioId, ApiLoader> = {
     const layout = await initializeStudio(root)
     return createCadApi(layout)
   },
-  media: async (ctx) => {
-    const { createMediaApi } = await import("../studios/media/api")
-    const root = await ctx.resolveStudioRoot({ studioId: "media", workspace: ctx.workspace, roots: ctx.roots, createMedia: true })
-    return createMediaApi(root)
-  },
   pcb: async (ctx) => {
     const { createPcbApi } = await import("../studios/pcb/api")
     const root = await ctx.resolveStudioRoot({ studioId: "pcb", workspace: ctx.workspace, roots: ctx.roots })
     return createPcbApi(root)
   },
-  startup: async (ctx) => {
-    const { createStartupApi } = await import("../studios/startup/api")
-    const root = await ctx.resolveStudioRoot({ studioId: "startup", workspace: ctx.workspace, roots: ctx.roots })
-    return createStartupApi(root)
-  },
+}
+
+export async function loadPlatformMediaPlugin(ctx: { workspace: string; mediaProviderPackage: string }): Promise<Plugin> {
+  const { loadMediaPlugin } = await import("./platform/media/plugin")
+  return loadMediaPlugin({
+    workspaceRoot: ctx.workspace,
+    providerPackage: ctx.mediaProviderPackage,
+  })
 }
 
 /** Ensures loader maps stay in lockstep with the catalog. */

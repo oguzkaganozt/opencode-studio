@@ -1,10 +1,10 @@
 # OpenCode Studio
 
-Configurable OpenCode Studios for CAD, media, PCB, and startup workflows.
+OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
 
 **Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
-Installing the package enables **no** Studio until you configure one.
+Installing the package enables **no domain Studio** until you configure one. After `configure` (even with an empty set / `remove`), the main plugin + media-go + platform `media` skill stay pinned — media tools are always on.
 
 ## Install
 
@@ -30,7 +30,7 @@ Enable/disable Studios only toggles tools/skills/APIs — it does not install or
 
 ```bash
 opencode-studio serve
-# optional: domain data root for CAD/PCB/startup (default: cwd)
+# optional: domain data root for CAD/PCB (default: cwd)
 opencode-studio serve --workspace /path/to/project
 ```
 
@@ -57,7 +57,7 @@ OPENCODE_STUDIO_PASSWORD='choose-a-strong-password' \
   opencode-studio serve --workspace /path/to/project --web
 ```
 
-Open `http://<server-ip>:4173/studio` and open **Agent** — the browser prompts for HTTP Basic credentials (username `opencode-studio`, password = `OPENCODE_STUDIO_PASSWORD`). The same credentials unlock `http://<server-ip>:4173/`. Keep the host behind a trusted network or VPN; this password does not add TLS.
+Open `http://<server-ip>:4173/studio` and open **Agent** — the browser prompts for HTTP Basic credentials (username `opencode-studio`, password = `OPENCODE_STUDIO_PASSWORD`). The same credentials unlock `http://<server-ip>:4173/` and `/api/files/*` (Files explorer). Keep the host behind a trusted network or VPN; this password does not add TLS.
 
 Enablement is **user-global** — you only configure once. `--workspace` is the domain data root (where designs/boards live), not a per-project config file.
 
@@ -69,13 +69,14 @@ Written by the home UI (or CLI):
 | --- | --- |
 | `~/.config/opencode-studio/studio.json` | `{ "enabled": ["cad", "pcb"] }` + optional absolute `roots` |
 | `~/.config/opencode/opencode.json` | Plugin pin + managed `build123d` MCP |
-| `~/.config/opencode/skills/<id>-studio/` | Managed agent skills |
+| `~/.config/opencode/skills/<id>-studio/` | Managed domain skills (`cad-studio`, `pcb-studio`) |
+| `~/.config/opencode/skills/media/` | Always-on platform media skill |
 
 ```json
 { "enabled": ["cad", "pcb"] }
 ```
 
-Missing/invalid config → no studios (fail-closed). Media data defaults to XDG user-data (`~/.local/share/opencode-studio/media`).
+Missing/invalid config → no domain studios (fail-closed for CAD/PCB). Platform media tools and Files explorer stay available. Media paths are workspace-scoped.
 
 **Upgrade from project-local config:** if `~/.config/opencode-studio/studio.json` is missing and the domain still has `.opencode/studio.json`, enablement is migrated automatically on `serve` / plugin load. Run `opencode-studio configure <studios…>` once to finish (pins global plugin/skills and scrubs leftover project `opencode.json` / skills). Or delete old project files after configure.
 
@@ -149,7 +150,8 @@ bun run test:browser:install  # once: Playwright Chromium
 
 ```text
 src/                 CLI, plugin, host, config, core
-studios/             cad | media | pcb | startup
+studios/             cad | pcb
+src/platform/media/  always-on media tools + Files API
 ui/                  Viewer shell + lazy studio pages
 test/                core + parity
 scripts/             build, smokes, create-studio

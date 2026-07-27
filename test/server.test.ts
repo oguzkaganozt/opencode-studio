@@ -106,35 +106,35 @@ describe("host server", () => {
     const noOriginNoToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", "content-type": "application/json" },
-      body: JSON.stringify({ enabled: ["startup"] }),
+      body: JSON.stringify({ enabled: ["pcb"] }),
     })
     expect(noOriginNoToken.status).toBe(403)
 
     const goodOriginBadToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": "wrong" },
-      body: JSON.stringify({ enabled: ["startup"] }),
+      body: JSON.stringify({ enabled: ["pcb"] }),
     })
     expect(goodOriginBadToken.status).toBe(403)
 
     const badOriginGoodToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://evil.com:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ enabled: ["startup"] }),
+      body: JSON.stringify({ enabled: ["pcb"] }),
     })
     expect(badOriginGoodToken.status).toBe(403)
 
     const devOrigin = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:5173", "content-type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ enabled: ["startup"] }),
+      body: JSON.stringify({ enabled: ["pcb"] }),
     })
     expect(devOrigin.status).toBe(200)
 
     const bareOrigin = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1", "content-type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ enabled: ["startup"] }),
+      body: JSON.stringify({ enabled: ["pcb"] }),
     })
     expect(bareOrigin.status).toBe(403)
   })
@@ -145,7 +145,7 @@ describe("host server", () => {
     const response = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ enabled: ["startup"], roots: { startup: "/tmp/evil" } }),
+      body: JSON.stringify({ enabled: ["pcb"], roots: { pcb: "/tmp/evil" } }),
     })
     expect(response.status).toBe(400)
     const body = await response.json()
@@ -241,27 +241,27 @@ describe("host server", () => {
     }
   })
 
-  test("mounts startup routes when enabled", async () => {
+  test("mounts pcb routes when enabled", async () => {
     const ctx = await isolatedHost()
     await configureStudios({
       ...ctx,
-      enabled: ["startup"],
+      enabled: ["pcb"],
       validateOpenCode: false,
     })
     const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
-    const response = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
+    const response = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
       headers: { host: "127.0.0.1:4173" },
     })
     expect(response.status).toBe(200)
     const body = await response.json()
-    expect(Array.isArray(body.candidates)).toBe(true)
+    expect(Array.isArray(body.projects)).toBe(true)
   })
 
   test("configure hot-reloads studio API mounts without process restart", async () => {
     const ctx = await isolatedHost()
     const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
 
-    const before = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
+    const before = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
       headers: { host: "127.0.0.1:4173" },
     })
     expect(before.status).toBe(404)
@@ -274,7 +274,7 @@ describe("host server", () => {
         "content-type": "application/json",
         "x-csrf-token": csrfToken,
       },
-      body: JSON.stringify({ enabled: ["startup"] }),
+      body: JSON.stringify({ enabled: ["pcb"] }),
     })
     expect(applied.status).toBe(200)
     const appliedBody = await applied.json()
@@ -282,12 +282,12 @@ describe("host server", () => {
     expect(appliedBody.restartHost).toBe(false)
     expect(appliedBody.restartOpenCode).toBe(true)
 
-    const after = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
+    const after = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
       headers: { host: "127.0.0.1:4173" },
     })
     expect(after.status).toBe(200)
     const afterBody = await after.json()
-    expect(Array.isArray(afterBody.candidates)).toBe(true)
+    expect(Array.isArray(afterBody.projects)).toBe(true)
 
     const disabled = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
@@ -301,9 +301,42 @@ describe("host server", () => {
     })
     expect(disabled.status).toBe(200)
 
-    const gone = await app.request("http://127.0.0.1:4173/api/studios/startup/candidates", {
+    const gone = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
       headers: { host: "127.0.0.1:4173" },
     })
     expect(gone.status).toBe(404)
+  })
+
+  test("files API is always mounted on loopback without auth", async () => {
+    const ctx = await isolatedHost()
+    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
+    const response = await app.request("http://127.0.0.1:4173/api/files/tree", {
+      headers: { host: "127.0.0.1:4173" },
+    })
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(Array.isArray(body.entries)).toBe(true)
+  })
+
+  test("files API requires password off-loopback", async () => {
+    const ctx = await isolatedHost()
+    const { app } = await createHostApp({
+      ...ctx,
+      hostname: "0.0.0.0",
+      port: 4173,
+      env: { OPENCODE_STUDIO_PASSWORD: "secret" },
+    })
+    const denied = await app.request("http://192.168.1.20:4173/api/files/tree", {
+      headers: { host: "192.168.1.20:4173" },
+    })
+    expect(denied.status).toBe(401)
+
+    const allowed = await app.request("http://192.168.1.20:4173/api/files/tree", {
+      headers: {
+        host: "192.168.1.20:4173",
+        authorization: `Basic ${Buffer.from("opencode-studio:secret").toString("base64")}`,
+      },
+    })
+    expect(allowed.status).toBe(200)
   })
 })

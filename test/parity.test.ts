@@ -14,11 +14,11 @@ const packageRoot = path.join(import.meta.dir, "..")
 
 describe("parity fixtures", () => {
   test("tool inventory is frozen", () => {
-    expect(tools.count).toBe(42)
+    expect(tools.count).toBe(Object.keys(tools.tools).length)
     expect(Object.keys(tools.tools).sort()).toContain("read_media")
     expect(Object.keys(tools.tools).sort()).toContain("design_build")
     expect(Object.keys(tools.tools).sort()).toContain("pcb_circuit_build")
-    expect(Object.keys(tools.tools).sort()).toContain("startup_upsert")
+    expect(Object.keys(tools.tools).sort()).not.toContain("startup_upsert")
   })
 
   test("skill digests match packaged sources", async () => {
@@ -32,14 +32,14 @@ describe("parity fixtures", () => {
   })
 
   test("hook composition policy is defined", () => {
-    expect(hooks.composition.order).toEqual(["cad", "media", "pcb", "startup"])
-    expect(hooks.media).toContain("provider")
+    expect(hooks.composition.order).toEqual(["platform", "cad", "pcb"])
+    expect(hooks.platform).toContain("provider")
     expect(hooks["media-go"]).toEqual(["provider"])
   })
 })
 
 describe("live tool inventory", () => {
-  test("enabling all studios exposes every parity tool name", async () => {
+  test("platform + all studios exposes every parity tool name", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "osc-tools-"))
     try {
       const workspace = path.join(root, "domain")
@@ -50,12 +50,9 @@ describe("live tool inventory", () => {
         workspace,
         studioConfigHome,
         openCodeHome,
-        enabled: ["cad", "media", "pcb", "startup"],
+        enabled: ["cad", "pcb"],
         packageRoot,
         validateOpenCode: false,
-        roots: {
-          media: path.join(workspace, "media-library"),
-        },
       })
       const plugin = createOpenCodeStudioPlugin({
         workspace,
@@ -69,6 +66,38 @@ describe("live tool inventory", () => {
         expect(names).toContain(toolName)
       }
       expect(names.length).toBe(tools.count)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 60_000)
+
+  test("enabled empty still exposes platform media tools", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "osc-tools-empty-"))
+    try {
+      const workspace = path.join(root, "domain")
+      await mkdir(workspace, { recursive: true })
+      const studioConfigHome = path.join(root, "studio-config")
+      const openCodeHome = path.join(root, "opencode-config")
+      await configureStudios({
+        workspace,
+        studioConfigHome,
+        openCodeHome,
+        enabled: [],
+        packageRoot,
+        validateOpenCode: false,
+      })
+      const plugin = createOpenCodeStudioPlugin({
+        workspace,
+        packageRoot,
+        studioConfigHome,
+        openCodeHome,
+      })
+      const composed = await plugin({ directory: workspace } as any, {})
+      const names = listComposedToolNames(composed)
+      expect(names).toContain("read_media")
+      expect(names).toContain("media_list")
+      expect(names).not.toContain("design_build")
+      expect(names).not.toContain("pcb_circuit_build")
     } finally {
       await rm(root, { recursive: true, force: true })
     }

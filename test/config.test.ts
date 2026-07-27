@@ -2,7 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { maybeMigrateLegacyConfig, parseStudioConfig, readStudioConfigFile, studioConfigPath, writeStudioConfigFile } from "../src/config"
+import {
+  maybeMigrateLegacyConfig,
+  parseStudioConfig,
+  parseStudioConfigStrict,
+  readStudioConfigFile,
+  studioConfigPath,
+  writeStudioConfigFile,
+} from "../src/config"
 
 const temps: string[] = []
 afterEach(async () => {
@@ -28,39 +35,37 @@ describe("parseStudioConfig", () => {
   test("rejects non-array enabled", () => {
     expect(() => parseStudioConfig({ enabled: "cad" })).toThrow(/array of Studio IDs/)
   })
-  test("rejects unknown IDs", () => {
-    expect(() => parseStudioConfig({ enabled: ["nope"] })).toThrow(/Unknown Studio ID/)
+  test("strips unknown and legacy IDs with warnings", () => {
+    const cfg = parseStudioConfig({ enabled: ["nope", "media", "startup", "cad"] })
+    expect(cfg.enabled).toEqual(["cad"])
+    expect(cfg.warnings.length).toBeGreaterThan(0)
   })
   test("dedupes IDs", () => {
     expect(parseStudioConfig({ enabled: ["cad", "cad"] }).enabled).toEqual(["cad"])
   })
-  test("rejects relative roots", () => {
-    expect(() => parseStudioConfig({ enabled: ["cad"], roots: { media: "relative" } })).toThrow(/absolute path/)
-  })
-  test("rejects empty roots", () => {
-    expect(() => parseStudioConfig({ enabled: ["cad"], roots: { media: "" } })).toThrow(/absolute path/)
-  })
-  test("rejects null byte in roots", () => {
-    expect(() => parseStudioConfig({ enabled: ["cad"], roots: { media: "/tmp/foo\0bar" } })).toThrow(/absolute path/)
-  })
-  test("rejects unknown root keys", () => {
-    expect(() => parseStudioConfig({ enabled: ["cad"], roots: { nope: "/tmp/x" } })).toThrow(/Unknown Studio ID/)
+  test("strips legacy roots without throwing", () => {
+    const cfg = parseStudioConfig({ enabled: ["cad"], roots: { media: "/tmp/x" } })
+    expect(cfg.roots).toBeUndefined()
+    expect(cfg.warnings.some((w) => w.includes("roots.media"))).toBe(true)
   })
   test("accepts valid roots", () => {
-    const cfg = parseStudioConfig({ enabled: ["cad"], roots: { media: "/tmp/x" } })
-    expect(cfg.roots?.media).toBe(path.resolve("/tmp/x"))
+    const cfg = parseStudioConfig({ enabled: ["cad"], roots: { cad: "/tmp/x" } })
+    expect(cfg.roots?.cad).toBe(path.resolve("/tmp/x"))
+  })
+  test("strict parse rejects unknown ids", () => {
+    expect(() => parseStudioConfigStrict({ enabled: ["media"] })).toThrow(/Unknown Studio ID/)
   })
 })
 
 describe("readStudioConfigFile", () => {
-  test("missing file returns empty enabled (fail-closed)", async () => {
+  test("missing file returns empty enabled (fail-closed domains)", async () => {
     const homes = await isolatedHome()
     const result = await readStudioConfigFile(homes)
     expect(result.enabled).toEqual([])
     expect(result.error).toBeUndefined()
     expect(result.configPath).toBe(studioConfigPath(homes))
   })
-  test("invalid JSON returns empty enabled with error (fail-closed)", async () => {
+  test("invalid JSON returns empty enabled with error (fail-closed domains)", async () => {
     const homes = await isolatedHome()
     await mkdir(homes.studioConfigHome, { recursive: true })
     await writeFile(studioConfigPath(homes), "{not json")
@@ -76,12 +81,12 @@ describe("readStudioConfigFile", () => {
     expect(result.enabled).toEqual([])
     expect(result.error).toBeTruthy()
   })
-  test("valid config reads enabled", async () => {
+  test("strips legacy studio ids on read", async () => {
     const homes = await isolatedHome()
     await mkdir(homes.studioConfigHome, { recursive: true })
-    await writeFile(studioConfigPath(homes), JSON.stringify({ enabled: ["cad", "startup"] }))
+    await writeFile(studioConfigPath(homes), JSON.stringify({ enabled: ["cad", "startup", "media"] }))
     const result = await readStudioConfigFile(homes)
-    expect(result.enabled).toEqual(["cad", "startup"])
+    expect(result.enabled).toEqual(["cad"])
   })
 })
 

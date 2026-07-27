@@ -16,9 +16,8 @@
   --osc-separator: 1px;
 
   --osc-accent-cad: #b45309;
-  --osc-accent-media: #e11d48;
+  --osc-accent-files: #e11d48;
   --osc-accent-pcb: #0e7490;
-  --osc-accent-startup: #047857;
   --osc-accent: var(--osc-accent-cad);
 
   --osc-canvas-bg: #0c0d10;
@@ -143,16 +142,12 @@ html:not([data-theme]) {
   --osc-accent: var(--osc-accent-cad);
 }
 
-[data-studio="media"] {
-  --osc-accent: var(--osc-accent-media);
-}
-
 [data-studio="pcb"] {
   --osc-accent: var(--osc-accent-pcb);
 }
 
-[data-studio="startup"] {
-  --osc-accent: var(--osc-accent-startup);
+[data-studio="files"] {
+  --osc-accent: var(--osc-accent-files);
 }
 
 @media (prefers-reduced-motion: reduce) {

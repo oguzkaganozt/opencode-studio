@@ -1,6 +1,15 @@
 {
   "cad": ["tool.definition", "event", "tool"],
-  "media": [
+  "media-go": ["provider"],
+  "pcb": ["tool"],
+  "composition": {
+    "order": ["platform", "cad", "pcb"],
+    "mutableTransforms": "sequential catalog order",
+    "dispose": "reverse order",
+    "duplicateTools": "reject",
+    "unknownHooks": "reject"
+  },
+  "platform": [
     "config",
     "provider",
     "event",
@@ -9,15 +18,5 @@
     "experimental.session.compacting",
     "experimental.chat.messages.transform",
     "tool"
-  ],
-  "media-go": ["provider"],
-  "pcb": ["tool"],
-  "startup": ["tool"],
-  "composition": {
-    "order": ["cad", "media", "pcb", "startup"],
-    "mutableTransforms": "sequential catalog order",
-    "dispose": "reverse order",
-    "duplicateTools": "reject",
-    "unknownHooks": "reject"
-  }
+  ]
 }

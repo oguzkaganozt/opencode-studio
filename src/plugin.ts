@@ -3,10 +3,10 @@ import { maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } fro
 import { ensureForgeRuntimeDir, loadPackageMeta } from "./core/package-meta"
 import { packageRootFrom } from "./core/paths"
 import { composeStudioPlugins, type StudioPluginContribution } from "./core/plugin-compose"
-import type { StudioId } from "./core/registry"
+import { PLATFORM_OWNER, type StudioId } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
-import { pluginLoaders } from "./studio-loaders"
+import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
 
 const DEFAULT_HOST_URL = "http://127.0.0.1:4173"
 
@@ -17,7 +17,7 @@ function hostUrlFromEnv() {
 }
 
 export type StudioPluginOptions = UserPathOptions & {
-  /** Domain data root override (CAD/PCB/startup). Defaults to OpenCode context.directory. */
+  /** Domain data root override (CAD/PCB). Defaults to OpenCode context.directory. */
   workspace?: string
   hostUrl?: string
   packageRoot?: string
@@ -39,7 +39,7 @@ async function resolveEnabled(userPaths: UserPathOptions = {}, domainRoot?: stri
   }
   const config = await readStudioConfigFile(userPaths)
   if (config.error) {
-    console.error(`[opencode-studio] configuration error (fail-closed): ${config.error}`)
+    console.error(`[opencode-studio] configuration error (domains off, platform on): ${config.error}`)
     return { enabled: [] as StudioId[], roots: {}, error: config.error }
   }
   return { enabled: config.enabled, roots: config.roots, error: undefined as string | undefined }
@@ -51,7 +51,6 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
     const packageRoot = defaults.packageRoot ?? packageRootFrom(import.meta.dir)
     const meta = await loadPackageMeta(packageRoot)
     const userPaths = pickUserPaths(defaults)
-    // Domain data root: OpenCode project directory (or explicit override).
     const workspace =
       typeof rawOptions?.workspace === "string" && rawOptions.workspace.length > 0
         ? rawOptions.workspace
@@ -64,11 +63,6 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
         : (defaults.hostUrl ?? hostUrlFromEnv())
 
     const { enabled, roots, error } = await resolveEnabled(userPaths, workspace)
-    if (error || enabled.length === 0) {
-      return {
-        tool: {},
-      }
-    }
 
     const contributions: StudioPluginContribution[] = []
     const loadCtx = {
@@ -81,15 +75,30 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       ensureForgeRuntimeDir,
     }
 
-    for (const studioId of enabled) {
-      try {
-        const load = pluginLoaders[studioId]
-        const plugin = await load(loadCtx)
-        contributions.push({ studioId, hooks: await plugin(context, {}) })
-      } catch (loadError) {
-        const message = loadError instanceof Error ? loadError.message : String(loadError)
-        console.error(`[opencode-studio] failed to initialize studio "${studioId}": ${message}`)
-        throw new Error(`opencode-studio: failed to initialize studio "${studioId}": ${message}`)
+    // Platform media is always on (even when no domain studios / config error).
+    try {
+      const platformPlugin = await loadPlatformMediaPlugin({
+        workspace,
+        mediaProviderPackage: meta.mediaProviderSpecifier,
+      })
+      contributions.push({ studioId: PLATFORM_OWNER, hooks: await platformPlugin(context, {}) })
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : String(loadError)
+      console.error(`[opencode-studio] failed to initialize platform media: ${message}`)
+      throw new Error(`opencode-studio: failed to initialize platform media: ${message}`)
+    }
+
+    if (!error) {
+      for (const studioId of enabled) {
+        try {
+          const load = pluginLoaders[studioId]
+          const plugin = await load(loadCtx)
+          contributions.push({ studioId, hooks: await plugin(context, {}) })
+        } catch (loadError) {
+          const message = loadError instanceof Error ? loadError.message : String(loadError)
+          console.error(`[opencode-studio] failed to initialize studio "${studioId}": ${message}`)
+          throw new Error(`opencode-studio: failed to initialize studio "${studioId}": ${message}`)
+        }
       }
     }
 

@@ -28,11 +28,12 @@ async function httpSmoke(base: string) {
     const ui = await fetch(`${base}/studio/studios/${id}`)
     assert(ui.ok, `/studio/studios/${id} -> ${ui.status}`)
   }
+  const filesUi = await fetch(`${base}/studio/files`)
+  assert(filesUi.ok, `/studio/files -> ${filesUi.status}`)
   const apiProbes: Array<[string, string]> = [
     ["cad", "/api/studios/cad/designs"],
-    ["media", "/api/studios/media/assets"],
     ["pcb", "/api/studios/pcb/projects"],
-    ["startup", "/api/studios/startup/candidates"],
+    ["files", "/api/files/tree"],
   ]
   for (const [id, route] of apiProbes) {
     const res = await fetch(`${base}${route}`)
@@ -178,20 +179,10 @@ async function browserSmoke(base: string) {
           await p.waitForSelector("text=Parts")
         },
       },
-      media: {
-        wait: "Media Library",
-      },
       pcb: {
         wait: "PCB Studio",
         extra: async (p) => {
           await p.waitForSelector("text=Projects")
-        },
-      },
-      startup: {
-        wait: "Startup Studio",
-        extra: async (p) => {
-          await p.waitForSelector("text=Pool")
-          await p.getByRole("button", { name: /Collapse candidates|Expand candidates/ }).waitFor()
         },
       },
     }
@@ -213,6 +204,13 @@ async function browserSmoke(base: string) {
       await assertTailwindUtilities(page)
       console.log(`studio ${id} ok`)
     }
+
+    await page.goto(`${base}/studio/files`, { waitUntil: "networkidle" })
+    await page.waitForSelector("text=workspace", { timeout: 15_000 })
+    await page.getByRole("button", { name: "Agent", exact: true }).waitFor()
+    await assertShellFillsViewport(page, "files")
+    await assertNoHorizontalScroll(page, "1280 files")
+    console.log("files explorer ok")
 
     // Phone posture: no forced horizontal page scroll on home + one studio
     await page.setViewportSize({ width: 360, height: 640 })
