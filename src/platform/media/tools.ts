@@ -195,6 +195,62 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
       if (error) throw error
     }
 
+    async function runFfmpegMutation(input: {
+      filePath: string
+      toolContext: { abort: AbortSignal; ask: (request: any) => Promise<void> }
+      outputPath?: string
+      message: (filePath: string) => string
+      plan: (source: Awaited<ReturnType<typeof openManagedAsset>>) => {
+        outputModality: LibraryModality
+        extension: string
+        defaultName: (stem: string) => string
+        ffmpegArgs: (outputPath: string) => string[]
+      }
+    }) {
+      const source = await openManagedAsset({
+        root: studioRoot,
+        workspaceRoot,
+        filePath: input.filePath,
+        signal: input.toolContext.abort,
+        ask: input.toolContext.ask,
+      })
+      try {
+        const plan = input.plan(source)
+        const stem = path.basename(source.filePath, path.extname(source.filePath))
+        const outputPath = personalOutputPath(library, plan.outputModality, input.outputPath, plan.defaultName(stem))
+        if (path.extname(outputPath).toLowerCase() !== `.${plan.extension}`) {
+          throw new Error(`Output path must end in .${plan.extension}`)
+        }
+        const target = await prepareNewOutput({ root: studioRoot, outputPath, ask: input.toolContext.ask })
+        let outputMayBePartial = false
+        try {
+          await runMediaProcess({
+            binary: config.ffmpegPath,
+            args: plan.ffmpegArgs(target.outputPath),
+            signal: input.toolContext.abort,
+            inputFd: source.handle.fd,
+            beforeSpawn: async () => {
+              await dependencies.beforeMediaSpawn?.()
+              await verifyNewOutput(studioRoot, target.outputPath)
+              outputMayBePartial = true
+            },
+          })
+          await chmod(target.outputPath, 0o660)
+          const output = await inspectCreatedMedia(target.outputPath)
+          return {
+            title: output.filePath,
+            output: input.message(output.filePath),
+            metadata: await inspectManagedAsset(studioRoot, output.filePath),
+          }
+        } catch (error) {
+          if (outputMayBePartial) await rm(target.outputPath, { force: true })
+          throw error
+        }
+      } finally {
+        await source.handle.close()
+      }
+    }
+
     return {
       config(input) {
         for (const providerID of ["opencode", "opencode-go"]) {
@@ -484,74 +540,46 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
             audioBitrateKbps: tool.schema.number().int().min(8).max(1_536).optional(),
           },
           async execute(args, toolContext) {
-            const source = await openManagedAsset({
-              root: studioRoot,
-              workspaceRoot,
+            return runFfmpegMutation({
               filePath: args.filePath,
-              signal: toolContext.abort,
-              ask: toolContext.ask,
-            })
-            try {
-              if (args.preset.startsWith("video-") && source.modality !== "video") throw new Error(`${args.preset} requires video input`)
-              if (args.preset.startsWith("image-") && source.modality !== "image") throw new Error(`${args.preset} requires image input`)
-              if (args.preset.startsWith("audio-") && source.modality === "image")
-                throw new Error(`${args.preset} requires audio or video input`)
-              if (args.quality !== undefined) {
-                if (args.preset === "video-mp4" && args.quality > 51) throw new Error("video-mp4 quality must be between 0 and 51")
-                if (args.preset === "video-webm" && args.quality > 63) throw new Error("video-webm quality must be between 0 and 63")
-                if (args.preset.startsWith("image-") && args.quality < 1) throw new Error("image quality must be between 1 and 100")
-              }
-              const extension = PRESET_EXTENSION[args.preset]
-              const stem = path.basename(source.filePath, path.extname(source.filePath))
-              const outputModality: LibraryModality = args.preset.startsWith("video-")
-                ? "video"
-                : args.preset.startsWith("audio-")
-                  ? "audio"
-                  : "image"
-              const outputPath = personalOutputPath(
-                library,
-                outputModality,
-                args.outputPath,
-                `${stem}-convert-${randomUUID().slice(0, 8)}.${extension}`,
-              )
-              if (path.extname(outputPath).toLowerCase() !== `.${extension}`) throw new Error(`Output path must end in .${extension}`)
-              const target = await prepareNewOutput({ root: studioRoot, outputPath, ask: toolContext.ask })
-              let outputMayBePartial = false
-              try {
-                await runMediaProcess({
-                  binary: config.ffmpegPath,
-                  args: convertArguments({
-                    source: "/dev/fd/3",
-                    output: target.outputPath,
-                    preset: args.preset,
-                    width: args.width,
-                    height: args.height,
-                    quality: args.quality,
-                    videoBitrateKbps: args.videoBitrateKbps,
-                    audioBitrateKbps: args.audioBitrateKbps,
-                  }),
-                  signal: toolContext.abort,
-                  inputFd: source.handle.fd,
-                  beforeSpawn: async () => {
-                    await dependencies.beforeMediaSpawn?.()
-                    await verifyNewOutput(studioRoot, target.outputPath)
-                    outputMayBePartial = true
-                  },
-                })
-                await chmod(target.outputPath, 0o660)
-                const output = await inspectCreatedMedia(target.outputPath)
-                return {
-                  title: output.filePath,
-                  output: `Converted media to ${output.filePath}`,
-                  metadata: await inspectManagedAsset(studioRoot, output.filePath),
+              toolContext,
+              outputPath: args.outputPath,
+              message: (filePath) => `Converted media to ${filePath}`,
+              plan: (source) => {
+                if (args.preset.startsWith("video-") && source.modality !== "video") throw new Error(`${args.preset} requires video input`)
+                if (args.preset.startsWith("image-") && source.modality !== "image") throw new Error(`${args.preset} requires image input`)
+                if (args.preset.startsWith("audio-") && source.modality === "image") {
+                  throw new Error(`${args.preset} requires audio or video input`)
                 }
-              } catch (error) {
-                if (outputMayBePartial) await rm(target.outputPath, { force: true })
-                throw error
-              }
-            } finally {
-              await source.handle.close()
-            }
+                if (args.quality !== undefined) {
+                  if (args.preset === "video-mp4" && args.quality > 51) throw new Error("video-mp4 quality must be between 0 and 51")
+                  if (args.preset === "video-webm" && args.quality > 63) throw new Error("video-webm quality must be between 0 and 63")
+                  if (args.preset.startsWith("image-") && args.quality < 1) throw new Error("image quality must be between 1 and 100")
+                }
+                const extension = PRESET_EXTENSION[args.preset]
+                const outputModality: LibraryModality = args.preset.startsWith("video-")
+                  ? "video"
+                  : args.preset.startsWith("audio-")
+                    ? "audio"
+                    : "image"
+                return {
+                  outputModality,
+                  extension,
+                  defaultName: (stem) => `${stem}-convert-${randomUUID().slice(0, 8)}.${extension}`,
+                  ffmpegArgs: (output) =>
+                    convertArguments({
+                      source: "/dev/fd/3",
+                      output,
+                      preset: args.preset,
+                      width: args.width,
+                      height: args.height,
+                      quality: args.quality,
+                      videoBitrateKbps: args.videoBitrateKbps,
+                      audioBitrateKbps: args.audioBitrateKbps,
+                    }),
+                }
+              },
+            })
           },
         }),
 
@@ -565,58 +593,30 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
           },
           async execute(args, toolContext) {
             if (args.endSeconds <= args.startSeconds) throw new Error("endSeconds must be greater than startSeconds")
-            const source = await openManagedAsset({
-              root: studioRoot,
-              workspaceRoot,
+            return runFfmpegMutation({
               filePath: args.filePath,
-              signal: toolContext.abort,
-              ask: toolContext.ask,
-            })
-            try {
-              if (source.modality === "image") throw new Error("media_trim requires audio or video input")
-              const extension = source.modality === "video" ? "mp4" : "mp3"
-              const stem = path.basename(source.filePath, path.extname(source.filePath))
-              const outputPath = personalOutputPath(
-                library,
-                source.modality,
-                args.outputPath,
-                `${stem}-trim-${randomUUID().slice(0, 8)}.${extension}`,
-              )
-              if (path.extname(outputPath).toLowerCase() !== `.${extension}`) throw new Error(`Output path must end in .${extension}`)
-              const target = await prepareNewOutput({ root: studioRoot, outputPath, ask: toolContext.ask })
-              let outputMayBePartial = false
-              try {
-                await runMediaProcess({
-                  binary: config.ffmpegPath,
-                  args: trimArguments({
-                    source: "/dev/fd/3",
-                    output: target.outputPath,
-                    modality: source.modality,
-                    startSeconds: args.startSeconds,
-                    endSeconds: args.endSeconds,
-                  }),
-                  signal: toolContext.abort,
-                  inputFd: source.handle.fd,
-                  beforeSpawn: async () => {
-                    await dependencies.beforeMediaSpawn?.()
-                    await verifyNewOutput(studioRoot, target.outputPath)
-                    outputMayBePartial = true
-                  },
-                })
-                await chmod(target.outputPath, 0o660)
-                const output = await inspectCreatedMedia(target.outputPath)
+              toolContext,
+              outputPath: args.outputPath,
+              message: (filePath) => `Trimmed media to ${filePath}`,
+              plan: (source) => {
+                if (source.modality === "image") throw new Error("media_trim requires audio or video input")
+                const modality = source.modality
+                const extension = modality === "video" ? "mp4" : "mp3"
                 return {
-                  title: output.filePath,
-                  output: `Trimmed media to ${output.filePath}`,
-                  metadata: await inspectManagedAsset(studioRoot, output.filePath),
+                  outputModality: modality,
+                  extension,
+                  defaultName: (stem) => `${stem}-trim-${randomUUID().slice(0, 8)}.${extension}`,
+                  ffmpegArgs: (output) =>
+                    trimArguments({
+                      source: "/dev/fd/3",
+                      output,
+                      modality,
+                      startSeconds: args.startSeconds,
+                      endSeconds: args.endSeconds,
+                    }),
                 }
-              } catch (error) {
-                if (outputMayBePartial) await rm(target.outputPath, { force: true })
-                throw error
-              }
-            } finally {
-              await source.handle.close()
-            }
+              },
+            })
           },
         }),
 
@@ -629,51 +629,21 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
           },
           async execute(args, toolContext) {
             const format = args.format ?? "mp3"
-            const source = await openManagedAsset({
-              root: studioRoot,
-              workspaceRoot,
+            return runFfmpegMutation({
               filePath: args.filePath,
-              signal: toolContext.abort,
-              ask: toolContext.ask,
-            })
-            try {
-              if (source.modality === "image") throw new Error("media_extract_audio requires audio or video input")
-              const stem = path.basename(source.filePath, path.extname(source.filePath))
-              const outputPath = personalOutputPath(
-                library,
-                "audio",
-                args.outputPath,
-                `${stem}-audio-${randomUUID().slice(0, 8)}.${format}`,
-              )
-              if (path.extname(outputPath).toLowerCase() !== `.${format}`) throw new Error(`Output path must end in .${format}`)
-              const target = await prepareNewOutput({ root: studioRoot, outputPath, ask: toolContext.ask })
-              let outputMayBePartial = false
-              try {
-                await runMediaProcess({
-                  binary: config.ffmpegPath,
-                  args: extractAudioArguments({ source: "/dev/fd/3", output: target.outputPath, format }),
-                  signal: toolContext.abort,
-                  inputFd: source.handle.fd,
-                  beforeSpawn: async () => {
-                    await dependencies.beforeMediaSpawn?.()
-                    await verifyNewOutput(studioRoot, target.outputPath)
-                    outputMayBePartial = true
-                  },
-                })
-                await chmod(target.outputPath, 0o660)
-                const output = await inspectCreatedMedia(target.outputPath)
+              toolContext,
+              outputPath: args.outputPath,
+              message: (filePath) => `Extracted audio to ${filePath}`,
+              plan: (source) => {
+                if (source.modality === "image") throw new Error("media_extract_audio requires audio or video input")
                 return {
-                  title: output.filePath,
-                  output: `Extracted audio to ${output.filePath}`,
-                  metadata: await inspectManagedAsset(studioRoot, output.filePath),
+                  outputModality: "audio",
+                  extension: format,
+                  defaultName: (stem) => `${stem}-audio-${randomUUID().slice(0, 8)}.${format}`,
+                  ffmpegArgs: (output) => extractAudioArguments({ source: "/dev/fd/3", output, format }),
                 }
-              } catch (error) {
-                if (outputMayBePartial) await rm(target.outputPath, { force: true })
-                throw error
-              }
-            } finally {
-              await source.handle.close()
-            }
+              },
+            })
           },
         }),
 

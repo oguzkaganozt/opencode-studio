@@ -23,3 +23,6 @@ dogfood-output/
 .demo-library/
 # CAD design build artifacts: studios/cad/designs/.gitignore
 /designs/
+
+# tscircuit local footprint cache (regenerable)
+**/.tscircuit/

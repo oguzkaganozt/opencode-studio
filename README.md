@@ -149,8 +149,6 @@ scripts/             build, smokes, create-studio
 
 ## Docs
 
-- [docs/architecture.md](docs/architecture.md)
-- [docs/new-studio.md](docs/new-studio.md)
 - [AGENTS.md](AGENTS.md) — agent/contributor guardrails
 
 ## License

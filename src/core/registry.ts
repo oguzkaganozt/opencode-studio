@@ -24,7 +24,6 @@ export type StudioDefinition = {
     default: StudioRootDefault
     create: boolean
   }
-  doctor?: () => Promise<StudioDoctorCheck[]>
 }
 
 export function isStudioId(value: string): value is StudioId {

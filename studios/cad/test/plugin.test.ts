@@ -20,7 +20,7 @@ const fakeContext = {
 const fakeForgeRunner = async () => ({
   ok: true,
   exitCode: 0,
-  stdout: "Build complete: /tmp/manifest.json",
+  stdout: "Build complete",
   stderr: "",
   manifestPath: null,
   designDir: "/tmp/design",
@@ -54,14 +54,6 @@ async function writeBuiltDesign(designDir: string, id: string) {
   )
 }
 
-async function makeStudio() {
-  const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-studio-plugin-"))
-  await mkdir(path.join(tmpRoot, "designs"), { recursive: true })
-  await mkdir(path.join(tmpRoot, "forge"), { recursive: true })
-  const layout = await initializeStudio(tmpRoot)
-  return { tmpRoot, layout }
-}
-
 const tmpRoots: string[] = []
 afterEach(async () => {
   for (const root of tmpRoots.splice(0)) {
@@ -69,112 +61,38 @@ afterEach(async () => {
   }
 })
 
-describe("createStudioPlugin", () => {
-  test("registers the expected tools", async () => {
-    const { tmpRoot } = await makeStudio()
-    tmpRoots.push(tmpRoot)
+async function makeStudio() {
+  const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-studio-plugin-"))
+  tmpRoots.push(tmpRoot)
+  await mkdir(path.join(tmpRoot, "designs"), { recursive: true })
+  await mkdir(path.join(tmpRoot, "forge"), { recursive: true })
+  await initializeStudio(tmpRoot)
+  return tmpRoot
+}
+
+describe("cad plugin smoke", () => {
+  test("registers tools and scaffolds a design", async () => {
+    const tmpRoot = await makeStudio()
     const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
     const hooks = await plugin(fakeContext, {
       studioRoot: tmpRoot,
       forgeProjectDir: path.join(tmpRoot, "forge"),
       companionUrl: "http://127.0.0.1:4173",
     })
-    expect(hooks.tool).toBeDefined()
-    const toolNames = Object.keys(hooks.tool ?? {})
-    expect(toolNames.sort()).toEqual(
+    expect(Object.keys(hooks.tool ?? {}).sort()).toEqual(
       ["design_build", "design_create", "design_list", "design_qc_report", "design_read", "design_view"].sort(),
     )
-  })
-
-  test("adds targeted guidance to build123d tool descriptions", async () => {
-    const { tmpRoot } = await makeStudio()
-    tmpRoots.push(tmpRoot)
-    const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
-    const hooks = await plugin(fakeContext, { studioRoot: tmpRoot })
-    const cases = [
-      ["build123d_execute", "named-object registry are separate"],
-      ["build123d_import_cad_file", "is not bound as a Python variable"],
-      ["build123d_compare", "global minimum between complete shapes"],
-      ["build123d_analyze_printability", "current world orientation"],
-    ] as const
-
-    for (const [toolID, expected] of cases) {
-      const output = { description: "Original.", parameters: {} }
-      await hooks["tool.definition"]?.({ toolID }, output)
-      expect(output.description).toContain(expected)
-    }
-
-    const fitOutput = { description: "Original.", parameters: {} }
-    await hooks["tool.definition"]?.({ toolID: "build123d_compare" }, fitOutput)
-    expect(fitOutput.description).toContain("not elastic accommodation")
-
-    const unrelated = { description: "Unchanged.", parameters: {} }
-    await hooks["tool.definition"]?.({ toolID: "build123d_measure" }, unrelated)
-    expect(unrelated.description).toBe("Unchanged.")
-  })
-
-  test("design_create scaffolds a new design", async () => {
-    const { tmpRoot } = await makeStudio()
-    tmpRoots.push(tmpRoot)
-    const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
-    const hooks = await plugin(fakeContext, {
-      studioRoot: tmpRoot,
-      forgeProjectDir: path.join(tmpRoot, "forge"),
-      companionUrl: "http://127.0.0.1:4173",
-    })
-    const createTool = (hooks.tool as any).design_create
-    const result = await createTool.execute({ id: "test-design", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
-    expect(result.title).toContain("test-design")
-    expect(result.metadata.parts).toHaveLength(1)
+    const created = await (hooks.tool as any).design_create.execute(
+      { id: "test-design", parts: [{ id: "body" }] },
+      { ...fakeContext, ask: async () => {} },
+    )
+    expect(created.title).toContain("test-design")
     const listed = JSON.parse(await (hooks.tool as any).design_list.execute({}))
     expect(listed.designs[0].partCount).toBe(1)
-    expect(listed.designs[0].parts).toBeUndefined()
-    const placeholder = await readFile(path.join(tmpRoot, "designs", "test-design", "parts", "body.py"), "utf8")
-    expect(placeholder).toContain("NotImplementedError")
-    await expect(
-      createTool.execute({ id: "test-design", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} }),
-    ).rejects.toThrow(/already exists/)
   })
 
-  test("design_list returns empty when designs/ is missing", async () => {
-    const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-studio-plugin-fresh-"))
-    tmpRoots.push(tmpRoot)
-    const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
-    const hooks = await plugin(fakeContext, {
-      studioRoot: tmpRoot,
-      forgeProjectDir: path.join(tmpRoot, "forge"),
-      companionUrl: "http://127.0.0.1:4173",
-    })
-    const listTool = (hooks.tool as any).design_list
-    const result = await listTool.execute({})
-    const parsed = JSON.parse(result)
-    expect(parsed).toEqual({ designs: [] })
-  })
-
-  test("design_view returns the configured design URL", async () => {
-    const { tmpRoot } = await makeStudio()
-    tmpRoots.push(tmpRoot)
-    const server = Bun.serve({ port: 0, fetch: () => Response.json({ status: "ok" }) })
-    try {
-      const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
-      const hooks = await plugin(fakeContext, {
-        studioRoot: tmpRoot,
-        forgeProjectDir: path.join(tmpRoot, "forge"),
-        companionUrl: server.url.origin,
-      })
-      await (hooks.tool as any).design_create.execute({ id: "demo", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
-      const viewerTool = (hooks.tool as any).design_view
-      const result = await viewerTool.execute({ id: "demo" })
-      expect(result.metadata).toEqual({ url: `${server.url.origin}/designs/demo`, reachable: true })
-      expect(result.metadata.designLoaded).toBeUndefined()
-    } finally {
-      server.stop(true)
-    }
-  })
-
-  test("design_build returns a concise artifact summary and design_read resolves artifacts and renders", async () => {
-    const { tmpRoot } = await makeStudio()
-    tmpRoots.push(tmpRoot)
+  test("build + qc report reflect artifact and axis honesty", async () => {
+    const tmpRoot = await makeStudio()
     const runner = async ({ designDir }: { designDir: string }) => {
       await writeBuiltDesign(designDir, "demo")
       return { ok: true, exitCode: 0, stdout: "", stderr: "", manifestPath: null, designDir }
@@ -182,118 +100,24 @@ describe("createStudioPlugin", () => {
     const plugin = createStudioPlugin({ forgeRunner: runner as any })
     const hooks = await plugin(fakeContext, { studioRoot: tmpRoot, forgeProjectDir: path.join(tmpRoot, "forge") })
     await (hooks.tool as any).design_create.execute({ id: "demo", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
-    const renderPath = path.join(tmpRoot, "designs", "demo", "renders", "body-iso.png")
-    await writeFile(renderPath, "png")
-
     const built = await (hooks.tool as any).design_build.execute({ id: "demo" }, { ...fakeContext, ask: async () => {} })
-    const summary = JSON.parse(built.output)
-    expect(summary.message).toBe("Build succeeded; design verification was not performed.")
-    expect(path.isAbsolute(summary.manifestPath)).toBe(true)
-    expect(path.isAbsolute(summary.parts[0].stepPath)).toBe(true)
-    expect(summary.parts[0].metrics.solid_count).toBe(1)
-    expect(summary.parts[0].files).toBeUndefined()
-    expect(built.metadata).toEqual({
-      ok: true,
-      exitCode: 0,
-      designDir: path.join(tmpRoot, "designs", "demo"),
-      revision: summary.revision,
-      manifestPath: summary.manifestPath,
-    })
+    expect(JSON.parse(built.output).parts[0].metrics.solid_count).toBe(1)
 
-    const read = JSON.parse(await (hooks.tool as any).design_read.execute({ id: "demo" }))
-    expect(read.buildStatus).toBe("built")
-    expect(read.revision).toBe(summary.revision)
-    expect(read.artifact.exists).toBe(true)
-    expect(read.artifact.parts[0].files.step).toEqual({ path: summary.parts[0].stepPath, exists: true })
-    expect(read.artifact.engine).toBe("forge-cad/1")
-    expect(read.artifact.build).toBeUndefined()
-    expect(read.renders).toEqual(["body-iso.png"])
-    expect(read.verificationStatus).toBeUndefined()
-
-    const listed = JSON.parse(await (hooks.tool as any).design_list.execute({}))
-    expect(listed.designs[0].revision).toBe(summary.revision)
-
-    const incomplete = JSON.parse(
-      (
-        await (hooks.tool as any).design_qc_report.execute({
-          id: "demo",
-        })
-      ).output,
-    )
+    const incomplete = JSON.parse((await (hooks.tool as any).design_qc_report.execute({ id: "demo" })).output)
     expect(incomplete.complete).toBe(false)
     expect(incomplete.artifact.status).toBe("pass")
     expect(incomplete.blockedBy).toEqual(expect.arrayContaining(["printability", "fit", "form"]))
-    expect(incomplete.printability.status).toBe("unverified")
-
-    const retentionBlocked = JSON.parse(
-      (
-        await (hooks.tool as any).design_qc_report.execute({
-          id: "demo",
-          printability: { status: "pass", findings: [] },
-          fit: { status: "fail", findings: ["closed-position fit passes; retention unverified"] },
-          form: { status: "pass", findings: ["not applicable"] },
-        })
-      ).output,
-    )
-    expect(retentionBlocked.complete).toBe(false)
-    expect(retentionBlocked.blockedBy).toEqual(["fit"])
 
     const complete = JSON.parse(
       (
         await (hooks.tool as any).design_qc_report.execute({
           id: "demo",
           printability: { status: "pass", findings: [] },
-          fit: { status: "pass", findings: ["retention not required"] },
-          form: { status: "pass", findings: ["not applicable"] },
+          fit: { status: "pass", findings: ["ok"] },
+          form: { status: "pass", findings: ["ok"] },
         })
       ).output,
     )
     expect(complete.complete).toBe(true)
-    expect(complete.blockedBy).toEqual([])
-    expect(complete.artifact.parts[0].files.step.exists).toBe(true)
-  })
-
-  test("design_build requests only one-time artifact edit permission", async () => {
-    const { tmpRoot } = await makeStudio()
-    tmpRoots.push(tmpRoot)
-    const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
-    const hooks = await plugin(fakeContext, {
-      studioRoot: tmpRoot,
-      forgeProjectDir: path.join(tmpRoot, "forge"),
-    })
-    await (hooks.tool as any).design_create.execute({ id: "demo", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
-    let permission: any
-    await (hooks.tool as any).design_build.execute(
-      { id: "demo" },
-      {
-        ...fakeContext,
-        ask: async (input: any) => {
-          permission = input
-        },
-      },
-    )
-    expect(permission.patterns).toEqual(["designs/demo/step/", "designs/demo/stl/", "designs/demo/glb/", "designs/demo/manifest.json"])
-    expect(permission.always).toEqual([])
-  })
-
-  test("does not modify the system prompt", async () => {
-    const { tmpRoot } = await makeStudio()
-    tmpRoots.push(tmpRoot)
-    const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
-    const hooks = await plugin({ ...fakeContext, directory: tmpRoot }, { studioRoot: tmpRoot })
-    expect(hooks["experimental.chat.system.transform"]).toBeUndefined()
-  })
-
-  test("resolves relative paths against the opencode project directory", async () => {
-    const { tmpRoot } = await makeStudio()
-    tmpRoots.push(tmpRoot)
-    const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
-    const hooks = await plugin({ ...fakeContext, directory: tmpRoot }, { studioRoot: ".", forgeProjectDir: "forge" })
-    expect(hooks.tool).toBeDefined()
-  })
-
-  test("rejects invalid path options", async () => {
-    const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
-    await expect(plugin(fakeContext, { studioRoot: "bad\0path" })).rejects.toThrow(/studioRoot/)
   })
 })

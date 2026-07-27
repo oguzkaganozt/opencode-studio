@@ -499,7 +499,7 @@ export async function configureStudios(
         validateOpenCode: input.validateOpenCode,
       })
     } catch {
-      // Non-fatal: global config already applied; doctor will surface leftovers.
+      // Non-fatal: global config already applied; status will surface leftovers.
     }
 
     return {
@@ -896,18 +896,6 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     checks,
     ok: !failed,
     restartRequiredHint: "After repair, restart OpenCode so plugins and skills load.",
-  }
-}
-
-/** @deprecated Use statusStudios — kept for /api/doctor shape. */
-export async function doctorStudios(input: LifecyclePaths = {}) {
-  const status = await statusStudios(input)
-  return {
-    workspace: status.workspace,
-    configPath: status.configPath,
-    package: status.plugin,
-    checks: status.checks,
-    ok: status.ok,
   }
 }
 

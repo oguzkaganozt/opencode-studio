@@ -1,6 +1,7 @@
 import { lstat, realpath } from "node:fs/promises"
 import path from "node:path"
 import { Hono } from "hono"
+import { createSseResponse } from "../../src/core/sse"
 import { type DesignEntry, findDesign, listRenders, type StudioLayout, scanDesigns } from "./library"
 import { readArtifactManifest, readDesignManifest } from "./manifest"
 import { isInside } from "./studio-path"
@@ -98,49 +99,9 @@ export function createCadApi(layout: StudioLayout) {
 
   app.get("/events", async (context) => {
     ensureDesignWatching(layout)
-    const encoder = new TextEncoder()
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "connected", at: Date.now() })}\n\n`))
-        let heartbeat: ReturnType<typeof setInterval> | undefined
-        let unsubscribe: (() => void) | undefined
-        const cleanup = () => {
-          if (heartbeat) clearInterval(heartbeat)
-          heartbeat = undefined
-          unsubscribe?.()
-          unsubscribe = undefined
-        }
-        unsubscribe = onDesignEvent((event) => {
-          try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-          } catch {
-            cleanup()
-          }
-        })
-        heartbeat = setInterval(() => {
-          try {
-            controller.enqueue(encoder.encode(": ping\n\n"))
-          } catch {
-            cleanup()
-          }
-        }, 5000)
-        heartbeat.unref()
-        context.req.raw.signal.addEventListener("abort", () => {
-          cleanup()
-          try {
-            controller.close()
-          } catch {
-            // already closed
-          }
-        })
-      },
-    })
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
+    return createSseResponse({
+      signal: context.req.raw.signal,
+      subscribe: (emit) => onDesignEvent(emit),
     })
   })
 

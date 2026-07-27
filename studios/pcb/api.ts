@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { readRegularFileAt } from "../../src/core/paths"
 import { safeContentDisposition } from "../../src/core/security"
+import { createSseResponse } from "../../src/core/sse"
 import { generatePickAndPlace, toCplCsv } from "./assembly"
 import { bomIdentityBlocker, generateBom, toBomCsv } from "./bom"
 import { getCatalogPart, loadCatalogParts, partSummary } from "./catalog"
@@ -160,49 +161,9 @@ export function createPcbApi(workspaceRoot: string) {
 
   app.get("/events", async (ctx) => {
     await ensureWatching(workspaceRoot)
-    const encoder = new TextEncoder()
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "connected", at: Date.now() })}\n\n`))
-        let heartbeat: ReturnType<typeof setInterval> | undefined
-        let unsubscribe: (() => void) | undefined
-        const cleanup = () => {
-          if (heartbeat) clearInterval(heartbeat)
-          heartbeat = undefined
-          unsubscribe?.()
-          unsubscribe = undefined
-        }
-        unsubscribe = onProjectEvent((event) => {
-          try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-          } catch {
-            cleanup()
-          }
-        })
-        heartbeat = setInterval(() => {
-          try {
-            controller.enqueue(encoder.encode(": ping\n\n"))
-          } catch {
-            cleanup()
-          }
-        }, 5000)
-        heartbeat.unref()
-        ctx.req.raw.signal.addEventListener("abort", () => {
-          cleanup()
-          try {
-            controller.close()
-          } catch {
-            // already closed
-          }
-        })
-      },
-    })
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
+    return createSseResponse({
+      signal: ctx.req.raw.signal,
+      subscribe: (emit) => onProjectEvent(emit),
     })
   })
 

@@ -19,7 +19,7 @@ import {
 } from "./core/security"
 import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
-import { configureStudios, doctorStudios, statusStudios } from "./lifecycle"
+import { configureStudios, statusStudios } from "./lifecycle"
 import { createOpenCodeBridge, type OpenCodeBridge } from "./opencode-bridge"
 import { apiLoaders } from "./studio-loaders"
 import { listStudioDefinitions } from "./studios"
@@ -147,11 +147,6 @@ export async function createHostApp(input: HostInput) {
   app.get("/api/update", async (ctx) => {
     const update = await checkNpmUpdate({ packageName: meta.name, current: packageVersion })
     return ctx.json(update)
-  })
-
-  app.get("/api/doctor", async (ctx) => {
-    const result = await doctorStudios({ workspace: input.workspace, packageRoot, ...userPaths })
-    return ctx.json(result)
   })
 
   const writeGuard = async (ctx: any) => {

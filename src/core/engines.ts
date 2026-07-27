@@ -16,7 +16,7 @@ export type ResolvedEngine = {
 
 const require = createRequire(import.meta.url)
 
-/** Pin uv download so doctor/install stay reproducible. */
+/** Pin uv download so status/install stay reproducible. */
 export const BUNDLED_UV_VERSION = "0.9.26"
 
 function fileOk(candidate: string | null | undefined): candidate is string {
