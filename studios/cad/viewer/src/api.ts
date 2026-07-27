@@ -80,3 +80,7 @@ export function artifactUrl(designId: string, file: string) {
 export function renderUrl(designId: string, file: string) {
   return api(`/render?design=${encodeURIComponent(designId)}&file=${encodeURIComponent(file)}`)
 }
+
+export function eventsUrl() {
+  return api("/events")
+}

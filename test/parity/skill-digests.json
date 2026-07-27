@@ -1,7 +1,7 @@
 {
   "cad-studio": {
     "path": "studios/cad/skill/SKILL.md",
-    "sha256": "3640ccecc20f2fac4fac7a63ca24fde0af4fc8c541c67ee24db77c69f63d0898"
+    "sha256": "d69cafb5eb9a88ffd2ec04a45325216b132dd647d9174c44b7dc8481c3ccc9cd"
   },
   "pcb-studio": {
     "path": "studios/pcb/skill/SKILL.md",

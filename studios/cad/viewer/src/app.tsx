@@ -1,17 +1,15 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Dialog } from "@ui/components/dialog"
-import { artifactUrl, type DesignSummary, listDesigns, readDesign, renderUrl, studioHref } from "./api"
+import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, renderUrl, studioHref } from "./api"
 import { type ClickInfo, type LoadPart, PART_COLORS, type SceneHandle } from "./assembly-types"
 
 const AssemblyViewport = lazy(async () => {
   const module = await import("./assembly-viewport")
   return { default: module.AssemblyViewport }
 })
-
-const POLL_MS = 2000
 
 function statusBadge(status: DesignSummary["buildStatus"]) {
   if (status === "built") return { label: "built", className: "text-[var(--osc-success)]" }
@@ -142,6 +140,28 @@ async function copyFeedback(text: string) {
   await navigator.clipboard.writeText(text)
 }
 
+function useCadDesignEvents() {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    const es = new EventSource(eventsUrl())
+    es.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data as string) as { type?: string; designId?: string }
+        if (event.type === "designs-changed") {
+          void queryClient.invalidateQueries({ queryKey: ["cad", "designs"] })
+        }
+        if (event.type === "design-changed" && event.designId) {
+          void queryClient.invalidateQueries({ queryKey: ["cad", "designs"] })
+          void queryClient.invalidateQueries({ queryKey: ["cad", "design", event.designId] })
+        }
+      } catch {
+        // malformed event — ignore
+      }
+    }
+    return () => es.close()
+  }, [queryClient])
+}
+
 function DesignWorkspace({ designId }: { designId?: string }) {
   const navigate = useNavigate()
   const sceneRef = useRef<SceneHandle | null>(null)
@@ -155,17 +175,17 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const [partUi, setPartUi] = useState<Array<{ name: string; visible: boolean; color: number }>>([])
   const [renderModal, setRenderModal] = useState<{ url: string; label: string } | null>(null)
 
+  useCadDesignEvents()
+
   const designsQuery = useQuery({
     queryKey: ["cad", "designs"],
     queryFn: listDesigns,
-    refetchInterval: POLL_MS,
   })
 
   const designQuery = useQuery({
     queryKey: ["cad", "design", designId],
     enabled: Boolean(designId) && !localParts,
     queryFn: () => readDesign(designId!),
-    refetchInterval: POLL_MS,
   })
 
   const designs = designsQuery.data ?? []

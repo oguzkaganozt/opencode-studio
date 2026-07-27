@@ -164,25 +164,31 @@ export function createPcbApi(workspaceRoot: string) {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "connected", at: Date.now() })}\n\n`))
-        const unsubscribe = onProjectEvent((event) => {
+        let heartbeat: ReturnType<typeof setInterval> | undefined
+        let unsubscribe: (() => void) | undefined
+        const cleanup = () => {
+          if (heartbeat) clearInterval(heartbeat)
+          heartbeat = undefined
+          unsubscribe?.()
+          unsubscribe = undefined
+        }
+        unsubscribe = onProjectEvent((event) => {
           try {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
           } catch {
-            unsubscribe()
+            cleanup()
           }
         })
-        const heartbeat = setInterval(() => {
+        heartbeat = setInterval(() => {
           try {
             controller.enqueue(encoder.encode(": ping\n\n"))
           } catch {
-            clearInterval(heartbeat)
-            unsubscribe()
+            cleanup()
           }
         }, 5000)
         heartbeat.unref()
         ctx.req.raw.signal.addEventListener("abort", () => {
-          clearInterval(heartbeat)
-          unsubscribe()
+          cleanup()
           try {
             controller.close()
           } catch {

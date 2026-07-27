@@ -2,10 +2,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useEffect, useState } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router"
 import { requestAgentHandoff } from "@ui/agent-handoff"
-import { Dialog, DialogHeader } from "@ui/components/dialog"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
 import { api, type CircuitDiagnostics, type DiagnosticGroup, type PartSummary, type ProjectSummary, studioHref } from "./api"
+import { PartDetailModal } from "./part-detail"
 
 function safeHref(raw: string | null | undefined): string | null {
   if (typeof raw !== "string" || !raw.trim()) return null
@@ -579,23 +579,6 @@ function PartRow({ part, onClick }: { part: PartSummary; onClick: () => void }) 
         )}
       </td>
     </tr>
-  )
-}
-
-function PartDetailModal({ mpn, onClose }: { mpn: string; onClose: () => void }) {
-  const { data, isLoading, error } = useQuery({ queryKey: ["pcb", "part", mpn], queryFn: () => api.catalogPart(mpn) })
-
-  return (
-    <Dialog open onClose={onClose} title={`Part detail: ${mpn}`}>
-      <DialogHeader title={mpn} onClose={onClose} />
-      <div className="p-5">
-        {isLoading && <LoadingState />}
-        {error && <PageError message="Failed to load part details" />}
-        {data && (
-          <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-[var(--osc-text)]">{JSON.stringify(data, null, 2)}</pre>
-        )}
-      </div>
-    </Dialog>
   )
 }
 

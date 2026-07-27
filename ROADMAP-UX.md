@@ -6,53 +6,77 @@ ROI-ranked recommendations to make opencode-studio more usable, efficient, effec
 
 **Scoring:** effort S / M / L · impact Y / O / D (high / medium / low) · ROI stars reflect impact ÷ effort.
 
----
-
-## ROI table
-
-| # | Recommendation | Payoff | Effort | Impact | ROI | Where |
-|---|----------------|--------|--------|--------|-----|--------|
-| 1 | ~~Enable/disable + CLI bloat~~ **DONE** — always-on; postinstall repair; CLI: serve/status/repair/remove/upgrade/service | Simpler UX/DX | — | — | ✓ | shipped |
-| 2 | ~~**README / CLI alignment**~~ **DONE** — OpenCode-first prerequisites; `/` vs `/studio` table; repair skill path wording | Less support load | — | — | ✓ | shipped |
-| 3 | ~~**PCB `NavLink` active state**~~ **DONE** — basename-aware `useLocation` matching | Clear “where am I” | — | — | ✓ | shipped |
-| 4 | ~~**Shared UI adoption**~~ **DONE** — Files/PCB use `@ui` EmptyState/ErrorState | Consistency | — | — | ✓ | shipped |
-| 5 | ~~**Files responsive layout**~~ **DONE** — stack below `md`; mobile list/preview swap | Narrow viewports | — | — | ✓ | shipped |
-| 6 | ~~**`useStudioChrome()` extract**~~ **DONE** — shared agent open/status/handoff | Less duplication | — | — | ✓ | shipped |
-| 7 | ~~**PCB → Agent handoff**~~ **DONE** — “Send diagnostics to agent” | Closes agent loop for PCB | — | — | ✓ | shipped |
-| 8 | ~~**Richer `status` / `serve` output**~~ **DONE** — MCP + plugin checks; serve tip; status restart tip on warn/fail | Half-configured states visible | — | — | ✓ | shipped |
-| 9 | ~~**CLI configure messaging**~~ **DONE** — repair/status/UI restart hints (Apply asymmetry obsolete) | — | — | — | ✓ | shipped |
-| 10 | ~~**Deepen PCB skill**~~ **DONE** — micro-flow + readiness field table + `/studio` URL | Better agent PCB outcomes | — | — | ✓ | shipped |
-| 11 | ~~**CAD `design_qc_report`**~~ **DONE** — artifact/print/fit/form axes + complete gate | Less overclaim | — | — | ✓ | shipped |
-| 12 | **Single catalog registration map** — id → definition / plugin / api / viewer | New-studio tax ↓; loader drift ↓ | M | Y (maint) | ★★★★☆ | `registry`, loaders, `ui/app.tsx` |
-| 13 | **`create-studio` auto-wire or checklist script** | Contributor DX | S–M | O | ★★★☆☆ | `scripts/create-studio.ts` |
-| 14 | **wall-sconce build gate** (not presence-only) | Real PCB regression signal | M | O–Y | ★★★☆☆ | `test:pcb-fixture` / scripts |
-| 15 | **Agent panel resize + width persist** | Better daily split workflow | M | O | ★★★☆☆ | `ui/native-agent-frame.tsx` |
-| 16 | ~~**PCB compact header**~~ **DONE** — diagnostics collapsed by default (`details`) | See the board first | — | — | ✓ | shipped |
-| 17 | **Split `lifecycle.ts`** — skills / plugin-reg / mcp / doctor modules | Faster, safer lifecycle changes | M | O (maint) | ★★★☆☆ | `src/lifecycle.ts` |
-| 18 | **`StudioModule` contract** — shared error envelope; document tool prefixes (`design_*` vs `pcb_*`) | Clearer multi-studio agent sessions | M | O | ★★★☆☆ | `src/core/`, skills |
-| 19 | **CAD SSE or revision endpoint** — replace blind 2s poll | Fresher viewer, less noise | M | O | ★★★☆☆ | CAD `api.ts` + viewer |
-| 20 | **`remove --purge-plugins`** | Clean uninstall story | S | D–O | ★★★☆☆ | lifecycle + CLI |
-| 21 | **CAD freeform example design** | Align sample bar with skill freeform bar | M | O | ★★★☆☆ | `studios/cad/designs/` |
-| 22 | **Structured part/BOM detail** (not raw JSON dump) | Better designer UX | M | O | ★★★☆☆ | PCB catalog / BOM tabs |
-| 23 | **Files keyboard + type-to-filter** | Power-user speed | M | D–O | ★★☆☆☆ | `ui/files-explorer.tsx` |
-| 24 | **Home skill/engine badges** | Discoverability of configure health | S | D | ★★☆☆☆ | Home cards |
-| 25 | **macOS launchd or documented tmux/serve** | Non-Linux background story | M / S | O (segment) | ★★☆☆☆ | `src/service.ts`, docs |
-| 26 | **Command palette ⌘K** | IDE feel for large workspaces | L | O | ★★☆☆☆ | UI shell |
-| 27 | **CAD measure / isolate** | Deeper inspection | L | O | ★★☆☆☆ | CAD viewport |
-| 28 | **Parity freeze for key arg/response fields** | Contract drift protection | M | O (maint) | ★★☆☆☆ | `test/parity/` |
-| 29 | **`docs/user-guide.md`** — first part / first board / media | Human onboarding (skills are agent-facing) | M | O | ★★☆☆☆ | `docs/` |
-| 30 | **Visual regression screenshots** in browser smoke | Catch chrome drift | M | D–O | ★☆☆☆☆ | `scripts/browser-smoke.ts` |
+**Current product baseline (2026-07):** CAD/PCB always on; simplified CLI; first-run docs; PCB agent handoff + skill depth; CAD `design_qc_report`; shared chrome; Files responsive; agent resize; CAD SSE; structured PCB part/BOM detail.
 
 ---
 
-## Suggested sprints
+## Shipped
 
-| Sprint | Items | Focus |
-|--------|-------|--------|
-| **A** | #1–3, #7–10, #16 | **Shipped** — always-on, first-run, PCB agent loop |
-| **B** | #4–6, #11 | **Shipped** — shared chrome + CAD QC honesty |
-| **C — next** | #12–14, #17 | Maint speed + regression confidence |
-| **D — later** | #15, #18–22, #26–27 | Polish and depth |
+| # | What shipped |
+|---|----------------|
+| 1 | Always-on CAD/PCB; postinstall repair; CLI: serve/status/repair/remove/upgrade/service |
+| 2 | README OpenCode-first; `/` vs `/studio`; repair skill-path wording |
+| 3 | PCB NavLink active (`useLocation` / basename) |
+| 4 | Shared `@ui` EmptyState / ErrorState in Files + PCB |
+| 5 | Files responsive (stack below `md`; mobile list/preview) |
+| 6 | `useStudioChrome()` — agent open / status / handoff |
+| 7 | PCB “Send diagnostics to agent” |
+| 8 | Richer `status` / `serve` (MCP + plugin checks; restart tips) |
+| 9 | Repair/status/UI restart hints (configure Apply asymmetry gone) |
+| 10 | PCB skill micro-flow + readiness field table + `/studio` URL |
+| 11 | CAD `design_qc_report` (artifact / print / fit / form + `complete`) |
+| 15 | Agent panel resize + width persist |
+| 16 | PCB diagnostics collapsed by default |
+| 19 | CAD designs SSE watcher (no 2s poll) |
+| 22 | Structured part/BOM detail (PartDetailView + BOM row open) |
+
+---
+
+## Next — UI/UX only (skip DX + security)
+
+Ranked for **daily designer / agent-split** impact after the baseline above.
+
+| Rank | # | Recommendation | Payoff | Effort | Impact | ROI | Where |
+|------|---|----------------|--------|--------|--------|-----|--------|
+| 1 | **27** | **CAD measure / isolate** | Deeper viewport inspection; pairs with Prompt + QC | L | Y | ★★★★☆ | CAD viewport |
+| 2 | **23** | **Files keyboard + type-to-filter** | Power-user speed on always-on Files | M | O | ★★★★☆ | `ui/files-explorer.tsx` |
+| 3 | **24** | **Home skill/engine badges** | “Why is it broken?” after postinstall/repair | S | O | ★★★★☆ | Home cards |
+| 4 | **21** | **CAD freeform example design** | Sample bar aligns with skill freeform bar | M | O | ★★★☆☆ | `studios/cad/designs/` |
+| 5 | **26** | **Command palette ⌘K** | IDE feel for large workspaces | L | O | ★★☆☆☆ | UI shell |
+| 6 | **29** | **`docs/user-guide.md`** | Human onboarding (skills are agent-facing) | M | O | ★★☆☆☆ | `docs/` |
+
+**Suggested UI/UX sprint (next):** **#27 → #23 → #24** (~1–2 days if measure is scoped tightly; measure alone may be multi-day).
+
+---
+
+## Backlog — maint / DX / regression (explicitly deferred for now)
+
+Do **not** pull these into the next UI sprint unless adding a third studio or fighting real regressions.
+
+| # | Recommendation | Payoff | Effort | Notes |
+|---|----------------|--------|--------|--------|
+| 12 | Single catalog registration map | New-studio tax ↓ | M | N=2; asserts already catch drift |
+| 13 | `create-studio` auto-wire / checklist | Contributor DX | S–M | |
+| 14 | wall-sconce **build gate** (not presence-only) | Real PCB regression signal | M | Highest *test* ROI when ready |
+| 17 | Split `lifecycle.ts` | Safer lifecycle edits | M | Pure maint |
+| 18 | `StudioModule` contract + tool prefix docs | Multi-studio agent clarity | M | |
+| 20 | `remove --purge-plugins` | Cleaner uninstall | S | Partial story already exists |
+| 25 | macOS launchd or documented tmux/serve | Non-Linux background | M/S | Segment |
+| 28 | Parity freeze for key arg/response fields | Contract drift | M | |
+| 30 | Visual regression in browser smoke | Catch chrome drift | M | QA, not product UX |
+
+---
+
+## Suggested sprints (updated)
+
+| Sprint | Items | Focus | Status |
+|--------|-------|--------|--------|
+| **A** | #1–3, #7–10, #16 | Always-on, first-run, PCB agent loop | **Shipped** |
+| **B** | #4–6, #11 | Shared chrome + CAD QC honesty | **Shipped** |
+| **C** | #15, #19, #22 | Agent resize, CAD SSE, structured parts | **Shipped** |
+| **D — next (UI/UX)** | **#27, #23, #24** | CAD inspection depth + Files power + Home health | **Next** |
+| **E — later UI** | #21, #26, #29 | Samples, palette, human guide | Later |
+| **F — maint when needed** | #12–14, #17–18, #20, #25, #28, #30 | DX / regression / segment | Deferred |
 
 ---
 
@@ -62,22 +86,24 @@ ROI-ranked recommendations to make opencode-studio more usable, efficient, effec
 |------|-----|
 | Security / remote hardening | Tracked outside this doc |
 | Multi-user, marketplace, dynamic third-party studios | Low ROI; changes product class |
-| Full MCAD / full EDA replacement | Scope explosion — prefer #11 + skills over kernel work |
+| Full MCAD / full EDA replacement | Scope explosion — prefer skills + QC axes over kernel work |
+| Maint/DX items above while UI/UX sprint D is open | User priority: product feel over contributor tax |
 
 ---
 
 ## Principle
 
-Highest ROI is usually **not a new domain feature**. Prefer:
+Highest ROI is usually **not a new domain feature**. After always-on + agent loop + QC honesty, prefer:
 
-1. First-run clarity and restart/status visibility  
-2. CAD ↔ PCB agent handoff parity  
-3. Thin UI consistency fixes  
-4. PCB skill depth + CAD machine-readable QC  
-5. Then registration/lifecycle maint refactors  
+1. ~~First-run clarity and restart/status visibility~~ **done**
+2. ~~CAD ↔ PCB agent handoff parity~~ **done**
+3. ~~Thin UI consistency + responsive Files + agent chrome~~ **done**
+4. ~~PCB skill depth + CAD machine-readable QC~~ **done**
+5. **Next:** CAD inspection depth (#27), Files power-user speed (#23), Home health discoverability (#24)
+6. Then samples / palette / human guide; maint only when adding studios or fighting regressions
 
 ---
 
 ## Context
 
-Derived from a full product review (architecture, CLI/lifecycle, CAD/PCB domains, Viewer UI/UX, test maturity). Scores assume current modular monolith (`studios/` modules, fail-closed global enablement, workspace-local data).
+Derived from a full product review (architecture, CLI/lifecycle, CAD/PCB domains, Viewer UI/UX, test maturity). Scores assume current modular monolith (`studios/` modules, always-on domains, workspace-local data, roots-only `studio.json`).

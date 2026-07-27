@@ -38,6 +38,12 @@ function mpnFromFilename(filename: string): string {
   return path.basename(filename, path.extname(filename))
 }
 
+const KNOWN_PART_KEYS = new Set(["mpn", "manufacturer", "description", "datasheet", "category"])
+
+function isScalarExtra(value: unknown): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+}
+
 function parsePart(raw: unknown, mpnFallback: string): CatalogPart {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return { mpn: mpnFallback }
@@ -46,12 +52,19 @@ function parsePart(raw: unknown, mpnFallback: string): CatalogPart {
   const mpn = typeof record.mpn === "string" && record.mpn.trim() ? record.mpn.trim() : mpnFallback
   const datasheetRaw = typeof record.datasheet === "string" ? record.datasheet : undefined
   const datasheet = datasheetRaw ? (safeExternalHref(datasheetRaw) ?? undefined) : undefined
+  const extras: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(record)) {
+    if (KNOWN_PART_KEYS.has(key)) continue
+    if (isScalarExtra(value)) extras[key] = value
+    else if (Array.isArray(value) && value.every((item) => isScalarExtra(item) || item === null)) extras[key] = value
+  }
   return {
     mpn,
     ...(typeof record.manufacturer === "string" ? { manufacturer: record.manufacturer } : {}),
     ...(typeof record.description === "string" ? { description: record.description } : {}),
     ...(typeof record.category === "string" ? { category: record.category } : {}),
     ...(datasheet ? { datasheet } : {}),
+    ...extras,
   }
 }
 

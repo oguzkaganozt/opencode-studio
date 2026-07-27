@@ -55,6 +55,19 @@ export type PartSummary = {
   datasheet: string | null
 }
 
+export type CatalogPartDetail = {
+  mpn: string
+  manufacturer?: string
+  description?: string
+  category?: string
+  datasheet?: string
+  [key: string]: unknown
+}
+
+export type CatalogPartResponse = {
+  part: CatalogPartDetail
+}
+
 export type ProjectsResponse = {
   projects: ProjectSummary[]
   total: number
@@ -120,7 +133,7 @@ export const api = {
     return apiFetch(apiPath(`/catalog?${q}`))
   },
 
-  catalogPart: (mpn: string): Promise<Record<string, unknown>> => apiFetch(apiPath(`/catalog/${encodeURIComponent(mpn)}`)),
+  catalogPart: (mpn: string): Promise<CatalogPartResponse> => apiFetch(apiPath(`/catalog/${encodeURIComponent(mpn)}`)),
 
   schematicSvgUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/schematic.svg`),
   pcbSvgUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/pcb.svg`),

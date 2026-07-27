@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react"
+import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react"
 import { subscribeAgentHandoff } from "./agent-handoff"
 import { type AgentStatus, agentStatusDotClass, deriveAgentStatus } from "./agent-status"
+import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, clampAgentWidth, readAgentWidth, viewportAgentWidthMax, writeAgentWidth } from "./agent-width"
 import { nativeOpenCodeHomeUrl, nativePromptDraftUrl } from "./native-agent-url"
 
 function sameOriginPath(href: string): string | null {
@@ -41,6 +42,18 @@ function snapshotFromDocument(doc: Document | null | undefined): NativeFrameSnap
   }
 }
 
+function useMdUp() {
+  const [mdUp, setMdUp] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true))
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)")
+    const onChange = () => setMdUp(mq.matches)
+    onChange()
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+  return mdUp
+}
+
 export function NativeAgentFrame({
   workspace,
   available,
@@ -55,10 +68,36 @@ export function NativeAgentFrame({
   onStatusChange?: (status: AgentStatus) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const widthRef = useRef(readAgentWidth())
+  const mdUp = useMdUp()
   const [mounted, setMounted] = useState(false)
   const [src, setSrc] = useState(nativeOpenCodeHomeUrl())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
+  const [width, setWidth] = useState(() => readAgentWidth())
+  const [dragging, setDragging] = useState(false)
+  const [viewportMax, setViewportMax] = useState(() =>
+    typeof window !== "undefined" ? viewportAgentWidthMax(window.innerWidth) : AGENT_WIDTH_MAX,
+  )
+
+  useEffect(() => {
+    widthRef.current = width
+  }, [width])
+
+  useEffect(() => {
+    const onResize = () => {
+      const max = viewportAgentWidthMax(window.innerWidth)
+      setViewportMax(max)
+      setWidth((current) => {
+        const next = clampAgentWidth(current, window.innerWidth)
+        widthRef.current = next
+        return next
+      })
+    }
+    window.addEventListener("resize", onResize)
+    onResize()
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
 
   useEffect(() => {
     if (!(open && available) || mounted) return
@@ -72,7 +111,6 @@ export function NativeAgentFrame({
       if (request.open === false) return
 
       if (!available || !workspace) {
-        // Attach mode / no native UI: preserve the prompt via clipboard.
         if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
           void navigator.clipboard.writeText(request.text).catch(() => {})
         }
@@ -88,7 +126,6 @@ export function NativeAgentFrame({
       const frame = iframeRef.current
       if (frame?.contentWindow) {
         try {
-          // Force navigation when the frame is already mounted (same src string would no-op in React).
           frame.contentWindow.location.assign(next)
         } catch {
           // React src update still applies if the frame is not same-origin ready yet.
@@ -136,18 +173,52 @@ export function NativeAgentFrame({
         if (path) setSrc(path)
       }
     } catch {
-      // Cross-origin should not happen for same-origin proxy; treat as failure.
       setError(true)
       return
     }
     setError(nativeFrameLooksBroken(snapshotFromDocument(doc)))
   }
 
+  const beginResize = (event: ReactPointerEvent<HTMLElement>) => {
+    const target = event.currentTarget
+    const startX = event.clientX
+    const startW = widthRef.current
+    setDragging(true)
+    try {
+      target.setPointerCapture(event.pointerId)
+    } catch {
+      // capture optional
+    }
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = clampAgentWidth(startW + (moveEvent.clientX - startX), window.innerWidth)
+      widthRef.current = next
+      setWidth(next)
+    }
+    const onUp = (upEvent: PointerEvent) => {
+      setDragging(false)
+      writeAgentWidth(widthRef.current)
+      try {
+        target.releasePointerCapture(upEvent.pointerId)
+      } catch {
+        // already released
+      }
+      target.removeEventListener("pointermove", onMove)
+      target.removeEventListener("pointerup", onUp)
+      target.removeEventListener("pointercancel", onUp)
+    }
+    target.addEventListener("pointermove", onMove)
+    target.addEventListener("pointerup", onUp)
+    target.addEventListener("pointercancel", onUp)
+  }
+
   return (
     <aside
       aria-label="OpenCode agent"
       data-agent-open={open ? "true" : "false"}
-      className={`${open ? "flex" : "hidden"} absolute inset-0 z-30 min-h-0 w-full flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg)] md:static md:w-[min(420px,42vw)] md:shrink-0`}
+      data-agent-width={width}
+      className={`${open ? "flex" : "hidden"} absolute inset-0 z-30 min-h-0 w-full flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg)] md:static md:inset-auto md:shrink-0 ${dragging ? "select-none" : ""}`}
+      style={open && mdUp ? { width, minWidth: AGENT_WIDTH_MIN, maxWidth: viewportMax } : undefined}
     >
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--osc-border)] px-3">
         <span className={`size-1.5 shrink-0 rounded-full ${agentStatusDotClass(status)}`} aria-hidden />
@@ -199,6 +270,37 @@ export function NativeAgentFrame({
             />
           )}
         </div>
+      )}
+
+      {open && mdUp && (
+        // biome-ignore lint/a11y/useSemanticElements: vertical drag handle; hr is horizontal by default
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize agent panel"
+          aria-valuenow={width}
+          aria-valuemin={AGENT_WIDTH_MIN}
+          aria-valuemax={viewportMax}
+          tabIndex={0}
+          className="absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none border-0 bg-transparent hover:bg-[var(--osc-border-strong)] focus:bg-[var(--osc-border-strong)] focus:outline-none"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            beginResize(event)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault()
+              const next = clampAgentWidth(width - 16, window.innerWidth)
+              setWidth(next)
+              writeAgentWidth(next)
+            } else if (event.key === "ArrowRight") {
+              event.preventDefault()
+              const next = clampAgentWidth(width + 16, window.innerWidth)
+              setWidth(next)
+              writeAgentWidth(next)
+            }
+          }}
+        />
       )}
     </aside>
   )

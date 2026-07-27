@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 import { api, type BomEntry } from "./api"
+import { PartDetailModal } from "./part-detail"
 
 function safeHref(raw: string | null | undefined): string | null {
   if (typeof raw !== "string" || !raw.trim()) return null
@@ -12,9 +14,24 @@ function safeHref(raw: string | null | undefined): string | null {
   }
 }
 
-function BomRow({ entry }: { entry: BomEntry }) {
+function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEntry) => void }) {
+  const clickable = Boolean(entry.mpn && onSelect)
   return (
-    <tr className="border-b border-[var(--osc-border)] hover:bg-[var(--osc-surface-hover)] transition-colors">
+    <tr
+      className={`border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)] ${clickable ? "cursor-pointer" : ""}`}
+      tabIndex={clickable ? 0 : undefined}
+      aria-label={entry.mpn ? `BOM line ${entry.mpn}` : "BOM line without MPN"}
+      onClick={() => {
+        if (entry.mpn && onSelect) onSelect(entry)
+      }}
+      onKeyDown={(event) => {
+        if (!clickable) return
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onSelect?.(entry)
+        }
+      }}
+    >
       <td className="px-4 py-2.5 font-mono text-sm text-[var(--osc-success)] whitespace-nowrap">{entry.mpn ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text)]">{entry.refdes.join(", ")}</td>
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text)] text-center">{entry.quantity}</td>
@@ -24,7 +41,14 @@ function BomRow({ entry }: { entry: BomEntry }) {
       </td>
       <td className="px-4 py-2.5 text-sm">
         {entry.datasheet && safeHref(entry.datasheet) && (
-          <a href={safeHref(entry.datasheet)!} target="_blank" rel="noopener noreferrer" className="text-[var(--osc-accent)] hover:opacity-80 text-xs">
+          <a
+            href={safeHref(entry.datasheet)!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--osc-accent)] hover:opacity-80 text-xs"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             Datasheet ↗
           </a>
         )}
@@ -34,6 +58,7 @@ function BomRow({ entry }: { entry: BomEntry }) {
 }
 
 export default function BomTab({ projectId }: { projectId: string }) {
+  const [selected, setSelected] = useState<BomEntry | null>(null)
   const { data, isLoading, error } = useQuery({
     queryKey: ["pcb", "bom", projectId],
     queryFn: () => api.bom(projectId),
@@ -85,11 +110,14 @@ export default function BomTab({ projectId }: { projectId: string }) {
           </thead>
           <tbody>
             {data.entries.map((entry, index) => (
-              <BomRow key={entry.mpn ?? `unlisted-${index}`} entry={entry} />
+              <BomRow key={entry.mpn ?? `unlisted-${index}`} entry={entry} onSelect={setSelected} />
             ))}
           </tbody>
         </table>
       </div>
+      {selected?.mpn && (
+        <PartDetailModal mpn={selected.mpn} fallback={selected} onClose={() => setSelected(null)} />
+      )}
     </div>
   )
 }

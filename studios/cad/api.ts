@@ -4,6 +4,7 @@ import { Hono } from "hono"
 import { type DesignEntry, findDesign, listRenders, type StudioLayout, scanDesigns } from "./library"
 import { readArtifactManifest, readDesignManifest } from "./manifest"
 import { isInside } from "./studio-path"
+import { ensureDesignWatching, onDesignEvent } from "./watcher"
 
 class StudioError extends Error {
   constructor(
@@ -92,6 +93,54 @@ export function createCadApi(layout: StudioLayout) {
     const mime = extension === ".glb" ? "model/gltf-binary" : extension === ".step" ? "application/step" : "model/stl"
     return new Response(Bun.file(resolved), {
       headers: { "Content-Type": mime, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" },
+    })
+  })
+
+  app.get("/events", async (context) => {
+    ensureDesignWatching(layout)
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "connected", at: Date.now() })}\n\n`))
+        let heartbeat: ReturnType<typeof setInterval> | undefined
+        let unsubscribe: (() => void) | undefined
+        const cleanup = () => {
+          if (heartbeat) clearInterval(heartbeat)
+          heartbeat = undefined
+          unsubscribe?.()
+          unsubscribe = undefined
+        }
+        unsubscribe = onDesignEvent((event) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+          } catch {
+            cleanup()
+          }
+        })
+        heartbeat = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(": ping\n\n"))
+          } catch {
+            cleanup()
+          }
+        }, 5000)
+        heartbeat.unref()
+        context.req.raw.signal.addEventListener("abort", () => {
+          cleanup()
+          try {
+            controller.close()
+          } catch {
+            // already closed
+          }
+        })
+      },
+    })
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
     })
   })
 
