@@ -20,8 +20,10 @@ export async function loadPackageMeta(packageRoot: string): Promise<PackageMeta>
     name: raw.name,
     version: raw.version,
     packageRoot,
-    pluginSpecifier: `${raw.name}@${raw.version}`,
-    mediaProviderSpecifier: `${raw.name}@${raw.version}/media-provider`,
+    // OpenCode resolves unversioned plugin entries to the current package.
+    // Keep versions in status/markers only; pinning here makes `upgrade` stale.
+    pluginSpecifier: raw.name,
+    mediaProviderSpecifier: `${raw.name}/media-provider`,
   }
 }
 

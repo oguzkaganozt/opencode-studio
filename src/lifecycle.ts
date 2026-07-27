@@ -434,9 +434,10 @@ export async function configureStudios(
     if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
     return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
-  // Platform is always pinned: main plugin + media-go (even when enabled is empty / remove).
+  // Platform is always registered without a version pin, so upgrades do not
+  // leave OpenCode loading an older package.
   plugins.push(meta.pluginSpecifier)
-  plugins.push(`${meta.name}@${meta.version}/media-go`)
+  plugins.push(`${meta.name}/media-go`)
 
   let nextText = configWithPlugins(openCode, plugins)
   let workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
@@ -724,7 +725,7 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
     checks.push({
       id: "plugin-media-go",
       status: mediaGo || !registered ? (mediaGo ? "pass" : "warn") : "warn",
-      message: mediaGo ? "media-go auxiliary plugin pinned" : "media-go not pinned",
+      message: mediaGo ? "media-go auxiliary plugin registered" : "media-go not registered",
       repair: mediaGo ? undefined : "Run opencode-studio configure …",
     })
   } catch (error) {

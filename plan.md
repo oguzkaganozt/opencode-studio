@@ -46,7 +46,7 @@ Non-goals:
 | ChatGPT image + fal | Always registered; missing auth/key → **call-time error**, not hidden registration |
 | ffmpeg presets | Stay (convert / trim / extract-audio / probe) |
 | Package exports | Keep `./media-provider`, `./media-go` |
-| media-go pin | Always when opencode-studio is configured (not gated on a studio id) |
+| media-go registration | Always, unversioned, when opencode-studio is configured (not gated on a studio id) |
 | Code home | `src/platform/media/` |
 | Host API | `/api/files/*` (not `/api/studios/media`) |
 | Shell UI | `/studio/files` — always reachable global entry |
@@ -55,8 +55,8 @@ Non-goals:
 
 | Command / state | Effect |
 | --- | --- |
-| `configure cad pcb` | Enable those studios + ensure platform pin (plugin, media-go, media skill) |
-| `configure` with empty / `remove` | **Domain only**: disable cad/pcb; **keep** main plugin pin, media-go, media skill, explorer |
+| `configure cad pcb` | Enable those studios + ensure unversioned platform registrations and media skill |
+| `configure` with empty / `remove` | **Domain only**: disable cad/pcb; **keep** main plugin/media-go registrations, media skill, explorer |
 | Full uninstall | Out of scope for this cutover (document that remove ≠ uninstall) |
 
 Fail-closed new meaning: empty/invalid enablement → **no domain studios**, not “empty plugin.”
@@ -124,7 +124,7 @@ Fail-closed new meaning: empty/invalid enablement → **no domain studios**, not
 ```
 opencode-studio
 ├── platform (always on)
-│   ├── media tools + provider hooks + media-go pin
+│   ├── media tools + provider hooks + unversioned media-go registration
 │   ├── media skill
 │   ├── GET /api/files/*          workspace tree + file bytes (range for AV)
 │   └── UI /studio/files          explorer
@@ -188,9 +188,9 @@ Remove `/studio/studios/media`, `/studio/studios/startup`, `/api/studios/media/*
 
 - `STUDIO_IDS = ["cad", "pcb"]`.
 - Parse: strip unknown legacy ids (`media`, `startup`) + unknown roots keys with warn.
-- `remove` / empty configure: do not unpin platform plugin/media-go/media skill.
-- lifecycle: always pin main plugin + media-go when configuring; always install `media` skill; install cad/pcb skills only when enabled.
-- Doctor: platform checks (ffmpeg, media skill, media-go pin) whenever main plugin is pinned; domain checks per enabled studio.
+- `remove` / empty configure: keep platform plugin/media-go registrations and media skill.
+- lifecycle: always register main plugin + media-go without versions; always install `media` skill; install cad/pcb skills only when enabled.
+- Doctor: platform checks (ffmpeg, media skill, media-go registration) whenever main plugin is registered; domain checks per enabled studio.
 
 ### 4.3 Move media → `src/platform/media`
 

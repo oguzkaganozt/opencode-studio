@@ -55,8 +55,9 @@ describe("configureStudios", () => {
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/media/SKILL.md")).exists()).toBe(true)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
-    expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(true)
-    expect(openCode.plugin.some((entry: string) => String(entry).includes("/media-go"))).toBe(true)
+    expect(openCode.plugin).toContain(pkgName)
+    expect(openCode.plugin).toContain(`${pkgName}/media-go`)
+    expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(false)
     // Domain root must stay clean of config clutter
     expect(await Bun.file(path.join(ctx.workspace, "opencode.json")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.workspace, ".opencode/studio.json")).exists()).toBe(false)
@@ -104,7 +105,9 @@ describe("configureStudios", () => {
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/pcb-studio/SKILL.md")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/media/SKILL.md")).exists()).toBe(true)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
-    expect(openCode.plugin.some((entry: string) => String(entry).includes("/media-go"))).toBe(true)
+    const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
+    expect(openCode.plugin).toContain(pkgName)
+    expect(openCode.plugin).toContain(`${pkgName}/media-go`)
   })
 
   test("doctor reports enabled studio and platform media", async () => {

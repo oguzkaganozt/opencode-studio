@@ -4,7 +4,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 
 **Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
-Installing the package enables **no domain Studio** until you configure one. After `configure` (even with an empty set / `remove`), the main plugin + media-go + platform `media` skill stay pinned — media tools are always on.
+Installing the package enables **no domain Studio** until you configure one. After `configure` (even with an empty set / `remove`), the main plugin + media-go stay registered without a version pin and the platform `media` skill remains installed — media tools are always on.
 
 ## Install
 
@@ -68,7 +68,7 @@ Written by the home UI (or CLI):
 | File | Purpose |
 | --- | --- |
 | `~/.config/opencode-studio/studio.json` | `{ "enabled": ["cad", "pcb"] }` + optional absolute `roots` |
-| `~/.config/opencode/opencode.json` | Plugin pin + managed `build123d` MCP |
+| `~/.config/opencode/opencode.json` | Unversioned plugin registrations + managed `build123d` MCP |
 | `~/.config/opencode/skills/<id>-studio/` | Managed domain skills (`cad-studio`, `pcb-studio`) |
 | `~/.config/opencode/skills/media/` | Always-on platform media skill |
 
@@ -78,7 +78,7 @@ Written by the home UI (or CLI):
 
 Missing/invalid config → no domain studios (fail-closed for CAD/PCB). Platform media tools and Files explorer stay available. Media paths are workspace-scoped.
 
-**Upgrade from project-local config:** if `~/.config/opencode-studio/studio.json` is missing and the domain still has `.opencode/studio.json`, enablement is migrated automatically on `serve` / plugin load. Run `opencode-studio configure <studios…>` once to finish (pins global plugin/skills and scrubs leftover project `opencode.json` / skills). Or delete old project files after configure.
+**Upgrade from project-local config:** if `~/.config/opencode-studio/studio.json` is missing and the domain still has `.opencode/studio.json`, enablement is migrated automatically on `serve` / plugin load. Run `opencode-studio configure <studios…>` once to finish (registers global plugins/skills and scrubs leftover project `opencode.json` / skills). Or delete old project files after configure.
 
 ### Background service (Linux systemd user)
 
@@ -135,7 +135,7 @@ Open a new shell after install (or `source ~/.bashrc`).
 | `@oguzkaganozt/opencode-studio/media-provider` | Native media AI SDK adapter |
 | `@oguzkaganozt/opencode-studio/media-go` | Auxiliary plugin for `opencode-go` provider hooks |
 
-Apply/configure also pins OpenCode plugins and managed skills under `.opencode/skills/`.
+Apply/configure also registers OpenCode plugins without version pins and manages skills under `.opencode/skills/`.
 
 ## Develop (this repo)
 

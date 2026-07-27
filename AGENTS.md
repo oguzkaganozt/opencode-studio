@@ -44,7 +44,7 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 
 - Studio enablement: `~/.config/opencode-studio/studio.json` → `{ "enabled": ["cad", "pcb"] }`. Missing/invalid → **no domain studios**; platform media tools + Files explorer stay on.
 - Optional `roots.<id>` must be **absolute** paths. CAD/PCB **data** roots default to the domain workspace (`serve --workspace` / OpenCode `context.directory`), not the config home.
-- `opencode-studio configure …` writes managed skills under `~/.config/opencode/skills/<id>-studio/` (marker `.opencode-studio-managed.json`), pins the plugin + media-go always, installs the platform `media` skill, and (when cad enabled) manages MCP key `build123d`. Domain studios only: cad/pcb. Does **not** write into project directories.
+- `opencode-studio configure …` writes managed skills under `~/.config/opencode/skills/<id>-studio/` (marker `.opencode-studio-managed.json`), registers the plugin + media-go **without version pins**, installs the platform `media` skill, and (when cad enabled) manages MCP key `build123d`. Domain studios only: cad/pcb. Does **not** write into project directories.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
 - After configure via home UI Apply: host hot-reloads studio APIs; restart **OpenCode** only. CLI `configure` does not notify a running host — restart serve too (or Apply from the UI).
 - Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` clears **user-global** enablement.

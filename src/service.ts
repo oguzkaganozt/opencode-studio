@@ -124,7 +124,7 @@ async function unitFileExists(name?: string): Promise<boolean> {
   }
 }
 
-export const OPENCODE_RESTART_HINT = "Restart OpenCode so the plugin and managed skills match the new package version."
+export const OPENCODE_RESTART_HINT = "Restart OpenCode so its unversioned plugin registration resolves the new package."
 
 /** Read-only registry check against the installed package version. */
 export async function checkPackageUpgrade(input?: { packageRoot?: string; ttlMs?: number }): Promise<{

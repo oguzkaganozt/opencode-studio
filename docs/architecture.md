@@ -21,7 +21,7 @@ OpenCode Studio is a modular monolith: one package, one plugin, one host, one Vi
 | Concern | Location |
 | --- | --- |
 | Domain enablement + optional absolute `roots` | `~/.config/opencode-studio/studio.json` |
-| Plugin pin + media-go + managed MCP | `~/.config/opencode/opencode.json` |
+| Unversioned plugin registrations + managed MCP | `~/.config/opencode/opencode.json` |
 | Domain skills | `~/.config/opencode/skills/<id>-studio/` |
 | Platform media skill | `~/.config/opencode/skills/media/` |
 | CAD/PCB domain data | `serve --workspace` / OpenCode project directory (or `roots.*`) |
@@ -33,7 +33,7 @@ OpenCode Studio is a modular monolith: one package, one plugin, one host, one Vi
 
 Fail-closed for **domain** studios: missing or invalid config enables no CAD/PCB. Platform media tools + Files explorer remain available.
 
-`remove` / `enabled: []` disables domain studios only. Main plugin pin, media-go, and the `media` skill stay installed (remove ≠ full uninstall).
+`remove` / `enabled: []` disables domain studios only. Unversioned main plugin/media-go registrations and the `media` skill stay installed (remove ≠ full uninstall).
 
 ## Composition order
 

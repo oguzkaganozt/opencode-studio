@@ -58,7 +58,7 @@ function printCommandHelp(command: string) {
   const texts: Record<string, string> = {
     configure: `opencode-studio configure <studio...> [options]
 
-Enable studios in user-global config and pin plugins/skills.
+Enable studios in user-global config and register plugins/manage skills.
 Studios: ${studios}
 
 Options:
