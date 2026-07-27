@@ -243,6 +243,14 @@ async function main(argv: string[]) {
         console.log(`  ${check.status.padEnd(4)} ${check.id}: ${check.message}`)
         if (check.repair) console.log(`         → ${check.repair}`)
       }
+      const needsRepairRestart = result.checks.some(
+        (check) =>
+          (check.status === "warn" || check.status === "fail") &&
+          typeof check.repair === "string" &&
+          check.repair.includes("opencode-studio repair") &&
+          /^(plugin-|mcp-|skill:)/.test(check.id),
+      )
+      if (needsRepairRestart) console.log(`Tip: ${result.restartRequiredHint}`)
     }
     return result.ok ? 0 : 1
   }
@@ -323,6 +331,7 @@ async function main(argv: string[]) {
     if (opencodeUrl) console.log(`OpenCode: ${opencodeUrl}`)
     else console.log("OpenCode: attached server (native proxy disabled)")
     console.log(`workspace: ${workspace}`)
+    console.log("Tip: opencode-studio status · restart OpenCode after first install/repair")
     await new Promise(() => {})
     return 0
   }

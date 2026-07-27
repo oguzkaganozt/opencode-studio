@@ -755,6 +755,13 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       message: mediaGo ? "media-go auxiliary plugin registered" : "media-go not registered",
       repair: mediaGo ? undefined : "Run opencode-studio repair",
     })
+    const hasMcp = isManagedBuild123dEntry(mcpEntries(openCode)[MANAGED_MCP_KEY])
+    checks.push({
+      id: "mcp-build123d",
+      status: hasMcp ? "pass" : "warn",
+      message: hasMcp ? `build123d MCP registered in ${openCodePath}` : `build123d MCP not registered in ${openCodePath}`,
+      repair: hasMcp ? undefined : "Run opencode-studio repair",
+    })
   } catch (error) {
     checks.push({
       id: "plugin-registration",

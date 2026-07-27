@@ -111,6 +111,8 @@ describe("configureStudios", () => {
     expect(result.checks.some((c) => c.id === "skill:pcb" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "skill:cad" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "skill:media" && c.status === "pass")).toBe(true)
+    expect(result.checks.some((c) => c.id === "mcp-build123d" && c.status === "pass")).toBe(true)
+    expect(result.checks.some((c) => c.id === "plugin-registration" && c.status === "pass")).toBe(true)
   })
 
   test("configure scrubs legacy project-local managed files", async () => {

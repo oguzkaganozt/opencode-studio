@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useEffect, useState } from "react"
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router"
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router"
+import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Dialog, DialogHeader } from "@ui/components/dialog"
 import { api, type CircuitDiagnostics, type DiagnosticGroup, type PartSummary, type ProjectSummary, studioHref } from "./api"
 
@@ -47,7 +48,9 @@ function Shell({ children, fill = false }: { children: React.ReactNode; fill?: b
 }
 
 function NavLink({ to, children, end = false }: { to: string; children: React.ReactNode; end?: boolean }) {
-  const path = window.location.pathname.replace(/\/$/, "") || "/"
+  // Basename-relative path (BrowserRouter basename=/studio); never window.location.
+  const { pathname } = useLocation()
+  const path = pathname.replace(/\/$/, "") || "/"
   const target = (to || "/").replace(/\/$/, "") || "/"
   const active = end ? path === target : path === target || path.startsWith(`${target}/`)
   return (
@@ -194,20 +197,84 @@ function DiagnosticGroupList({ groups, tone }: { groups: DiagnosticGroup[]; tone
   )
 }
 
-function DiagnosticsPanel({ diagnostics }: { diagnostics: CircuitDiagnostics }) {
+function formatDiagnosticsHandoff(projectId: string, projectName: string, diagnostics: CircuitDiagnostics) {
+  const lines = [
+    `PCB project "${projectName}" (${projectId}) has design diagnostics that need fixing.`,
+    `Errors: ${diagnostics.errorCount}, warnings: ${diagnostics.warningCount}.`,
+    "Use pcb_circuit_build / pcb_circuit_read, fix issues, and re-check designValid / fabricationReady / assemblyReady.",
+  ]
+  for (const group of diagnostics.errors) {
+    lines.push(`Error ${group.type} (${group.count}):`)
+    for (const message of group.messages.slice(0, 8)) lines.push(`  - ${message}`)
+    if (group.messages.length > 8) lines.push(`  - … ${group.messages.length - 8} more`)
+  }
+  for (const group of diagnostics.warnings) {
+    lines.push(`Warning ${group.type} (${group.count}):`)
+    for (const message of group.messages.slice(0, 5)) lines.push(`  - ${message}`)
+    if (group.messages.length > 5) lines.push(`  - … ${group.messages.length - 5} more`)
+  }
+  return lines.join("\n")
+}
+
+function DiagnosticsPanel({
+  diagnostics,
+  projectId,
+  projectName,
+}: {
+  diagnostics: CircuitDiagnostics
+  projectId: string
+  projectName: string
+}) {
+  const [toast, setToast] = useState<string | null>(null)
   if (diagnostics.errorCount === 0 && diagnostics.warningCount === 0) return null
+
+  const showToast = (message: string) => {
+    setToast(message)
+    window.setTimeout(() => setToast(null), 1800)
+  }
+
   return (
-    <section className="rounded-lg border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4" aria-label="Design diagnostics">
-      <div className="flex items-center gap-2 mb-3">
-        <h2 className="text-sm font-semibold text-[var(--osc-text)]">Design diagnostics</h2>
+    <details className="relative shrink-0 rounded-lg border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)]" aria-label="Design diagnostics">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-[var(--osc-text)] [&::-webkit-details-marker]:hidden">
+        <span className="text-[var(--osc-text-faint)]" aria-hidden="true">
+          ▸
+        </span>
+        Design diagnostics
         {diagnostics.errorCount > 0 && <StatusBadge tone="error" label={`${diagnostics.errorCount} errors`} />}
         {diagnostics.warningCount > 0 && <StatusBadge tone="warning" label={`${diagnostics.warningCount} warnings`} />}
+      </summary>
+      <div className="max-h-48 space-y-3 overflow-auto border-t border-[var(--osc-border)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center rounded-md border border-[var(--osc-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--osc-text)] transition-colors hover:border-[var(--osc-text-faint)] hover:bg-[var(--osc-surface-hover)]"
+            onClick={() => {
+              requestAgentHandoff({
+                text: formatDiagnosticsHandoff(projectId, projectName, diagnostics),
+                source: "pcb",
+              })
+              showToast("Prompt ready in agent")
+            }}
+          >
+            Send diagnostics to agent
+          </button>
+          <span className="text-[11px] text-[var(--osc-text-faint)]">Opens Agent with a draft prompt (not auto-sent)</span>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {diagnostics.errors.length > 0 && <DiagnosticGroupList groups={diagnostics.errors} tone="error" />}
+          {diagnostics.warnings.length > 0 && <DiagnosticGroupList groups={diagnostics.warnings} tone="warning" />}
+        </div>
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
-        {diagnostics.errors.length > 0 && <DiagnosticGroupList groups={diagnostics.errors} tone="error" />}
-        {diagnostics.warnings.length > 0 && <DiagnosticGroupList groups={diagnostics.warnings} tone="warning" />}
-      </div>
-    </section>
+      {toast && (
+        <div
+          className="absolute top-2 right-3 z-10 rounded-full border border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] px-3 py-1 text-xs text-[var(--osc-success)]"
+          role="status"
+          aria-live="polite"
+        >
+          {toast}
+        </div>
+      )}
+    </details>
   )
 }
 
@@ -424,10 +491,8 @@ function ProjectPage() {
           )}
         </div>
 
-        {project.diagnostics && (
-          <div className="max-h-40 shrink-0 overflow-auto">
-            <DiagnosticsPanel diagnostics={project.diagnostics} />
-          </div>
+        {project.diagnostics && id && (
+          <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} />
         )}
 
         <div className="flex shrink-0 gap-1 border-b border-[var(--osc-border)]" role="tablist" aria-label="Project views">

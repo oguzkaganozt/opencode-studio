@@ -8,6 +8,10 @@ description: Use for PCB design, tscircuit TSX, Circuit JSON diagnostics, Gerber
 Use PCB Studio for electronic schematics and PCB layouts. Do not load
 `cad-studio`; that skill is for mechanical/FDM CAD with build123d.
 
+Studio UI: `http://127.0.0.1:4173/studio` (not bare `/`, which is native OpenCode).
+PCB projects live under Studio → PCB. The viewer can send diagnostics to the Agent
+panel; treat that draft as user intent, then fix with tools below.
+
 ## Workflow
 
 1. Call `pcb_workspace_list` and `pcb_catalog_list` once before authoring.
@@ -41,7 +45,39 @@ Use PCB Studio for electronic schematics and PCB layouts. Do not load
    CPL are blocked while placeholders, unverified complex part identities,
    supplier footprint mismatches, or unconnected non-`noConnect` pins remain.
 
-## Readiness Checks
+## Worked micro-flow (first board)
+
+Typical loop for a new project (names are illustrative):
+
+1. `pcb_workspace_list` → note empty or existing project ids under the domain root.
+2. Author or scaffold `src/circuit.tsx` (board outline, nets, power, then MCU).
+3. `pcb_circuit_build` with the project id → read `success`, `designValid`,
+   `fabricationReady`, `assemblyReady`, and `manufacturingBlockers`.
+4. If errors: `pcb_circuit_read` filtered by error `types` → targeted TSX edit →
+   rebuild. Prefer one stage at a time over a full rewrite.
+5. When `designValid` is true but fab/assembly is false, clear blockers (placeholders,
+   missing MPN, unconnected pins) before exporting Gerber/CPL.
+6. Export only after readiness matches the claim you will make (see table below).
+7. Open Studio PCB viewer (`/studio` → PCB) to confirm schematic/PCB previews.
+   If the user sent diagnostics via **Send diagnostics to agent**, treat that text
+   as the current defect list and re-run build after fixes.
+
+## Readiness field table
+
+Tools return separate axes. Never collapse them into a single “done”.
+
+| Field | Meaning | When false / incomplete |
+| --- | --- | --- |
+| `success` | Process finished and `designValid` is true (build tools) | Treat as blocked; do not claim a good build |
+| `designValid` | Circuit JSON has zero design errors | Hard incomplete; fix diagnostics first |
+| `errorCount` / `warningCount` | Compact diagnostic totals | Errors block validity; warnings need explicit callout |
+| `fabricationReady` | No manufacturing blockers (placeholders, identity, fab pins, etc.) | Do not claim Gerber/fab readiness |
+| `assemblyReady` | Fab-ready **and** BOM complete (MPN coverage) | Do not claim pick-and-place / assembly readiness |
+| `manufacturingBlockers` | Why fab is blocked | Quote these; do not invent clearance |
+| `debugOnly` | Build useful for debug only (invalid design) | Never present as production-ready |
+| `bomComplete` (BOM tools) | Every BOM line has an MPN where required | Blocks `assemblyReady` |
+
+Honesty rules:
 
 - Verify power rails, ground references, decoupling, USB requirements, RF
   keepouts, connector orientation, and physical accessibility where relevant.
@@ -52,3 +88,5 @@ Use PCB Studio for electronic schematics and PCB layouts. Do not load
   Finish as blocked or partial if errors cannot be resolved.
 - Never claim manufacturing readiness from tool success alone. The tools do not
   prove electrical correctness, datasheet compliance, or production fitness.
+- Claim fab only if `fabricationReady: true`; claim assembly only if
+  `assemblyReady: true`. Partial boards stay labeled partial/blocked.

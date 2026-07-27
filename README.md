@@ -6,6 +6,12 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 
 **CAD and PCB are always on.** Global install runs `repair` once (plugins, skills, CAD MCP into OpenCode home). Media tools and the Files explorer are always on too.
 
+## Prerequisites
+
+1. Install **[OpenCode](https://opencode.ai)** and authenticate your model providers (Studio embeds OpenCode for the Agent panel and domain tools).
+2. Install OpenCode Studio (below).
+3. **Restart OpenCode** after install/repair so plugins and skills load.
+
 ## Install
 
 ```bash
@@ -14,7 +20,7 @@ npm i -g @oguzkaganozt/opencode-studio
 bun add -g @oguzkaganozt/opencode-studio
 ```
 
-Requires **Bun ≥ 1.3** (CLI runtime).
+Requires **Bun ≥ 1.3** (CLI runtime) and a working OpenCode install.
 
 Domain engines ship with the npm package:
 
@@ -32,16 +38,18 @@ opencode-studio serve
 opencode-studio serve --workspace /path/to/project
 ```
 
-Open [http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio) — CAD and PCB are ready. Restart **OpenCode** after install so plugins and skills load. If install skipped setup: `opencode-studio repair`.
+Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — CAD and PCB viewers live under `/studio`. Health: `opencode-studio status`. If install skipped setup: `opencode-studio repair`, then restart OpenCode.
 
 Each Studio pairs a domain viewer with an embedded OpenCode agent panel (same-origin iframe of the native OpenCode web UI). The host lazily starts one loopback OpenCode sidecar for the selected `--workspace`, using your existing OpenCode configuration, providers, plugins, and skills. Native OpenCode requests are pinned to that same workspace. The Agent iframe mounts on first open and stays mounted while you switch studios.
 
 Set `OPENCODE_STUDIO_OPENCODE_URL` to attach Studio tools to an existing OpenCode server instead. Native UI proxying and the embedded Agent panel are intentionally disabled in attach mode because a shared server can carry events from other workspaces; use that server's own URL for its native UI.
 
-The same address also exposes the complete OpenCode web experience:
+Same host, two surfaces:
 
-- `http://127.0.0.1:4173/` — native OpenCode web UI (also embedded in Studio → Agent)
-- `http://127.0.0.1:4173/studio` — OpenCode Studio
+| URL | What |
+| --- | --- |
+| `http://127.0.0.1:4173/` | Native OpenCode web UI (also embedded in Studio → Agent) |
+| `http://127.0.0.1:4173/studio` | OpenCode Studio (CAD / PCB / Files) |
 
 Bind modes:
 
@@ -117,7 +125,7 @@ Open a new shell after install (or `source ~/.bashrc`).
 | `@oguzkaganozt/opencode-studio/media-provider` | Native media AI SDK adapter |
 | `@oguzkaganozt/opencode-studio/media-go` | Auxiliary plugin for `opencode-go` provider hooks |
 
-Apply/configure also registers OpenCode plugins without version pins and manages skills under `.opencode/skills/`.
+Global install and `opencode-studio repair` register OpenCode plugins without version pins and manage skills under `~/.config/opencode/skills/` (plus managed `build123d` MCP).
 
 ## Develop (this repo)
 

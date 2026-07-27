@@ -210,7 +210,7 @@ Call `design_view(id)` to get the design URL and companion reachability. If `rea
 opencode-studio serve --workspace .
 ```
 
-Open `http://127.0.0.1:4173`. The viewer auto-discovers built designs in the dropdown. Select a design to load the full assembly as a 3D scene.
+Open `http://127.0.0.1:4173/studio` (Studio UI — not bare `/`, which is native OpenCode). The CAD viewer auto-discovers built designs in the dropdown. Select a design to load the full assembly as a 3D scene.
 
 - **Click** a surface to highlight a part and see position + normal.
 - **Copy** - copies `clicked on <part> at (...) normal (...)` to clipboard.

@@ -13,21 +13,21 @@ ROI-ranked recommendations to make opencode-studio more usable, efficient, effec
 | # | Recommendation | Payoff | Effort | Impact | ROI | Where |
 |---|----------------|--------|--------|--------|-----|--------|
 | 1 | ~~Enable/disable + CLI bloat~~ **DONE** — always-on; postinstall repair; CLI: serve/status/repair/remove/upgrade/service | Simpler UX/DX | — | — | ✓ | shipped |
-| 2 | **README / CLI alignment** — OpenCode install + auth first; `/` vs `/studio` diagram; “Save studios” wording matches docs | Less support load; fewer “why doesn’t it work” | S | Y | ★★★★★ | `README.md`, CLI help |
-| 3 | **PCB `NavLink` active state** — basename-aware matching (`useLocation` / RR `NavLink`) | Clear “where am I” in project subnav | S | O | ★★★★★ | `studios/pcb/viewer` |
+| 2 | ~~**README / CLI alignment**~~ **DONE** — OpenCode-first prerequisites; `/` vs `/studio` table; repair skill path wording | Less support load | — | — | ✓ | shipped |
+| 3 | ~~**PCB `NavLink` active state**~~ **DONE** — basename-aware `useLocation` matching | Clear “where am I” | — | — | ✓ | shipped |
 | 4 | **Shared UI adoption** — Files/PCB use `@ui` `EmptyState` / `ErrorState` / `--osc-error`; kill token drift | Consistency + cheaper maintenance | S | O | ★★★★☆ | `ui/`, studio viewers |
 | 5 | **Files responsive layout** — stack or collapsible list below `md` | Usable Files on narrow viewports | S–M | O | ★★★★☆ | `ui/files-explorer.tsx` |
 | 6 | **`useStudioChrome()` extract** — shared agent open / status / handoff for Files + Studio frames | Less duplication; safer new surfaces | S–M | O | ★★★★☆ | `ui/app.tsx` |
-| 7 | **PCB → Agent handoff** — “Send diagnostics to agent” (CAD Prompt parity) | Closes the agent loop for PCB | S–M | Y | ★★★★☆ | PCB viewer + `ui/agent-handoff.ts` |
-| 8 | **Richer `status` / `serve` output** — plugin registered? domains on? OpenCode restart needed? | Makes half-configured states visible | S | Y | ★★★★☆ | `src/cli.ts`, lifecycle status |
-| 9 | **CLI configure messaging** — explicit host restart / `service restart` (optional later: notify running host) | Reduces CLI vs UI Apply asymmetry friction | S | O | ★★★★☆ | configure result messages |
-| 10 | **Deepen PCB skill** — short worked micro-flow + readiness field table | Better agent PCB outcomes (skill is thin today) | S–M | Y | ★★★★☆ | `studios/pcb/skill/SKILL.md` + parity digest |
+| 7 | ~~**PCB → Agent handoff**~~ **DONE** — “Send diagnostics to agent” | Closes agent loop for PCB | — | — | ✓ | shipped |
+| 8 | ~~**Richer `status` / `serve` output**~~ **DONE** — MCP + plugin checks; serve tip; status restart tip on warn/fail | Half-configured states visible | — | — | ✓ | shipped |
+| 9 | ~~**CLI configure messaging**~~ **DONE** — repair/status/UI restart hints (Apply asymmetry obsolete) | — | — | — | ✓ | shipped |
+| 10 | ~~**Deepen PCB skill**~~ **DONE** — micro-flow + readiness field table + `/studio` URL | Better agent PCB outcomes | — | — | ✓ | shipped |
 | 11 | **CAD `design_qc_report`** — separate artifact / print / fit / form statuses | Less overclaim; mirrors PCB multi-axis honesty | M | Y | ★★★★☆ | `studios/cad/tools.ts`, skill, parity |
 | 12 | **Single catalog registration map** — id → definition / plugin / api / viewer | New-studio tax ↓; loader drift ↓ | M | Y (maint) | ★★★★☆ | `registry`, loaders, `ui/app.tsx` |
 | 13 | **`create-studio` auto-wire or checklist script** | Contributor DX | S–M | O | ★★★☆☆ | `scripts/create-studio.ts` |
 | 14 | **wall-sconce build gate** (not presence-only) | Real PCB regression signal | M | O–Y | ★★★☆☆ | `test:pcb-fixture` / scripts |
 | 15 | **Agent panel resize + width persist** | Better daily split workflow | M | O | ★★★☆☆ | `ui/native-agent-frame.tsx` |
-| 16 | **PCB compact header** — diagnostics collapsed by default | See the board first | S–M | O | ★★★☆☆ | PCB viewer |
+| 16 | ~~**PCB compact header**~~ **DONE** — diagnostics collapsed by default (`details`) | See the board first | — | — | ✓ | shipped |
 | 17 | **Split `lifecycle.ts`** — skills / plugin-reg / mcp / doctor modules | Faster, safer lifecycle changes | M | O (maint) | ★★★☆☆ | `src/lifecycle.ts` |
 | 18 | **`StudioModule` contract** — shared error envelope; document tool prefixes (`design_*` vs `pcb_*`) | Clearer multi-studio agent sessions | M | O | ★★★☆☆ | `src/core/`, skills |
 | 19 | **CAD SSE or revision endpoint** — replace blind 2s poll | Fresher viewer, less noise | M | O | ★★★☆☆ | CAD `api.ts` + viewer |
@@ -49,9 +49,9 @@ ROI-ranked recommendations to make opencode-studio more usable, efficient, effec
 
 | Sprint | Items | Focus |
 |--------|-------|--------|
-| **A — 1–2 days** | #1–5, #8–9 | First impression + visible consistency |
-| **B — 3–5 days** | #6–7, #10–11, #16 | Agent loop + domain effectiveness |
-| **C — ~1 week** | #12–14, #17 | Maint speed + regression confidence |
+| **A** | #1–3, #7–10, #16 | **Shipped** — always-on, first-run, PCB agent loop |
+| **B — next** | #4–6, #11 | Shared chrome + CAD QC honesty |
+| **C** | #12–14, #17 | Maint speed + regression confidence |
 | **D — later** | #15, #18–22, #26–27 | Polish and depth |
 
 ---

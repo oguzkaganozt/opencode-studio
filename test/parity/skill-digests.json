@@ -1,11 +1,11 @@
 {
   "cad-studio": {
     "path": "studios/cad/skill/SKILL.md",
-    "sha256": "85bb3b9ee18287819b7cfe5581953651a9fc00cadc6189b638de5bb9deddb3f9"
+    "sha256": "d7aa5d63d4b342071f8affe1625eec4ecc068133fc3b2a4cd85179cb8f2a7426"
   },
   "pcb-studio": {
     "path": "studios/pcb/skill/SKILL.md",
-    "sha256": "9123139a47e0e853ac6a4dc35ec3907e2d66d2ddd2c97986a3e35d8146820997"
+    "sha256": "5df75bdc602e65fe42a8ee1e5c9714fa521c903355fafeec5fa80909b8ade099"
   },
   "media": {
     "path": "src/platform/media/skill/SKILL.md",
