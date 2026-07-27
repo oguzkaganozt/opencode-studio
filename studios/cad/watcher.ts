@@ -72,7 +72,7 @@ export function ensureDesignWatching(layout: StudioLayout): void {
           schedule(`designs:${root}`, { type: "designs-changed", at: Date.now() })
         }
       })
-      rootWatchers.set(parent, parentWatcher)
+      trackWatcher(parent, parentWatcher)
       return
     }
   } catch {
@@ -80,6 +80,14 @@ export function ensureDesignWatching(layout: StudioLayout): void {
   }
 
   attachRootWatcher(root)
+}
+
+function trackWatcher(key: string, watcher: FSWatcher) {
+  // Do not keep the process alive solely for observation (browser-smoke / short hosts).
+  if (typeof (watcher as { unref?: () => void }).unref === "function") {
+    ;(watcher as { unref: () => void }).unref()
+  }
+  rootWatchers.set(key, watcher)
 }
 
 function attachRootWatcher(root: string) {
@@ -96,5 +104,20 @@ function attachRootWatcher(root: string) {
   } catch {
     return
   }
-  rootWatchers.set(root, watcher)
+  trackWatcher(root, watcher)
+}
+
+/** Close all CAD design watchers (host shutdown / tests). */
+export function closeAllDesignWatchers() {
+  for (const timer of debounceTimers.values()) clearTimeout(timer)
+  debounceTimers.clear()
+  for (const watcher of rootWatchers.values()) {
+    try {
+      watcher.close()
+    } catch {
+      // already closed
+    }
+  }
+  rootWatchers.clear()
+  listeners.clear()
 }

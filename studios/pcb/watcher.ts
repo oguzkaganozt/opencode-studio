@@ -54,7 +54,25 @@ function watchPath(key: string, directory: string, filter: (filename: string | n
   } catch {
     return
   }
+  if (typeof (watcher as { unref?: () => void }).unref === "function") {
+    ;(watcher as { unref: () => void }).unref()
+  }
   watchers.set(key, watcher)
+}
+
+/** Close all PCB project watchers (host shutdown / tests). */
+export function closeAllProjectWatchers() {
+  for (const timer of debounceTimers.values()) clearTimeout(timer)
+  debounceTimers.clear()
+  for (const watcher of watchers.values()) {
+    try {
+      watcher.close()
+    } catch {
+      // already closed
+    }
+  }
+  watchers.clear()
+  listeners.clear()
 }
 
 function watchDist(project: CircuitProject) {

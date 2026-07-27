@@ -261,6 +261,7 @@ const openCodeHome = path.join(workspace, "opencode-config")
 const domain = path.join(workspace, "domain")
 await import("node:fs/promises").then(({ mkdir }) => mkdir(domain, { recursive: true }))
 
+let exitCode = 0
 try {
   await configureStudios({
     workspace: domain,
@@ -286,6 +287,11 @@ try {
   } finally {
     stop()
   }
+} catch (error) {
+  exitCode = 1
+  console.error(error instanceof Error ? error.stack ?? error.message : error)
 } finally {
   await rm(workspace, { recursive: true, force: true })
 }
+// Force exit: residual OpenCode/watch handles must not hang release:check.
+process.exit(exitCode)

@@ -409,6 +409,13 @@ export async function startHost(input: HostInput) {
   })
   const stop = () => {
     clearInterval(updateTimer)
+    // Observation watchers must not keep the process alive after host stop (CI browser-smoke).
+    void import("../studios/cad/watcher")
+      .then((m) => m.closeAllDesignWatchers())
+      .catch(() => {})
+    void import("../studios/pcb/watcher")
+      .then((m) => m.closeAllProjectWatchers())
+      .catch(() => {})
     closeOpenCode()
     server.stop(true)
   }
