@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { EmptyState } from "./components/empty-state"
 import { ErrorState } from "./components/error-state"
 
@@ -158,16 +158,129 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
 export function FilesExplorer() {
   const [dirPath, setDirPath] = useState("")
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [filter, setFilter] = useState("")
+  const [cursor, setCursor] = useState(0)
+  const filterRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  const listColumnRef = useRef<HTMLDivElement>(null)
 
   const treeQuery = useQuery({
     queryKey: ["files", "tree", dirPath],
     queryFn: () => fetchJson<TreeResponse>(`/api/files/tree?path=${encodeURIComponent(dirPath)}`),
   })
 
+  const entries = useMemo(() => {
+    const all = treeQuery.data?.entries ?? []
+    const q = filter.trim().toLowerCase()
+    if (!q) return all
+    return all.filter((entry) => entry.name.toLowerCase().includes(q))
+  }, [filter, treeQuery.data])
+
+  const safeCursor = entries.length === 0 ? 0 : Math.min(cursor, entries.length - 1)
+
   const selected = useMemo(() => {
     if (!selectedPath || !treeQuery.data) return null
     return treeQuery.data.entries.find((e) => e.path === selectedPath) ?? null
   }, [selectedPath, treeQuery.data])
+
+  const resetList = () => {
+    setFilter("")
+    setCursor(0)
+    setSelectedPath(null)
+  }
+
+  const navigateDir = (next: string) => {
+    setDirPath(next)
+    resetList()
+    queueMicrotask(() => listColumnRef.current?.focus())
+  }
+
+  const moveCursor = (next: number) => {
+    setCursor(next)
+    queueMicrotask(() => {
+      listRef.current?.querySelector<HTMLElement>("[data-active='true']")?.scrollIntoView({ block: "nearest" })
+    })
+  }
+
+  const openEntry = (entry: FileEntry) => {
+    if (entry.kind === "dir") {
+      navigateDir(entry.path)
+      return
+    }
+    setSelectedPath(entry.path)
+  }
+
+  const goUp = () => {
+    const parent = parentPath(dirPath)
+    navigateDir(parent ?? "")
+  }
+
+  const onListKeyDown = (event: React.KeyboardEvent) => {
+    const target = event.target as HTMLElement
+    if (!listColumnRef.current?.contains(target)) return
+
+    const tag = target.tagName
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) {
+      if (event.key === "Escape" && filter) {
+        event.preventDefault()
+        setFilter("")
+        listColumnRef.current.focus()
+      }
+      return
+    }
+
+    if (event.key === "/") {
+      event.preventDefault()
+      filterRef.current?.focus()
+      filterRef.current?.select()
+      return
+    }
+
+    if (event.key === "Escape") {
+      if (filter) {
+        event.preventDefault()
+        setFilter("")
+        return
+      }
+      if (selectedPath) {
+        event.preventDefault()
+        setSelectedPath(null)
+      }
+      return
+    }
+
+    if (event.key === "Backspace" && !filter && dirPath) {
+      event.preventDefault()
+      goUp()
+      return
+    }
+
+    if (entries.length === 0) return
+
+    if (event.key === "ArrowDown" || event.key === "j") {
+      event.preventDefault()
+      moveCursor(Math.min(safeCursor + 1, entries.length - 1))
+      return
+    }
+    if (event.key === "ArrowUp" || event.key === "k") {
+      event.preventDefault()
+      moveCursor(Math.max(safeCursor - 1, 0))
+      return
+    }
+    if (event.key === "Enter") {
+      event.preventDefault()
+      const entry = entries[safeCursor]
+      if (entry) openEntry(entry)
+      return
+    }
+
+    if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault()
+      setFilter((value) => value + event.key)
+      moveCursor(0)
+      filterRef.current?.focus()
+    }
+  }
 
   const crumbs = dirPath ? dirPath.split("/").filter(Boolean) : []
   const showPreviewMobile = Boolean(selectedPath)
@@ -179,23 +292,12 @@ export function FilesExplorer() {
           type="button"
           className="rounded px-1.5 py-0.5 text-[12px] font-medium hover:bg-[var(--osc-surface)] disabled:opacity-40"
           disabled={!dirPath}
-          onClick={() => {
-            const parent = parentPath(dirPath)
-            setDirPath(parent ?? "")
-            setSelectedPath(null)
-          }}
+          onClick={goUp}
         >
           ↑
         </button>
         <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-[12px]" aria-label="Breadcrumb">
-          <button
-            type="button"
-            className="rounded px-1.5 py-0.5 font-medium hover:bg-[var(--osc-surface)]"
-            onClick={() => {
-              setDirPath("")
-              setSelectedPath(null)
-            }}
-          >
+          <button type="button" className="rounded px-1.5 py-0.5 font-medium hover:bg-[var(--osc-surface)]" onClick={() => navigateDir("")}>
             workspace
           </button>
           {crumbs.map((part, index) => {
@@ -206,10 +308,7 @@ export function FilesExplorer() {
                 <button
                   type="button"
                   className="max-w-[10rem] truncate rounded px-1.5 py-0.5 font-medium hover:bg-[var(--osc-surface)]"
-                  onClick={() => {
-                    setDirPath(target)
-                    setSelectedPath(null)
-                  }}
+                  onClick={() => navigateDir(target)}
                 >
                   {part}
                 </button>
@@ -222,45 +321,81 @@ export function FilesExplorer() {
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <div
-          className={`min-h-0 shrink-0 overflow-auto border-[var(--osc-border)] md:w-72 md:border-r ${
-            showPreviewMobile ? "hidden md:block" : "flex-1 border-b md:flex-none md:border-b-0"
+          ref={listColumnRef}
+          tabIndex={-1}
+          onKeyDown={onListKeyDown}
+          className={`flex min-h-0 shrink-0 flex-col border-[var(--osc-border)] outline-none md:w-72 md:border-r ${
+            showPreviewMobile ? "hidden md:flex" : "flex-1 border-b md:flex-none md:border-b-0"
           }`}
         >
-          {treeQuery.isLoading && <p className="p-4 text-sm text-[var(--osc-text-muted)]">Loading…</p>}
-          {treeQuery.error && (
-            <ErrorState className="m-3 border-0 py-8" title="Could not load files" description={(treeQuery.error as Error).message} />
-          )}
-          {treeQuery.data && treeQuery.data.entries.length === 0 && <EmptyState className="m-3 border-0 py-10" title="Empty directory" />}
-          {treeQuery.data && treeQuery.data.entries.length > 0 && (
-            <ul className="py-1">
-              {treeQuery.data.entries.map((entry) => (
-                <li key={entry.path}>
-                  <button
-                    type="button"
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-[var(--osc-surface)] ${
-                      selectedPath === entry.path ? "bg-[var(--osc-surface)] font-medium" : ""
-                    }`}
-                    onClick={() => {
-                      if (entry.kind === "dir") {
-                        setDirPath(entry.path)
-                        setSelectedPath(null)
-                      } else {
-                        setSelectedPath(entry.path)
-                      }
-                    }}
-                  >
-                    <span className="w-4 shrink-0 text-[var(--osc-text-faint)]" aria-hidden>
-                      {entry.kind === "dir" ? "▸" : "·"}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                    {entry.kind === "file" && (
-                      <span className="shrink-0 text-[10px] text-[var(--osc-text-faint)]">{formatBytes(entry.bytes)}</span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="border-b border-[var(--osc-border)] p-2">
+            <label className="sr-only" htmlFor="files-filter">
+              Filter files
+            </label>
+            <input
+              id="files-filter"
+              ref={filterRef}
+              type="search"
+              value={filter}
+              onChange={(event) => {
+                setFilter(event.target.value)
+                moveCursor(0)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault()
+                  listColumnRef.current?.focus()
+                  if (event.key === "ArrowDown") moveCursor(Math.min(safeCursor + 1, Math.max(entries.length - 1, 0)))
+                  if (event.key === "ArrowUp") moveCursor(Math.max(safeCursor - 1, 0))
+                }
+              }}
+              placeholder="Filter…  /"
+              className="h-8 w-full rounded-md border border-[var(--osc-border)] bg-[var(--osc-bg)] px-2 text-[12px] text-[var(--osc-text)] outline-none placeholder:text-[var(--osc-text-faint)] focus:border-[var(--osc-border-strong)]"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {treeQuery.isLoading && <p className="p-4 text-sm text-[var(--osc-text-muted)]">Loading…</p>}
+            {treeQuery.error && (
+              <ErrorState className="m-3 border-0 py-8" title="Could not load files" description={(treeQuery.error as Error).message} />
+            )}
+            {treeQuery.data && treeQuery.data.entries.length === 0 && <EmptyState className="m-3 border-0 py-10" title="Empty directory" />}
+            {treeQuery.data && treeQuery.data.entries.length > 0 && entries.length === 0 && (
+              <EmptyState className="m-3 border-0 py-10" title="No matches" description="Clear the filter or try another name." />
+            )}
+            {entries.length > 0 && (
+              <ul ref={listRef} className="py-1">
+                {entries.map((entry, index) => {
+                  const active = index === safeCursor
+                  const selectedRow = selectedPath === entry.path
+                  return (
+                    <li key={entry.path}>
+                      <button
+                        type="button"
+                        data-active={active ? "true" : undefined}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-[var(--osc-surface)] ${
+                          selectedRow || active ? "bg-[var(--osc-surface)] font-medium" : ""
+                        }`}
+                        onClick={() => {
+                          moveCursor(index)
+                          openEntry(entry)
+                        }}
+                      >
+                        <span className="w-4 shrink-0 text-[var(--osc-text-faint)]" aria-hidden>
+                          {entry.kind === "dir" ? "▸" : "·"}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                        {entry.kind === "file" && (
+                          <span className="shrink-0 text-[10px] text-[var(--osc-text-faint)]">{formatBytes(entry.bytes)}</span>
+                        )}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
         </div>
         <div className={`min-h-0 min-w-0 flex-1 flex-col ${showPreviewMobile ? "flex" : "hidden md:flex"}`}>
           <PreviewPane selected={selected} selectedPath={selectedPath} onBack={selectedPath ? () => setSelectedPath(null) : undefined} />

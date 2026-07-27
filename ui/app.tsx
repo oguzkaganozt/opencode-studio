@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
+import { Badge } from "./components/badge"
 import { Button } from "./components/button"
 import { FilesExplorer } from "./files-explorer"
 import { NativeAgentFrame } from "./native-agent-frame"
@@ -21,6 +22,13 @@ type StudioCard = {
   skillInstalled: boolean
 }
 
+type HostCheck = {
+  id: string
+  status: "pass" | "warn" | "fail"
+  message: string
+  repair?: string
+}
+
 type UpdateInfo = {
   current: string
   latest: string | null
@@ -35,9 +43,66 @@ type StudiosResponse = {
   configError?: string
   packageVersion: string
   studios: StudioCard[]
+  checks?: HostCheck[]
+  ok?: boolean
   restartRequiredHint: string
   nativeOpenCodeAvailable: boolean
   update?: UpdateInfo
+}
+
+function checkTone(status: HostCheck["status"] | "unknown"): "ok" | "warn" | "fail" | "neutral" {
+  if (status === "pass") return "ok"
+  if (status === "warn") return "warn"
+  if (status === "fail") return "fail"
+  return "neutral"
+}
+
+function skillBadgeLabel(status: HostCheck["status"] | "unknown", message?: string) {
+  if (status === "pass") return "ok"
+  if (status === "warn") return "drift"
+  if (status === "unknown") return "…"
+  const text = (message ?? "").toLowerCase()
+  if (text.includes("user-modified")) return "modified"
+  if (text.includes("unmarked")) return "unmarked"
+  if (text.includes("missing")) return "missing"
+  return "fail"
+}
+
+function engineBadgeLabel(status: HostCheck["status"] | "unknown") {
+  if (status === "pass") return "ok"
+  if (status === "warn") return "warn"
+  if (status === "fail") return "missing"
+  return "…"
+}
+
+function StudioHealthBadges({ studio, checks }: { studio: StudioCard; checks: HostCheck[] }) {
+  const skillCheck = checks.find((check) => check.id === `skill:${studio.id}`)
+  const skillStatus = skillCheck?.status ?? (studio.skillInstalled ? "pass" : "fail")
+  const skillMessage = skillCheck?.message ?? (studio.skillInstalled ? "Skill installed" : "Skill missing")
+  const engines = studio.requiredEngines.map((engine) => {
+    const check = checks.find((item) => item.id === `engine:${studio.id}:${engine}`)
+    return { engine, status: check?.status ?? ("unknown" as const), message: check?.message }
+  })
+  const rootBad = Boolean(studio.rootError)
+
+  return (
+    <div className="mb-5 flex flex-wrap gap-1.5">
+      <span className="sr-only">{studio.label} readiness</span>
+      <Badge tone={checkTone(skillStatus)} title={skillMessage}>
+        skill {skillBadgeLabel(skillStatus, skillMessage)}
+      </Badge>
+      {engines.map(({ engine, status, message }) => (
+        <Badge key={engine} tone={checkTone(status)} title={message ?? engine}>
+          {engine} {engineBadgeLabel(status)}
+        </Badge>
+      ))}
+      {rootBad && (
+        <Badge tone="fail" title={studio.rootError}>
+          root error
+        </Badge>
+      )}
+    </div>
+  )
 }
 
 const STUDIO_META: Record<string, { short: string; blurb: string }> = {
@@ -576,7 +641,8 @@ function HomePage() {
                   <h2 className="text-[15px] font-semibold tracking-tight">{studio.label}</h2>
                 </div>
                 <p className="mb-1.5 text-[12px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
-                <p className="mb-6 flex-1 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">{studio.description}</p>
+                <p className="mb-4 flex-1 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">{studio.description}</p>
+                <StudioHealthBadges studio={studio} checks={studiosQuery.data?.checks ?? []} />
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--osc-text)]">
                   Open {meta?.short ?? studio.label}
                   <span

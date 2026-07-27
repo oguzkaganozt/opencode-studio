@@ -49,6 +49,9 @@ describe("host server", () => {
     const body = await studios.json()
     expect(body.enabled).toEqual([...STUDIO_IDS])
     expect(body.nativeOpenCodeAvailable).toBe(true)
+    expect(Array.isArray(body.checks)).toBe(true)
+    expect(body.checks.length).toBeGreaterThan(0)
+    expect(typeof body.ok).toBe("boolean")
   })
 
   test("rejects bad host", async () => {

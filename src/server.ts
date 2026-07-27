@@ -130,6 +130,8 @@ export async function createHostApp(input: HostInput) {
       packageVersion,
       csrfRequired: true,
       studios: status.studios,
+      checks: status.checks,
+      ok: status.ok,
       catalog: listStudioDefinitions().map((def) => ({
         id: def.id,
         label: def.label,

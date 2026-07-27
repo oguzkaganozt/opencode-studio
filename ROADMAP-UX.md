@@ -29,6 +29,8 @@ ROI-ranked recommendations to make opencode-studio more usable, efficient, effec
 | 16 | PCB diagnostics collapsed by default |
 | 19 | CAD designs SSE watcher (no 2s poll) |
 | 22 | Structured part/BOM detail (PartDetailView + BOM row open) |
+| 23 | Files keyboard + type-to-filter |
+| 24 | Home skill/engine badges (`/api/studios` checks) |
 
 ---
 
@@ -39,13 +41,11 @@ Ranked for **daily designer / agent-split** impact after the baseline above.
 | Rank | # | Recommendation | Payoff | Effort | Impact | ROI | Where |
 |------|---|----------------|--------|--------|--------|-----|--------|
 | 1 | **27** | **CAD measure / isolate** | Deeper viewport inspection; pairs with Prompt + QC | L | Y | ★★★★☆ | CAD viewport |
-| 2 | **23** | **Files keyboard + type-to-filter** | Power-user speed on always-on Files | M | O | ★★★★☆ | `ui/files-explorer.tsx` |
-| 3 | **24** | **Home skill/engine badges** | “Why is it broken?” after postinstall/repair | S | O | ★★★★☆ | Home cards |
-| 4 | **21** | **CAD freeform example design** | Sample bar aligns with skill freeform bar | M | O | ★★★☆☆ | `studios/cad/designs/` |
-| 5 | **26** | **Command palette ⌘K** | IDE feel for large workspaces | L | O | ★★☆☆☆ | UI shell |
-| 6 | **29** | **`docs/user-guide.md`** | Human onboarding (skills are agent-facing) | M | O | ★★☆☆☆ | `docs/` |
+| 2 | **21** | **CAD freeform example design** | Sample bar aligns with skill freeform bar | M | O | ★★★☆☆ | `studios/cad/designs/` |
+| 3 | **26** | **Command palette ⌘K** | IDE feel for large workspaces | L | O | ★★☆☆☆ | UI shell |
+| 4 | **29** | **`docs/user-guide.md`** | Human onboarding (skills are agent-facing) | M | O | ★★☆☆☆ | `docs/` |
 
-**Suggested UI/UX sprint (next):** **#27 → #23 → #24** (~1–2 days if measure is scoped tightly; measure alone may be multi-day).
+**Suggested UI/UX sprint (next):** **#27** (measure alone may be multi-day).
 
 ---
 
@@ -74,9 +74,10 @@ Do **not** pull these into the next UI sprint unless adding a third studio or fi
 | **A** | #1–3, #7–10, #16 | Always-on, first-run, PCB agent loop | **Shipped** |
 | **B** | #4–6, #11 | Shared chrome + CAD QC honesty | **Shipped** |
 | **C** | #15, #19, #22 | Agent resize, CAD SSE, structured parts | **Shipped** |
-| **D — next (UI/UX)** | **#27, #23, #24** | CAD inspection depth + Files power + Home health | **Next** |
-| **E — later UI** | #21, #26, #29 | Samples, palette, human guide | Later |
-| **F — maint when needed** | #12–14, #17–18, #20, #25, #28, #30 | DX / regression / segment | Deferred |
+| **D** | #23, #24 | Files power + Home health badges | **Shipped** |
+| **E — next (UI/UX)** | **#27** | CAD inspection depth | **Next** |
+| **F — later UI** | #21, #26, #29 | Samples, palette, human guide | Later |
+| **G — maint when needed** | #12–14, #17–18, #20, #25, #28, #30 | DX / regression / segment | Deferred |
 
 ---
 
@@ -99,8 +100,9 @@ Highest ROI is usually **not a new domain feature**. After always-on + agent loo
 2. ~~CAD ↔ PCB agent handoff parity~~ **done**
 3. ~~Thin UI consistency + responsive Files + agent chrome~~ **done**
 4. ~~PCB skill depth + CAD machine-readable QC~~ **done**
-5. **Next:** CAD inspection depth (#27), Files power-user speed (#23), Home health discoverability (#24)
-6. Then samples / palette / human guide; maint only when adding studios or fighting regressions
+5. ~~Files power-user speed + Home health badges~~ **done**
+6. **Next:** CAD inspection depth (#27)
+7. Then samples / palette / human guide; maint only when adding studios or fighting regressions
 
 ---
 
