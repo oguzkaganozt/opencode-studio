@@ -5,7 +5,7 @@
 @import "@fontsource/barlow/600.css";
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "@fontsource/ibm-plex-mono/500.css";
-@import "./tokens.css";
+@import "@ui/tokens.css";
 
 /* Scoped to PCB viewer root — the host .studio-shell owns framing (flex column,
    min-h-dvh); never set height/min-height on it here or the shell chain breaks. */
@@ -13,7 +13,6 @@
   background: var(--osc-bg);
   color: var(--osc-text);
   font-family: var(--osc-font-ui);
-  color-scheme: light;
 }
 
 [data-studio="pcb"] code,

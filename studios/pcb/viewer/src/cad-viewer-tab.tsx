@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { checkCadAssetHealth, preferKicadStepModels } from "./cad-models"
 import { ViewerErrorBoundary } from "./error-boundary"
 import { useCircuitJson } from "./use-circuit-json"
+import { ViewerFrame } from "./viewer-frame"
 
 type ManifoldToplevel = {
   setup: () => void
@@ -77,8 +78,8 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
     <div className="flex h-full items-center justify-center text-sm text-[var(--osc-error)]">3D viewer could not render this circuit.</div>
   )
   return (
-    <div className="space-y-2">
-      <div className="flex flex-col gap-1 rounded-md border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-2 text-xs sm:flex-row sm:items-start sm:gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex shrink-0 flex-col gap-1 rounded-md border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-2 text-xs sm:flex-row sm:items-start sm:gap-2">
         <span className="shrink-0 font-medium text-[var(--osc-text)]">3D assets</span>
         {isCheckingAssets && <span className="text-[var(--osc-text-muted)]">Checking model availability…</span>}
         {assetHealth?.status === "complete" && (
@@ -101,11 +102,11 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
           </details>
         )}
       </div>
-      <div className="h-[560px] w-full overflow-hidden rounded-md bg-[var(--osc-canvas-bg)] [&>div]:h-full">
+      <ViewerFrame className="bg-[var(--osc-canvas-bg)] [&>div]:h-full">
         <ViewerErrorBoundary key={projectId} fallback={fallback}>
           <CadViewer circuitJson={preferKicadStepModels(data)} />
         </ViewerErrorBoundary>
-      </div>
+      </ViewerFrame>
     </div>
   )
 }

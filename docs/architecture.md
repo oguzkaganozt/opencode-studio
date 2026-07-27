@@ -36,6 +36,7 @@ Fail-closed: missing or invalid config enables nothing.
 - OpenCode web UI/API: `/`, `/session/*`, `/api/*`, and other native routes proxied to the sidecar
 - Viewer shell: `/studio`
 - Viewer: `/studio/studios/<id>/*`
+- PCB project tabs: `/studio/studios/pcb/projects/<id>/{schematic|pcb|bom|3d|json}`
 - API: `/api/studios/<id>/*`
 - Host config API: `/api/studios`, `/api/config`, `/studio-api/health`, `/api/csrf`
 

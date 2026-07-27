@@ -5,6 +5,8 @@
 @import "@fontsource/ibm-plex-mono/500.css";
 @import "./tokens.css";
 @import "tailwindcss";
+@source "./components";
+@source "./lib";
 @source "../studios";
 
 *,
@@ -37,11 +39,11 @@ body::before {
   z-index: 30;
   height: 2px;
   pointer-events: none;
-  background: linear-gradient(90deg, #e8c4a0 0%, #f0dcc8 28%, transparent 62%);
+  background: var(--osc-hairline);
 }
 
 ::selection {
-  background: rgba(24, 24, 27, 0.12);
+  background: var(--osc-selection-bg);
   color: var(--osc-text);
 }
 

@@ -29,7 +29,7 @@
   ],
   "scripts": {
     "postinstall": "node scripts/postinstall-completion.mjs",
-    "test": "bun test ./test/ ./studios/cad/test/ ./studios/media/test/ ./studios/pcb/test/ ./studios/startup/test/",
+    "test": "bun test ./test/ ./ui/ ./studios/cad/test/ ./studios/media/test/ ./studios/pcb/test/ ./studios/startup/test/",
     "test:python": "uv run --project studios/cad/forge python -m unittest discover -s studios/cad/forge/tests -v",
     "test:pcb-fixture": "bun scripts/pcb-fixture.ts",
     "test:package": "bun scripts/package-smoke.ts",

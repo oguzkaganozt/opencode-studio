@@ -214,7 +214,7 @@ Open `http://127.0.0.1:4173`. The viewer auto-discovers built designs in the dro
 
 - **Click** a surface to highlight a part and see position + normal.
 - **Copy** - copies `clicked on <part> at (...) normal (...)` to clipboard.
-- **Prompt** - copies a feedback prompt: `The user clicked on "<part>" near position (...) where the surface faces (...). Edit the geometry in this area.` - paste this into the agent chat to direct geometry edits.
+- **Prompt** - opens the companion agent panel and fills the composer with a feedback prompt: `The user clicked on "<part>" near position (...) where the surface faces (...). Edit the geometry in this area.` Review and send from the agent to direct geometry edits.
 
 The viewer polls the design list every 2s and refreshes when new builds appear.
 

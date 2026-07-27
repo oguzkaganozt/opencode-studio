@@ -31,6 +31,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@studios": path.resolve(import.meta.dirname, "studios"),
+      "@ui": path.resolve(import.meta.dirname, "ui"),
     },
   },
   optimizeDeps: {

@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router"
+import { requestAgentHandoff } from "@ui/agent-handoff"
+import { Dialog } from "@ui/components/dialog"
 import { artifactUrl, type DesignSummary, listDesigns, readDesign, renderUrl, studioHref } from "./api"
 import { type ClickInfo, type LoadPart, PART_COLORS, type SceneHandle } from "./assembly-types"
 
@@ -271,7 +273,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         ({click.normal.x.toFixed(3)}, {click.normal.y.toFixed(3)}, {click.normal.z.toFixed(3)})
       </span>{" "}
       <span className="text-white/40">← {click.direction}</span>
-      <div className="mt-0.5 text-[10px] text-white/40">Copy or Prompt to paste into agent chat</div>
+      <div className="mt-0.5 text-[10px] text-white/40">Copy for clipboard · Prompt sends to agent</div>
     </>
   ) : (
     <>
@@ -366,9 +368,8 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             onClick={() => {
               if (!click) return
               const text = `The user clicked on "${click.part}" near position (${click.position.x}, ${click.position.y}, ${click.position.z}) where the surface faces (${click.normal.x}, ${click.normal.y}, ${click.normal.z}). Edit the geometry in this area.`
-              void copyFeedback(text)
-                .then(() => showToast("feedback prompt copied!"))
-                .catch(() => showToast("clipboard unavailable"))
+              requestAgentHandoff({ text, source: "cad" })
+              showToast("Prompt ready in agent")
             }}
           >
             Prompt
@@ -434,7 +435,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         )}
         {toast && (
           <div
-            className="absolute top-12 left-1/2 z-50 -translate-x-1/2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs text-emerald-200 backdrop-blur-md"
+            className="absolute top-12 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] px-3 py-1 text-xs text-[var(--osc-success)] backdrop-blur-md"
             role="status"
             aria-live="polite"
           >
@@ -455,27 +456,30 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         onOpenRender={(url, label) => setRenderModal({ url, label })}
       />
 
-      {renderModal && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/92"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Render preview"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setRenderModal(null)
-          }}
-        >
+      <Dialog
+        open={Boolean(renderModal)}
+        onClose={() => setRenderModal(null)}
+        title="Render preview"
+        overlayClassName="z-[200] bg-black/92"
+        className="max-w-[min(90vw,56rem)] border-[var(--osc-border)] bg-transparent shadow-none"
+      >
+        <div className="relative p-2">
           <button
             type="button"
-            className="absolute top-4 right-6 flex size-9 items-center justify-center rounded-full bg-black/60 text-[var(--osc-accent)]"
+            data-autofocus
+            className="absolute top-3 right-3 z-10 grid size-9 place-items-center rounded-full bg-black/70 text-[var(--osc-accent)]"
             aria-label="Close render preview"
             onClick={() => setRenderModal(null)}
           >
-            ✕
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
           </button>
-          <img src={renderModal.url} alt={renderModal.label} className="max-h-[90%] max-w-[90%] border border-[var(--osc-border)]" />
+          {renderModal && (
+            <img src={renderModal.url} alt={renderModal.label} className="mx-auto max-h-[85vh] max-w-full border border-[var(--osc-border)]" />
+          )}
         </div>
-      )}
+      </Dialog>
     </div>
   )
 }

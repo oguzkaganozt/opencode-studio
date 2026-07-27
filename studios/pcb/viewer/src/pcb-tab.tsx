@@ -3,21 +3,26 @@ import { api } from "./api"
 import { ViewerErrorBoundary } from "./error-boundary"
 import { SvgViewer } from "./svg-viewer"
 import { useCircuitJson } from "./use-circuit-json"
+import { ViewerFrame } from "./viewer-frame"
 
-// Loaded lazily — tscircuit viewer packages are heavy.
 export default function PcbTab({ projectId }: { projectId: string }) {
   const { data, isLoading, error } = useCircuitJson(projectId)
   const fallback = <SvgViewer url={api.pcbSvgUrl(projectId)} label="PCB Layout" />
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-24 text-[var(--osc-text-muted)] text-sm">Loading PCB layout…</div>
+    return (
+      <div className="flex h-full min-h-[min(560px,50dvh)] items-center justify-center text-sm text-[var(--osc-text-muted)]">Loading PCB layout…</div>
+    )
   }
   if (error) return fallback
+
   return (
-    <div className="w-full rounded-md overflow-hidden">
-      <ViewerErrorBoundary key={projectId} fallback={fallback}>
-        <PCBViewer circuitJson={data} height={560} />
-      </ViewerErrorBoundary>
-    </div>
+    <ViewerFrame>
+      {({ height }) => (
+        <ViewerErrorBoundary key={projectId} fallback={fallback}>
+          <PCBViewer circuitJson={data} height={Math.max(320, Math.floor(height))} />
+        </ViewerErrorBoundary>
+      )}
+    </ViewerFrame>
   )
 }

@@ -2,8 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
+import { subscribeAgentHandoff } from "./agent-handoff"
+import { readAgentOpen, writeAgentOpen } from "./agent-open"
 import { AgentPanel } from "./agent-panel"
+import { type AgentStatus, agentStatusDotClass, agentStatusLabel } from "./agent-status"
+import { Button } from "./components/button"
+import { EmptyState } from "./components/empty-state"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
+import { readThemePreference, setThemePreference, type ThemePreference } from "./theme"
 
 type StudioCard = {
   id: string
@@ -107,6 +113,46 @@ function useConfigure() {
 /** Survives drawer unmount across routes so toggles aren't lost mid-edit. */
 let enablementDraft: string[] | null = null
 
+function ThemePreferenceControl() {
+  const [preference, setPreference] = useState<ThemePreference>(() => readThemePreference())
+
+  return (
+    <div>
+      <h2 className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Appearance</h2>
+      <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">Follows your device unless you pick Light or Dark.</p>
+      <fieldset className="mt-2 m-0 min-w-0 rounded-lg border border-[var(--osc-border)] p-1">
+        <legend className="sr-only">Theme</legend>
+        <div className="flex gap-1">
+          {(
+            [
+              ["system", "System"],
+              ["light", "Light"],
+              ["dark", "Dark"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setPreference(value)
+                setThemePreference(value)
+              }}
+              className={`flex-1 rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors ${
+                preference === value
+                  ? "bg-[var(--osc-surface)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
+                  : "text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]"
+              }`}
+              aria-pressed={preference === value}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+    </div>
+  )
+}
+
 function SideDrawer({
   open,
   onClose,
@@ -182,7 +228,7 @@ function SideDrawer({
   return (
     <>
       <div
-        className={`fixed inset-0 z-50 bg-zinc-900/20 backdrop-blur-[2px] transition-opacity duration-[var(--osc-motion-duration)] ${
+        className={`fixed inset-0 z-50 bg-[var(--osc-overlay)] backdrop-blur-[2px] transition-opacity duration-[var(--osc-motion-duration)] ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         aria-hidden={!open}
@@ -357,6 +403,8 @@ function SideDrawer({
                   })}
                 </ul>
 
+                <ThemePreferenceControl />
+
                 {dirty && <p className="text-[12px] text-[var(--osc-text-muted)]">Unsaved changes</p>}
                 {configure.isSuccess && (
                   <div
@@ -418,8 +466,9 @@ function SideDrawer({
               </div>
 
               <div className="sticky bottom-0 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-3">
-                <button
+                <Button
                   type="button"
+                  className="w-full"
                   disabled={configure.isPending || !csrfQuery.data || !dirty}
                   onClick={() => {
                     configure.mutate(enabledIds, {
@@ -429,10 +478,9 @@ function SideDrawer({
                       },
                     })
                   }}
-                  className="inline-flex h-9 w-full items-center justify-center rounded-full bg-[var(--osc-primary)] px-4 text-[12px] font-medium text-[var(--osc-primary-fg)] transition-colors hover:bg-[var(--osc-primary-hover)] disabled:cursor-not-allowed disabled:opacity-35"
                 >
-                  {configure.isPending ? "Applying…" : "Apply selection"}
-                </button>
+                  {configure.isPending ? "Applying…" : "Save studios"}
+                </Button>
               </div>
             </div>
           )}
@@ -527,7 +575,7 @@ function HomePage() {
       />
       <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} initialPanel={drawerPanel} />
 
-      <main className="mx-auto max-w-[820px] px-5 py-14 sm:px-8 sm:py-20">
+      <main id="main-content" className="mx-auto max-w-[820px] px-5 py-14 sm:px-8 sm:py-20">
         <div className="osc-reveal mb-12">
           <p className="mb-3 text-[11px] font-medium tracking-[0.16em] text-[var(--osc-text-faint)] uppercase">Companion</p>
           <h1 className="text-[2.15rem] leading-[1.1] font-semibold tracking-[-0.04em] text-[var(--osc-text)] sm:text-[2.5rem]">Studios</h1>
@@ -561,17 +609,16 @@ function HomePage() {
         )}
 
         {!studiosQuery.isLoading && cards.length === 0 && (
-          <div className="rounded-xl border border-dashed border-[var(--osc-border-strong)] px-6 py-20 text-center">
-            <p className="text-[15px] font-medium text-[var(--osc-text)]">No studios enabled</p>
-            <p className="mt-1.5 text-[13px] text-[var(--osc-text-muted)]">Turn on CAD, Media, PCB, or Startup in Settings.</p>
-            <button
-              type="button"
-              onClick={openSettings}
-              className="mt-6 inline-flex h-9 items-center rounded-full bg-[var(--osc-primary)] px-5 text-[12px] font-medium text-[var(--osc-primary-fg)] transition-colors hover:bg-[var(--osc-primary-hover)]"
-            >
-              Open settings
-            </button>
-          </div>
+          <EmptyState
+            className="py-20"
+            title="No studios enabled"
+            description="Turn on CAD, Media, PCB, or Startup so domain viewers and agent tools are available."
+            action={
+              <Button type="button" onClick={openSettings}>
+                Open settings
+              </Button>
+            }
+          />
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -597,7 +644,7 @@ function HomePage() {
                 <p className="mb-1.5 text-[12px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
                 <p className="mb-6 flex-1 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">{studio.description}</p>
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--osc-text)]">
-                  Open viewer
+                  Open {meta?.short ?? studio.label}
                   <span
                     className="text-[var(--osc-text-faint)] transition-transform duration-[var(--osc-motion-duration)] group-hover:translate-x-0.5"
                     aria-hidden
@@ -650,7 +697,8 @@ function StudioFrame() {
   const { studioId = "" } = useParams()
   const studiosQuery = useStudios()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [agentOpen, setAgentOpen] = useState(true)
+  const [agentOpen, setAgentOpen] = useState(() => readAgentOpen())
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (readAgentOpen() ? "loading" : "closed"))
   const csrfQuery = useCsrf()
 
   const uiBasePath = `/studios/${studioId}`
@@ -667,6 +715,27 @@ function StudioFrame() {
       clearStudioRuntime()
     }
   }, [studioId, uiBasePath, apiBasePath])
+
+  useEffect(() => {
+    if (!agentOpen) setAgentStatus("closed")
+  }, [agentOpen])
+
+  const setAgentOpenPersisted = (next: boolean | ((value: boolean) => boolean)) => {
+    setAgentOpen((current) => {
+      const value = typeof next === "function" ? next(current) : next
+      return value
+    })
+  }
+
+  useEffect(() => {
+    writeAgentOpen(agentOpen)
+  }, [agentOpen])
+
+  useEffect(() => {
+    return subscribeAgentHandoff((request) => {
+      if (request.open) setAgentOpen(true)
+    })
+  }, [])
 
   if (studiosQuery.isLoading) {
     return (
@@ -705,11 +774,12 @@ function StudioFrame() {
             )}
             <button
               type="button"
-              onClick={() => setAgentOpen((value) => !value)}
+              onClick={() => setAgentOpenPersisted((value) => !value)}
               className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
               aria-pressed={agentOpen}
+              title={agentStatusLabel(agentStatus)}
             >
-              <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
+              <span className={`size-1.5 rounded-full ${agentStatusDotClass(agentStatus)}`} aria-hidden />
               Agent
             </button>
           </>
@@ -723,9 +793,10 @@ function StudioFrame() {
           studioLabel={label}
           csrfToken={csrfQuery.data?.token}
           open={agentOpen}
-          onClose={() => setAgentOpen(false)}
+          onClose={() => setAgentOpenPersisted(false)}
+          onStatusChange={setAgentStatus}
         />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
           <Suspense
             fallback={
               <div className="flex flex-1 items-center justify-center p-8 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>
@@ -739,12 +810,26 @@ function StudioFrame() {
   )
 }
 
+function SkipLink() {
+  return (
+    <a
+      href="#main-content"
+      className="absolute top-0 left-3 z-[100] -translate-y-full rounded-md bg-[var(--osc-primary)] px-3 py-2 text-[12px] font-medium text-[var(--osc-primary-fg)] shadow-[var(--osc-shadow)] transition-transform focus:translate-y-3 focus:outline-none"
+    >
+      Skip to main content
+    </a>
+  )
+}
+
 export function App() {
   return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/studios/:studioId/*" element={<StudioFrame />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <SkipLink />
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/studios/:studioId/*" element={<StudioFrame />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   )
 }

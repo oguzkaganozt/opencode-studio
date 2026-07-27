@@ -99,6 +99,58 @@ async function assertShellFillsViewport(page: Page, studioId: string) {
   }
 }
 
+async function assertThemeTokens(page: Page) {
+  const { light, dark, hasThemeAttr } = await page.evaluate(() => {
+    const root = document.documentElement
+    const prevTheme = root.dataset.theme
+    const prevScheme = root.style.colorScheme
+    const readBg = () => getComputedStyle(root).getPropertyValue("--osc-bg").trim()
+    root.dataset.theme = "light"
+    root.style.colorScheme = "light"
+    const light = readBg()
+    root.dataset.theme = "dark"
+    root.style.colorScheme = "dark"
+    const dark = readBg()
+    if (prevTheme) root.dataset.theme = prevTheme
+    else delete root.dataset.theme
+    root.style.colorScheme = prevScheme
+    return { light, dark, hasThemeAttr: Boolean(prevTheme) }
+  })
+  assert(hasThemeAttr, "html[data-theme] missing after theme probe")
+  assert(light.length > 0 && dark.length > 0, `theme tokens empty light=${light} dark=${dark}`)
+  assert(light !== dark, `--osc-bg should differ light vs dark (light=${light} dark=${dark})`)
+}
+
+async function assertAgentClosedLayout(page: Page, studioId: string) {
+  const metrics = await page.evaluate(() => {
+    const agent = document.querySelector('[aria-label="OpenCode agent"]') as HTMLElement | null
+    const main = document.querySelector('[data-testid="studio-main"]') as HTMLElement | null
+    return {
+      agentOpen: agent?.getAttribute("data-agent-open") ?? null,
+      agentDisplay: agent ? getComputedStyle(agent).display : null,
+      mainWidth: main?.getBoundingClientRect().width ?? 0,
+      vw: window.innerWidth,
+    }
+  })
+  assert(metrics.agentOpen === "false", `${studioId}: agent should default closed, data-agent-open=${metrics.agentOpen}`)
+  assert(metrics.agentDisplay === "none", `${studioId}: closed agent should be display:none, got ${metrics.agentDisplay}`)
+  assert(metrics.mainWidth >= metrics.vw * 0.6, `${studioId}: studio main width ${metrics.mainWidth} < 60% of viewport ${metrics.vw}`)
+}
+
+async function assertNoHorizontalScroll(page: Page, label: string) {
+  const overflow = await page.evaluate(() => {
+    const doc = document.documentElement
+    return {
+      scrollWidth: doc.scrollWidth,
+      clientWidth: doc.clientWidth,
+    }
+  })
+  assert(
+    overflow.scrollWidth <= overflow.clientWidth + 1,
+    `${label}: horizontal page scroll (scrollWidth=${overflow.scrollWidth} clientWidth=${overflow.clientWidth})`,
+  )
+}
+
 async function browserSmoke(base: string) {
   const browser = await chromium.launch({
     headless: true,
@@ -112,9 +164,10 @@ async function browserSmoke(base: string) {
     await page.waitForSelector("text=CAD Studio")
     await page.getByRole("button", { name: "Open menu" }).click()
     await page.getByRole("button", { name: "Settings" }).click()
-    await page.waitForSelector("text=Apply selection")
+    await page.waitForSelector("text=Save studios")
     await page.getByRole("button", { name: "Close menu" }).click()
     await assertTailwindUtilities(page)
+    await assertThemeTokens(page)
     console.log("home ok")
 
     const studioChecks: Record<string, { wait: string; extra?: (p: Page) => Promise<void> }> = {
@@ -138,7 +191,7 @@ async function browserSmoke(base: string) {
         wait: "Startup Studio",
         extra: async (p) => {
           await p.waitForSelector("text=Pool")
-          await p.waitForSelector("text=Candidates")
+          await p.getByRole("button", { name: /Collapse candidates|Expand candidates/ }).waitFor()
         },
       },
     }
@@ -148,16 +201,28 @@ async function browserSmoke(base: string) {
       assert(check, `missing studio check for ${id}`)
       await page.goto(`${base}/studio/studios/${id}`, { waitUntil: "networkidle" })
       await page.waitForSelector(`text=${check.wait}`, { timeout: 15_000 })
-      await page.getByLabel("OpenCode agent").waitFor()
+      await page.getByLabel("OpenCode agent").waitFor({ state: "attached" })
       await page.getByRole("button", { name: "Agent", exact: true }).waitFor()
+      await assertAgentClosedLayout(page, id)
       const uiBase = await page.evaluate(() => (window as any).__OPENCODE_STUDIO__?.uiBase)
       assert(uiBase === `/studios/${id}`, `${id}: router uiBase should be basename-relative, got ${String(uiBase)}`)
       if (check.extra) await check.extra(page)
       await assertShellFillsViewport(page, id)
+      await assertNoHorizontalScroll(page, `1280 ${id}`)
       // Studio utilities still present after lazy CSS load
       await assertTailwindUtilities(page)
       console.log(`studio ${id} ok`)
     }
+
+    // Phone posture: no forced horizontal page scroll on home + one studio
+    await page.setViewportSize({ width: 360, height: 640 })
+    await page.goto(`${base}/studio`, { waitUntil: "networkidle" })
+    await page.waitForSelector("text=Studios")
+    await assertNoHorizontalScroll(page, "360 home")
+    await page.goto(`${base}/studio/studios/cad`, { waitUntil: "networkidle" })
+    await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
+    await assertNoHorizontalScroll(page, "360 cad")
+    console.log("360 smoke ok")
   } finally {
     await browser.close()
   }

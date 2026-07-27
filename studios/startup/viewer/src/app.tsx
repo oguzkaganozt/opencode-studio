@@ -23,6 +23,7 @@ function safeHref(raw: string | null | undefined): string | null {
 }
 
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 import { Link, Route, Routes, useParams, useSearchParams } from "react-router"
 
 type CandidateSummary = {
@@ -92,47 +93,86 @@ function SubNav({ active }: { active: "pool" | "rejects" }) {
   )
 }
 
-function CandidateRail({ candidates, selectedId }: { candidates: CandidateSummary[]; selectedId?: string }) {
+const STARTUP_RAIL_KEY = "opencode-studio.startup.railOpen"
+
+function CandidateRail({
+  candidates,
+  selectedId,
+  open,
+  onToggle,
+  mobileHide,
+}: {
+  candidates: CandidateSummary[]
+  selectedId?: string
+  open: boolean
+  onToggle: () => void
+  /** When a candidate is selected on small screens, hide the list. */
+  mobileHide?: boolean
+}) {
   return (
-    <aside className="w-72 shrink-0 overflow-auto border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)]">
-      <div className="border-b border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
-        Candidates
-      </div>
-      <nav className="flex flex-col gap-0.5 p-2">
-        {candidates.length === 0 ? (
-          <div className="px-2 py-10 text-center">
-            <p className="text-[13px] font-medium text-[var(--osc-text)]">Pool is empty</p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
-              Mine and score candidates with agent tools, then refresh.
-            </p>
-          </div>
-        ) : (
-          candidates.map((c) => {
-            const active = c.name === selectedId
-            return (
-              <Link
-                key={c.name}
-                to={studioHref(`candidates/${c.name}`)}
-                className={`rounded-[var(--osc-radius-md)] px-2.5 py-2 text-[13px] transition-colors ${
-                  active
-                    ? "bg-[var(--osc-surface)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
-                    : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
-                }`}
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate font-medium">{c.name}</span>
-                  <span className="mono text-[11px] text-[var(--osc-accent)]">{c.total}</span>
-                </div>
-                <div className="mono mt-0.5 flex gap-2 text-[10px] text-[var(--osc-text-faint)]">
-                  <span>{c.signal_class}</span>
-                  <span className={verdictClass(c.verdict)}>{c.verdict}</span>
-                </div>
-                <div className="mt-1 line-clamp-2 text-[12px] text-[var(--osc-text-muted)]">{c.one_liner}</div>
-              </Link>
-            )
-          })
+    <aside
+      className={`shrink-0 overflow-hidden border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] transition-[width] duration-[var(--osc-motion-duration)] ${
+        mobileHide ? "hidden md:flex" : "flex"
+      } ${open ? "w-72" : "w-11"} flex-col`}
+    >
+      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--osc-border)] px-1.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="grid size-8 place-items-center rounded-md text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]"
+          aria-expanded={open}
+          aria-label={open ? "Collapse candidates" : "Expand candidates"}
+          title={open ? "Collapse" : "Expand"}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            {open ? (
+              <path d="M8.5 3.5L5 7l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <path d="M5.5 3.5L9 7l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            )}
+          </svg>
+        </button>
+        {open && (
+          <span className="truncate text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Candidates</span>
         )}
-      </nav>
+      </div>
+      {open && (
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto p-2">
+          {candidates.length === 0 ? (
+            <div className="px-2 py-10 text-center">
+              <p className="text-[13px] font-medium text-[var(--osc-text)]">Pool is empty</p>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
+                Mine and score candidates with agent tools, then refresh.
+              </p>
+            </div>
+          ) : (
+            candidates.map((c) => {
+              const active = c.name === selectedId
+              return (
+                <Link
+                  key={c.name}
+                  to={studioHref(`candidates/${c.name}`)}
+                  className={`rounded-[var(--osc-radius-md)] px-2.5 py-2 text-[13px] transition-colors ${
+                    active
+                      ? "bg-[var(--osc-surface)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
+                      : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="truncate font-medium">{c.name}</span>
+                    <span className="mono text-[11px] text-[var(--osc-accent)]">{c.total}</span>
+                  </div>
+                  <div className="mono mt-0.5 flex gap-2 text-[10px] text-[var(--osc-text-faint)]">
+                    <span>{c.signal_class}</span>
+                    <span className={verdictClass(c.verdict)}>{c.verdict}</span>
+                  </div>
+                  <div className="mt-1 line-clamp-2 text-[12px] text-[var(--osc-text-muted)]">{c.one_liner}</div>
+                </Link>
+              )
+            })
+          )}
+        </nav>
+      )}
     </aside>
   )
 }
@@ -169,7 +209,13 @@ function CandidateViewport({ id }: { id?: string }) {
 
   const c = query.data
   return (
-    <main className="flex flex-1 flex-col overflow-auto bg-[var(--osc-bg)] p-6 sm:p-8">
+    <main className="flex min-w-0 flex-1 flex-col overflow-auto bg-[var(--osc-bg)] p-6 sm:p-8">
+      <Link
+        to={studioHref()}
+        className="mb-3 text-[13px] text-[var(--osc-text-muted)] hover:text-[var(--osc-text)] md:hidden"
+      >
+        ← Candidates
+      </Link>
       <div className="mb-1 flex flex-wrap items-baseline gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">{c.name}</h1>
         <span className="mono text-lg text-[var(--osc-accent)]">{c.total}/10</span>
@@ -360,6 +406,14 @@ function PoolShell() {
   const selectedId = params.id
   const signalClass = search.get("signalClass")
   const verdict = search.get("verdict")
+  const [railOpen, setRailOpen] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STARTUP_RAIL_KEY)
+      return raw === null ? true : raw === "true"
+    } catch {
+      return true
+    }
+  })
 
   const qs = new URLSearchParams()
   if (signalClass) qs.set("signalClass", signalClass)
@@ -382,8 +436,24 @@ function PoolShell() {
     <div className="flex min-h-0 flex-1 flex-col" data-studio="startup">
       <SubNav active="pool" />
       <FilterBar />
-      <div className="flex min-h-0 flex-1">
-        <CandidateRail candidates={candidates} selectedId={selectedId} />
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <CandidateRail
+          candidates={candidates}
+          selectedId={selectedId}
+          open={railOpen}
+          mobileHide={Boolean(selectedId)}
+          onToggle={() => {
+            setRailOpen((value) => {
+              const next = !value
+              try {
+                localStorage.setItem(STARTUP_RAIL_KEY, next ? "true" : "false")
+              } catch {
+                /* ignore */
+              }
+              return next
+            })
+          }}
+        />
         <CandidateViewport id={selectedId} />
         <Inspector entry={detailQuery.data} />
       </div>

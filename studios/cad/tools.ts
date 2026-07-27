@@ -254,7 +254,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         design_view: tool({
           description:
-            "Return the companion viewer URL for the design. Open it in a browser to inspect the 3D assembly, click surfaces to get coordinate/normal feedback, and use the Prompt button to copy a feedback prompt to paste back into this chat.",
+            "Return the companion viewer URL for the design. Open it in a browser to inspect the 3D assembly, click surfaces to get coordinate/normal feedback, and use the Prompt button to send a feedback prompt into the companion agent composer.",
           args: {
             id: tool.schema.string().min(1).describe("Design id to view."),
           },

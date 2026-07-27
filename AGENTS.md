@@ -37,7 +37,7 @@ CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` 
 
 Catalog IDs (`src/core/registry.ts`): `cad` \| `media` \| `pcb` \| `startup`. Order is composition order.
 
-Paths: `@/*` → `src/*`, `@studios/*` → `studios/*` (tsconfig + Vite).
+Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsconfig + Vite). Viewer tokens: single source `ui/tokens.css` — import via `@import "@ui/tokens.css"`; do not copy into studios. Shared viewer UI primitives live under `ui/components/` and `ui/lib/` — import via `@ui/…`; no cross-studio imports.
 
 ## Config (fail-closed) — config global, data local
 

@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpenCode Studio</title>
+    <script>
+      ;(() => {
+        try {
+          const key = "opencode-studio.theme"
+          const pref = localStorage.getItem(key) || "system"
+          const dark =
+            pref === "dark" || (pref !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+          const theme = dark ? "dark" : "light"
+          document.documentElement.dataset.theme = theme
+          document.documentElement.style.colorScheme = theme
+        } catch {
+          /* ignore */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

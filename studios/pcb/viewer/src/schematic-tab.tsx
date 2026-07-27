@@ -3,21 +3,22 @@ import { api } from "./api"
 import { ViewerErrorBoundary } from "./error-boundary"
 import { SvgViewer } from "./svg-viewer"
 import { useCircuitJson } from "./use-circuit-json"
+import { ViewerFrame } from "./viewer-frame"
 
-// Loaded lazily — tscircuit viewer packages are heavy.
 export default function SchematicTab({ projectId }: { projectId: string }) {
   const { data, isLoading, error } = useCircuitJson(projectId)
   const fallback = <SvgViewer url={api.schematicSvgUrl(projectId)} label="Schematic" />
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-24 text-[var(--osc-text-muted)] text-sm">Loading schematic…</div>
+    return <div className="flex h-full min-h-[min(560px,50dvh)] items-center justify-center text-sm text-[var(--osc-text-muted)]">Loading schematic…</div>
   }
   if (error) return fallback
+
   return (
-    <div className="w-full h-[560px] bg-white rounded-md overflow-hidden">
+    <ViewerFrame className="bg-[var(--osc-canvas-bg-light)]">
       <ViewerErrorBoundary key={projectId} fallback={fallback}>
-        <SchematicViewer circuitJson={data} containerStyle={{ height: "100%" }} />
+        <SchematicViewer circuitJson={data} containerStyle={{ height: "100%", width: "100%" }} />
       </ViewerErrorBoundary>
-    </div>
+    </ViewerFrame>
   )
 }

@@ -13,6 +13,8 @@ import {
   type Modality,
   studioHref,
 } from "./api"
+import { EmptyState } from "@ui/components/empty-state"
+import { ErrorState as SharedErrorState } from "@ui/components/error-state"
 import { MediaPreview, ModalityIcon } from "./components/media-preview"
 import { Badge } from "./components/ui/badge"
 import { Button } from "./components/ui/button"
@@ -409,23 +411,23 @@ function LoadMore({ loading, onClick }: { loading: boolean; onClick: () => void 
 
 function ErrorState({ error }: { error: unknown }) {
   return (
-    <div className="grid min-h-[240px] place-items-center rounded-[var(--osc-radius-lg)] border border-dashed border-[var(--osc-border-strong)] px-6 py-12 text-center">
-      <CircleAlert className="mb-3 text-[var(--osc-error)]" />
-      <h2 className="mb-1 text-lg font-semibold">Could not read this Library record</h2>
-      <p className="text-[13px] text-[var(--osc-text-muted)]">{error instanceof Error ? error.message : "Unknown API error"}</p>
-    </div>
+    <SharedErrorState
+      className="min-h-[240px] rounded-[var(--osc-radius-lg)] py-12"
+      icon={<CircleAlert />}
+      title="Could not read this Library record"
+      description={error instanceof Error ? error.message : "Unknown API error"}
+    />
   )
 }
 
 function EmptyLibrary() {
   return (
-    <div className="grid min-h-[240px] place-items-center rounded-[var(--osc-radius-lg)] border border-dashed border-[var(--osc-border-strong)] px-6 py-12 text-center">
-      <FolderSearch className="mb-3 text-[var(--osc-accent)]" />
-      <h2 className="mb-1 text-lg font-semibold">The Library is empty</h2>
-      <p className="max-w-sm text-[13px] text-[var(--osc-text-muted)]">
-        Use agent tools to import, generate, or download media into the Library, then refresh this viewer.
-      </p>
-    </div>
+    <EmptyState
+      className="min-h-[240px] rounded-[var(--osc-radius-lg)] py-12"
+      icon={<FolderSearch className="text-[var(--osc-accent)]" />}
+      title="The Library is empty"
+      description="Use agent tools to import, generate, or download media into the Library, then refresh this viewer."
+    />
   )
 }
 
