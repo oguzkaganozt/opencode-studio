@@ -27,6 +27,38 @@ export function assertLoopbackBind(hostname: string) {
   console.warn(`WARNING: binding to ${hostname} — accessible to other machines on the network`)
 }
 
+/** CLI bind modes: local (loopback) or web (all interfaces). */
+export type BindMode = "local" | "web"
+
+export const BIND_MODE_HOST: Record<BindMode, string> = {
+  local: "127.0.0.1",
+  web: "0.0.0.0",
+}
+
+/**
+ * Resolve mutually exclusive `--local` / `--web` flags.
+ * Default is local when neither is set.
+ */
+export function resolveBindMode(flags: { local?: boolean; web?: boolean }): BindMode {
+  const local = Boolean(flags.local)
+  const web = Boolean(flags.web)
+  if (local && web) throw new Error("Use either --local or --web, not both")
+  return web ? "web" : "local"
+}
+
+export function hostnameForBindMode(mode: BindMode): string {
+  return BIND_MODE_HOST[mode]
+}
+
+/** Web mode requires OPENCODE_STUDIO_PASSWORD (non-empty). */
+export function assertWebPassword(mode: BindMode, env: NodeJS.ProcessEnv = process.env) {
+  if (mode !== "web") return
+  const password = env.OPENCODE_STUDIO_PASSWORD
+  if (typeof password !== "string" || password.trim().length === 0) {
+    throw new Error("web mode requires OPENCODE_STUDIO_PASSWORD (HTTP Basic user opencode-studio)")
+  }
+}
+
 /** Host allowlist derived from the actual bind address (plus paired loopback names when binding loopback). */
 export function allowedHost(hostHeader: string | undefined, hostname: string, port: number) {
   if (!isLoopbackHost(hostname)) return true

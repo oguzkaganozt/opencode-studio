@@ -3,26 +3,22 @@ import { deriveAgentStatus } from "./agent-status"
 
 describe("deriveAgentStatus", () => {
   test("closed when panel closed", () => {
-    expect(deriveAgentStatus({ open: false, sessionsPending: true, queryError: { status: 500 } })).toBe("closed")
+    expect(deriveAgentStatus({ open: false, available: true, loading: true, error: true })).toBe("closed")
   })
 
-  test("needs-password on 401", () => {
-    expect(deriveAgentStatus({ open: true, sessionsPending: false, queryError: { status: 401 } })).toBe("needs-password")
+  test("unavailable when native OpenCode is off", () => {
+    expect(deriveAgentStatus({ open: true, available: false, loading: false, error: false })).toBe("unavailable")
   })
 
-  test("setup on chat_auth_required", () => {
-    expect(deriveAgentStatus({ open: true, sessionsPending: false, queryError: { code: "chat_auth_required" } })).toBe("setup")
+  test("error when iframe failed", () => {
+    expect(deriveAgentStatus({ open: true, available: true, loading: false, error: true })).toBe("error")
   })
 
-  test("error on other failures", () => {
-    expect(deriveAgentStatus({ open: true, sessionsPending: false, queryError: { status: 500 } })).toBe("error")
-  })
-
-  test("loading while sessions pending", () => {
-    expect(deriveAgentStatus({ open: true, sessionsPending: true, queryError: null })).toBe("loading")
+  test("loading while frame settles", () => {
+    expect(deriveAgentStatus({ open: true, available: true, loading: true, error: false })).toBe("loading")
   })
 
   test("ready when open and settled", () => {
-    expect(deriveAgentStatus({ open: true, sessionsPending: false, queryError: null })).toBe("ready")
+    expect(deriveAgentStatus({ open: true, available: true, loading: false, error: false })).toBe("ready")
   })
 })

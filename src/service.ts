@@ -9,7 +9,8 @@ export const PACKAGE_NAME = "@oguzkaganozt/opencode-studio"
 
 export type ServiceOptions = {
   workspace?: string
-  host?: string
+  /** Bind mode: local (127.0.0.1) or web (0.0.0.0). Default local. */
+  mode?: "local" | "web"
   port?: number
   /** systemd unit name without .service (default: opencode-studio) */
   name?: string
@@ -47,14 +48,15 @@ export function resolveServeExecutable(): { command: string; argsPrefix: string[
 
 export function renderUserUnit(input: {
   workspace: string
-  host: string
+  mode: "local" | "web"
   port: number
   pathEnv: string
   agentPassword?: string
   agentPasswordEnvironment?: string
   executable: { command: string; argsPrefix: string[] }
 }) {
-  const args = [...input.executable.argsPrefix, "serve", "--workspace", input.workspace, "--host", input.host, "--port", String(input.port)]
+  const modeFlag = input.mode === "web" ? "--web" : "--local"
+  const args = [...input.executable.argsPrefix, "serve", "--workspace", input.workspace, modeFlag, "--port", String(input.port)]
 
   const execStart = [input.executable.command, ...args].map(shellEscape).join(" ")
   const agentPassword = input.agentPassword
@@ -226,7 +228,8 @@ export async function upgradePackage(options: ServiceOptions = {}): Promise<{
 export async function manageService(action: ServiceAction, options: ServiceOptions = {}) {
   requireSystemdUser()
   const workspace = await resolveWorkspace(options.workspace)
-  const host = options.host ?? "127.0.0.1"
+  const mode = options.mode === "web" ? "web" : "local"
+  const host = mode === "web" ? "0.0.0.0" : "127.0.0.1"
   const port = options.port ?? 4173
   if (!Number.isInteger(port) || port <= 0) throw new Error("Invalid --port")
   const name = options.name
@@ -237,13 +240,17 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
     const executable = resolveServeExecutable()
     const pathEnv = process.env.PATH ?? "/usr/bin:/bin"
     const agentPassword = process.env.OPENCODE_STUDIO_PASSWORD
+    const existingPassword = agentPassword ? undefined : await existingAgentPasswordEnvironment(file)
+    if (mode === "web" && !agentPassword?.trim() && !existingPassword) {
+      throw new Error("web mode requires OPENCODE_STUDIO_PASSWORD (set it when running service install)")
+    }
     const body = renderUserUnit({
       workspace,
-      host,
+      mode,
       port,
       pathEnv,
       agentPassword,
-      agentPasswordEnvironment: agentPassword ? undefined : await existingAgentPasswordEnvironment(file),
+      agentPasswordEnvironment: agentPassword ? undefined : existingPassword,
       executable,
     })
     await mkdir(userUnitDir(), { recursive: true, mode: 0o755 })
@@ -258,10 +265,11 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
       unit,
       unitPath: file,
       workspace,
+      mode,
       host,
       port,
       url: `http://${host}:${port}/studio`,
-      message: `Installed and started ${unit}. Open ${`http://${host}:${port}/studio`}. If the service dies after logout, run: loginctl enable-linger $USER`,
+      message: `Installed and started ${unit} (${mode}). Open ${`http://${host}:${port}/studio`}. If the service dies after logout, run: loginctl enable-linger $USER`,
     }
   }
 

@@ -27,29 +27,8 @@ async function isolatedHost() {
 }
 
 function fakeOpenCodeBridge() {
-  const prompts: Array<{ sessionID: string; text: string }> = []
   const proxyRequests: string[] = []
   const bridge: OpenCodeBridge = {
-    health: async () => ({ healthy: true, version: "test" }),
-    sessions: async () => [],
-    createSession: async ({ title, studioId }) =>
-      ({
-        id: "session-1",
-        slug: "session-1",
-        projectID: "project",
-        directory: "/tmp",
-        title,
-        version: "test",
-        metadata: { "opencode-studio": studioId },
-        time: { created: 1, updated: 1 },
-      }) as Awaited<ReturnType<OpenCodeBridge["createSession"]>>,
-    state: async () => ({ messages: [], status: { type: "idle" }, permissions: [], questions: [] }),
-    prompt: async (sessionID, text) => {
-      prompts.push({ sessionID, text })
-    },
-    abort: async () => {},
-    replyPermission: async () => {},
-    replyQuestion: async () => {},
     proxy: async (request) => {
       proxyRequests.push(request.url)
       return new Response("OpenCode proxy")
@@ -57,7 +36,7 @@ function fakeOpenCodeBridge() {
     webSocketTarget: async () => "ws://127.0.0.1:4096",
     close: () => {},
   }
-  return { bridge, prompts, proxyRequests }
+  return { bridge, proxyRequests }
 }
 
 describe("host server", () => {
@@ -173,35 +152,7 @@ describe("host server", () => {
     expect(body.error.code).toBe("invalid_body")
   })
 
-  test("chat creates a session and submits prompts with csrf", async () => {
-    const ctx = await isolatedHost()
-    const fake = fakeOpenCodeBridge()
-    const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173, openCodeBridge: fake.bridge })
-    const headers = {
-      host: "127.0.0.1:4173",
-      origin: "http://127.0.0.1:4173",
-      "content-type": "application/json",
-      "x-csrf-token": csrfToken,
-    }
-
-    const created = await app.request("http://127.0.0.1:4173/api/chat/sessions", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ title: "CAD Studio", studioId: "cad" }),
-    })
-    expect(created.status).toBe(201)
-    expect((await created.json()).id).toBe("session-1")
-
-    const prompted = await app.request("http://127.0.0.1:4173/api/chat/sessions/session-1/prompts", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ text: "Build an enclosure" }),
-    })
-    expect(prompted.status).toBe(202)
-    expect(fake.prompts).toEqual([{ sessionID: "session-1", text: "Build an enclosure" }])
-  })
-
-  test("chat requires a password on non-loopback hosts", async () => {
+  test("native OpenCode requires a password on non-loopback hosts", async () => {
     const ctx = await isolatedHost()
     const fake = fakeOpenCodeBridge()
     const { app } = await createHostApp({
@@ -211,7 +162,7 @@ describe("host server", () => {
       openCodeBridge: fake.bridge,
       env: {},
     })
-    const response = await app.request("http://192.168.1.20:4173/api/chat/sessions", { headers: { host: "192.168.1.20:4173" } })
+    const response = await app.request("http://192.168.1.20:4173/", { headers: { host: "192.168.1.20:4173" } })
     expect(response.status).toBe(503)
     expect((await response.json()).error.code).toBe("chat_auth_required")
 
@@ -222,35 +173,19 @@ describe("host server", () => {
     })
     expect(config.status).toBe(403)
     expect((await config.json()).error.code).toBe("remote_config_disabled")
-
-    const openCode = await app.request("http://192.168.1.20:4173/", { headers: { host: "192.168.1.20:4173" } })
-    expect(openCode.status).toBe(503)
   })
 
-  test("authenticated remote chat accepts the browser request origin", async () => {
+  test("authenticated remote native OpenCode accepts the browser request origin", async () => {
     const ctx = await isolatedHost()
     const fake = fakeOpenCodeBridge()
     const env = { OPENCODE_STUDIO_PASSWORD: "secret" }
-    const { app, csrfToken } = await createHostApp({
+    const { app } = await createHostApp({
       ...ctx,
       hostname: "0.0.0.0",
       port: 4173,
       openCodeBridge: fake.bridge,
       env,
     })
-    const response = await app.request("http://192.168.1.20:4173/api/chat/sessions", {
-      method: "POST",
-      headers: {
-        host: "192.168.1.20:4173",
-        origin: "http://192.168.1.20:4173",
-        authorization: `Basic ${Buffer.from("opencode-studio:secret").toString("base64")}`,
-        "content-type": "application/json",
-        "x-csrf-token": csrfToken,
-      },
-      body: JSON.stringify({ title: "CAD Studio", studioId: "cad" }),
-    })
-    expect(response.status).toBe(201)
-
     const openCode = await app.request("http://192.168.1.20:4173/", {
       headers: {
         host: "192.168.1.20:4173",

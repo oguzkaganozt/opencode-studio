@@ -1,23 +1,17 @@
-export type AgentStatus = "closed" | "loading" | "ready" | "needs-password" | "setup" | "error"
+export type AgentStatus = "closed" | "loading" | "ready" | "unavailable" | "error"
 
 export type AgentStatusInput = {
   open: boolean
-  /** Sessions list has not settled yet */
-  sessionsPending: boolean
-  queryError?: { status?: number; code?: string } | null
+  available: boolean
+  loading: boolean
+  error: boolean
 }
 
 export function deriveAgentStatus(input: AgentStatusInput): AgentStatus {
   if (!input.open) return "closed"
-
-  const error = input.queryError
-  if (error) {
-    if (error.status === 401) return "needs-password"
-    if (error.code === "chat_auth_required") return "setup"
-    return "error"
-  }
-
-  if (input.sessionsPending) return "loading"
+  if (!input.available) return "unavailable"
+  if (input.error) return "error"
+  if (input.loading) return "loading"
   return "ready"
 }
 
@@ -29,8 +23,7 @@ export function agentStatusDotClass(status: AgentStatus): string {
       return "bg-[var(--osc-text-muted)]"
     case "ready":
       return "bg-[var(--osc-success)]"
-    case "needs-password":
-    case "setup":
+    case "unavailable":
       return "bg-[var(--osc-warning)]"
     case "error":
       return "bg-[var(--osc-error)]"
@@ -45,10 +38,8 @@ export function agentStatusLabel(status: AgentStatus): string {
       return "Agent loading"
     case "ready":
       return "Agent ready"
-    case "needs-password":
-      return "Agent needs password"
-    case "setup":
-      return "Agent setup required"
+    case "unavailable":
+      return "Native OpenCode unavailable"
     case "error":
       return "Agent error"
   }

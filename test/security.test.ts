@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import {
   allowedHost,
+  assertWebPassword,
   basicAuthMatches,
   createCsrfToken,
   csrfTokensEqual,
+  hostnameForBindMode,
   isLoopbackHost,
+  resolveBindMode,
   safeExternalHref,
   sameOrigin,
 } from "../src/core/security"
@@ -112,5 +115,27 @@ describe("security", () => {
     expect(isLoopbackHost("127.1.2.3")).toBe(true)
     expect(isLoopbackHost("10.0.0.1")).toBe(false)
     expect(isLoopbackHost("evil.com")).toBe(false)
+  })
+
+  describe("bind mode", () => {
+    test("defaults to local", () => {
+      expect(resolveBindMode({})).toBe("local")
+      expect(resolveBindMode({ local: false, web: false })).toBe("local")
+      expect(hostnameForBindMode("local")).toBe("127.0.0.1")
+      expect(hostnameForBindMode("web")).toBe("0.0.0.0")
+    })
+    test("accepts exclusive flags", () => {
+      expect(resolveBindMode({ local: true })).toBe("local")
+      expect(resolveBindMode({ web: true })).toBe("web")
+    })
+    test("rejects both flags", () => {
+      expect(() => resolveBindMode({ local: true, web: true })).toThrow(/either --local or --web/)
+    })
+    test("web requires password", () => {
+      expect(() => assertWebPassword("web", {})).toThrow(/OPENCODE_STUDIO_PASSWORD/)
+      expect(() => assertWebPassword("web", { OPENCODE_STUDIO_PASSWORD: "   " })).toThrow(/OPENCODE_STUDIO_PASSWORD/)
+      expect(() => assertWebPassword("web", { OPENCODE_STUDIO_PASSWORD: "secret" })).not.toThrow()
+      expect(() => assertWebPassword("local", {})).not.toThrow()
+    })
   })
 })

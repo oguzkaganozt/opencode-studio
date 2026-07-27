@@ -214,7 +214,7 @@ Open `http://127.0.0.1:4173`. The viewer auto-discovers built designs in the dro
 
 - **Click** a surface to highlight a part and see position + normal.
 - **Copy** - copies `clicked on <part> at (...) normal (...)` to clipboard.
-- **Prompt** - opens the companion agent panel and fills the composer with a feedback prompt: `The user clicked on "<part>" near position (...) where the surface faces (...). Edit the geometry in this area.` Review and send from the agent to direct geometry edits.
+- **Prompt** - opens the companion Agent panel (native OpenCode UI) on a new draft with a prefilled feedback prompt: `The user clicked on "<part>" near position (...) where the surface faces (...). Edit the geometry in this area.` Review and send from the agent to direct geometry edits (not auto-sent).
 
 The viewer polls the design list every 2s and refreshes when new builds appear.
 

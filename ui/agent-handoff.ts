@@ -5,8 +5,6 @@ export type AgentHandoffRequest = {
   source?: AgentHandoffSource
   /** Open the agent panel if closed. Default true. */
   open?: boolean
-  /** Focus the composer after apply. Default true. */
-  focus?: boolean
   /** Also copy text to clipboard (secondary). Default false. */
   copyFallback?: boolean
 }
@@ -30,7 +28,6 @@ export function requestAgentHandoff(request: AgentHandoffRequest): void {
     ...request,
     text,
     open: request.open !== false,
-    focus: request.focus !== false,
     copyFallback: Boolean(request.copyFallback),
   }
 

@@ -102,28 +102,10 @@ describe("OpenCode bridge", () => {
     bridge.close()
   })
 
-  test("rejects session IDs owned by another workspace", async () => {
-    const upstream = Bun.serve({
-      port: 0,
-      fetch(request) {
-        const url = new URL(request.url)
-        if (url.pathname === "/session/foreign") {
-          return Response.json({
-            id: "foreign",
-            slug: "foreign",
-            projectID: "project",
-            directory: "/srv/other",
-            title: "Foreign",
-            version: "test",
-            time: { created: 1, updated: 1 },
-          })
-        }
-        return new Response(null, { status: 204 })
-      },
-    })
-    servers.push(upstream)
-    const bridge = createOpenCodeBridge("/srv/project", { OPENCODE_STUDIO_OPENCODE_URL: `http://127.0.0.1:${upstream.port}` })
-    await expect(bridge.prompt("foreign", "do not run")).rejects.toThrow("outside the Studio workspace")
+  test("refuses native proxy when attached to a shared server", async () => {
+    const bridge = createOpenCodeBridge("/srv/project", { OPENCODE_STUDIO_OPENCODE_URL: "http://127.0.0.1:4096" })
+    await expect(bridge.proxy(new Request("http://studio.test/"))).rejects.toThrow("Studio-owned sidecar")
+    await expect(bridge.webSocketTarget("ws://studio.test/api/pty/one")).rejects.toThrow("Studio-owned sidecar")
     bridge.close()
   })
 })

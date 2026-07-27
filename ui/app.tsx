@@ -4,10 +4,10 @@ import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
 import { subscribeAgentHandoff } from "./agent-handoff"
 import { readAgentOpen, writeAgentOpen } from "./agent-open"
-import { AgentPanel } from "./agent-panel"
 import { type AgentStatus, agentStatusDotClass, agentStatusLabel } from "./agent-status"
 import { Button } from "./components/button"
 import { EmptyState } from "./components/empty-state"
+import { NativeAgentFrame } from "./native-agent-frame"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 import { readThemePreference, setThemePreference, type ThemePreference } from "./theme"
 
@@ -699,7 +699,6 @@ function StudioFrame() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [agentOpen, setAgentOpen] = useState(() => readAgentOpen())
   const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (readAgentOpen() ? "loading" : "closed"))
-  const csrfQuery = useCsrf()
 
   const uiBasePath = `/studios/${studioId}`
   const apiBasePath = `/api/studios/${studioId}`
@@ -753,6 +752,8 @@ function StudioFrame() {
   const Viewer = isStudioId(studioId) ? viewerLoaders[studioId] : undefined
   const page = Viewer ? <Viewer /> : <p className="p-8 text-sm">Unknown studio</p>
   const label = card?.label ?? studioId
+  const nativeAvailable = studiosQuery.data.nativeOpenCodeAvailable
+  const workspace = studiosQuery.data.workspace
 
   return (
     <div data-studio={studioId} className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
@@ -764,7 +765,7 @@ function StudioFrame() {
         edge="flush"
         actions={
           <>
-            {studiosQuery.data.nativeOpenCodeAvailable && (
+            {nativeAvailable && (
               <a
                 href="/"
                 className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
@@ -787,11 +788,9 @@ function StudioFrame() {
       />
       <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <AgentPanel
-          key={studioId}
-          studioId={studioId}
-          studioLabel={label}
-          csrfToken={csrfQuery.data?.token}
+        <NativeAgentFrame
+          workspace={workspace}
+          available={nativeAvailable}
           open={agentOpen}
           onClose={() => setAgentOpenPersisted(false)}
           onStatusChange={setAgentStatus}

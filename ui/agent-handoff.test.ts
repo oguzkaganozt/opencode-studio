@@ -12,7 +12,6 @@ describe("requestAgentHandoff", () => {
         text: "hello",
         source: "cad",
         open: true,
-        focus: true,
         copyFallback: false,
       },
     ])
@@ -29,13 +28,23 @@ describe("requestAgentHandoff", () => {
     expect(calls).toBe(0)
   })
 
-  test("respects open/focus false", () => {
+  test("respects open false", () => {
     __resetAgentHandoffForTests()
     let last: AgentHandoffRequest | undefined
     subscribeAgentHandoff((req) => {
       last = req
     })
-    requestAgentHandoff({ text: "x", open: false, focus: false })
-    expect(last).toEqual({ text: "x", open: false, focus: false, copyFallback: false })
+    requestAgentHandoff({ text: "x", open: false })
+    expect(last).toEqual({ text: "x", open: false, copyFallback: false })
+  })
+
+  test("open false still delivers to subscribers (consumers decide)", () => {
+    __resetAgentHandoffForTests()
+    let calls = 0
+    subscribeAgentHandoff((req) => {
+      if (req.open === false) calls += 1
+    })
+    requestAgentHandoff({ text: "stay closed", open: false })
+    expect(calls).toBe(1)
   })
 })

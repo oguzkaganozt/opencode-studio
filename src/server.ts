@@ -186,108 +186,8 @@ export async function createHostApp(input: HostInput) {
     return openCodeAuthResponse()
   }
 
-  app.use("/api/chat/*", async (ctx, next) => {
-    const denied = remoteAuthGuard(ctx)
-    if (denied) return denied
-    return next()
-  })
-
-  const chatError = (ctx: any, error: unknown) =>
+  const openCodeError = (ctx: any, error: unknown) =>
     ctx.json(errorBody("opencode_error", error instanceof Error ? error.message : String(error)), 502)
-
-  app.get("/api/chat/health", async (ctx) => {
-    try {
-      return ctx.json(await openCode.health())
-    } catch (error) {
-      return chatError(ctx, error)
-    }
-  })
-
-  app.get("/api/chat/sessions", async (ctx) => {
-    try {
-      return ctx.json({ sessions: await openCode.sessions() })
-    } catch (error) {
-      return chatError(ctx, error)
-    }
-  })
-
-  app.post("/api/chat/sessions", async (ctx) => {
-    const denied = await writeGuard(ctx)
-    if (denied) return denied
-    const body = (await ctx.req.json().catch(() => null)) as { title?: string; studioId?: string } | null
-    const title = body?.title?.trim()
-    if (!title || title.length > 120 || !body?.studioId) {
-      return ctx.json(errorBody("invalid_body", "title and studioId are required."), 400)
-    }
-    try {
-      return ctx.json(await openCode.createSession({ title, studioId: body.studioId }), 201)
-    } catch (error) {
-      return chatError(ctx, error)
-    }
-  })
-
-  app.get("/api/chat/sessions/:id/state", async (ctx) => {
-    try {
-      return ctx.json(await openCode.state(ctx.req.param("id")))
-    } catch (error) {
-      return chatError(ctx, error)
-    }
-  })
-
-  app.post("/api/chat/sessions/:id/prompts", async (ctx) => {
-    const denied = await writeGuard(ctx)
-    if (denied) return denied
-    const body = (await ctx.req.json().catch(() => null)) as { text?: string } | null
-    const text = body?.text?.trim()
-    if (!text || text.length > 50_000) return ctx.json(errorBody("invalid_body", "text is required."), 400)
-    try {
-      await openCode.prompt(ctx.req.param("id"), text)
-      return ctx.json({ accepted: true }, 202)
-    } catch (error) {
-      return chatError(ctx, error)
-    }
-  })
-
-  app.post("/api/chat/sessions/:id/abort", async (ctx) => {
-    const denied = await writeGuard(ctx)
-    if (denied) return denied
-    try {
-      await openCode.abort(ctx.req.param("id"))
-      return ctx.json({ aborted: true })
-    } catch (error) {
-      return chatError(ctx, error)
-    }
-  })
-
-  app.post("/api/chat/permissions/:id", async (ctx) => {
-    const denied = await writeGuard(ctx)
-    if (denied) return denied
-    const body = (await ctx.req.json().catch(() => null)) as { reply?: "once" | "always" | "reject" } | null
-    if (!body?.reply || !["once", "always", "reject"].includes(body.reply)) {
-      return ctx.json(errorBody("invalid_body", "reply must be once, always, or reject."), 400)
-    }
-    try {
-      await openCode.replyPermission(ctx.req.param("id"), body.reply)
-      return ctx.json({ replied: true })
-    } catch (error) {
-      return chatError(ctx, error)
-    }
-  })
-
-  app.post("/api/chat/questions/:id", async (ctx) => {
-    const denied = await writeGuard(ctx)
-    if (denied) return denied
-    const body = (await ctx.req.json().catch(() => null)) as { answers?: string[][] } | null
-    if (!body?.answers?.every((answer) => Array.isArray(answer) && answer.every((item) => typeof item === "string"))) {
-      return ctx.json(errorBody("invalid_body", "answers must be string[][]."), 400)
-    }
-    try {
-      await openCode.replyQuestion(ctx.req.param("id"), body.answers)
-      return ctx.json({ replied: true })
-    } catch (error) {
-      return chatError(ctx, error)
-    }
-  })
 
   app.put("/api/config", async (ctx) => {
     if (!isLoopbackHost(hostname)) {
@@ -411,7 +311,7 @@ export async function createHostApp(input: HostInput) {
     try {
       return await openCode.proxy(ctx.req.raw)
     } catch (error) {
-      return chatError(ctx, error)
+      return openCodeError(ctx, error)
     }
   })
 

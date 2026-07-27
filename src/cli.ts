@@ -6,7 +6,7 @@ import { ensureShellCompletions } from "./completion-install"
 import { loadPackageMeta } from "./core/package-meta"
 import { resolveWorkspace } from "./core/paths"
 import { STUDIO_IDS } from "./core/registry"
-import { assertLoopbackBind } from "./core/security"
+import { assertLoopbackBind, assertWebPassword, hostnameForBindMode, resolveBindMode } from "./core/security"
 import { configureStudios, doctorStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { startHost } from "./server"
 import { checkPackageUpgrade, manageService, type ServiceAction, upgradePackage } from "./service"
@@ -40,11 +40,13 @@ Common flags:
 Examples:
   opencode-studio configure cad pcb
   opencode-studio serve --workspace ~/project
+  opencode-studio serve --web
   opencode-studio upgrade --check
   opencode-studio upgrade
   opencode-studio service install --workspace ~/project
 
 Notes:
+  serve defaults to --local (127.0.0.1). --web binds 0.0.0.0 and requires OPENCODE_STUDIO_PASSWORD.
   upgrade restarts the systemd unit when present, then reminds you to restart OpenCode.
   upgrade --check exits 1 if an update is available, 2 on registry error.
   Global npm install may auto-append shell completion (OPENCODE_STUDIO_SKIP_COMPLETION=1 to skip).
@@ -91,7 +93,8 @@ Start OpenCode and the integrated Studio viewer (foreground).
 
 Options:
   --workspace <path>     Domain data root (default: cwd)
-  --host <host>          Default 127.0.0.1
+  --local                Bind 127.0.0.1 (default)
+  --web                  Bind 0.0.0.0; requires OPENCODE_STUDIO_PASSWORD
   --port <port>          Default 4173
   --ui-directory <path>  Override UI dist
   -h, --help
@@ -104,7 +107,8 @@ Actions: ${SERVICE_ACTIONS.join("|")}
 
 Options:
   --workspace <path>   Domain data root (used on install)
-  --host <host>        Default 127.0.0.1
+  --local              Bind 127.0.0.1 (default on install)
+  --web                Bind 0.0.0.0; requires OPENCODE_STUDIO_PASSWORD
   --port <port>        Default 4173
   --name <unit>        Unit name without .service (default opencode-studio)
   --json
@@ -119,7 +123,8 @@ Always reminds you to restart OpenCode.
 Options:
   --check              Only check registry (exit 1 if update available, 2 on error)
   --workspace <path>   Passed through when refreshing the unit
-  --host <host>        Default 127.0.0.1
+  --local              Bind mode when refreshing the unit (default)
+  --web                Web bind mode when refreshing the unit
   --port <port>        Default 4173
   --name <unit>
   --json
@@ -324,7 +329,8 @@ async function main(argv: string[]) {
   if (command === "serve") {
     let values: {
       workspace?: string
-      host?: string
+      local?: boolean
+      web?: boolean
       port?: string
       "ui-directory"?: string
     }
@@ -333,7 +339,8 @@ async function main(argv: string[]) {
         args: rest,
         options: {
           workspace: { type: "string" },
-          host: { type: "string", default: "127.0.0.1" },
+          local: { type: "boolean", default: false },
+          web: { type: "boolean", default: false },
           port: { type: "string", default: "4173" },
           "ui-directory": { type: "string" },
         },
@@ -344,7 +351,15 @@ async function main(argv: string[]) {
     } catch (error) {
       return failParse("serve", error)
     }
-    const hostname = values.host ?? "127.0.0.1"
+    let mode: ReturnType<typeof resolveBindMode>
+    try {
+      mode = resolveBindMode({ local: values.local, web: values.web })
+      assertWebPassword(mode)
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      return 2
+    }
+    const hostname = hostnameForBindMode(mode)
     assertLoopbackBind(hostname)
     const workspace = await resolveWorkspace(values.workspace)
     const uiDirectory = values["ui-directory"] ?? path.join(packageRoot, "dist", "ui")
@@ -360,6 +375,7 @@ async function main(argv: string[]) {
       uiDirectory,
       packageRoot,
     })
+    console.log(`mode: ${mode}`)
     console.log(`Studio: ${studioUrl}`)
     if (opencodeUrl) console.log(`OpenCode: ${opencodeUrl}`)
     else console.log("OpenCode: attached server (native proxy disabled)")
@@ -404,7 +420,8 @@ async function main(argv: string[]) {
     let values: {
       check?: boolean
       workspace?: string
-      host?: string
+      local?: boolean
+      web?: boolean
       port?: string
       name?: string
       json?: boolean
@@ -415,7 +432,8 @@ async function main(argv: string[]) {
         options: {
           check: { type: "boolean", default: false },
           workspace: { type: "string" },
-          host: { type: "string", default: "127.0.0.1" },
+          local: { type: "boolean", default: false },
+          web: { type: "boolean", default: false },
           port: { type: "string", default: "4173" },
           name: { type: "string" },
           json: { type: "boolean", default: false },
@@ -436,7 +454,13 @@ async function main(argv: string[]) {
       return result.updateAvailable ? 1 : 0
     }
 
-    const hostname = values.host ?? "127.0.0.1"
+    let mode: ReturnType<typeof resolveBindMode>
+    try {
+      mode = resolveBindMode({ local: values.local, web: values.web })
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      return 2
+    }
     const port = parsePort(values.port)
     if (port === null) {
       console.error("Invalid --port")
@@ -444,7 +468,7 @@ async function main(argv: string[]) {
     }
     const result = await upgradePackage({
       workspace: values.workspace,
-      host: hostname,
+      mode,
       port,
       name: values.name,
       json: values.json,
@@ -462,7 +486,8 @@ async function main(argv: string[]) {
     }
     let values: {
       workspace?: string
-      host?: string
+      local?: boolean
+      web?: boolean
       port?: string
       name?: string
       json?: boolean
@@ -472,7 +497,8 @@ async function main(argv: string[]) {
         args: rest.slice(1),
         options: {
           workspace: { type: "string" },
-          host: { type: "string", default: "127.0.0.1" },
+          local: { type: "boolean", default: false },
+          web: { type: "boolean", default: false },
           port: { type: "string", default: "4173" },
           name: { type: "string" },
           json: { type: "boolean", default: false },
@@ -484,8 +510,14 @@ async function main(argv: string[]) {
     } catch (error) {
       return failParse("service", error)
     }
-    const hostname = values.host ?? "127.0.0.1"
-    if (action === "install") assertLoopbackBind(hostname)
+    let mode: ReturnType<typeof resolveBindMode>
+    try {
+      mode = resolveBindMode({ local: values.local, web: values.web })
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      return 2
+    }
+    if (action === "install") assertLoopbackBind(hostnameForBindMode(mode))
     const port = parsePort(values.port)
     if (port === null) {
       console.error("Invalid --port")
@@ -493,7 +525,7 @@ async function main(argv: string[]) {
     }
     const result = await manageService(action, {
       workspace: values.workspace,
-      host: hostname,
+      mode,
       port,
       name: values.name,
       json: values.json,

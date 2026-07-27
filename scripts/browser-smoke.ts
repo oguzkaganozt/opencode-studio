@@ -223,6 +223,26 @@ async function browserSmoke(base: string) {
     await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
     await assertNoHorizontalScroll(page, "360 cad")
     console.log("360 smoke ok")
+
+    // Native agent iframe: closed by default; open once and confirm same-origin frame
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
+    await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
+    await assertAgentClosedLayout(page, "cad-pre-open")
+    const iframeBefore = await page.locator('iframe[title="OpenCode agent"]').count()
+    assert(iframeBefore === 0, `agent iframe should not mount while closed, got ${iframeBefore}`)
+    await page.getByRole("button", { name: "Agent", exact: true }).click()
+    await page.waitForSelector('[data-agent-open="true"]', { timeout: 10_000 })
+    const frame = page.frameLocator('iframe[title="OpenCode agent"]')
+    await frame.locator("body").waitFor({ timeout: 30_000 })
+    const frameUrl = await page.locator('iframe[title="OpenCode agent"]').getAttribute("src")
+    assert(frameUrl === "/" || frameUrl?.startsWith("/"), `unexpected agent iframe src=${String(frameUrl)}`)
+    await page.getByRole("button", { name: "Close agent" }).click()
+    await page.waitForSelector('[data-agent-open="false"]', { state: "attached", timeout: 5_000 })
+    await assertAgentClosedLayout(page, "cad-post-close")
+    const iframeAfterClose = await page.locator('iframe[title="OpenCode agent"]').count()
+    assert(iframeAfterClose === 1, `agent iframe should stay mounted after close, got ${iframeAfterClose}`)
+    console.log("native agent iframe ok")
   } finally {
     await browser.close()
   }
