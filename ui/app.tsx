@@ -6,7 +6,6 @@ import { subscribeAgentHandoff } from "./agent-handoff"
 import { readAgentOpen, writeAgentOpen } from "./agent-open"
 import { type AgentStatus, agentStatusDotClass, agentStatusLabel } from "./agent-status"
 import { Button } from "./components/button"
-import { EmptyState } from "./components/empty-state"
 import { FilesExplorer } from "./files-explorer"
 import { NativeAgentFrame } from "./native-agent-frame"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
@@ -87,11 +86,11 @@ function useCsrf() {
   })
 }
 
-function useConfigure() {
+function useRepairInstall() {
   const queryClient = useQueryClient()
   const csrfQuery = useCsrf()
   return useMutation({
-    mutationFn: async (next: string[]) => {
+    mutationFn: async () => {
       const token = csrfQuery.data?.token
       if (!token) throw new Error("CSRF token unavailable")
       return fetchJson<{ message?: string; restartRequired?: boolean }>("/api/config", {
@@ -100,7 +99,7 @@ function useConfigure() {
           "Content-Type": "application/json",
           "X-CSRF-Token": token,
         },
-        body: JSON.stringify({ enabled: next }),
+        body: JSON.stringify({}),
       })
     },
     onSuccess: async () => {
@@ -108,9 +107,6 @@ function useConfigure() {
     },
   })
 }
-
-/** Survives drawer unmount across routes so toggles aren't lost mid-edit. */
-let enablementDraft: string[] | null = null
 
 function ThemePreferenceControl() {
   const [preference, setPreference] = useState<ThemePreference>(() => readThemePreference())
@@ -168,17 +164,12 @@ function SideDrawer({
   const closeRef = useRef<HTMLButtonElement>(null)
   const studiosQuery = useStudios()
   const csrfQuery = useCsrf()
-  const configure = useConfigure()
+  const repair = useRepairInstall()
   const [panel, setPanel] = useState<"nav" | "settings">(initialPanel)
-  const [selected, setSelected] = useState<string[] | null>(() => enablementDraft)
 
   useEffect(() => {
     if (open) setPanel(initialPanel)
   }, [open, initialPanel])
-
-  useEffect(() => {
-    enablementDraft = selected
-  }, [selected])
 
   useEffect(() => {
     if (!open) return
@@ -217,12 +208,6 @@ function SideDrawer({
   }, [open, onClose])
 
   const cards = studiosQuery.data?.studios ?? []
-  const saved = studiosQuery.data?.enabled ?? []
-  const enabledIds = selected ?? saved
-  const enabledCards = cards.filter((s) => saved.includes(s.id))
-  const dirty =
-    selected !== null &&
-    (selected.length !== saved.length || selected.some((id) => !saved.includes(id)) || saved.some((id) => !selected.includes(id)))
 
   return (
     <>
@@ -288,7 +273,7 @@ function SideDrawer({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {panel === "nav" && (
-            <nav className="flex flex-col gap-0.5 p-2" aria-label="Enabled studios">
+            <nav className="flex flex-col gap-0.5 p-2" aria-label="Studios">
               <p className="px-2.5 pt-1 pb-1.5 text-[10px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">
                 Navigate
               </p>
@@ -314,41 +299,35 @@ function SideDrawer({
               >
                 Files
               </Link>
-              {enabledCards.length === 0 ? (
-                <p className="px-3 py-8 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
-                  No domain studios enabled. Media tools and Files stay available. Open Settings for CAD/PCB.
-                </p>
-              ) : (
-                enabledCards.map((s) => {
-                  const active = s.id === studioId
-                  const meta = STUDIO_META[s.id]
-                  return (
-                    <Link
-                      key={s.id}
-                      to={`/studios/${s.id}`}
-                      onClick={onClose}
-                      className={`relative rounded-lg px-3 py-2.5 transition-colors ${
-                        active
-                          ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
-                          : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
-                      }`}
-                    >
-                      {active && (
-                        <span
-                          className="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-full"
-                          style={{ background: `var(--osc-accent-${s.id})` }}
-                          aria-hidden
-                        />
-                      )}
-                      <div className="flex items-center gap-2">
-                        <span className="size-1.5 rounded-full" style={{ background: `var(--osc-accent-${s.id})` }} aria-hidden />
-                        <span className="text-[13px] font-medium">{s.label}</span>
-                      </div>
-                      <p className="mt-0.5 pl-3.5 text-[11px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
-                    </Link>
-                  )
-                })
-              )}
+              {cards.map((s) => {
+                const active = s.id === studioId
+                const meta = STUDIO_META[s.id]
+                return (
+                  <Link
+                    key={s.id}
+                    to={`/studios/${s.id}`}
+                    onClick={onClose}
+                    className={`relative rounded-lg px-3 py-2.5 transition-colors ${
+                      active
+                        ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
+                        : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
+                    }`}
+                  >
+                    {active && (
+                      <span
+                        className="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-full"
+                        style={{ background: `var(--osc-accent-${s.id})` }}
+                        aria-hidden
+                      />
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="size-1.5 rounded-full" style={{ background: `var(--osc-accent-${s.id})` }} aria-hidden />
+                      <span className="text-[13px] font-medium">{s.label}</span>
+                    </div>
+                    <p className="mt-0.5 pl-3.5 text-[11px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
+                  </Link>
+                )
+              })}
             </nav>
           )}
 
@@ -356,9 +335,9 @@ function SideDrawer({
             <div className="flex min-h-full flex-col">
               <div className="flex flex-1 flex-col gap-4 p-4">
                 <div>
-                  <h2 className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Enable studios</h2>
+                  <h2 className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Studios</h2>
                   <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
-                    Apply writes your user config. Restart OpenCode so plugins match.
+                    CAD and PCB are always on. Repair reinstalls plugins and skills if something is missing.
                   </p>
                 </div>
 
@@ -367,7 +346,7 @@ function SideDrawer({
                     className="rounded-lg border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
                     role="alert"
                   >
-                    CSRF unavailable — cannot save config.
+                    CSRF unavailable — cannot repair install.
                   </p>
                 )}
                 {studiosQuery.data?.configError && (
@@ -377,59 +356,37 @@ function SideDrawer({
                 )}
 
                 <ul className="divide-y divide-[var(--osc-border)] overflow-hidden rounded-lg border border-[var(--osc-border)]">
-                  {cards.map((studio) => {
-                    const on = enabledIds.includes(studio.id)
-                    return (
-                      <li key={studio.id}>
-                        <label className="flex cursor-pointer items-center justify-between gap-3 bg-[var(--osc-bg-elevated)] px-3 py-3 transition-colors hover:bg-[var(--osc-surface)]">
-                          <span className="flex min-w-0 items-center gap-2.5">
-                            <span
-                              className="size-1.5 shrink-0 rounded-full"
-                              style={{ background: on ? `var(--osc-accent-${studio.id})` : "var(--osc-border-strong)" }}
-                              aria-hidden
-                            />
-                            <span className="truncate text-[13px] font-medium">{studio.label}</span>
-                          </span>
-                          <span className="relative inline-flex shrink-0 items-center">
-                            <span className="sr-only">{on ? "enabled" : "disabled"}</span>
-                            <input
-                              type="checkbox"
-                              className="peer sr-only"
-                              checked={on}
-                              onChange={() => {
-                                configure.reset()
-                                setSelected((current) => {
-                                  const base = current ?? saved
-                                  return on ? base.filter((id) => id !== studio.id) : [...base, studio.id]
-                                })
-                              }}
-                            />
-                            <span className="h-5 w-9 rounded-full bg-[var(--osc-border-strong)] transition-colors peer-checked:bg-[var(--osc-primary)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--osc-text)] peer-focus-visible:ring-offset-2" />
-                            <span className="absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
-                          </span>
-                        </label>
-                      </li>
-                    )
-                  })}
+                  {cards.map((studio) => (
+                    <li key={studio.id} className="flex items-center justify-between gap-3 bg-[var(--osc-bg-elevated)] px-3 py-3">
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          className="size-1.5 shrink-0 rounded-full"
+                          style={{ background: `var(--osc-accent-${studio.id})` }}
+                          aria-hidden
+                        />
+                        <span className="truncate text-[13px] font-medium">{studio.label}</span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-[var(--osc-text-faint)]">always on</span>
+                    </li>
+                  ))}
                 </ul>
 
                 <ThemePreferenceControl />
 
-                {dirty && <p className="text-[12px] text-[var(--osc-text-muted)]">Unsaved changes</p>}
-                {configure.isSuccess && (
+                {repair.isSuccess && (
                   <div
                     className="rounded-lg border border-[var(--osc-warning)]/30 bg-[var(--osc-warning-bg)] px-3 py-2.5 text-[12px]"
                     role="status"
                   >
-                    <p className="font-medium text-[var(--osc-warning)]">Configuration saved</p>
+                    <p className="font-medium text-[var(--osc-warning)]">Install repaired</p>
                     <p className="mt-1 text-[var(--osc-text-muted)]">
-                      {studiosQuery.data?.restartRequiredHint ?? "Host APIs reloaded. Restart OpenCode so plugins and skills match."}
+                      {studiosQuery.data?.restartRequiredHint ?? "Restart OpenCode so plugins and skills match."}
                     </p>
                   </div>
                 )}
-                {configure.isError && (
+                {repair.isError && (
                   <p className="text-[12px] text-[var(--osc-error)]" role="alert">
-                    {(configure.error as Error).message}
+                    {(repair.error as Error).message}
                   </p>
                 )}
 
@@ -447,49 +404,35 @@ function SideDrawer({
                   </div>
                 )}
 
-                {cards.some((s) => saved.includes(s.id)) && (
+                {cards.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Details</p>
-                    {cards.map((s) =>
-                      saved.includes(s.id) ? (
-                        <details key={s.id} className="rounded-lg border border-[var(--osc-border)] px-3 py-2">
-                          <summary className="cursor-pointer text-[12px] font-medium text-[var(--osc-text)]">{s.label}</summary>
-                          <dl className="mt-2 space-y-1 font-mono text-[10px] text-[var(--osc-text-faint)]">
-                            <div>
-                              <dt className="inline text-[var(--osc-text-muted)]">root </dt>
-                              <dd className="inline break-all">{s.root ?? s.rootError ?? "—"}</dd>
-                            </div>
-                            <div>
-                              <dt className="inline text-[var(--osc-text-muted)]">skill </dt>
-                              <dd className="inline">{s.skillInstalled ? s.skill : `${s.skill} (not installed)`}</dd>
-                            </div>
-                            <div>
-                              <dt className="inline text-[var(--osc-text-muted)]">engines </dt>
-                              <dd className="inline">{s.requiredEngines.join(", ") || "none"}</dd>
-                            </div>
-                          </dl>
-                        </details>
-                      ) : null,
-                    )}
+                    {cards.map((s) => (
+                      <details key={s.id} className="rounded-lg border border-[var(--osc-border)] px-3 py-2">
+                        <summary className="cursor-pointer text-[12px] font-medium text-[var(--osc-text)]">{s.label}</summary>
+                        <dl className="mt-2 space-y-1 font-mono text-[10px] text-[var(--osc-text-faint)]">
+                          <div>
+                            <dt className="inline text-[var(--osc-text-muted)]">root </dt>
+                            <dd className="inline break-all">{s.root ?? s.rootError ?? "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="inline text-[var(--osc-text-muted)]">skill </dt>
+                            <dd className="inline">{s.skillInstalled ? s.skill : `${s.skill} (not installed)`}</dd>
+                          </div>
+                          <div>
+                            <dt className="inline text-[var(--osc-text-muted)]">engines </dt>
+                            <dd className="inline">{s.requiredEngines.join(", ") || "none"}</dd>
+                          </div>
+                        </dl>
+                      </details>
+                    ))}
                   </div>
                 )}
               </div>
 
               <div className="sticky bottom-0 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-3">
-                <Button
-                  type="button"
-                  className="w-full"
-                  disabled={configure.isPending || !csrfQuery.data || !dirty}
-                  onClick={() => {
-                    configure.mutate(enabledIds, {
-                      onSuccess: () => {
-                        setSelected(null)
-                        enablementDraft = null
-                      },
-                    })
-                  }}
-                >
-                  {configure.isPending ? "Applying…" : "Save studios"}
+                <Button type="button" className="w-full" disabled={repair.isPending || !csrfQuery.data} onClick={() => repair.mutate()}>
+                  {repair.isPending ? "Repairing…" : "Repair install"}
                 </Button>
               </div>
             </div>
@@ -557,16 +500,12 @@ function HomePage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerPanel, setDrawerPanel] = useState<"nav" | "settings">("nav")
 
-  const openSettings = () => {
-    setDrawerPanel("settings")
-    setDrawerOpen(true)
-  }
   const openMenu = () => {
     setDrawerPanel("nav")
     setDrawerOpen(true)
   }
 
-  const cards = (studiosQuery.data?.studios ?? []).filter((s) => s.enabled)
+  const cards = studiosQuery.data?.studios ?? []
 
   return (
     <div className="min-h-dvh bg-[var(--osc-bg)]">
@@ -590,7 +529,7 @@ function HomePage() {
           <p className="mb-3 text-[11px] font-medium tracking-[0.16em] text-[var(--osc-text-faint)] uppercase">Companion</p>
           <h1 className="text-[2.15rem] leading-[1.1] font-semibold tracking-[-0.04em] text-[var(--osc-text)] sm:text-[2.5rem]">Studios</h1>
           <p className="mt-3 max-w-md text-[15px] leading-relaxed text-[var(--osc-text-muted)]">
-            Open a domain viewer. Manage enablement from the menu.
+            Open CAD or PCB. Design with the Agent — viewers update as artifacts land in the workspace.
           </p>
         </div>
 
@@ -616,19 +555,6 @@ function HomePage() {
               {`opencode-studio upgrade`}
             </pre>
           </div>
-        )}
-
-        {!studiosQuery.isLoading && cards.length === 0 && (
-          <EmptyState
-            className="py-20"
-            title="No studios enabled"
-            description="Turn on CAD or PCB for domain viewers. Media tools and the Files explorer are always available."
-            action={
-              <Button type="button" onClick={openSettings}>
-                Open settings
-              </Button>
-            }
-          />
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -744,12 +670,23 @@ function StudioFrame() {
       </div>
     )
   }
-  if (!studiosQuery.data?.enabled.includes(studioId)) {
+  if (!isStudioId(studioId)) {
     return <Navigate to="/" replace />
+  }
+  if (studiosQuery.isError || !studiosQuery.data) {
+    return (
+      <div className="flex min-h-dvh flex-col bg-[var(--osc-bg)]">
+        <TopBar studioLabel="Studio" studioId={studioId} onMenu={() => setDrawerOpen(true)} />
+        <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
+        <p className="p-8 text-sm text-[var(--osc-error)]" role="alert">
+          Failed to load studio host: {(studiosQuery.error as Error)?.message ?? "unknown error"}
+        </p>
+      </div>
+    )
   }
 
   const card = studiosQuery.data.studios.find((s) => s.id === studioId)
-  const Viewer = isStudioId(studioId) ? viewerLoaders[studioId] : undefined
+  const Viewer = viewerLoaders[studioId]
   const page = Viewer ? <Viewer /> : <p className="p-8 text-sm">Unknown studio</p>
   const label = card?.label ?? studioId
   const nativeAvailable = studiosQuery.data.nativeOpenCodeAvailable

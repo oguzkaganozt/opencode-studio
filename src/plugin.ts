@@ -1,9 +1,9 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } from "./config"
+import { allStudioIds, maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } from "./config"
 import { ensureForgeRuntimeDir, loadPackageMeta } from "./core/package-meta"
 import { packageRootFrom } from "./core/paths"
 import { composeStudioPlugins, type StudioPluginContribution } from "./core/plugin-compose"
-import { PLATFORM_OWNER, type StudioId } from "./core/registry"
+import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
@@ -23,13 +23,13 @@ export type StudioPluginOptions = UserPathOptions & {
   packageRoot?: string
 }
 
-async function resolveEnabled(userPaths: UserPathOptions = {}, domainRoot?: string) {
+async function resolveRoots(userPaths: UserPathOptions = {}, domainRoot?: string) {
   if (domainRoot) {
     try {
       const migrated = await maybeMigrateLegacyConfig(domainRoot, userPaths)
       if (migrated.migrated) {
         console.error(
-          `[opencode-studio] migrated enablement from ${migrated.legacyPath} → ${migrated.config.configPath}. Run opencode-studio configure to finish cleanup.`,
+          `[opencode-studio] migrated roots from ${migrated.legacyPath} → ${migrated.config.configPath}. Run opencode-studio repair to finish cleanup.`,
         )
       }
     } catch (error) {
@@ -39,10 +39,9 @@ async function resolveEnabled(userPaths: UserPathOptions = {}, domainRoot?: stri
   }
   const config = await readStudioConfigFile(userPaths)
   if (config.error) {
-    console.error(`[opencode-studio] configuration error (domains off, platform on): ${config.error}`)
-    return { enabled: [] as StudioId[], roots: {}, error: config.error }
+    console.error(`[opencode-studio] studio.json error (domains still on): ${config.error}`)
   }
-  return { enabled: config.enabled, roots: config.roots, error: undefined as string | undefined }
+  return { roots: config.roots, error: config.error }
 }
 
 export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): Plugin {
@@ -62,7 +61,7 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
         ? rawOptions.hostUrl.replace(/\/$/, "")
         : (defaults.hostUrl ?? hostUrlFromEnv())
 
-    const { enabled, roots, error } = await resolveEnabled(userPaths, workspace)
+    const { roots } = await resolveRoots(userPaths, workspace)
 
     const contributions: StudioPluginContribution[] = []
     const loadCtx = {
@@ -75,7 +74,7 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       ensureForgeRuntimeDir,
     }
 
-    // Platform media is always on (even when no domain studios / config error).
+    // Platform media is always on.
     try {
       const platformPlugin = await loadPlatformMediaPlugin({
         workspace,
@@ -88,17 +87,16 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       throw new Error(`opencode-studio: failed to initialize platform media: ${message}`)
     }
 
-    if (!error) {
-      for (const studioId of enabled) {
-        try {
-          const load = pluginLoaders[studioId]
-          const plugin = await load(loadCtx)
-          contributions.push({ studioId, hooks: await plugin(context, {}) })
-        } catch (loadError) {
-          const message = loadError instanceof Error ? loadError.message : String(loadError)
-          console.error(`[opencode-studio] failed to initialize studio "${studioId}": ${message}`)
-          throw new Error(`opencode-studio: failed to initialize studio "${studioId}": ${message}`)
-        }
+    // Domain studios are always on (full catalog).
+    for (const studioId of allStudioIds()) {
+      try {
+        const load = pluginLoaders[studioId]
+        const plugin = await load(loadCtx)
+        contributions.push({ studioId, hooks: await plugin(context, {}) })
+      } catch (loadError) {
+        const message = loadError instanceof Error ? loadError.message : String(loadError)
+        console.error(`[opencode-studio] failed to initialize studio "${studioId}": ${message}`)
+        throw new Error(`opencode-studio: failed to initialize studio "${studioId}": ${message}`)
       }
     }
 

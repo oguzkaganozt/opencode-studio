@@ -165,7 +165,7 @@ async function browserSmoke(base: string) {
     await page.waitForSelector("text=CAD Studio")
     await page.getByRole("button", { name: "Open menu" }).click()
     await page.getByRole("button", { name: "Settings" }).click()
-    await page.waitForSelector("text=Save studios")
+    await page.waitForSelector("text=Repair install")
     await page.getByRole("button", { name: "Close menu" }).click()
     await assertTailwindUtilities(page)
     await assertThemeTokens(page)
@@ -265,7 +265,6 @@ try {
     workspace: domain,
     studioConfigHome,
     openCodeHome,
-    enabled: [...STUDIO_IDS],
     packageRoot: root,
     validateOpenCode: false,
   })

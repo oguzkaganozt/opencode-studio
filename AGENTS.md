@@ -40,14 +40,15 @@ Catalog IDs (`src/core/registry.ts`): `cad` \| `pcb`. Composition order: platfor
 
 Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsconfig + Vite). Viewer tokens: single source `ui/tokens.css` — import via `@import "@ui/tokens.css"`; do not copy into studios. Shared viewer UI primitives live under `ui/components/` and `ui/lib/` — import via `@ui/…`; no cross-studio imports.
 
-## Config (fail-closed) — config global, data local
+## Config — always-on domains, config global, data local
 
-- Studio enablement: `~/.config/opencode-studio/studio.json` → `{ "enabled": ["cad", "pcb"] }`. Missing/invalid → **no domain studios**; platform media tools + Files explorer stay on.
-- Optional `roots.<id>` must be **absolute** paths. CAD/PCB **data** roots default to the domain workspace (`serve --workspace` / OpenCode `context.directory`), not the config home.
-- `opencode-studio configure …` writes managed skills under `~/.config/opencode/skills/<id>-studio/` (marker `.opencode-studio-managed.json`), registers the plugin + media-go **without version pins**, installs the platform `media` skill, and (when cad enabled) manages MCP key `build123d`. Domain studios only: cad/pcb. Does **not** write into project directories.
+- **CAD and PCB are always on** (full catalog). No enable/disable toggle. Platform media + Files stay on too.
+- Optional `~/.config/opencode-studio/studio.json` holds **roots only**: `{ "roots": { "cad": "/abs", "pcb": "/abs" } }`. Missing file is fine. Legacy `enabled` is ignored.
+- CAD/PCB **data** roots default to the domain workspace (`serve --workspace` / OpenCode `context.directory`), not the config home. `roots.<id>` must be **absolute**.
+- Global `npm i -g` / `bun add -g` **postinstall** runs `repair` once (soft; never fails install): managed skills under `~/.config/opencode/skills/<id>-studio/` (marker `.opencode-studio-managed.json`), plugin + media-go **without version pins**, platform `media` skill, MCP `build123d`. Does **not** write into project directories. Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1` or `OPENCODE_STUDIO_SKIP_CONFIGURE=1`.
+- `opencode-studio repair` and UI **Repair install** / `PUT /api/config` re-run the same install (loopback + CSRF). **`serve` does not repair.** Restart **OpenCode** after install so plugins/skills load.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
-- After configure via home UI Apply: host hot-reloads studio APIs; restart **OpenCode** only. CLI `configure` does not notify a running host — restart serve too (or Apply from the UI).
-- Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` clears **user-global** enablement.
+- Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` **uninstalls** managed plugins/skills/MCP from OpenCode home (not the npm package).
 - Host bind modes: `serve --local` (default, `127.0.0.1`) or `serve --web` (`0.0.0.0`). Web mode requires `OPENCODE_STUDIO_PASSWORD` at startup. The integrated agent lazily starts one loopback OpenCode sidecar per host (or attaches via `OPENCODE_STUDIO_OPENCODE_URL`) and pins requests to `serve --workspace`. Native OpenCode HTTP/SSE/WebSocket traffic from an owned sidecar is proxied at `/`; Studio lives at `/studio`. The Studio Agent panel is a same-origin iframe of that native UI (lazy on first open, stays mounted). Native proxying and the embedded Agent UI are disabled in attach mode to prevent shared-server event leakage — use the external server’s own URL. All Studio HTTP writes use CSRF + Origin checks. Non-loopback native OpenCode access uses HTTP Basic (username `opencode-studio`); domain studio read APIs remain public on loopback; /api/files requires Basic auth off-loopback. Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`; TLS and multi-user authorization remain out of scope.
 
 ## Hard rules
@@ -60,7 +61,7 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 - Viewer CSS: Vite root is `ui/`, so Tailwind only auto-scans `ui/**`. `ui/styles.css` registers `@source "../studios"` and each studio `styles.css` carries `@source "."` — keep both when adding a studio or its utilities silently never generate.
 - Viewer framing: `.studio-shell` is `flex min-h-dvh flex-col`; studio viewer roots must be `flex-1 min-h-0` (files explorer uses flex-1 min-h-0). Never `h-full`/`min-h-screen` on viewer roots and never style `.studio-shell` from studio CSS — that breaks the height chain.
 - CAD forge runs from XDG cache (`ensureForgeRuntimeDir`), not in-package; source is `studios/cad/forge/` (Python, excluded from tsc/biome). Example designs live under `studios/cad/designs/`; organic benchmark under `studios/cad/benchmarks/` (both excluded from biome; required by `bun run test:python`).
-- PCB authoring fixtures under `studios/pcb/authoring/` are excluded from tsc/biome. Domain engines ship with the package: `ffmpeg`/`ffprobe` (static), `tsci` (`tscircuit`), `uv` (downloaded to XDG cache on first use). Studio enable/disable does not install engines.
+- PCB authoring fixtures under `studios/pcb/authoring/` are excluded from tsc/biome. Domain engines ship with the package: `ffmpeg`/`ffprobe` (static), `tsci` (`tscircuit`), `uv` (downloaded to XDG cache on first use). Engines are not gated by config.
 - Exports: `.` plugin, `./media-provider`, `./media-go`. Build entrypoints in `scripts/build.ts`; do not commit `dist/`.
 
 ## Verify before done

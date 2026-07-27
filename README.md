@@ -4,7 +4,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 
 **Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
-Installing the package enables **no domain Studio** until you configure one. After `configure` (even with an empty set / `remove`), the main plugin + media-go stay registered without a version pin and the platform `media` skill remains installed — media tools are always on.
+**CAD and PCB are always on.** Global install runs `repair` once (plugins, skills, CAD MCP into OpenCode home). Media tools and the Files explorer are always on too.
 
 ## Install
 
@@ -16,15 +16,13 @@ bun add -g @oguzkaganozt/opencode-studio
 
 Requires **Bun ≥ 1.3** (CLI runtime).
 
-Domain engines ship with the npm package (not tied to which Studio you enable):
+Domain engines ship with the npm package:
 
 | Engine | Source |
 | --- | --- |
 | `ffmpeg` / `ffprobe` | `ffmpeg-static` / `ffprobe-static` |
 | `tsci` | bundled `tscircuit` CLI |
-| `uv` | downloaded once into XDG cache on first CAD/doctor use |
-
-Enable/disable Studios only toggles tools/skills/APIs — it does not install or remove engines.
+| `uv` | downloaded once into XDG cache on first CAD/status use |
 
 ## Quick start
 
@@ -34,9 +32,7 @@ opencode-studio serve
 opencode-studio serve --workspace /path/to/project
 ```
 
-Open [http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio) → tick the Studios you want → **Apply selection**.
-
-The host reloads studio APIs on Apply. Restart **OpenCode** so plugins and skills match.
+Open [http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio) — CAD and PCB are ready. Restart **OpenCode** after install so plugins and skills load. If install skipped setup: `opencode-studio repair`.
 
 Each Studio pairs a domain viewer with an embedded OpenCode agent panel (same-origin iframe of the native OpenCode web UI). The host lazily starts one loopback OpenCode sidecar for the selected `--workspace`, using your existing OpenCode configuration, providers, plugins, and skills. Native OpenCode requests are pinned to that same workspace. The Agent iframe mounts on first open and stays mounted while you switch studios.
 
@@ -59,26 +55,24 @@ OPENCODE_STUDIO_PASSWORD='choose-a-strong-password' \
 
 Open `http://<server-ip>:4173/studio` and open **Agent** — the browser prompts for HTTP Basic credentials (username `opencode-studio`, password = `OPENCODE_STUDIO_PASSWORD`). The same credentials unlock `http://<server-ip>:4173/` and `/api/files/*` (Files explorer). Keep the host behind a trusted network or VPN; this password does not add TLS.
 
-Enablement is **user-global** — you only configure once. `--workspace` is the domain data root (where designs/boards live), not a per-project config file.
+Install is **user-global** — postinstall repairs once; run `repair` only if needed. `--workspace` is the domain data root (where designs/boards live), not a per-project config file.
 
 ### Config (global)
 
-Written by the home UI (or CLI):
-
 | File | Purpose |
 | --- | --- |
-| `~/.config/opencode-studio/studio.json` | `{ "enabled": ["cad", "pcb"] }` + optional absolute `roots` |
+| `~/.config/opencode-studio/studio.json` | Optional absolute `roots` only (domains always on) |
 | `~/.config/opencode/opencode.json` | Unversioned plugin registrations + managed `build123d` MCP |
 | `~/.config/opencode/skills/<id>-studio/` | Managed domain skills (`cad-studio`, `pcb-studio`) |
-| `~/.config/opencode/skills/media/` | Always-on platform media skill |
+| `~/.config/opencode/skills/media/` | Platform media skill |
 
 ```json
-{ "enabled": ["cad", "pcb"] }
+{ "roots": { "cad": "/absolute/path" } }
 ```
 
-Missing/invalid config → no domain studios (fail-closed for CAD/PCB). Platform media tools and Files explorer stay available. Media paths are workspace-scoped.
+Missing `studio.json` is fine. Media paths are workspace-scoped.
 
-**Upgrade from project-local config:** if `~/.config/opencode-studio/studio.json` is missing and the domain still has `.opencode/studio.json`, enablement is migrated automatically on `serve` / plugin load. Run `opencode-studio configure <studios…>` once to finish (registers global plugins/skills and scrubs leftover project `opencode.json` / skills). Or delete old project files after configure.
+**Upgrade from project-local config:** if global config is missing and the domain still has `.opencode/studio.json` with roots, roots are migrated on `serve` / plugin load. Run `opencode-studio repair` once to finish (registers global plugins/skills and scrubs leftover project files).
 
 ### Background service (Linux systemd user)
 
@@ -99,31 +93,19 @@ After logout, if the unit stops: `loginctl enable-linger $USER`.
 
 While `serve` is running, the home page shows a banner when a newer npm version exists (also logged to the service journal).
 
-### CLI (optional)
+### CLI
 
 ```bash
 opencode-studio serve [--workspace <path>] [--local|--web] [--port <port>]
+opencode-studio status [--workspace <path>]     # health + version (exit 1 if broken)
+opencode-studio repair [--workspace <path>]     # reinstall plugins/skills/MCP
+opencode-studio remove                          # uninstall managed OpenCode state
+opencode-studio upgrade [--check]
 opencode-studio service install|uninstall|start|stop|restart|status [...]
-opencode-studio upgrade [--check]                              # npm i -g @latest; restart unit if present
-opencode-studio status|doctor|version [--workspace <path>]
-opencode-studio configure <studios...> [--workspace <path>]   # same as home UI Apply (global)
-opencode-studio remove                                         # clear all studios (global)
-opencode-studio completion bash|zsh|install
-opencode-studio --help | --version
+opencode-studio --help | -v
 ```
 
-Tab completion:
-
-```bash
-# Automatic on: npm i -g @oguzkaganozt/opencode-studio
-# (appends eval lines to ~/.bashrc and ~/.zshrc when missing)
-
-# Manual / repair
-opencode-studio completion install
-
-# Skip automatic install
-OPENCODE_STUDIO_SKIP_COMPLETION=1 npm i -g @oguzkaganozt/opencode-studio
-```
+Shell completion is installed automatically on global `npm i -g` (scripts under `~/.config/opencode-studio/`). Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1`.
 
 Open a new shell after install (or `source ~/.bashrc`).
 

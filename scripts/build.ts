@@ -6,7 +6,7 @@ const outdir = path.join(root, "dist")
 await rm(outdir, { recursive: true, force: true })
 await mkdir(outdir, { recursive: true })
 
-const entrypoints = ["plugin", "cli", "server", "media-provider", "media-go-plugin"].map((name) =>
+const entrypoints = ["plugin", "cli", "server", "media-provider", "media-go-plugin", "ensure-completion"].map((name) =>
   path.join(root, "src", `${name === "media-go-plugin" ? "media-go-plugin" : name}.ts`),
 )
 
@@ -37,5 +37,10 @@ const goDest = path.join(outdir, "media-go.js")
 if (await Bun.file(goSrc).exists()) {
   await writeFile(goDest, await readFile(goSrc))
 }
+
+// Static shell completions for postinstall (no CLI completion command).
+const { bashCompletionScript, zshCompletionScript } = await import("../src/completion")
+await writeFile(path.join(outdir, "completion.bash"), bashCompletionScript())
+await writeFile(path.join(outdir, "completion.zsh"), zshCompletionScript())
 
 console.log("Runtime build complete")

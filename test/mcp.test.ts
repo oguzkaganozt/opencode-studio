@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { configureStudios } from "../src/lifecycle"
+import { configureStudios, removeStudios } from "../src/lifecycle"
 
 const packageRoot = path.resolve(import.meta.dir, "..")
 const temps: string[] = []
@@ -24,14 +24,14 @@ async function isolated() {
 }
 
 describe("CAD MCP management", () => {
-  test("enables and removes managed build123d entry", async () => {
+  test("installs managed build123d and remove uninstalls it", async () => {
     const ctx = await isolated()
-    await configureStudios({ ...ctx, enabled: ["cad"], validateOpenCode: false })
+    await configureStudios({ ...ctx, validateOpenCode: false })
     const config = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     expect(config.mcp.build123d.type).toBe("local")
     expect(config.mcp.build123d.command.join(" ")).toContain("build123d-mcp@0.3.77")
 
-    await configureStudios({ ...ctx, enabled: [], validateOpenCode: false })
+    await removeStudios({ ...ctx, validateOpenCode: false })
     const removed = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     expect(removed.mcp?.build123d).toBeUndefined()
   })
@@ -43,6 +43,6 @@ describe("CAD MCP management", () => {
       path.join(ctx.openCodeHome, "opencode.json"),
       JSON.stringify({ mcp: { build123d: { type: "remote", url: "https://example.com" } } }, null, 2),
     )
-    await expect(configureStudios({ ...ctx, enabled: ["cad"], validateOpenCode: false })).rejects.toThrow(/Conflict: mcp/)
+    await expect(configureStudios({ ...ctx, validateOpenCode: false })).rejects.toThrow(/Conflict: mcp/)
   })
 })

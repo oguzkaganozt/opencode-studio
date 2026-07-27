@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import {
+  allStudioIds,
   legacyStudioConfigPath,
-  parseStudioConfigStrict,
   readLegacyStudioConfig,
   readStudioConfigFile,
   resolveStudioRoot,
@@ -365,77 +365,55 @@ async function scrubProjectLocalManagedState(input: {
   return cleaned
 }
 
+/**
+ * Install OpenCode plugins, all domain skills, platform media skill, and CAD MCP.
+ * Domains (cad/pcb) are always on — no enable list.
+ */
 export async function configureStudios(
   input: {
-    enabled: string[]
     roots?: Partial<Record<StudioId, string>>
     dryRun?: boolean
     validateOpenCode?: boolean
-  } & LifecyclePaths,
+  } & LifecyclePaths = {},
 ) {
   assertNotRoot("configure")
 
   const userPaths = pickUserPaths(input)
-  const enabled = parseStudioConfigStrict({ enabled: input.enabled, roots: input.roots }).enabled
+  const enabled = allStudioIds()
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
   const meta = await loadPackageMeta(packageRoot)
   const previous = await readStudioConfigFile(userPaths)
-  // Scrub legacy roots (media/startup) from previous config
   const desiredRoots: Partial<Record<StudioId, string>> = {}
   const rootSource = input.roots ?? previous.roots
   for (const id of STUDIO_IDS) {
     if (rootSource[id]) desiredRoots[id] = rootSource[id]!
   }
 
-  // Domain root is data-local. Optional when clearing all studios (remove).
-  let domainRoot: string | null
-  if (enabled.length === 0) {
-    domainRoot = await resolveDomainRootOptional(input.workspace)
-  } else {
-    domainRoot = await resolveWorkspace(input.workspace)
-  }
+  const domainRoot = await resolveWorkspace(input.workspace)
 
-  // Preflight domain roots (data local)
-  if (domainRoot) {
+  if (!input.dryRun) {
     for (const studioId of enabled) {
       const def = getStudioDefinition(studioId)
-      if (input.dryRun) continue
       await resolveStudioRoot({ studioId, workspace: domainRoot, roots: desiredRoots, create: def.root.create })
     }
   }
 
   const platformTarget = platformMediaSkillTarget(packageRoot)
-
-  // Preflight skills for enable and disable (domain studios + always-on platform media)
   await preflightSkill(platformTarget, userPaths)
   for (const studioId of STUDIO_IDS) {
-    const target = studioSkillTarget(studioId, packageRoot)
-    const paths = skillPathsFor(target, userPaths)
-    const existingDigest = await currentSkillDigest(paths.skillFile)
-    const marker = await readMarker(paths.markerFile)
-    if (!enabled.includes(studioId)) {
-      if (existingDigest && !marker) throw new Error(`Conflict: unmarked skill already exists at ${paths.skillDirectory}`)
-      if (marker && existingDigest && marker.digest !== existingDigest) {
-        throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
-      }
-    } else {
-      await preflightSkill(target, userPaths)
-    }
+    await preflightSkill(studioSkillTarget(studioId, packageRoot), userPaths)
   }
 
   const configPath = await resolveOpenCodeConfigPath(userPaths)
   const openCode = await readOpenCodeConfig(configPath)
   let plugins = [...pluginEntries(openCode)]
 
-  // Strip current + legacy package plugin entries (any version / subpath)
   plugins = plugins.filter((entry) => {
     const base = pluginBaseName(entry)
     if (!base) return true
     if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
     return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
-  // Platform is always registered without a version pin, so upgrades do not
-  // leave OpenCode loading an older package.
   plugins.push(meta.pluginSpecifier)
   plugins.push(`${meta.name}/media-go`)
 
@@ -443,20 +421,12 @@ export async function configureStudios(
   let workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
   let working = { ...openCode, text: nextText, value: workingValue }
 
-  // CAD MCP management
   const mcp = mcpEntries(working)
   const existingMcp = mcp[MANAGED_MCP_KEY]
-  if (enabled.includes("cad")) {
-    if (existingMcp && !isManagedBuild123dEntry(existingMcp)) {
-      throw new Error(`Conflict: mcp.${MANAGED_MCP_KEY} exists and is not the managed build123d-mcp entry`)
-    }
-    mcp[MANAGED_MCP_KEY] = { ...BUILD123D_MCP }
-  } else if (existingMcp) {
-    if (!isManagedBuild123dEntry(existingMcp)) {
-      throw new Error(`Conflict: mcp.${MANAGED_MCP_KEY} exists and is not the managed build123d-mcp entry`)
-    }
-    delete mcp[MANAGED_MCP_KEY]
+  if (existingMcp && !isManagedBuild123dEntry(existingMcp)) {
+    throw new Error(`Conflict: mcp.${MANAGED_MCP_KEY} exists and is not the managed build123d-mcp entry`)
   }
+  mcp[MANAGED_MCP_KEY] = { ...BUILD123D_MCP }
   nextText = configWithMcp({ ...working, text: nextText }, mcp)
   workingValue = { ...workingValue, mcp }
   working = { ...working, text: nextText, value: workingValue }
@@ -465,7 +435,7 @@ export async function configureStudios(
     return {
       action: "configure" as const,
       dryRun: true,
-      workspace: domainRoot ?? undefined,
+      workspace: domainRoot,
       enabled,
       plugin: meta.pluginSpecifier,
       restartRequired: true,
@@ -473,11 +443,9 @@ export async function configureStudios(
   }
 
   const installed: string[] = []
-  const removed: string[] = []
   const rollbacks: Array<() => Promise<void>> = []
 
   try {
-    // Always install platform media skill
     {
       const result = await writeManagedSkill({
         target: platformTarget,
@@ -505,14 +473,6 @@ export async function configureStudios(
         await restoreFile(result.paths.markerFile, result.previousMarker)
       })
     }
-    for (const studioId of STUDIO_IDS) {
-      if (enabled.includes(studioId)) continue
-      const target = studioSkillTarget(studioId, packageRoot)
-      const paths = skillPathsFor(target, userPaths)
-      if (!(await Bun.file(paths.skillFile).exists()) && !(await Bun.file(paths.markerFile).exists())) continue
-      await removeManagedSkill(target, userPaths)
-      removed.push(studioId)
-    }
 
     await scrubLegacyMediaSkill(userPaths)
     await scrubLegacyStartupSkill(userPaths)
@@ -525,33 +485,30 @@ export async function configureStudios(
 
     const written = await writeStudioConfigFile(
       {
-        enabled,
         roots: Object.keys(desiredRoots).length > 0 ? desiredRoots : undefined,
       },
       userPaths,
     )
 
     let projectScrubbed: string[] = []
-    if (domainRoot) {
-      try {
-        projectScrubbed = await scrubProjectLocalManagedState({
-          domainRoot,
-          packageRoot,
-          meta,
-          validateOpenCode: input.validateOpenCode,
-        })
-      } catch {
-        // Non-fatal: global config already applied; doctor will surface leftovers.
-      }
+    try {
+      projectScrubbed = await scrubProjectLocalManagedState({
+        domainRoot,
+        packageRoot,
+        meta,
+        validateOpenCode: input.validateOpenCode,
+      })
+    } catch {
+      // Non-fatal: global config already applied; doctor will surface leftovers.
     }
 
     return {
       action: "configure" as const,
       dryRun: false,
-      workspace: domainRoot ?? undefined,
+      workspace: domainRoot,
       enabled,
       installed,
-      removed,
+      removed: [] as string[],
       plugin: meta.pluginSpecifier,
       configPath: written.configPath,
       openCodeConfigPath: configPath,
@@ -559,10 +516,8 @@ export async function configureStudios(
       projectScrubbed,
       restartRequired: true,
       restartOpenCode: true,
-      // Host hot-reloads when configure is applied via the running serve UI/API.
-      restartHost: true,
-      message:
-        "Configuration applied (user-global). Platform media stays on. Restart OpenCode. If serve is running, it reloads on Apply from the home UI; otherwise restart serve too.",
+      restartHost: false,
+      message: "Installed plugins, CAD/PCB skills, media skill, and build123d MCP (user-global). Restart OpenCode to load tools.",
     }
   } catch (error) {
     for (const rollback of rollbacks.reverse()) {
@@ -572,11 +527,105 @@ export async function configureStudios(
   }
 }
 
+/**
+ * Uninstall managed OpenCode state (domain skills, media skill, managed MCP, package plugins).
+ * CAD/PCB remain always-on in code once the package is registered again via repair.
+ */
 export async function removeStudios(input: LifecyclePaths & { validateOpenCode?: boolean } = {}) {
-  return configureStudios({
-    ...input,
-    enabled: [],
+  assertNotRoot("remove")
+
+  const userPaths = pickUserPaths(input)
+  const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
+  const meta = await loadPackageMeta(packageRoot)
+  const domainRoot = await resolveDomainRootOptional(input.workspace)
+  const previous = await readStudioConfigFile(userPaths)
+  const desiredRoots = previous.roots
+
+  const platformTarget = platformMediaSkillTarget(packageRoot)
+  const skillTargets = [platformTarget, ...STUDIO_IDS.map((id) => studioSkillTarget(id, packageRoot))]
+
+  for (const target of skillTargets) {
+    const paths = skillPathsFor(target, userPaths)
+    const existingDigest = await currentSkillDigest(paths.skillFile)
+    const marker = await readMarker(paths.markerFile)
+    if (existingDigest && !marker) throw new Error(`Conflict: unmarked skill already exists at ${paths.skillDirectory}`)
+    if (marker && existingDigest && marker.digest !== existingDigest) {
+      throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
+    }
+  }
+
+  const configPath = await resolveOpenCodeConfigPath(userPaths)
+  const openCode = await readOpenCodeConfig(configPath)
+  let plugins = [...pluginEntries(openCode)]
+  plugins = plugins.filter((entry) => {
+    const base = pluginBaseName(entry)
+    if (!base) return true
+    if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
+    return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
+
+  let nextText = configWithPlugins(openCode, plugins)
+  const workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
+  const working = { ...openCode, text: nextText, value: workingValue }
+
+  const mcp = mcpEntries(working)
+  const existingMcp = mcp[MANAGED_MCP_KEY]
+  if (existingMcp) {
+    if (!isManagedBuild123dEntry(existingMcp)) {
+      throw new Error(`Conflict: mcp.${MANAGED_MCP_KEY} exists and is not the managed build123d-mcp entry`)
+    }
+    delete mcp[MANAGED_MCP_KEY]
+  }
+  nextText = configWithMcp({ ...working, text: nextText }, mcp)
+
+  const removed: string[] = []
+  for (const target of skillTargets) {
+    const paths = skillPathsFor(target, userPaths)
+    if (!(await Bun.file(paths.skillFile).exists()) && !(await Bun.file(paths.markerFile).exists())) continue
+    await removeManagedSkill(target, userPaths)
+    removed.push(target.id)
+  }
+
+  await scrubLegacyMediaSkill(userPaths)
+  await scrubLegacyStartupSkill(userPaths)
+
+  if (nextText !== openCode.text) {
+    await atomicWriteOpenCodeConfig(configPath, nextText, openCode.exists ? openCode.text : "", {
+      validate: input.validateOpenCode !== false,
+    })
+  }
+
+  const written = await writeStudioConfigFile({ roots: Object.keys(desiredRoots).length > 0 ? desiredRoots : undefined }, userPaths)
+
+  if (domainRoot) {
+    try {
+      await scrubProjectLocalManagedState({
+        domainRoot,
+        packageRoot,
+        meta,
+        validateOpenCode: input.validateOpenCode,
+      })
+    } catch {
+      // non-fatal
+    }
+  }
+
+  return {
+    action: "remove" as const,
+    dryRun: false,
+    workspace: domainRoot ?? undefined,
+    enabled: allStudioIds(),
+    installed: [] as string[],
+    removed,
+    plugin: meta.pluginSpecifier,
+    configPath: written.configPath,
+    openCodeConfigPath: configPath,
+    skillsHome: resolveOpenCodeSkillsHome(userPaths),
+    restartRequired: true,
+    restartOpenCode: true,
+    restartHost: false,
+    message: "Removed managed plugins, skills, and build123d MCP. Restart OpenCode. Run repair to reinstall.",
+  }
 }
 
 export async function statusStudios(input: LifecyclePaths = {}) {
@@ -605,7 +654,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       id: studioId,
       label: def.label,
       description: def.description,
-      enabled: config.enabled.includes(studioId),
+      enabled: true,
       root,
       rootError,
       requiredEngines: def.requiredEngines,
@@ -613,26 +662,8 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       skillInstalled,
     })
   }
-  return {
-    workspace: domainRoot,
-    configPath: config.configPath,
-    configHome: config.configHome,
-    configError: config.error,
-    enabled: config.enabled,
-    plugin: meta.pluginSpecifier,
-    studios,
-    restartRequiredHint: "After configure changes, restart OpenCode. The studio host hot-reloads when you Apply from the home UI.",
-  }
-}
 
-export async function doctorStudios(input: LifecyclePaths = {}) {
-  const userPaths = pickUserPaths(input)
-  const domainRoot = await resolveWorkspace(input.workspace)
-  const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
-  const meta = await loadPackageMeta(packageRoot)
-  const config = await readStudioConfigFile(userPaths)
   const checks: StudioDoctorCheck[] = []
-
   checks.push({
     id: "package",
     status: "pass",
@@ -643,21 +674,17 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
     checks.push({
       id: "config",
       status: "warn",
-      message: `Domain config error (platform media still on): ${config.error}`,
+      message: `studio.json error (domains still on; roots ignored): ${config.error}`,
       repair: `Fix or remove ${config.configPath}`,
     })
   } else {
     checks.push({
       id: "config",
       status: "pass",
-      message:
-        config.enabled.length === 0
-          ? `No domain studios enabled (platform media on) — ${config.configPath}`
-          : `Enabled: ${config.enabled.join(", ")} (${config.configPath})`,
+      message: `Domains always on: ${config.enabled.join(", ")} (${config.configPath})`,
     })
   }
 
-  // Upgrade leftovers under the domain root
   const legacyPath = legacyStudioConfigPath(domainRoot)
   const legacy = await readLegacyStudioConfig(domainRoot)
   if (legacy) {
@@ -665,7 +692,7 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
       id: "legacy-project-config",
       status: "warn",
       message: `Legacy project config still present: ${legacyPath}`,
-      repair: "Run opencode-studio configure <studios...> (scrubs project files) or delete the legacy path",
+      repair: "Run opencode-studio repair (scrubs project files) or delete the legacy path",
     })
   }
   for (const studioId of STUDIO_IDS) {
@@ -675,7 +702,7 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
         id: `legacy-project-skill:${studioId}`,
         status: "warn",
         message: `Project-local skill leftover: ${skillDir}`,
-        repair: "Run opencode-studio configure … to scrub, or delete the directory",
+        repair: "Run opencode-studio repair to scrub, or delete the directory",
       })
     }
   }
@@ -695,7 +722,7 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
           id: "legacy-project-opencode",
           status: "warn",
           message: `Project OpenCode config still pins studio plugin/MCP: ${projectOpenCode}`,
-          repair: "Run opencode-studio configure … to scrub managed entries, or edit the file",
+          repair: "Run opencode-studio repair to scrub managed entries, or edit the file",
         })
       }
     }
@@ -720,13 +747,13 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
       id: "plugin-registration",
       status: registered ? "pass" : "warn",
       message: registered ? `Plugin registered in ${openCodePath}` : `Plugin not registered in ${openCodePath}`,
-      repair: registered ? undefined : "Run opencode-studio configure <studios...>",
+      repair: registered ? undefined : "Run opencode-studio repair",
     })
     checks.push({
       id: "plugin-media-go",
       status: mediaGo || !registered ? (mediaGo ? "pass" : "warn") : "warn",
       message: mediaGo ? "media-go auxiliary plugin registered" : "media-go not registered",
-      repair: mediaGo ? undefined : "Run opencode-studio configure …",
+      repair: mediaGo ? undefined : "Run opencode-studio repair",
     })
   } catch (error) {
     checks.push({
@@ -736,7 +763,6 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
     })
   }
 
-  // Platform media skill + engines (always expected when configured)
   {
     const target = platformMediaSkillTarget(packageRoot)
     const paths = skillPathsFor(target, userPaths)
@@ -744,13 +770,13 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
     const marker = await readMarker(paths.markerFile)
     const sourceDigest = await skillDigest(paths.sourceSkillFile)
     if (!existingDigest) {
-      checks.push({ id: "skill:media", status: "warn", message: `Missing skill ${paths.skillFile}`, repair: "Re-run configure" })
+      checks.push({ id: "skill:media", status: "warn", message: `Missing skill ${paths.skillFile}`, repair: "Run opencode-studio repair" })
     } else if (!marker) {
       checks.push({ id: "skill:media", status: "fail", message: `Unmarked skill at ${paths.skillDirectory}` })
     } else if (marker.digest !== existingDigest) {
       checks.push({ id: "skill:media", status: "fail", message: `User-modified skill at ${paths.skillFile}` })
     } else if (marker.digest !== sourceDigest) {
-      checks.push({ id: "skill:media", status: "warn", message: "Skill version drift for media", repair: "Re-run configure" })
+      checks.push({ id: "skill:media", status: "warn", message: "Skill version drift for media", repair: "Run opencode-studio repair" })
     } else {
       checks.push({ id: "skill:media", status: "pass", message: "media skill installed" })
     }
@@ -781,7 +807,7 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
     }
   }
 
-  for (const studioId of config.enabled) {
+  for (const studioId of STUDIO_IDS) {
     const def = getStudioDefinition(studioId)
     const target = studioSkillTarget(studioId, packageRoot)
     const paths = skillPathsFor(target, userPaths)
@@ -789,13 +815,23 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
     const marker = await readMarker(paths.markerFile)
     const sourceDigest = await skillDigest(paths.sourceSkillFile)
     if (!existingDigest) {
-      checks.push({ id: `skill:${studioId}`, status: "fail", message: `Missing skill ${paths.skillFile}`, repair: "Re-run configure" })
+      checks.push({
+        id: `skill:${studioId}`,
+        status: "fail",
+        message: `Missing skill ${paths.skillFile}`,
+        repair: "Run opencode-studio repair",
+      })
     } else if (!marker) {
       checks.push({ id: `skill:${studioId}`, status: "fail", message: `Unmarked skill at ${paths.skillDirectory}` })
     } else if (marker.digest !== existingDigest) {
       checks.push({ id: `skill:${studioId}`, status: "fail", message: `User-modified skill at ${paths.skillFile}` })
     } else if (marker.digest !== sourceDigest) {
-      checks.push({ id: `skill:${studioId}`, status: "warn", message: `Skill version drift for ${studioId}`, repair: "Re-run configure" })
+      checks.push({
+        id: `skill:${studioId}`,
+        status: "warn",
+        message: `Skill version drift for ${studioId}`,
+        repair: "Run opencode-studio repair",
+      })
     } else {
       checks.push({ id: `skill:${studioId}`, status: "pass", message: `${def.skill} installed` })
     }
@@ -841,11 +877,30 @@ export async function doctorStudios(input: LifecyclePaths = {}) {
 
   const failed = checks.some((check) => check.status === "fail")
   return {
+    packageName: meta.name,
+    packageVersion: meta.version,
     workspace: domainRoot,
     configPath: config.configPath,
-    package: meta.pluginSpecifier,
+    configHome: config.configHome,
+    configError: config.error,
+    enabled: allStudioIds(),
+    plugin: meta.pluginSpecifier,
+    studios,
     checks,
     ok: !failed,
+    restartRequiredHint: "After repair, restart OpenCode so plugins and skills load.",
+  }
+}
+
+/** @deprecated Use statusStudios — kept for /api/doctor shape. */
+export async function doctorStudios(input: LifecyclePaths = {}) {
+  const status = await statusStudios(input)
+  return {
+    workspace: status.workspace,
+    configPath: status.configPath,
+    package: status.plugin,
+    checks: status.checks,
+    ok: status.ok,
   }
 }
 

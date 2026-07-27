@@ -22,12 +22,17 @@ async function capture(fn: () => Promise<number>) {
 }
 
 describe("cli surface", () => {
-  test("root help lists commands", async () => {
+  test("root help lists core commands", async () => {
     const { code, logs } = await capture(() => main([]))
     expect(code).toBe(0)
-    expect(logs).toContain("configure")
+    expect(logs).toContain("serve")
+    expect(logs).toContain("status")
+    expect(logs).toContain("repair")
     expect(logs).toContain("upgrade")
-    expect(logs).toContain("version")
+    expect(logs).toContain("remove")
+    expect(logs).not.toContain("configure")
+    expect(logs).not.toContain("doctor")
+    expect(logs).not.toContain("completion")
   })
 
   test("subcommand --help works", async () => {
@@ -37,10 +42,15 @@ describe("cli surface", () => {
     expect(logs).toContain("--check")
   })
 
-  test("configure without studios is rejected", async () => {
-    const { code, errs } = await capture(() => main(["configure"]))
-    expect(code).toBe(2)
-    expect(errs).toContain("remove")
+  test("repair help describes reinstall", async () => {
+    const { code, logs } = await capture(() => main(["repair", "--help"]))
+    expect(code).toBe(0)
+    expect(logs).toContain("Reinstall")
+  })
+
+  test("configure aliases to repair", async () => {
+    const { errs } = await capture(() => main(["configure", "--help"]))
+    expect(errs).toContain("repair")
   })
 
   test("--version prints a semver-like string", async () => {
@@ -49,10 +59,10 @@ describe("cli surface", () => {
     expect(logs.trim()).toMatch(/^\d+\.\d+\.\d+/)
   })
 
-  test("status includes package line", async () => {
-    const { code, logs } = await capture(() => main(["status"]))
-    expect(code).toBe(0)
+  test("status includes package and checks", async () => {
+    const { logs } = await capture(() => main(["status"]))
     expect(logs).toContain("Package:")
-    expect(logs).toContain("Enabled:")
+    expect(logs).toContain("always on")
+    expect(logs).toContain("Checks:")
   })
 })

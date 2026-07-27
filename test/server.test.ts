@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { configureStudios } from "../src/lifecycle"
+import { STUDIO_IDS } from "../src/core/registry"
 import type { OpenCodeBridge } from "../src/opencode-bridge"
 import { createHostApp, startHost } from "../src/server"
 
@@ -40,14 +40,14 @@ function fakeOpenCodeBridge() {
 }
 
 describe("host server", () => {
-  test("health and fail-closed studios list", async () => {
+  test("health and always-on studios list", async () => {
     const ctx = await isolatedHost()
     const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
     const health = await app.request("http://127.0.0.1:4173/studio-api/health", { headers: { host: "127.0.0.1:4173" } })
     expect(health.status).toBe(200)
     const studios = await app.request("http://127.0.0.1:4173/api/studios", { headers: { host: "127.0.0.1:4173" } })
     const body = await studios.json()
-    expect(body.enabled).toEqual([])
+    expect(body.enabled).toEqual([...STUDIO_IDS])
     expect(body.nativeOpenCodeAvailable).toBe(true)
   })
 
@@ -106,35 +106,35 @@ describe("host server", () => {
     const noOriginNoToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", "content-type": "application/json" },
-      body: JSON.stringify({ enabled: ["pcb"] }),
+      body: JSON.stringify({}),
     })
     expect(noOriginNoToken.status).toBe(403)
 
     const goodOriginBadToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": "wrong" },
-      body: JSON.stringify({ enabled: ["pcb"] }),
+      body: JSON.stringify({}),
     })
     expect(goodOriginBadToken.status).toBe(403)
 
     const badOriginGoodToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://evil.com:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ enabled: ["pcb"] }),
+      body: JSON.stringify({}),
     })
     expect(badOriginGoodToken.status).toBe(403)
 
     const devOrigin = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:5173", "content-type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ enabled: ["pcb"] }),
+      body: JSON.stringify({}),
     })
     expect(devOrigin.status).toBe(200)
 
     const bareOrigin = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1", "content-type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ enabled: ["pcb"] }),
+      body: JSON.stringify({}),
     })
     expect(bareOrigin.status).toBe(403)
   })
@@ -145,7 +145,7 @@ describe("host server", () => {
     const response = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ enabled: ["pcb"], roots: { pcb: "/tmp/evil" } }),
+      body: JSON.stringify({ roots: { pcb: "/tmp/evil" } }),
     })
     expect(response.status).toBe(400)
     const body = await response.json()
@@ -169,7 +169,7 @@ describe("host server", () => {
     const config = await app.request("http://192.168.1.20:4173/api/config", {
       method: "PUT",
       headers: { host: "192.168.1.20:4173", origin: "http://192.168.1.20:4173", "content-type": "application/json" },
-      body: JSON.stringify({ enabled: ["cad"] }),
+      body: JSON.stringify({}),
     })
     expect(config.status).toBe(403)
     expect((await config.json()).error.code).toBe("remote_config_disabled")
@@ -241,30 +241,23 @@ describe("host server", () => {
     }
   })
 
-  test("mounts pcb routes when enabled", async () => {
+  test("mounts domain routes without prior configure", async () => {
     const ctx = await isolatedHost()
-    await configureStudios({
-      ...ctx,
-      enabled: ["pcb"],
-      validateOpenCode: false,
-    })
     const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
-    const response = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
+    const pcb = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
       headers: { host: "127.0.0.1:4173" },
     })
-    expect(response.status).toBe(200)
-    const body = await response.json()
-    expect(Array.isArray(body.projects)).toBe(true)
+    expect(pcb.status).toBe(200)
+    expect(Array.isArray((await pcb.json()).projects)).toBe(true)
+    const cad = await app.request("http://127.0.0.1:4173/api/studios/cad/designs", {
+      headers: { host: "127.0.0.1:4173" },
+    })
+    expect(cad.status).toBe(200)
   })
 
-  test("configure hot-reloads studio API mounts without process restart", async () => {
+  test("repair install returns success and keeps mounts", async () => {
     const ctx = await isolatedHost()
     const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
-
-    const before = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
-      headers: { host: "127.0.0.1:4173" },
-    })
-    expect(before.status).toBe(404)
 
     const applied = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
@@ -274,37 +267,18 @@ describe("host server", () => {
         "content-type": "application/json",
         "x-csrf-token": csrfToken,
       },
-      body: JSON.stringify({ enabled: ["pcb"] }),
+      body: JSON.stringify({}),
     })
     expect(applied.status).toBe(200)
     const appliedBody = await applied.json()
     expect(appliedBody.hostReloaded).toBe(true)
-    expect(appliedBody.restartHost).toBe(false)
     expect(appliedBody.restartOpenCode).toBe(true)
+    expect(appliedBody.enabled).toEqual([...STUDIO_IDS])
 
     const after = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
       headers: { host: "127.0.0.1:4173" },
     })
     expect(after.status).toBe(200)
-    const afterBody = await after.json()
-    expect(Array.isArray(afterBody.projects)).toBe(true)
-
-    const disabled = await app.request("http://127.0.0.1:4173/api/config", {
-      method: "PUT",
-      headers: {
-        host: "127.0.0.1:4173",
-        origin: "http://127.0.0.1:4173",
-        "content-type": "application/json",
-        "x-csrf-token": csrfToken,
-      },
-      body: JSON.stringify({ enabled: [] }),
-    })
-    expect(disabled.status).toBe(200)
-
-    const gone = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
-      headers: { host: "127.0.0.1:4173" },
-    })
-    expect(gone.status).toBe(404)
   })
 
   test("files API is always mounted on loopback without auth", async () => {

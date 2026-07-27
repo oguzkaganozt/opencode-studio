@@ -6,8 +6,8 @@ OpenCode Studio is a modular monolith: one package, one plugin, one host, one Vi
 
 | Surface | Owner | Notes |
 | --- | --- | --- |
-| CLI / config / lifecycle | `src/` | `configure`, `status`, `doctor`, `serve`, `remove` |
-| OpenCode plugin | `src/plugin.ts` | Always composes platform media, then enabled domain studios |
+| CLI / config / lifecycle | `src/` | `serve`, `status`, `repair`, `remove`, `upgrade`, `service` |
+| OpenCode plugin | `src/plugin.ts` | Always composes platform media, then full catalog (`cad`, `pcb`) |
 | Host HTTP | `src/server.ts` | Host checks, CSRF on writes, static UI, native OpenCode proxy, Files API |
 | OpenCode bridge | `src/opencode-bridge.ts` | Lazy loopback sidecar or attach mode; owned-sidecar native proxy + workspace pin |
 | Platform media | `src/platform/media/` | Always-on tools, provider hooks, Files API, `media` skill |
@@ -20,7 +20,7 @@ OpenCode Studio is a modular monolith: one package, one plugin, one host, one Vi
 
 | Concern | Location |
 | --- | --- |
-| Domain enablement + optional absolute `roots` | `~/.config/opencode-studio/studio.json` |
+| Optional absolute `roots` only (domains always on) | `~/.config/opencode-studio/studio.json` |
 | Unversioned plugin registrations + managed MCP | `~/.config/opencode/opencode.json` |
 | Domain skills | `~/.config/opencode/skills/<id>-studio/` |
 | Platform media skill | `~/.config/opencode/skills/media/` |
@@ -28,17 +28,15 @@ OpenCode Studio is a modular monolith: one package, one plugin, one host, one Vi
 | Media files | Same workspace (default dir `media/`) |
 
 ```json
-{ "enabled": ["cad", "pcb"] }
+{ "roots": { "cad": "/absolute/path" } }
 ```
 
-Fail-closed for **domain** studios: missing or invalid config enables no CAD/PCB. Platform media tools + Files explorer remain available.
-
-`remove` / `enabled: []` disables domain studios only. Unversioned main plugin/media-go registrations and the `media` skill stay installed (remove ≠ full uninstall).
+CAD and PCB are **always on**. Missing `studio.json` is fine. Global package install runs `repair` once (plugins/skills/MCP). `serve` does not repair. CLI/UI `repair` is for drift or skipped postinstall. `remove` uninstalls managed OpenCode state (plugins, skills, MCP) — not the npm package.
 
 ## Composition order
 
 1. Platform media (tools + provider hooks) — always
-2. Enabled catalog studios in order: `cad`, `pcb`
+2. Full catalog in order: `cad`, `pcb`
 
 ## Namespaces
 
@@ -60,5 +58,5 @@ Fail-closed for **domain** studios: missing or invalid config enables no CAD/PCB
 
 ## Domain / platform exceptions
 
-- CAD manages a pinned `build123d` MCP entry while enabled.
+- CAD manages a pinned `build123d` MCP entry after configure.
 - Platform media exports `opencode-studio/media-provider` (AI SDK adapter) and `opencode-studio/media-go` (opencode-go provider hook).

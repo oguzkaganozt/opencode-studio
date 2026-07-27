@@ -1,8 +1,26 @@
-import { access, appendFile, mkdir, readFile } from "node:fs/promises"
+import { access, appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { bashCompletionScript, zshCompletionScript } from "./completion"
+import { packageRootFrom } from "./core/paths"
 
 export const COMPLETION_MARKER = "opencode-studio-completion"
+
+/** Old CLI-based install (removed). Must be rewritten to source form. */
+export const LEGACY_COMPLETION_EVAL = /eval\s+"\$\(opencode-studio\s+completion\s+(bash|zsh)\)"/
+
+export function completionConfigDir(home = os.homedir()) {
+  return path.join(home, ".config", "opencode-studio")
+}
+
+export function completionScriptPath(shell: "bash" | "zsh", home = os.homedir()) {
+  return path.join(completionConfigDir(home), `completion.${shell}`)
+}
+
+/** Rc source line — static script written by postinstall. */
+export function completionLine(shell: "bash" | "zsh", home = os.homedir()): string {
+  return `source "${completionScriptPath(shell, home)}"  # ${COMPLETION_MARKER}`
+}
 
 export type ShellRc = {
   shell: "bash" | "zsh"
@@ -10,22 +28,56 @@ export type ShellRc = {
   line: string
 }
 
-export function completionLine(shell: "bash" | "zsh"): string {
-  return `eval "$(opencode-studio completion ${shell})"  # ${COMPLETION_MARKER}`
-}
-
 /** Rc files we may update for the current user. */
 export function candidateRcFiles(home = os.homedir()): ShellRc[] {
   return [
-    { shell: "bash", rcPath: path.join(home, ".bashrc"), line: completionLine("bash") },
-    { shell: "zsh", rcPath: path.join(home, ".zshrc"), line: completionLine("zsh") },
+    { shell: "bash", rcPath: path.join(home, ".bashrc"), line: completionLine("bash", home) },
+    { shell: "zsh", rcPath: path.join(home, ".zshrc"), line: completionLine("zsh", home) },
   ]
 }
 
-export function rcAlreadyConfigured(content: string, marker = COMPLETION_MARKER): boolean {
-  if (content.includes(marker)) return true
-  // Prior manual installs without the marker
-  return /opencode-studio completion (bash|zsh)/.test(content)
+/** True when rc already has the current static-source form for this shell. */
+export function rcHasCurrentCompletion(content: string, shell: "bash" | "zsh", home = os.homedir()): boolean {
+  const expected = completionLine(shell, home)
+  if (content.includes(expected)) return true
+  // Same path, optional whitespace around marker
+  const escaped = completionScriptPath(shell, home).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return new RegExp(`source\\s+["']${escaped}["']`).test(content)
+}
+
+/** True when rc still uses the removed `opencode-studio completion` CLI. */
+export function rcHasLegacyCompletion(content: string): boolean {
+  return LEGACY_COMPLETION_EVAL.test(content) || /opencode-studio completion (bash|zsh)/.test(content)
+}
+
+/**
+ * Replace legacy eval/CLI completion lines with the static source line.
+ * Removes adjacent `# opencode-studio-completion` comment-only lines left behind.
+ */
+export function migrateLegacyCompletionRc(content: string, shell: "bash" | "zsh", home = os.homedir()): string {
+  if (!rcHasLegacyCompletion(content)) return content
+  const nextLine = completionLine(shell, home)
+  const lines = content.split("\n")
+  const out: string[] = []
+  let replaced = false
+  for (const line of lines) {
+    if (LEGACY_COMPLETION_EVAL.test(line) || /opencode-studio completion (bash|zsh)/.test(line)) {
+      if (!replaced) {
+        out.push(nextLine)
+        replaced = true
+      }
+      continue
+    }
+    // Drop standalone marker comments that only annotated the old eval block
+    if (line.trim() === `# ${COMPLETION_MARKER}` && replaced) continue
+    out.push(line)
+  }
+  if (!replaced && rcHasLegacyCompletion(content)) {
+    // Fallback: append if pattern matched in a way line scan missed
+    const prefix = content.length === 0 || content.endsWith("\n") ? "" : "\n"
+    return `${content}${prefix}${nextLine}\n`
+  }
+  return out.join("\n")
 }
 
 export type EnsureCompletionResult = {
@@ -34,20 +86,18 @@ export type EnsureCompletionResult = {
   updated: string[]
   already: string[]
   missing: string[]
+  migrated: string[]
+  scripts?: string[]
 }
 
 /**
- * Append completion eval lines to shell rc files when missing.
- * Never throws for ordinary FS issues — returns a structured result.
+ * Write static completion scripts under ~/.config/opencode-studio/ and
+ * append or migrate source lines in shell rc files.
  */
 export async function ensureShellCompletions(input?: {
   home?: string
-  /** When true, only touch rc files that already exist (default true). */
+  packageRoot?: string
   onlyExisting?: boolean
-  /**
-   * Limit which shells to touch. Default: prefer $SHELL when set, otherwise both.
-   * Pass ["bash","zsh"] to always dual-write.
-   */
   shells?: Array<"bash" | "zsh">
 }): Promise<EnsureCompletionResult> {
   const home = input?.home ?? os.homedir()
@@ -55,10 +105,31 @@ export async function ensureShellCompletions(input?: {
   const updated: string[] = []
   const already: string[] = []
   const missing: string[] = []
+  const migrated: string[] = []
+  const scripts: string[] = []
 
   if (!home) {
-    return { skipped: true, reason: "no HOME", updated, already, missing }
+    return { skipped: true, reason: "no HOME", updated, already, missing, migrated }
   }
+
+  let bashBody = bashCompletionScript()
+  let zshBody = zshCompletionScript()
+  const root = input?.packageRoot ?? packageRootFrom(import.meta.dir)
+  try {
+    const packagedBash = path.join(root, "dist", "completion.bash")
+    const packagedZsh = path.join(root, "dist", "completion.zsh")
+    if (await Bun.file(packagedBash).exists()) bashBody = await readFile(packagedBash, "utf8")
+    if (await Bun.file(packagedZsh).exists()) zshBody = await readFile(packagedZsh, "utf8")
+  } catch {
+    // fall back to generated bodies
+  }
+
+  await mkdir(completionConfigDir(home), { recursive: true, mode: 0o755 })
+  const bashPath = completionScriptPath("bash", home)
+  const zshPath = completionScriptPath("zsh", home)
+  await writeFile(bashPath, bashBody, { mode: 0o644 })
+  await writeFile(zshPath, zshBody, { mode: 0o644 })
+  scripts.push(bashPath, zshPath)
 
   const shells = input?.shells ?? preferredShells(process.env.SHELL)
   const candidates = candidateRcFiles(home).filter((c) => shells.includes(c.shell))
@@ -89,10 +160,21 @@ export async function ensureShellCompletions(input?: {
 
     try {
       const content = await readFile(candidate.rcPath, "utf8")
-      if (rcAlreadyConfigured(content)) {
+
+      if (rcHasLegacyCompletion(content)) {
+        const next = migrateLegacyCompletionRc(content, candidate.shell, home)
+        if (next !== content) {
+          await writeFile(candidate.rcPath, next, "utf8")
+          migrated.push(candidate.rcPath)
+          continue
+        }
+      }
+
+      if (rcHasCurrentCompletion(content, candidate.shell, home)) {
         already.push(candidate.rcPath)
         continue
       }
+
       const prefix = content.length === 0 || content.endsWith("\n") ? "" : "\n"
       await appendFile(candidate.rcPath, `${prefix}\n# ${COMPLETION_MARKER}\n${candidate.line}\n`, "utf8")
       updated.push(candidate.rcPath)
@@ -101,7 +183,7 @@ export async function ensureShellCompletions(input?: {
     }
   }
 
-  return { skipped: false, updated, already, missing }
+  return { skipped: false, updated, already, missing, migrated, scripts }
 }
 
 export function preferredShells(shellPath?: string): Array<"bash" | "zsh"> {
@@ -115,13 +197,14 @@ export function shouldRunPostinstallCompletion(env: NodeJS.ProcessEnv = process.
   if (env.OPENCODE_STUDIO_SKIP_COMPLETION === "1" || env.OPENCODE_STUDIO_SKIP_COMPLETION === "true") {
     return { ok: false, reason: "OPENCODE_STUDIO_SKIP_COMPLETION" }
   }
+  if (env.OPENCODE_STUDIO_SKIP_POSTINSTALL === "1" || env.OPENCODE_STUDIO_SKIP_POSTINSTALL === "true") {
+    return { ok: false, reason: "OPENCODE_STUDIO_SKIP_POSTINSTALL" }
+  }
   if (env.CI === "true" || env.CI === "1") {
     return { ok: false, reason: "CI" }
   }
-  // npm/yarn/pnpm global install
   const globalFlag = env.npm_config_global
   if (globalFlag === "true" || globalFlag === "1") return { ok: true }
-  // Some npm versions set config only via npm_config_argv
   if (env.npm_config_argv?.includes('"global":true') || env.npm_config_argv?.includes("--global")) {
     return { ok: true }
   }

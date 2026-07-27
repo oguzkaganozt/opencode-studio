@@ -1,7 +1,4 @@
-import { STUDIO_IDS } from "./core/registry"
-
-const COMMANDS = ["configure", "status", "doctor", "serve", "service", "upgrade", "remove", "completion", "version"] as const
-// completion subcommands completed via shell scripts below
+const COMMANDS = ["serve", "status", "repair", "remove", "upgrade", "service"] as const
 const SERVICE_ACTIONS = ["install", "uninstall", "start", "stop", "restart", "status"] as const
 const SHELLS = ["bash", "zsh"] as const
 
@@ -13,11 +10,9 @@ export function isCompletionShell(value: string): value is CompletionShell {
 
 export function bashCompletionScript(): string {
   const commands = COMMANDS.join(" ")
-  const studios = STUDIO_IDS.join(" ")
   const serviceActions = SERVICE_ACTIONS.join(" ")
-  // Built as plain string so shell `$` does not fight template escapes.
   return [
-    `# opencode-studio bash completion — eval "$(opencode-studio completion bash)"`,
+    `# opencode-studio bash completion (installed by package postinstall)`,
     `_opencode_studio() {`,
     `  local cur prev words cword`,
     `  if declare -F _init_completion >/dev/null 2>&1; then`,
@@ -31,13 +26,12 @@ export function bashCompletionScript(): string {
     `  fi`,
     ``,
     `  local commands="${commands}"`,
-    `  local studios="${studios}"`,
     `  local service_actions="${serviceActions}"`,
-    `  local global_opts="--workspace --help -h"`,
+    `  local global_opts="--workspace --help -h -v --version"`,
     `  local serve_opts="--workspace --local --web --port --ui-directory --help -h"`,
     `  local service_opts="--workspace --local --web --port --name --json --help -h"`,
     `  local upgrade_opts="--check --workspace --local --web --port --name --json --help -h"`,
-    `  local configure_opts="--workspace --dry-run --json --help -h"`,
+    `  local repair_opts="--workspace --dry-run --json --help -h"`,
     `  local status_opts="--workspace --json --help -h"`,
     ``,
     `  case "$prev" in`,
@@ -51,10 +45,6 @@ export function bashCompletionScript(): string {
     `      ;;`,
     `    --name)`,
     `      COMPREPLY=($(compgen -W "opencode-studio" -- "$cur"))`,
-    `      return`,
-    `      ;;`,
-    `    completion)`,
-    `      COMPREPLY=($(compgen -W "bash zsh install" -- "$cur"))`,
     `      return`,
     `      ;;`,
     `  esac`,
@@ -79,30 +69,23 @@ export function bashCompletionScript(): string {
     ``,
     `  if [[ "$cur" == -* ]]; then`,
     `    case "$cmd" in`,
-    `      configure) COMPREPLY=($(compgen -W "$configure_opts" -- "$cur")) ;;`,
-    `      status|doctor|remove) COMPREPLY=($(compgen -W "$status_opts" -- "$cur")) ;;`,
+    `      repair) COMPREPLY=($(compgen -W "$repair_opts" -- "$cur")) ;;`,
+    `      status|remove) COMPREPLY=($(compgen -W "$status_opts" -- "$cur")) ;;`,
     `      serve) COMPREPLY=($(compgen -W "$serve_opts" -- "$cur")) ;;`,
     `      service) COMPREPLY=($(compgen -W "$service_opts" -- "$cur")) ;;`,
     `      upgrade) COMPREPLY=($(compgen -W "$upgrade_opts" -- "$cur")) ;;`,
-    `      completion) COMPREPLY=($(compgen -W "--help -h" -- "$cur")) ;;`,
     `      *) COMPREPLY=($(compgen -W "$global_opts" -- "$cur")) ;;`,
     `    esac`,
     `    return`,
     `  fi`,
     ``,
     `  case "$cmd" in`,
-    `    configure)`,
-    `      COMPREPLY=($(compgen -W "$studios" -- "$cur"))`,
-    `      ;;`,
     `    service)`,
     `      if [[ -z "$action" ]]; then`,
     `        COMPREPLY=($(compgen -W "$service_actions" -- "$cur"))`,
     `      else`,
     `        COMPREPLY=($(compgen -W "$service_opts" -- "$cur"))`,
     `      fi`,
-    `      ;;`,
-    `    completion)`,
-    `      COMPREPLY=($(compgen -W "bash zsh install" -- "$cur"))`,
     `      ;;`,
     `    *)`,
     `      COMPREPLY=()`,
@@ -117,20 +100,19 @@ export function bashCompletionScript(): string {
 
 export function zshCompletionScript(): string {
   const serviceWords = SERVICE_ACTIONS.map((c) => `'${c}'`).join(" ")
-  const studioWords = STUDIO_IDS.map((c) => `'${c}'`).join(" ")
   return [
-    `# opencode-studio zsh completion — eval "$(opencode-studio completion zsh)"`,
+    `# opencode-studio zsh completion (installed by package postinstall)`,
     `_opencode_studio() {`,
-    `  local -a commands service_actions studios`,
+    `  local -a commands service_actions`,
     `  commands=(${COMMANDS.map((c) => `'${c}'`).join(" ")})`,
     `  service_actions=(${serviceWords})`,
-    `  studios=(${studioWords})`,
     ``,
     `  local context state line`,
     `  typeset -A opt_args`,
     ``,
     `  _arguments -C `,
     `    '(-h --help)'{-h,--help}'[Show help]' `,
+    `    '(-v --version)'{-v,--version}'[Show version]' `,
     `    '1: :->command' `,
     `    '*:: :->args' && return`,
     ``,
@@ -140,14 +122,13 @@ export function zshCompletionScript(): string {
     `      ;;`,
     `    args)`,
     `      case $words[1] in`,
-    `        configure)`,
+    `        repair)`,
     `          _arguments `,
     `            '--workspace[Domain data root]:dir:_files -/' `,
     `            '--dry-run[Print actions without writing]' `,
-    `            '--json[JSON output]' `,
-    `            '*:studio:($studios)'`,
+    `            '--json[JSON output]'`,
     `          ;;`,
-    `        status|doctor|remove)`,
+    `        status|remove)`,
     `          _arguments `,
     `            '--workspace[Domain data root]:dir:_files -/' `,
     `            '--json[JSON output]'`,
@@ -179,9 +160,6 @@ export function zshCompletionScript(): string {
     `            '--port[Bind port]:port:(4173 4174 8080)' \\`,
     `            '--name[systemd unit name]:name:(opencode-studio)' \\`,
     `            '--json[JSON output]'`,
-    `          ;;`,
-    `        completion)`,
-    `          _arguments '1:shell-or-install:(bash zsh install)'`,
     `          ;;`,
     `      esac`,
     `      ;;`,

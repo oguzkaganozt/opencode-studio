@@ -4,12 +4,12 @@ import path from "node:path"
 /**
  * User-global locations (config global, data local).
  *
- * - Studio enablement:  $XDG_CONFIG_HOME/opencode-studio/studio.json
- * - OpenCode plugin/MCP: $XDG_CONFIG_HOME/opencode/opencode.json[c]
- * - Managed skills:      $XDG_CONFIG_HOME/opencode/skills/<id>-studio/
+ * - Optional studio roots: $XDG_CONFIG_HOME/opencode-studio/studio.json
+ * - OpenCode plugin/MCP:   $XDG_CONFIG_HOME/opencode/opencode.json[c]
+ * - Managed skills:        $XDG_CONFIG_HOME/opencode/skills/<id>-studio/
  *
  * Overrides (absolute paths) for tests / isolation:
- *   OPENCODE_STUDIO_CONFIG_HOME  — studio enablement home
+ *   OPENCODE_STUDIO_CONFIG_HOME  — studio config home (roots)
  *   OPENCODE_CONFIG_HOME         — where *this package* writes OpenCode config/skills
  *                                  (not OpenCode's own OPENCODE_CONFIG_DIR; defaults match ~/.config/opencode)
  */

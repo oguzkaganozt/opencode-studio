@@ -82,14 +82,16 @@ try {
     workspace: domain,
     studioConfigHome,
     openCodeHome,
-    enabled: ["pcb"],
     packageRoot: pkg,
     validateOpenCode: false,
   })
   const studioJson = JSON.parse(await readFile(path.join(studioConfigHome, "studio.json"), "utf8"))
-  if (JSON.stringify(studioJson.enabled) !== JSON.stringify(["pcb"])) throw new Error("configure failed in packed package")
+  if (studioJson.enabled !== undefined) throw new Error("studio.json must not write enabled (always-on)")
   if (!(await Bun.file(path.join(openCodeHome, "skills/pcb-studio/SKILL.md")).exists())) {
     throw new Error("packed configure did not install pcb skill")
+  }
+  if (!(await Bun.file(path.join(openCodeHome, "skills/cad-studio/SKILL.md")).exists())) {
+    throw new Error("packed configure did not install cad skill")
   }
   if (!(await Bun.file(path.join(openCodeHome, "skills/media/SKILL.md")).exists())) {
     throw new Error("packed configure did not install platform media skill")

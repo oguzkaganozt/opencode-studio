@@ -10,6 +10,7 @@ import {
   studioConfigPath,
   writeStudioConfigFile,
 } from "../src/config"
+import { STUDIO_IDS } from "../src/core/registry"
 
 const temps: string[] = []
 afterEach(async () => {
@@ -23,8 +24,15 @@ async function isolatedHome() {
 }
 
 describe("parseStudioConfig", () => {
-  test("valid enabled", () => {
-    expect(parseStudioConfig({ enabled: ["cad", "pcb"] }).enabled).toEqual(["cad", "pcb"])
+  test("empty object is valid", () => {
+    const cfg = parseStudioConfig({})
+    expect(cfg.roots).toBeUndefined()
+    expect(cfg.warnings).toEqual([])
+  })
+  test("ignores legacy enabled with warning", () => {
+    const cfg = parseStudioConfig({ enabled: ["cad", "pcb"] })
+    expect(cfg.roots).toBeUndefined()
+    expect(cfg.warnings.some((w) => w.includes("enabled"))).toBe(true)
   })
   test("rejects null", () => {
     expect(() => parseStudioConfig(null)).toThrow(/must be an object/)
@@ -32,96 +40,94 @@ describe("parseStudioConfig", () => {
   test("rejects array", () => {
     expect(() => parseStudioConfig([])).toThrow(/must be an object/)
   })
-  test("rejects non-array enabled", () => {
-    expect(() => parseStudioConfig({ enabled: "cad" })).toThrow(/array of Studio IDs/)
-  })
-  test("strips unknown and legacy IDs with warnings", () => {
-    const cfg = parseStudioConfig({ enabled: ["nope", "media", "startup", "cad"] })
-    expect(cfg.enabled).toEqual(["cad"])
-    expect(cfg.warnings.length).toBeGreaterThan(0)
-  })
-  test("dedupes IDs", () => {
-    expect(parseStudioConfig({ enabled: ["cad", "cad"] }).enabled).toEqual(["cad"])
-  })
   test("strips legacy roots without throwing", () => {
-    const cfg = parseStudioConfig({ enabled: ["cad"], roots: { media: "/tmp/x" } })
+    const cfg = parseStudioConfig({ roots: { media: "/tmp/x" } })
     expect(cfg.roots).toBeUndefined()
     expect(cfg.warnings.some((w) => w.includes("roots.media"))).toBe(true)
   })
   test("accepts valid roots", () => {
-    const cfg = parseStudioConfig({ enabled: ["cad"], roots: { cad: "/tmp/x" } })
+    const cfg = parseStudioConfig({ roots: { cad: "/tmp/x" } })
     expect(cfg.roots?.cad).toBe(path.resolve("/tmp/x"))
   })
-  test("strict parse rejects unknown ids", () => {
-    expect(() => parseStudioConfigStrict({ enabled: ["media"] })).toThrow(/Unknown Studio ID/)
+  test("strict parse rejects unknown root ids", () => {
+    expect(() => parseStudioConfigStrict({ roots: { nope: "/tmp/x" } as any })).toThrow(/Unknown Studio ID/)
   })
 })
 
 describe("readStudioConfigFile", () => {
-  test("missing file returns empty enabled (fail-closed domains)", async () => {
+  test("missing file returns all studios always-on", async () => {
     const homes = await isolatedHome()
     const result = await readStudioConfigFile(homes)
-    expect(result.enabled).toEqual([])
+    expect(result.enabled).toEqual([...STUDIO_IDS])
     expect(result.error).toBeUndefined()
     expect(result.configPath).toBe(studioConfigPath(homes))
   })
-  test("invalid JSON returns empty enabled with error (fail-closed domains)", async () => {
+  test("invalid JSON keeps domains on with error", async () => {
     const homes = await isolatedHome()
     await mkdir(homes.studioConfigHome, { recursive: true })
     await writeFile(studioConfigPath(homes), "{not json")
     const result = await readStudioConfigFile(homes)
-    expect(result.enabled).toEqual([])
+    expect(result.enabled).toEqual([...STUDIO_IDS])
     expect(result.error).toBeTruthy()
   })
-  test("non-object JSON returns empty enabled with error", async () => {
+  test("non-object JSON keeps domains on with error", async () => {
     const homes = await isolatedHome()
     await mkdir(homes.studioConfigHome, { recursive: true })
     await writeFile(studioConfigPath(homes), "[]")
     const result = await readStudioConfigFile(homes)
-    expect(result.enabled).toEqual([])
+    expect(result.enabled).toEqual([...STUDIO_IDS])
     expect(result.error).toBeTruthy()
   })
-  test("strips legacy studio ids on read", async () => {
+  test("legacy enabled is ignored; all studios on", async () => {
     const homes = await isolatedHome()
     await mkdir(homes.studioConfigHome, { recursive: true })
-    await writeFile(studioConfigPath(homes), JSON.stringify({ enabled: ["cad", "startup", "media"] }))
+    await writeFile(studioConfigPath(homes), JSON.stringify({ enabled: ["cad"] }))
     const result = await readStudioConfigFile(homes)
-    expect(result.enabled).toEqual(["cad"])
+    expect(result.enabled).toEqual([...STUDIO_IDS])
   })
 })
 
 describe("maybeMigrateLegacyConfig", () => {
-  test("copies legacy project config into empty global home", async () => {
+  test("copies legacy roots into missing global home", async () => {
+    const homes = await isolatedHome()
+    const domain = path.join(homes.studioConfigHome, "domain")
+    await mkdir(path.join(domain, ".opencode"), { recursive: true })
+    await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ enabled: ["pcb"], roots: { pcb: "/tmp/pcb-root" } }))
+    const result = await maybeMigrateLegacyConfig(domain, homes)
+    expect(result.migrated).toBe(true)
+    expect(result.config.enabled).toEqual([...STUDIO_IDS])
+    expect(result.config.roots.pcb).toBe(path.resolve("/tmp/pcb-root"))
+    const global = await readStudioConfigFile(homes)
+    expect(global.roots.pcb).toBe(path.resolve("/tmp/pcb-root"))
+  })
+
+  test("does not migrate enablement-only legacy without roots", async () => {
     const homes = await isolatedHome()
     const domain = path.join(homes.studioConfigHome, "domain")
     await mkdir(path.join(domain, ".opencode"), { recursive: true })
     await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ enabled: ["pcb"] }))
     const result = await maybeMigrateLegacyConfig(domain, homes)
-    expect(result.migrated).toBe(true)
-    expect(result.config.enabled).toEqual(["pcb"])
-    const global = await readStudioConfigFile(homes)
-    expect(global.enabled).toEqual(["pcb"])
+    expect(result.migrated).toBe(false)
   })
 
   test("does not overwrite existing global config", async () => {
     const homes = await isolatedHome()
-    await writeStudioConfigFile({ enabled: ["cad"] }, homes)
+    await writeStudioConfigFile({ roots: { cad: "/tmp/cad" } }, homes)
     const domain = path.join(homes.studioConfigHome, "domain")
     await mkdir(path.join(domain, ".opencode"), { recursive: true })
-    await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ enabled: ["pcb"] }))
+    await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ roots: { pcb: "/tmp/pcb" } }))
     const result = await maybeMigrateLegacyConfig(domain, homes)
     expect(result.migrated).toBe(false)
-    expect(result.config.enabled).toEqual(["cad"])
+    expect(result.config.roots.cad).toBe(path.resolve("/tmp/cad"))
   })
 
-  test("does not migrate when global file exists with empty enabled", async () => {
+  test("does not migrate when global file exists empty", async () => {
     const homes = await isolatedHome()
-    await writeStudioConfigFile({ enabled: [] }, homes)
+    await writeStudioConfigFile({}, homes)
     const domain = path.join(homes.studioConfigHome, "domain")
     await mkdir(path.join(domain, ".opencode"), { recursive: true })
-    await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ enabled: ["pcb"] }))
+    await writeFile(path.join(domain, ".opencode", "studio.json"), JSON.stringify({ roots: { pcb: "/tmp/pcb" } }))
     const result = await maybeMigrateLegacyConfig(domain, homes)
     expect(result.migrated).toBe(false)
-    expect(result.config.enabled).toEqual([])
   })
 })

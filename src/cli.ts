@@ -1,13 +1,10 @@
 #!/usr/bin/env bun
 import path from "node:path"
 import { parseArgs } from "node:util"
-import { completionScript, isCompletionShell } from "./completion"
-import { ensureShellCompletions } from "./completion-install"
 import { loadPackageMeta } from "./core/package-meta"
 import { resolveWorkspace } from "./core/paths"
-import { STUDIO_IDS } from "./core/registry"
 import { assertLoopbackBind, assertWebPassword, hostnameForBindMode, resolveBindMode } from "./core/security"
-import { configureStudios, doctorStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
+import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { startHost } from "./server"
 import { checkPackageUpgrade, manageService, type ServiceAction, upgradePackage } from "./service"
 
@@ -16,80 +13,43 @@ const SERVICE_ACTIONS: ServiceAction[] = ["install", "uninstall", "start", "stop
 function printHelp() {
   console.log(`opencode-studio
 
-User-global config (~/.config/opencode-studio + ~/.config/opencode).
---workspace is the domain data root for CAD/PCB (default: cwd).
+CAD and PCB are always on. Global install wires OpenCode once
+(plugins, skills, MCP). --workspace is the domain data root (default: cwd).
 
 Commands:
-  configure <studio...>   Enable studios globally (cad|pcb)
-  status                  Show enablement, roots, package version
-  doctor                  Health checks (exit 1 if any fail)
-  serve                   Run OpenCode + integrated Studio host
-  service <action>        systemd user unit (install|uninstall|start|stop|restart|status)
-  upgrade [--check]       npm i -g @latest; restart unit if installed
-  remove                  Disable domain studios (platform media stays on)
-  completion bash|zsh     Print shell completion script
-  completion install      Append completion to shell rc
-  version                 Print package version
+  serve      Run Studio host + OpenCode sidecar
+  status     Health, roots, skills (exit 1 if broken)
+  repair     Reinstall plugins, skills, MCP
+  remove     Uninstall managed OpenCode state (package stays)
+  upgrade    npm i -g @latest (+ restart systemd unit if any)
 
-Common flags:
+Linux:
+  service install|uninstall|start|stop|restart|status
+
+Flags:
   --workspace <path>   Domain data root (default: cwd)
   --json               Machine-readable output (where supported)
-  -h, --help           Help
-  -v, --version        Version
+  -h, --help
+  -v, --version
 
 Examples:
-  opencode-studio configure cad pcb
   opencode-studio serve --workspace ~/project
   opencode-studio serve --web
-  opencode-studio upgrade --check
-  opencode-studio upgrade
+  opencode-studio status
+  opencode-studio repair
   opencode-studio service install --workspace ~/project
 
 Notes:
-  serve defaults to --local (127.0.0.1). --web binds 0.0.0.0 and requires OPENCODE_STUDIO_PASSWORD.
-  upgrade restarts the systemd unit when present, then reminds you to restart OpenCode.
-  upgrade --check exits 1 if an update is available, 2 on registry error.
-  Global npm install may auto-append shell completion (OPENCODE_STUDIO_SKIP_COMPLETION=1 to skip).
+  serve binds 127.0.0.1 by default; --web needs OPENCODE_STUDIO_PASSWORD.
+  Skip postinstall setup: OPENCODE_STUDIO_SKIP_POSTINSTALL=1
 `)
 }
 
 function printCommandHelp(command: string) {
-  const studios = STUDIO_IDS.join("|")
   const texts: Record<string, string> = {
-    configure: `opencode-studio configure <studio...> [options]
-
-Enable studios in user-global config and register plugins/manage skills.
-Studios: ${studios}
-
-Options:
-  --workspace <path>   Domain data root (required when enabling studios)
-  --dry-run            Print actions without writing
-  --json               JSON result
-  -h, --help
-
-To clear all studios, use: opencode-studio remove
-`,
-    status: `opencode-studio status [options]
-
-Show package version, config path, domain root, and per-studio enablement.
-
-Options:
-  --workspace <path>   Domain data root (default: cwd)
-  --json
-  -h, --help
-`,
-    doctor: `opencode-studio doctor [options]
-
-Run health checks. Exit 0 if ok, 1 if any check fails.
-
-Options:
-  --workspace <path>
-  --json
-  -h, --help
-`,
     serve: `opencode-studio serve [options]
 
-Start OpenCode and the integrated Studio viewer (foreground).
+Start the Studio viewer and OpenCode sidecar (foreground).
 
 Options:
   --workspace <path>     Domain data root (default: cwd)
@@ -99,58 +59,64 @@ Options:
   --ui-directory <path>  Override UI dist
   -h, --help
 `,
-    service: `opencode-studio service <action> [options]
+    status: `opencode-studio status [options]
 
-Manage the systemd user unit for a background host.
-
-Actions: ${SERVICE_ACTIONS.join("|")}
+Package version, roots, skills, engines, and health checks.
+Exit 0 if ok, 1 if any check fails.
 
 Options:
-  --workspace <path>   Domain data root (used on install)
-  --local              Bind 127.0.0.1 (default on install)
-  --web                Bind 0.0.0.0; requires OPENCODE_STUDIO_PASSWORD
-  --port <port>        Default 4173
-  --name <unit>        Unit name without .service (default opencode-studio)
+  --workspace <path>
+  --json
+  -h, --help
+`,
+    repair: `opencode-studio repair [options]
+
+Reinstall OpenCode plugins, CAD/PCB + media skills, and build123d MCP.
+Also runs on global npm/bun install. Use after remove, drift, or skipped postinstall.
+
+Options:
+  --workspace <path>   Domain data root (default: cwd)
+  --dry-run
+  --json
+  -h, --help
+`,
+    remove: `opencode-studio remove [options]
+
+Uninstall managed plugins, skills, and build123d MCP from OpenCode home.
+Does not uninstall the npm package. Run repair to reinstall.
+
+Options:
+  --workspace <path>   Optional domain root for local scrub
   --json
   -h, --help
 `,
     upgrade: `opencode-studio upgrade [options]
 
 Install @oguzkaganozt/opencode-studio@latest via npm.
-If a systemd user unit exists, reinstall/restart it.
-Always reminds you to restart OpenCode.
+Restarts the systemd user unit when present. Restart OpenCode after.
 
 Options:
-  --check              Only check registry (exit 1 if update available, 2 on error)
-  --workspace <path>   Passed through when refreshing the unit
-  --local              Bind mode when refreshing the unit (default)
-  --web                Web bind mode when refreshing the unit
-  --port <port>        Default 4173
+  --check              Report only (exit 1 if update available, 2 on error)
+  --workspace <path>   When refreshing the unit
+  --local | --web
+  --port <port>
   --name <unit>
   --json
   -h, --help
 `,
-    remove: `opencode-studio remove [options]
+    service: `opencode-studio service <action> [options]
 
-Disable domain studios (cad/pcb). Platform media tools, media-go, and the media skill stay installed.
+Linux systemd user unit for a background host.
+
+Actions: ${SERVICE_ACTIONS.join("|")}
 
 Options:
-  --workspace <path>   Optional domain root for local scrub during remove
+  --workspace <path>   Domain data root (install)
+  --local | --web
+  --port <port>
+  --name <unit>        Default opencode-studio
   --json
   -h, --help
-`,
-    completion: `opencode-studio completion bash|zsh|install
-
-  bash|zsh   Print completion script (eval into your shell rc)
-  install    Append eval line to the active shell rc if missing
-
-Options (install):
-  -q, --quiet
-  -h, --help
-`,
-    version: `opencode-studio version
-
-Print the installed package version.
 `,
   }
   const text = texts[command]
@@ -166,7 +132,7 @@ function wantsHelp(args: string[]) {
 }
 
 function wantsVersion(args: string[]) {
-  return args.length === 1 && (args[0] === "-v" || args[0] === "--version" || args[0] === "version")
+  return args.length === 1 && (args[0] === "-v" || args[0] === "--version")
 }
 
 function parsePort(raw: string | undefined, fallback = 4173): number | null {
@@ -198,15 +164,23 @@ async function main(argv: string[]) {
   const command = argv[0]!
   const rest = argv.slice(1)
 
-  // Any -h/--help on a known command shows that command's help.
+  // Legacy aliases
+  if (command === "configure") {
+    console.error("opencode-studio configure is now: opencode-studio repair")
+    return main(["repair", ...rest])
+  }
+  if (command === "doctor") {
+    console.error("opencode-studio doctor is now: opencode-studio status")
+    return main(["status", ...rest])
+  }
+
   if (wantsHelp(rest)) {
     printCommandHelp(command)
     return 0
   }
 
-  if (command === "configure") {
+  if (command === "repair") {
     let values: { workspace?: string; "dry-run"?: boolean; json?: boolean }
-    let positionals: string[]
     try {
       const parsed = parseArgs({
         args: rest,
@@ -215,32 +189,23 @@ async function main(argv: string[]) {
           "dry-run": { type: "boolean", default: false },
           json: { type: "boolean", default: false },
         },
-        allowPositionals: true,
+        allowPositionals: false,
         strict: true,
       })
       values = parsed.values
-      positionals = parsed.positionals
     } catch (error) {
-      return failParse("configure", error)
-    }
-    if (positionals.length === 0) {
-      console.error(`Usage: opencode-studio configure <studio...>  (studios: ${STUDIO_IDS.join(", ")})`)
-      console.error("To disable all studios, run: opencode-studio remove")
-      return 2
+      return failParse("repair", error)
     }
     const result = await configureStudios({
       workspace: values.workspace,
-      enabled: positionals,
       packageRoot,
       dryRun: values["dry-run"],
     })
     if (values.json) console.log(JSON.stringify(result, null, 2))
     else {
-      console.log(`Configured studios (global): ${result.enabled.join(", ") || "(none)"}`)
+      console.log(`Repaired (always on): ${result.enabled.join(", ")}`)
       if ("configPath" in result && result.configPath) console.log(`Config: ${result.configPath}`)
-      console.log(
-        "Restart OpenCode. If opencode-studio serve is already running, restart it too (CLI configure does not hot-reload the host).",
-      )
+      console.log("Restart OpenCode to load plugins and skills.")
     }
     return 0
   }
@@ -262,43 +227,21 @@ async function main(argv: string[]) {
       return failParse("status", error)
     }
     const result = await statusStudios({ workspace: values.workspace, packageRoot })
-    const meta = await loadPackageMeta(packageRoot)
-    if (values.json) console.log(JSON.stringify({ packageVersion: meta.version, packageName: meta.name, ...result }, null, 2))
+    if (values.json) console.log(JSON.stringify(result, null, 2))
     else {
-      console.log(`Package: ${meta.name}@${meta.version}`)
+      console.log(`Package: ${result.packageName}@${result.packageVersion}`)
       console.log(`Config: ${result.configPath}`)
       console.log(`Domain root: ${result.workspace}`)
       if (result.configError) console.log(`Config error: ${result.configError}`)
-      console.log(`Enabled: ${result.enabled.join(", ") || "(none)"}`)
+      console.log(`Studios (always on): ${result.enabled.join(", ")}`)
       for (const studio of result.studios) {
-        const mark = studio.enabled ? "on " : "off"
-        console.log(`  [${mark}] ${studio.id}  root=${studio.root ?? studio.rootError ?? "?"}`)
+        const skill = studio.skillInstalled ? "skill ok" : "skill missing"
+        console.log(`  ${studio.id}  root=${studio.root ?? studio.rootError ?? "?"}  (${skill})`)
       }
-    }
-    return 0
-  }
-
-  if (command === "doctor") {
-    let values: { workspace?: string; json?: boolean }
-    try {
-      const parsed = parseArgs({
-        args: rest,
-        options: {
-          workspace: { type: "string" },
-          json: { type: "boolean", default: false },
-        },
-        allowPositionals: false,
-        strict: true,
-      })
-      values = parsed.values
-    } catch (error) {
-      return failParse("doctor", error)
-    }
-    const result = await doctorStudios({ workspace: values.workspace, packageRoot })
-    if (values.json) console.log(JSON.stringify(result, null, 2))
-    else {
+      console.log("Checks:")
       for (const check of result.checks) {
-        console.log(`${check.status.padEnd(4)} ${check.id}: ${check.message}`)
+        console.log(`  ${check.status.padEnd(4)} ${check.id}: ${check.message}`)
+        if (check.repair) console.log(`         → ${check.repair}`)
       }
     }
     return result.ok ? 0 : 1
@@ -322,7 +265,7 @@ async function main(argv: string[]) {
     }
     const result = await removeStudios({ workspace: values.workspace, packageRoot })
     if (values.json) console.log(JSON.stringify(result, null, 2))
-    else console.log("Removed all Studios (user-global). Restart OpenCode and the host.")
+    else console.log("Removed managed plugins/skills/MCP. Restart OpenCode. Run repair to reinstall.")
     return 0
   }
 
@@ -381,38 +324,6 @@ async function main(argv: string[]) {
     else console.log("OpenCode: attached server (native proxy disabled)")
     console.log(`workspace: ${workspace}`)
     await new Promise(() => {})
-    return 0
-  }
-
-  if (command === "completion") {
-    const sub = rest[0]
-    if (sub === "install") {
-      const quiet = rest.includes("--quiet") || rest.includes("-q")
-      const home = process.env.OPENCODE_STUDIO_COMPLETION_HOME
-      const result = await ensureShellCompletions(home ? { home } : undefined)
-      if (result.skipped) {
-        if (!quiet) console.log(`Completion install skipped: ${result.reason ?? "unknown"}`)
-        return 0
-      }
-      if (!quiet) {
-        for (const p of result.updated) console.log(`Added completion to ${p}`)
-        for (const p of result.already) console.log(`Already configured: ${p}`)
-        for (const p of result.missing) console.log(`No rc file (skipped): ${p}`)
-        if (result.updated.length > 0) {
-          console.log("Open a new shell (or source the rc file) for tab completion.")
-        } else if (result.already.length === 0) {
-          console.log('No shell rc updated. Add manually: eval "$(opencode-studio completion bash)"')
-        }
-      } else if (result.updated.length > 0) {
-        console.log(`[opencode-studio] shell completion → ${result.updated.join(", ")}`)
-      }
-      return 0
-    }
-    if (!sub || !isCompletionShell(sub)) {
-      console.error("Usage: opencode-studio completion bash|zsh|install")
-      return 2
-    }
-    process.stdout.write(completionScript(sub))
     return 0
   }
 
@@ -536,12 +447,6 @@ async function main(argv: string[]) {
       if ("stderr" in result && result.stderr) process.stderr.write(result.stderr)
       return "ok" in result && result.ok === false ? 1 : 0
     } else if ("message" in result && result.message) console.log(result.message)
-    return 0
-  }
-
-  if (command === "version") {
-    const meta = await loadPackageMeta(packageRoot)
-    console.log(meta.version)
     return 0
   }
 

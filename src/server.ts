@@ -53,22 +53,21 @@ async function buildStudioMounts(input: {
   const studios = new Hono()
   const mountErrors: string[] = []
 
-  if (!config.error) {
-    const loadCtx = {
-      workspace: input.workspace,
-      roots: config.roots,
-      resolveStudioRoot,
-    }
-    for (const studioId of config.enabled) {
-      try {
-        const createApi = apiLoaders[studioId as StudioId]
-        const studioApp = await createApi(loadCtx)
-        studios.route(`/${studioId}`, studioApp)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        console.error(`[opencode-studio] failed to mount ${studioId}:`, error)
-        mountErrors.push(`${studioId}: ${message}`)
-      }
+  const loadCtx = {
+    workspace: input.workspace,
+    roots: config.roots,
+    resolveStudioRoot,
+  }
+  // Domains always mounted (full catalog). Bad studio.json only drops optional roots.
+  for (const studioId of Object.keys(apiLoaders) as StudioId[]) {
+    try {
+      const createApi = apiLoaders[studioId]
+      const studioApp = await createApi(loadCtx)
+      studios.route(`/${studioId}`, studioApp)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[opencode-studio] failed to mount ${studioId}:`, error)
+      mountErrors.push(`${studioId}: ${message}`)
     }
   }
 
@@ -91,14 +90,13 @@ export async function createHostApp(input: HostInput) {
 
   const initial = await buildStudioMounts(domain)
   if (initial.mountErrors.length > 0) {
-    throw new Error(`Failed to mount enabled studio API(s): ${initial.mountErrors.join("; ")}`)
+    throw new Error(`Failed to mount studio API(s): ${initial.mountErrors.join("; ")}`)
   }
 
   const mount = { current: initial.state }
 
   const reloadStudios = async () => {
     const next = await buildStudioMounts(domain)
-    // Swap even if some mounts failed so disable still takes effect; surface errors to caller.
     mount.current = next.state
     return next
   }
@@ -198,18 +196,14 @@ export async function createHostApp(input: HostInput) {
     }
     const denied = await writeGuard(ctx)
     if (denied) return denied
-    const body = (await ctx.req.json().catch(() => null)) as { enabled?: string[]; roots?: unknown } | null
-    if (!body || !Array.isArray(body.enabled)) {
-      return ctx.json(errorBody("invalid_body", "Body must include enabled: string[]"), 400)
-    }
+    const body = (await ctx.req.json().catch(() => null)) as { roots?: unknown } | null
     // roots are CLI-only — HTTP configure must not repoint studio roots.
-    if (body.roots !== undefined) {
-      return ctx.json(errorBody("invalid_body", "roots cannot be set via HTTP; use opencode-studio configure with absolute roots"), 400)
+    if (body && body.roots !== undefined) {
+      return ctx.json(errorBody("invalid_body", "roots cannot be set via HTTP; edit studio.json with absolute roots"), 400)
     }
     try {
       const result = await configureStudios({
         workspace: input.workspace,
-        enabled: body.enabled,
         packageRoot,
         ...userPaths,
       })
@@ -224,8 +218,8 @@ export async function createHostApp(input: HostInput) {
         mountErrors: reloaded.mountErrors,
         message:
           reloaded.mountErrors.length > 0
-            ? `Configuration applied; host reloaded with mount errors: ${reloaded.mountErrors.join("; ")}. Restart OpenCode.`
-            : "Configuration applied. Studio host reloaded — restart OpenCode only.",
+            ? `Install repaired; host reloaded with mount errors: ${reloaded.mountErrors.join("; ")}. Restart OpenCode.`
+            : "Install repaired. Restart OpenCode to reload plugins and skills.",
       })
     } catch (error) {
       return ctx.json(errorBody("configure_failed", error instanceof Error ? error.message : String(error)), 400)

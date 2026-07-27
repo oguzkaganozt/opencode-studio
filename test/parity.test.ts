@@ -50,7 +50,6 @@ describe("live tool inventory", () => {
         workspace,
         studioConfigHome,
         openCodeHome,
-        enabled: ["cad", "pcb"],
         packageRoot,
         validateOpenCode: false,
       })
@@ -71,21 +70,13 @@ describe("live tool inventory", () => {
     }
   }, 60_000)
 
-  test("enabled empty still exposes platform media tools", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "osc-tools-empty-"))
+  test("plugin always exposes domain tools without configure", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "osc-tools-always-"))
     try {
       const workspace = path.join(root, "domain")
       await mkdir(workspace, { recursive: true })
       const studioConfigHome = path.join(root, "studio-config")
       const openCodeHome = path.join(root, "opencode-config")
-      await configureStudios({
-        workspace,
-        studioConfigHome,
-        openCodeHome,
-        enabled: [],
-        packageRoot,
-        validateOpenCode: false,
-      })
       const plugin = createOpenCodeStudioPlugin({
         workspace,
         packageRoot,
@@ -95,9 +86,8 @@ describe("live tool inventory", () => {
       const composed = await plugin({ directory: workspace } as any, {})
       const names = listComposedToolNames(composed)
       expect(names).toContain("read_media")
-      expect(names).toContain("media_list")
-      expect(names).not.toContain("design_build")
-      expect(names).not.toContain("pcb_circuit_build")
+      expect(names).toContain("design_build")
+      expect(names).toContain("pcb_circuit_build")
     } finally {
       await rm(root, { recursive: true, force: true })
     }
