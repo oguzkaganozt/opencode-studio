@@ -81,7 +81,9 @@ describe("createStudioPlugin", () => {
     })
     expect(hooks.tool).toBeDefined()
     const toolNames = Object.keys(hooks.tool ?? {})
-    expect(toolNames.sort()).toEqual(["design_build", "design_create", "design_list", "design_read", "design_view"].sort())
+    expect(toolNames.sort()).toEqual(
+      ["design_build", "design_create", "design_list", "design_qc_report", "design_read", "design_view"].sort(),
+    )
   })
 
   test("adds targeted guidance to build123d tool descriptions", async () => {
@@ -210,6 +212,45 @@ describe("createStudioPlugin", () => {
 
     const listed = JSON.parse(await (hooks.tool as any).design_list.execute({}))
     expect(listed.designs[0].revision).toBe(summary.revision)
+
+    const incomplete = JSON.parse(
+      (
+        await (hooks.tool as any).design_qc_report.execute({
+          id: "demo",
+        })
+      ).output,
+    )
+    expect(incomplete.complete).toBe(false)
+    expect(incomplete.artifact.status).toBe("pass")
+    expect(incomplete.blockedBy).toEqual(expect.arrayContaining(["printability", "fit", "form"]))
+    expect(incomplete.printability.status).toBe("unverified")
+
+    const retentionBlocked = JSON.parse(
+      (
+        await (hooks.tool as any).design_qc_report.execute({
+          id: "demo",
+          printability: { status: "pass", findings: [] },
+          fit: { status: "fail", findings: ["closed-position fit passes; retention unverified"] },
+          form: { status: "pass", findings: ["not applicable"] },
+        })
+      ).output,
+    )
+    expect(retentionBlocked.complete).toBe(false)
+    expect(retentionBlocked.blockedBy).toEqual(["fit"])
+
+    const complete = JSON.parse(
+      (
+        await (hooks.tool as any).design_qc_report.execute({
+          id: "demo",
+          printability: { status: "pass", findings: [] },
+          fit: { status: "pass", findings: ["retention not required"] },
+          form: { status: "pass", findings: ["not applicable"] },
+        })
+      ).output,
+    )
+    expect(complete.complete).toBe(true)
+    expect(complete.blockedBy).toEqual([])
+    expect(complete.artifact.parts[0].files.step.exists).toBe(true)
   })
 
   test("design_build requests only one-time artifact edit permission", async () => {

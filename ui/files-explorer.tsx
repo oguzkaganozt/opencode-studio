@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { useMemo, useState } from "react"
+import { EmptyState } from "./components/empty-state"
+import { ErrorState } from "./components/error-state"
 
 type FileEntry = {
   name: string
@@ -45,7 +47,20 @@ function parentPath(current: string) {
   return parts.join("/")
 }
 
-function PreviewPane({ selected }: { selected: FileEntry | null }) {
+function MobileBack({ onBack }: { onBack?: () => void }) {
+  if (!onBack) return null
+  return (
+    <button
+      type="button"
+      className="inline-flex h-8 shrink-0 items-center rounded-md border border-[var(--osc-border)] px-2 text-[11px] font-medium hover:bg-[var(--osc-surface)] md:hidden"
+      onClick={onBack}
+    >
+      ← List
+    </button>
+  )
+}
+
+function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry | null; selectedPath: string | null; onBack?: () => void }) {
   const contentQuery = useQuery({
     queryKey: ["files", "content", selected?.path],
     enabled: Boolean(selected && selected.kind === "file"),
@@ -53,16 +68,47 @@ function PreviewPane({ selected }: { selected: FileEntry | null }) {
   })
 
   if (!selected) {
-    return <p className="p-6 text-sm text-[var(--osc-text-muted)]">Select a file to preview</p>
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {onBack && (
+          <div className="border-b border-[var(--osc-border)] px-4 py-2">
+            <MobileBack onBack={onBack} />
+          </div>
+        )}
+        <EmptyState
+          className="m-4 border-0 py-12"
+          title={selectedPath ? "File unavailable" : "Select a file to preview"}
+          description={selectedPath ? "It may have been moved or deleted. Return to the list." : undefined}
+        />
+      </div>
+    )
   }
   if (selected.kind === "dir") {
-    return <p className="p-6 text-sm text-[var(--osc-text-muted)]">Directory — open from the list</p>
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {onBack && (
+          <div className="border-b border-[var(--osc-border)] px-4 py-2">
+            <MobileBack onBack={onBack} />
+          </div>
+        )}
+        <EmptyState className="m-4 border-0 py-12" title="Directory" description="Open it from the list." />
+      </div>
+    )
   }
   if (contentQuery.isLoading) {
     return <p className="p-6 text-sm text-[var(--osc-text-muted)]">Loading…</p>
   }
   if (contentQuery.error) {
-    return <p className="p-6 text-sm text-red-600">{(contentQuery.error as Error).message}</p>
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {onBack && (
+          <div className="border-b border-[var(--osc-border)] px-4 py-2">
+            <MobileBack onBack={onBack} />
+          </div>
+        )}
+        <ErrorState className="m-4 border-0 py-12" title="Preview failed" description={(contentQuery.error as Error).message} />
+      </div>
+    )
   }
   const data = contentQuery.data
   if (!data) return null
@@ -73,13 +119,16 @@ function PreviewPane({ selected }: { selected: FileEntry | null }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-[var(--osc-border)] px-4 py-2">
-        <div className="min-w-0">
-          <p className="truncate text-[13px] font-medium">{selected.name}</p>
-          <p className="truncate text-[11px] text-[var(--osc-text-faint)]">
-            {selected.path}
-            {selected.bytes !== undefined ? ` · ${formatBytes(selected.bytes)}` : ""}
-            {selected.mime ? ` · ${selected.mime}` : ""}
-          </p>
+        <div className="flex min-w-0 items-center gap-2">
+          <MobileBack onBack={onBack} />
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-medium">{selected.name}</p>
+            <p className="truncate text-[11px] text-[var(--osc-text-faint)]">
+              {selected.path}
+              {selected.bytes !== undefined ? ` · ${formatBytes(selected.bytes)}` : ""}
+              {selected.mime ? ` · ${selected.mime}` : ""}
+            </p>
+          </div>
         </div>
         <a
           href={downloadHref}
@@ -121,6 +170,7 @@ export function FilesExplorer() {
   }, [selectedPath, treeQuery.data])
 
   const crumbs = dirPath ? dirPath.split("/").filter(Boolean) : []
+  const showPreviewMobile = Boolean(selectedPath)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-studio="files">
@@ -170,11 +220,18 @@ export function FilesExplorer() {
         <span className="text-[11px] text-[var(--osc-text-faint)]">read-only</span>
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="w-72 shrink-0 overflow-auto border-r border-[var(--osc-border)]">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div
+          className={`min-h-0 shrink-0 overflow-auto border-[var(--osc-border)] md:w-72 md:border-r ${
+            showPreviewMobile ? "hidden md:block" : "flex-1 border-b md:flex-none md:border-b-0"
+          }`}
+        >
           {treeQuery.isLoading && <p className="p-4 text-sm text-[var(--osc-text-muted)]">Loading…</p>}
-          {treeQuery.error && <p className="p-4 text-sm text-red-600">{(treeQuery.error as Error).message}</p>}
-          {treeQuery.data && (
+          {treeQuery.error && (
+            <ErrorState className="m-3 border-0 py-8" title="Could not load files" description={(treeQuery.error as Error).message} />
+          )}
+          {treeQuery.data && treeQuery.data.entries.length === 0 && <EmptyState className="m-3 border-0 py-10" title="Empty directory" />}
+          {treeQuery.data && treeQuery.data.entries.length > 0 && (
             <ul className="py-1">
               {treeQuery.data.entries.map((entry) => (
                 <li key={entry.path}>
@@ -202,14 +259,11 @@ export function FilesExplorer() {
                   </button>
                 </li>
               ))}
-              {treeQuery.data.entries.length === 0 && (
-                <li className="px-3 py-4 text-[12px] text-[var(--osc-text-muted)]">Empty directory</li>
-              )}
             </ul>
           )}
         </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <PreviewPane selected={selected} />
+        <div className={`min-h-0 min-w-0 flex-1 flex-col ${showPreviewMobile ? "flex" : "hidden md:flex"}`}>
+          <PreviewPane selected={selected} selectedPath={selectedPath} onBack={selectedPath ? () => setSelectedPath(null) : undefined} />
         </div>
       </div>
     </div>

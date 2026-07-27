@@ -2,14 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
-import { subscribeAgentHandoff } from "./agent-handoff"
-import { readAgentOpen, writeAgentOpen } from "./agent-open"
-import { type AgentStatus, agentStatusDotClass, agentStatusLabel } from "./agent-status"
 import { Button } from "./components/button"
 import { FilesExplorer } from "./files-explorer"
 import { NativeAgentFrame } from "./native-agent-frame"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 import { readThemePreference, setThemePreference, type ThemePreference } from "./theme"
+import { useStudioChrome } from "./use-studio-chrome"
 
 type StudioCard = {
   id: string
@@ -619,12 +617,47 @@ function assertViewerLoadersComplete() {
 }
 assertViewerLoadersComplete()
 
+function AgentChromeActions({
+  nativeAvailable,
+  agentOpen,
+  agentStatusLabel: statusLabel,
+  agentStatusDotClass: statusDot,
+  onToggle,
+}: {
+  nativeAvailable: boolean
+  agentOpen: boolean
+  agentStatusLabel: string
+  agentStatusDotClass: string
+  onToggle: () => void
+}) {
+  return (
+    <>
+      {nativeAvailable && (
+        <a
+          href="/"
+          className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
+        >
+          OpenCode
+        </a>
+      )}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
+        aria-pressed={agentOpen}
+        title={statusLabel}
+      >
+        <span className={`size-1.5 rounded-full ${statusDot}`} aria-hidden />
+        Agent
+      </button>
+    </>
+  )
+}
+
 function StudioFrame() {
   const { studioId = "" } = useParams()
   const studiosQuery = useStudios()
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [agentOpen, setAgentOpen] = useState(() => readAgentOpen())
-  const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (readAgentOpen() ? "loading" : "closed"))
+  const chrome = useStudioChrome()
 
   const uiBasePath = `/studios/${studioId}`
   const apiBasePath = `/api/studios/${studioId}`
@@ -641,31 +674,10 @@ function StudioFrame() {
     }
   }, [studioId, uiBasePath, apiBasePath])
 
-  useEffect(() => {
-    if (!agentOpen) setAgentStatus("closed")
-  }, [agentOpen])
-
-  const setAgentOpenPersisted = (next: boolean | ((value: boolean) => boolean)) => {
-    setAgentOpen((current) => {
-      const value = typeof next === "function" ? next(current) : next
-      return value
-    })
-  }
-
-  useEffect(() => {
-    writeAgentOpen(agentOpen)
-  }, [agentOpen])
-
-  useEffect(() => {
-    return subscribeAgentHandoff((request) => {
-      if (request.open) setAgentOpen(true)
-    })
-  }, [])
-
   if (studiosQuery.isLoading) {
     return (
       <div className="flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-        <TopBar studioLabel="Loading…" onMenu={() => setDrawerOpen(true)} />
+        <TopBar studioLabel="Loading…" onMenu={() => chrome.setDrawerOpen(true)} />
         <p className="p-8 text-sm text-[var(--osc-text-muted)]">Loading…</p>
       </div>
     )
@@ -676,8 +688,8 @@ function StudioFrame() {
   if (studiosQuery.isError || !studiosQuery.data) {
     return (
       <div className="flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-        <TopBar studioLabel="Studio" studioId={studioId} onMenu={() => setDrawerOpen(true)} />
-        <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
+        <TopBar studioLabel="Studio" studioId={studioId} onMenu={() => chrome.setDrawerOpen(true)} />
+        <SideDrawer open={chrome.drawerOpen} onClose={() => chrome.setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
         <p className="p-8 text-sm text-[var(--osc-error)]" role="alert">
           Failed to load studio host: {(studiosQuery.error as Error)?.message ?? "unknown error"}
         </p>
@@ -694,43 +706,29 @@ function StudioFrame() {
 
   return (
     <div data-studio={studioId} className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-      {/* Always flush: first studio chrome (.studio-subnav or content) owns the bottom edge */}
       <TopBar
         studioLabel={label}
         studioId={studioId}
-        onMenu={() => setDrawerOpen(true)}
+        onMenu={() => chrome.setDrawerOpen(true)}
         edge="flush"
         actions={
-          <>
-            {nativeAvailable && (
-              <a
-                href="/"
-                className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-              >
-                OpenCode
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={() => setAgentOpenPersisted((value) => !value)}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-              aria-pressed={agentOpen}
-              title={agentStatusLabel(agentStatus)}
-            >
-              <span className={`size-1.5 rounded-full ${agentStatusDotClass(agentStatus)}`} aria-hidden />
-              Agent
-            </button>
-          </>
+          <AgentChromeActions
+            nativeAvailable={nativeAvailable}
+            agentOpen={chrome.agentOpen}
+            agentStatusLabel={chrome.agentStatusLabel}
+            agentStatusDotClass={chrome.agentStatusDotClass}
+            onToggle={chrome.toggleAgent}
+          />
         }
       />
-      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
+      <SideDrawer open={chrome.drawerOpen} onClose={() => chrome.setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <NativeAgentFrame
           workspace={workspace}
           available={nativeAvailable}
-          open={agentOpen}
-          onClose={() => setAgentOpenPersisted(false)}
-          onStatusChange={setAgentStatus}
+          open={chrome.agentOpen}
+          onClose={chrome.closeAgent}
+          onStatusChange={chrome.setAgentStatus}
         />
         <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
           <Suspense
@@ -759,31 +757,7 @@ function SkipLink() {
 
 function FilesFrame() {
   const studiosQuery = useStudios()
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [agentOpen, setAgentOpen] = useState(() => readAgentOpen())
-  const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (readAgentOpen() ? "loading" : "closed"))
-
-  useEffect(() => {
-    if (!agentOpen) setAgentStatus("closed")
-  }, [agentOpen])
-
-  const setAgentOpenPersisted = (next: boolean | ((value: boolean) => boolean)) => {
-    setAgentOpen((current) => {
-      const value = typeof next === "function" ? next(current) : next
-      return value
-    })
-  }
-
-  useEffect(() => {
-    writeAgentOpen(agentOpen)
-  }, [agentOpen])
-
-  useEffect(() => {
-    return subscribeAgentHandoff((request) => {
-      if (request.open) setAgentOpen(true)
-    })
-  }, [])
-
+  const chrome = useStudioChrome()
   const nativeAvailable = studiosQuery.data?.nativeOpenCodeAvailable ?? false
   const workspace = studiosQuery.data?.workspace ?? ""
 
@@ -792,39 +766,26 @@ function FilesFrame() {
       <TopBar
         studioLabel="Files"
         studioId="files"
-        onMenu={() => setDrawerOpen(true)}
+        onMenu={() => chrome.setDrawerOpen(true)}
         edge="flush"
         actions={
-          <>
-            {nativeAvailable && (
-              <a
-                href="/"
-                className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-              >
-                OpenCode
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={() => setAgentOpenPersisted((value) => !value)}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-              aria-pressed={agentOpen}
-              title={agentStatusLabel(agentStatus)}
-            >
-              <span className={`size-1.5 rounded-full ${agentStatusDotClass(agentStatus)}`} aria-hidden />
-              Agent
-            </button>
-          </>
+          <AgentChromeActions
+            nativeAvailable={nativeAvailable}
+            agentOpen={chrome.agentOpen}
+            agentStatusLabel={chrome.agentStatusLabel}
+            agentStatusDotClass={chrome.agentStatusDotClass}
+            onToggle={chrome.toggleAgent}
+          />
         }
       />
-      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} studioId="files" initialPanel="nav" />
+      <SideDrawer open={chrome.drawerOpen} onClose={() => chrome.setDrawerOpen(false)} studioId="files" initialPanel="nav" />
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <NativeAgentFrame
           workspace={workspace}
           available={nativeAvailable}
-          open={agentOpen}
-          onClose={() => setAgentOpenPersisted(false)}
-          onStatusChange={setAgentStatus}
+          open={chrome.agentOpen}
+          onClose={chrome.closeAgent}
+          onStatusChange={chrome.setAgentStatus}
         />
         <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
           <FilesExplorer />

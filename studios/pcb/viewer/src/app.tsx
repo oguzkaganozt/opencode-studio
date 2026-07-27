@@ -3,6 +3,8 @@ import { lazy, Suspense, useEffect, useState } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Dialog, DialogHeader } from "@ui/components/dialog"
+import { EmptyState } from "@ui/components/empty-state"
+import { ErrorState } from "@ui/components/error-state"
 import { api, type CircuitDiagnostics, type DiagnosticGroup, type PartSummary, type ProjectSummary, studioHref } from "./api"
 
 function safeHref(raw: string | null | undefined): string | null {
@@ -137,12 +139,12 @@ function LoadingState({ label = "Loading…" }: { label?: string }) {
   )
 }
 
-function ErrorState({ message }: { message: string }) {
-  return <div className="flex items-center justify-center py-24 text-[var(--osc-error)] text-sm">{message}</div>
+function PageError({ message }: { message: string }) {
+  return <ErrorState className="m-6 border-0 py-20" title={message} />
 }
 
-function EmptyState({ label }: { label: string }) {
-  return <div className="flex items-center justify-center py-24 text-[var(--osc-text-faint)] text-sm">{label}</div>
+function PageEmpty({ label }: { label: string }) {
+  return <EmptyState className="m-6 border-0 py-20" title={label} />
 }
 
 // ── Projects Page ─────────────────────────────────────────────────────────────
@@ -295,9 +297,9 @@ function ProjectsPage() {
         )}
       </div>
       {isLoading && <LoadingState />}
-      {error && <ErrorState message={String(error)} />}
+      {error && <PageError message={String(error)} />}
       {data && data.projects.length === 0 && (
-        <EmptyState label="No circuit projects found. Create a project with a src/circuit.tsx file in the workspace." />
+        <PageEmpty label="No circuit projects found. Create a project with a src/circuit.tsx file in the workspace." />
       )}
       {data && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -352,7 +354,7 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
   }, [projectId])
 
   if (loading) return <LoadingState label="Loading circuit.json…" />
-  if (error) return <ErrorState message="circuit.json not available. Run pcb_circuit_build first." />
+  if (error) return <PageError message="circuit.json not available. Run pcb_circuit_build first." />
 
   const elements = Array.isArray(data) ? data : []
   const types = [...new Set(elements.map((e: any) => e.type as string))].sort()
@@ -442,7 +444,7 @@ function ProjectPage() {
   if (error || !project)
     return (
       <Shell fill>
-        <ErrorState message="Project not found" />
+        <PageError message="Project not found" />
       </Shell>
     )
 
@@ -588,7 +590,7 @@ function PartDetailModal({ mpn, onClose }: { mpn: string; onClose: () => void })
       <DialogHeader title={mpn} onClose={onClose} />
       <div className="p-5">
         {isLoading && <LoadingState />}
-        {error && <ErrorState message="Failed to load part details" />}
+        {error && <PageError message="Failed to load part details" />}
         {data && (
           <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-[var(--osc-text)]">{JSON.stringify(data, null, 2)}</pre>
         )}
@@ -630,9 +632,9 @@ function CatalogPage() {
         </div>
 
         {isLoading && <LoadingState />}
-        {error && <ErrorState message={String(error)} />}
+        {error && <PageError message={String(error)} />}
         {data && data.parts.length === 0 && (
-          <EmptyState label={search ? "No parts match your search." : "No catalog parts found in the workspace."} />
+          <PageEmpty label={search ? "No parts match your search." : "No catalog parts found in the workspace."} />
         )}
 
         {data && data.parts.length > 0 && (

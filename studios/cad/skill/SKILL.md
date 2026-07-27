@@ -90,6 +90,7 @@ Inside `build123d_execute`, composable Python helpers such as `clearance(a, b)`,
 - `design_read(id)` - read the canonical design/build summary, resolved artifact paths with existence checks, metrics, revision, and render inventory. Do not follow it with raw manifest reads or artifact globs.
 - `design_build(id)` - deterministically validate source and round-tripped STEP geometry as one valid solid, export STEP/STL/GLB, and write `manifest.json`. It does not run assembly or printability verification. Do not revalidate or remeasure unchanged STEP solely to repeat build guarantees. A failed build preserves the previous output.
 - `design_view(id)` - return the companion viewer URL and whether the companion health endpoint is reachable.
+- `design_qc_report(id, printability?, fit?, form?)` - multi-axis QC gate. Artifact status is computed from build outputs; print/fit/form come from your prior `build123d_*` checks (default `unverified`). `complete` is true only when every axis is `pass`. Call this before claiming the design complete.
 
 ### Responsibility boundary
 
@@ -188,17 +189,21 @@ If an interface fails, **fix the relevant `parts/<id>.py` source and rebuild** t
 Before saying `complete`:
 
 - Build success is not verification. Every validation, fit/alignment, and printability result must pass.
-- Report artifact build, printability verification, and mechanical verification as separate statuses; success in one never implies success in another.
-- When Manufactured Freeform Mode applies, report form fidelity separately with its station and multi-view evidence. Missing evidence blocks completion.
+- Report artifact build, printability verification, mechanical fit, and form fidelity as **separate** statuses; success in one never implies success in another.
+- When Manufactured Freeform Mode applies, report form fidelity separately with its station and multi-view evidence. Missing evidence blocks completion. For prismatic designs, set form to `pass` with finding `not applicable`.
 - Any reported wall below 1.2 mm blocks completion unless a separate geometry tool result localizes and measures it as a false positive. Source parameters, labels such as `chamfer` or `rail`, and verbal interpretation are not evidence.
-- A single-pose fit does not prove retention. Without motion or mechanism evidence, say `closed-position fit passes; retention unverified`.
+- A single-pose fit does not prove retention. Without motion or mechanism evidence, set fit to `fail` with finding `closed-position fit passes; retention unverified` — never fit `pass` with a retention caveat. The tool treats `pass` as claim-complete for that axis.
+- If retention is not a product requirement, static fit may be `pass` with finding `retention not required`.
 - If any printability finding or other check remains failed or unresolved, do not say `complete`, `implemented`, or `fabricated`; say `Build succeeded, verification failed.` and list it.
 
-Call `design_read(id)` to read the emitted `manifest.json`. Report to the user:
+Call `design_read(id)` for metrics, then **must** call `design_qc_report(id, { printability, fit, form })` with statuses from your prior MCP checks. Do not invent pass axes. Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete.
 
-- The part list with per-part volumes and dimensions.
+Report to the user:
+
+- The part list with per-part volumes and dimensions (from `design_read` / manifest).
+- The four QC axes from `design_qc_report` (artifact / printability / fit / form).
 - Assembly instructions (which part goes where, what hardware is needed).
-- Unresolved printability findings (overhangs needing supports, thin walls, etc.).
+- Unresolved findings from any failed or unverified axis.
 
 Do not hand-author generated measurements as canonical source - always read them from `manifest.json`.
 

@@ -29,6 +29,15 @@
         "id": "string"
       }
     },
+    "design_qc_report": {
+      "studio": "cad",
+      "args": {
+        "id": "string",
+        "printability": "object",
+        "fit": "object",
+        "form": "object"
+      }
+    },
     "pcb_workspace_list": {
       "studio": "pcb"
     },
@@ -120,5 +129,5 @@
       "studio": "platform"
     }
   },
-  "count": 35
+  "count": 36
 }

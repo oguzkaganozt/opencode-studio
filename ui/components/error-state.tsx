@@ -23,7 +23,7 @@ export function ErrorState({
       role="alert"
     >
       {icon ? <div className="mb-3 text-[var(--osc-error)]">{icon}</div> : null}
-      <h2 className="text-[15px] font-semibold text-[var(--osc-text)]">{title}</h2>
+      <h2 className="text-[15px] font-semibold text-[var(--osc-error)]">{title}</h2>
       {description ? <p className="mt-1.5 max-w-sm text-[13px] text-[var(--osc-text-muted)]">{description}</p> : null}
       {action ? <div className="mt-6">{action}</div> : null}
     </div>

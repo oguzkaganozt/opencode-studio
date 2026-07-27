@@ -5,6 +5,7 @@ import manifest from "../../package.json" with { type: "json" }
 import { buildDesign, defaultForgeRunner, type ForgeRunner, scaffoldDesign } from "./forge"
 import { findDesign, initializeStudio, listRenders, scanDesigns } from "./library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
+import { buildDesignQcReport, type QcAxisStatus } from "./qc-report"
 
 const PACKAGE_NAME = `${manifest.name}@${manifest.version}`
 const MAX_TOOL_OUTPUT_BYTES = 60_000
@@ -266,6 +267,61 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               title: url,
               output: asJson(result),
               metadata: result,
+            }
+          },
+        }),
+
+        design_qc_report: tool({
+          description:
+            "Multi-axis CAD QC report. Artifact status is computed from design_build outputs; printability, fit, and form statuses are supplied from prior build123d_* checks (default unverified). complete is true only when every axis is pass. Never claim design complete without this report.",
+          args: {
+            id: tool.schema.string().min(1).describe("Design id."),
+            printability: tool.schema
+              .object({
+                status: tool.schema
+                  .enum(["pass", "fail", "unverified"] as const)
+                  .describe("From build123d_analyze_printability on bed poses."),
+                findings: tool.schema.array(tool.schema.string()).optional().describe("Unresolved print findings."),
+              })
+              .optional(),
+            fit: tool.schema
+              .object({
+                status: tool.schema
+                  .enum(["pass", "fail", "unverified"] as const)
+                  .describe("From build123d_compare fit/align and motion staging."),
+                findings: tool.schema.array(tool.schema.string()).optional().describe("Fit/retention caveats."),
+              })
+              .optional(),
+            form: tool.schema
+              .object({
+                status: tool.schema
+                  .enum(["pass", "fail", "unverified"] as const)
+                  .describe("Form fidelity for freeform; use pass + finding 'not applicable' for prismatic designs."),
+                findings: tool.schema.array(tool.schema.string()).optional().describe("Station/multi-view evidence notes."),
+              })
+              .optional(),
+          },
+          async execute(args) {
+            const entry = await findDesign(layout, args.id)
+            if (!entry) throw new Error(`Design not found: ${args.id}`)
+            const artifact = await readArtifactManifest(entry.directory, args.id)
+            const report = await buildDesignQcReport({
+              id: args.id,
+              entry,
+              artifact,
+              printability: args.printability as { status: QcAxisStatus; findings?: string[] } | undefined,
+              fit: args.fit as { status: QcAxisStatus; findings?: string[] } | undefined,
+              form: args.form as { status: QcAxisStatus; findings?: string[] } | undefined,
+            })
+            return {
+              title: report.complete ? `QC pass: ${args.id}` : `QC incomplete: ${args.id}`,
+              output: asJson(report),
+              metadata: {
+                complete: report.complete,
+                blockedBy: report.blockedBy,
+                buildStatus: report.buildStatus,
+                revision: report.revision,
+              },
             }
           },
         }),

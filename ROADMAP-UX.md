@@ -15,14 +15,14 @@ ROI-ranked recommendations to make opencode-studio more usable, efficient, effec
 | 1 | ~~Enable/disable + CLI bloat~~ **DONE** — always-on; postinstall repair; CLI: serve/status/repair/remove/upgrade/service | Simpler UX/DX | — | — | ✓ | shipped |
 | 2 | ~~**README / CLI alignment**~~ **DONE** — OpenCode-first prerequisites; `/` vs `/studio` table; repair skill path wording | Less support load | — | — | ✓ | shipped |
 | 3 | ~~**PCB `NavLink` active state**~~ **DONE** — basename-aware `useLocation` matching | Clear “where am I” | — | — | ✓ | shipped |
-| 4 | **Shared UI adoption** — Files/PCB use `@ui` `EmptyState` / `ErrorState` / `--osc-error`; kill token drift | Consistency + cheaper maintenance | S | O | ★★★★☆ | `ui/`, studio viewers |
-| 5 | **Files responsive layout** — stack or collapsible list below `md` | Usable Files on narrow viewports | S–M | O | ★★★★☆ | `ui/files-explorer.tsx` |
-| 6 | **`useStudioChrome()` extract** — shared agent open / status / handoff for Files + Studio frames | Less duplication; safer new surfaces | S–M | O | ★★★★☆ | `ui/app.tsx` |
+| 4 | ~~**Shared UI adoption**~~ **DONE** — Files/PCB use `@ui` EmptyState/ErrorState | Consistency | — | — | ✓ | shipped |
+| 5 | ~~**Files responsive layout**~~ **DONE** — stack below `md`; mobile list/preview swap | Narrow viewports | — | — | ✓ | shipped |
+| 6 | ~~**`useStudioChrome()` extract**~~ **DONE** — shared agent open/status/handoff | Less duplication | — | — | ✓ | shipped |
 | 7 | ~~**PCB → Agent handoff**~~ **DONE** — “Send diagnostics to agent” | Closes agent loop for PCB | — | — | ✓ | shipped |
 | 8 | ~~**Richer `status` / `serve` output**~~ **DONE** — MCP + plugin checks; serve tip; status restart tip on warn/fail | Half-configured states visible | — | — | ✓ | shipped |
 | 9 | ~~**CLI configure messaging**~~ **DONE** — repair/status/UI restart hints (Apply asymmetry obsolete) | — | — | — | ✓ | shipped |
 | 10 | ~~**Deepen PCB skill**~~ **DONE** — micro-flow + readiness field table + `/studio` URL | Better agent PCB outcomes | — | — | ✓ | shipped |
-| 11 | **CAD `design_qc_report`** — separate artifact / print / fit / form statuses | Less overclaim; mirrors PCB multi-axis honesty | M | Y | ★★★★☆ | `studios/cad/tools.ts`, skill, parity |
+| 11 | ~~**CAD `design_qc_report`**~~ **DONE** — artifact/print/fit/form axes + complete gate | Less overclaim | — | — | ✓ | shipped |
 | 12 | **Single catalog registration map** — id → definition / plugin / api / viewer | New-studio tax ↓; loader drift ↓ | M | Y (maint) | ★★★★☆ | `registry`, loaders, `ui/app.tsx` |
 | 13 | **`create-studio` auto-wire or checklist script** | Contributor DX | S–M | O | ★★★☆☆ | `scripts/create-studio.ts` |
 | 14 | **wall-sconce build gate** (not presence-only) | Real PCB regression signal | M | O–Y | ★★★☆☆ | `test:pcb-fixture` / scripts |
@@ -50,8 +50,8 @@ ROI-ranked recommendations to make opencode-studio more usable, efficient, effec
 | Sprint | Items | Focus |
 |--------|-------|--------|
 | **A** | #1–3, #7–10, #16 | **Shipped** — always-on, first-run, PCB agent loop |
-| **B — next** | #4–6, #11 | Shared chrome + CAD QC honesty |
-| **C** | #12–14, #17 | Maint speed + regression confidence |
+| **B** | #4–6, #11 | **Shipped** — shared chrome + CAD QC honesty |
+| **C — next** | #12–14, #17 | Maint speed + regression confidence |
 | **D — later** | #15, #18–22, #26–27 | Polish and depth |
 
 ---
