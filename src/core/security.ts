@@ -50,12 +50,23 @@ export function hostnameForBindMode(mode: BindMode): string {
   return BIND_MODE_HOST[mode]
 }
 
+/** Default HTTP Basic username for non-loopback OpenCode/Files auth. */
+export const DEFAULT_BASIC_USERNAME = "opencode-studio"
+
+/** HTTP Basic username: OPENCODE_STUDIO_USERNAME or default `opencode-studio`. */
+export function resolveBasicUsername(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.OPENCODE_STUDIO_USERNAME
+  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim()
+  return DEFAULT_BASIC_USERNAME
+}
+
 /** Web mode requires OPENCODE_STUDIO_PASSWORD (non-empty). */
 export function assertWebPassword(mode: BindMode, env: NodeJS.ProcessEnv = process.env) {
   if (mode !== "web") return
   const password = env.OPENCODE_STUDIO_PASSWORD
   if (typeof password !== "string" || password.trim().length === 0) {
-    throw new Error("web mode requires OPENCODE_STUDIO_PASSWORD (HTTP Basic user opencode-studio)")
+    const user = resolveBasicUsername(env)
+    throw new Error(`web mode requires OPENCODE_STUDIO_PASSWORD (HTTP Basic user ${user})`)
   }
 }
 

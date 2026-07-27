@@ -53,6 +53,8 @@ export function renderUserUnit(input: {
   pathEnv: string
   agentPassword?: string
   agentPasswordEnvironment?: string
+  agentUsername?: string
+  agentUsernameEnvironment?: string
   executable: { command: string; argsPrefix: string[] }
 }) {
   const modeFlag = input.mode === "web" ? "--web" : "--local"
@@ -64,6 +66,11 @@ export function renderUserUnit(input: {
     : input.agentPasswordEnvironment
       ? `${input.agentPasswordEnvironment}\n`
       : ""
+  const agentUsername = input.agentUsername
+    ? `Environment=OPENCODE_STUDIO_USERNAME=${shellEscape(input.agentUsername.replace(/%/g, "%%"))}\n`
+    : input.agentUsernameEnvironment
+      ? `${input.agentUsernameEnvironment}\n`
+      : ""
 
   return `[Unit]
 Description=OpenCode Studio host (${input.workspace})
@@ -74,7 +81,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=${shellEscape(input.workspace)}
 Environment=PATH=${shellEscape(input.pathEnv)}
-${agentPassword}ExecStart=${execStart}
+${agentUsername}${agentPassword}ExecStart=${execStart}
 Restart=on-failure
 RestartSec=3
 
@@ -90,14 +97,22 @@ function shellEscape(value: string) {
   return value
 }
 
-async function existingAgentPasswordEnvironment(file: string) {
+async function existingEnvironmentLine(file: string, key: string) {
   try {
     const body = await readFile(file, "utf8")
-    return body.split("\n").find((line) => line.startsWith("Environment=OPENCODE_STUDIO_PASSWORD="))
+    return body.split("\n").find((line) => line.startsWith(`Environment=${key}=`))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
     throw error
   }
+}
+
+async function existingAgentPasswordEnvironment(file: string) {
+  return existingEnvironmentLine(file, "OPENCODE_STUDIO_PASSWORD")
+}
+
+async function existingAgentUsernameEnvironment(file: string) {
+  return existingEnvironmentLine(file, "OPENCODE_STUDIO_USERNAME")
 }
 
 async function runSystemctl(args: string[]) {
@@ -240,7 +255,9 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
     const executable = resolveServeExecutable()
     const pathEnv = process.env.PATH ?? "/usr/bin:/bin"
     const agentPassword = process.env.OPENCODE_STUDIO_PASSWORD
+    const agentUsername = process.env.OPENCODE_STUDIO_USERNAME
     const existingPassword = agentPassword ? undefined : await existingAgentPasswordEnvironment(file)
+    const existingUsername = agentUsername ? undefined : await existingAgentUsernameEnvironment(file)
     if (mode === "web" && !agentPassword?.trim() && !existingPassword) {
       throw new Error("web mode requires OPENCODE_STUDIO_PASSWORD (set it when running service install)")
     }
@@ -251,6 +268,8 @@ export async function manageService(action: ServiceAction, options: ServiceOptio
       pathEnv,
       agentPassword,
       agentPasswordEnvironment: agentPassword ? undefined : existingPassword,
+      agentUsername: agentUsername?.trim() || undefined,
+      agentUsernameEnvironment: agentUsername?.trim() ? undefined : existingUsername,
       executable,
     })
     await mkdir(userUnitDir(), { recursive: true, mode: 0o755 })

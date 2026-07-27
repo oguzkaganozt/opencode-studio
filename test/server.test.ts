@@ -313,4 +313,29 @@ describe("host server", () => {
     })
     expect(allowed.status).toBe(200)
   })
+
+  test("OPENCODE_STUDIO_USERNAME overrides Basic auth user", async () => {
+    const ctx = await isolatedHost()
+    const { app } = await createHostApp({
+      ...ctx,
+      hostname: "0.0.0.0",
+      port: 4173,
+      env: { OPENCODE_STUDIO_PASSWORD: "secret", OPENCODE_STUDIO_USERNAME: "myuser" },
+    })
+    const denied = await app.request("http://192.168.1.20:4173/api/files/tree", {
+      headers: {
+        host: "192.168.1.20:4173",
+        authorization: `Basic ${Buffer.from("opencode-studio:secret").toString("base64")}`,
+      },
+    })
+    expect(denied.status).toBe(401)
+
+    const allowed = await app.request("http://192.168.1.20:4173/api/files/tree", {
+      headers: {
+        host: "192.168.1.20:4173",
+        authorization: `Basic ${Buffer.from("myuser:secret").toString("base64")}`,
+      },
+    })
+    expect(allowed.status).toBe(200)
+  })
 })

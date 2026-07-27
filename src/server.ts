@@ -13,6 +13,7 @@ import {
   createCsrfToken,
   csrfTokensEqual,
   isLoopbackHost,
+  resolveBasicUsername,
   sameOrigin,
   securityHeaders,
 } from "./core/security"
@@ -166,8 +167,9 @@ export async function createHostApp(input: HostInput) {
   }
 
   const chatPassword = env.OPENCODE_STUDIO_PASSWORD
+  const chatUsername = resolveBasicUsername(env)
   const openCodeAuthorized = (authorization: string | undefined) =>
-    isLoopbackHost(hostname) || Boolean(chatPassword && basicAuthMatches(authorization, "opencode-studio", chatPassword))
+    isLoopbackHost(hostname) || Boolean(chatPassword && basicAuthMatches(authorization, chatUsername, chatPassword))
 
   const openCodeAuthResponse = () => {
     if (!chatPassword) {
@@ -178,7 +180,7 @@ export async function createHostApp(input: HostInput) {
     }
     return new Response(JSON.stringify(errorBody("unauthorized", "OpenCode Studio password required.")), {
       status: 401,
-      headers: { "Content-Type": "application/json", "WWW-Authenticate": 'Basic realm="opencode-studio"' },
+      headers: { "Content-Type": "application/json", "WWW-Authenticate": `Basic realm="opencode-studio"` },
     })
   }
 

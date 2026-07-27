@@ -33,6 +33,20 @@ describe("systemd user unit", () => {
     expect(unit).toContain('Environment=OPENCODE_STUDIO_PASSWORD="%%h test password"')
   })
 
+  test("renderUserUnit includes optional Basic username", () => {
+    const unit = renderUserUnit({
+      workspace: "/home/me/project",
+      mode: "web",
+      port: 4173,
+      pathEnv: "/usr/bin",
+      agentPassword: "secret",
+      agentUsername: "admin",
+      executable: { command: "/usr/bin/opencode-studio", argsPrefix: [] },
+    })
+    expect(unit).toContain("Environment=OPENCODE_STUDIO_USERNAME=admin")
+    expect(unit).toContain("Environment=OPENCODE_STUDIO_PASSWORD=secret")
+  })
+
   test("resolveServeExecutable returns a command", () => {
     const exe = resolveServeExecutable()
     expect(exe.command.length).toBeGreaterThan(0)

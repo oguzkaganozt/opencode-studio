@@ -5,8 +5,10 @@ import {
   basicAuthMatches,
   createCsrfToken,
   csrfTokensEqual,
+  DEFAULT_BASIC_USERNAME,
   hostnameForBindMode,
   isLoopbackHost,
+  resolveBasicUsername,
   resolveBindMode,
   safeExternalHref,
   sameOrigin,
@@ -136,6 +138,12 @@ describe("security", () => {
       expect(() => assertWebPassword("web", { OPENCODE_STUDIO_PASSWORD: "   " })).toThrow(/OPENCODE_STUDIO_PASSWORD/)
       expect(() => assertWebPassword("web", { OPENCODE_STUDIO_PASSWORD: "secret" })).not.toThrow()
       expect(() => assertWebPassword("local", {})).not.toThrow()
+    })
+
+    test("resolveBasicUsername defaults and overrides", () => {
+      expect(resolveBasicUsername({})).toBe(DEFAULT_BASIC_USERNAME)
+      expect(resolveBasicUsername({ OPENCODE_STUDIO_USERNAME: "   " })).toBe(DEFAULT_BASIC_USERNAME)
+      expect(resolveBasicUsername({ OPENCODE_STUDIO_USERNAME: "admin" })).toBe("admin")
     })
   })
 })

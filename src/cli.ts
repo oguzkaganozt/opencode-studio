@@ -3,7 +3,7 @@ import path from "node:path"
 import { parseArgs } from "node:util"
 import { loadPackageMeta } from "./core/package-meta"
 import { resolveWorkspace } from "./core/paths"
-import { assertLoopbackBind, assertWebPassword, hostnameForBindMode, resolveBindMode } from "./core/security"
+import { assertLoopbackBind, assertWebPassword, hostnameForBindMode, resolveBasicUsername, resolveBindMode } from "./core/security"
 import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { startHost } from "./server"
 import { checkPackageUpgrade, manageService, type ServiceAction, upgradePackage } from "./service"
@@ -40,7 +40,8 @@ Examples:
   opencode-studio service install --workspace ~/project
 
 Notes:
-  serve binds 127.0.0.1 by default; --web needs OPENCODE_STUDIO_PASSWORD.
+  serve binds 127.0.0.1 by default; --web needs OPENCODE_STUDIO_PASSWORD
+  (optional OPENCODE_STUDIO_USERNAME, default opencode-studio).
   Skip postinstall setup: OPENCODE_STUDIO_SKIP_POSTINSTALL=1
 `)
 }
@@ -54,7 +55,8 @@ Start the Studio viewer and OpenCode sidecar (foreground).
 Options:
   --workspace <path>     Domain data root (default: cwd)
   --local                Bind 127.0.0.1 (default)
-  --web                  Bind 0.0.0.0; requires OPENCODE_STUDIO_PASSWORD
+   --web                  Bind 0.0.0.0; requires OPENCODE_STUDIO_PASSWORD
+                         (Basic user: OPENCODE_STUDIO_USERNAME or opencode-studio)
   --port <port>          Default 4173
   --ui-directory <path>  Override UI dist
   -h, --help
@@ -331,6 +333,11 @@ async function main(argv: string[]) {
     if (opencodeUrl) console.log(`OpenCode: ${opencodeUrl}`)
     else console.log("OpenCode: attached server (native proxy disabled)")
     console.log(`workspace: ${workspace}`)
+    if (mode === "web") {
+      const user = resolveBasicUsername()
+      console.log(`auth: HTTP Basic  user=${user}  password=$OPENCODE_STUDIO_PASSWORD`)
+      console.log(`      (override user with OPENCODE_STUDIO_USERNAME)`)
+    }
     console.log("Tip: opencode-studio status · restart OpenCode after first install/repair")
     await new Promise(() => {})
     return 0

@@ -61,7 +61,7 @@ OPENCODE_STUDIO_PASSWORD='choose-a-strong-password' \
   opencode-studio serve --workspace /path/to/project --web
 ```
 
-Open `http://<server-ip>:4173/studio` and open **Agent** — the browser prompts for HTTP Basic credentials (username `opencode-studio`, password = `OPENCODE_STUDIO_PASSWORD`). The same credentials unlock `http://<server-ip>:4173/` and `/api/files/*` (Files explorer). Keep the host behind a trusted network or VPN; this password does not add TLS.
+Open `http://<server-ip>:4173/studio` and open **Agent** — the browser prompts for HTTP Basic credentials. Defaults: username `opencode-studio`, password = `OPENCODE_STUDIO_PASSWORD`. Override user with `OPENCODE_STUDIO_USERNAME`. `serve --web` prints both. The same credentials unlock `http://<server-ip>:4173/` and `/api/files/*` (Files explorer). Keep the host behind a trusted network or VPN; this password does not add TLS.
 
 Install is **user-global** — postinstall repairs once; run `repair` only if needed. `--workspace` is the domain data root (where designs/boards live), not a per-project config file.
 
