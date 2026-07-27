@@ -190,7 +190,8 @@ async function browserSmoke(base: string) {
     for (const id of STUDIO_IDS) {
       const check = studioChecks[id]
       assert(check, `missing studio check for ${id}`)
-      await page.goto(`${base}/studio/studios/${id}`, { waitUntil: "networkidle" })
+      // CAD/PCB open long-lived SSE; networkidle never settles.
+      await page.goto(`${base}/studio/studios/${id}`, { waitUntil: "domcontentloaded" })
       await page.waitForSelector(`text=${check.wait}`, { timeout: 15_000 })
       await page.getByLabel("OpenCode agent").waitFor({ state: "attached" })
       await page.getByRole("button", { name: "Agent", exact: true }).waitFor()
@@ -217,7 +218,7 @@ async function browserSmoke(base: string) {
     await page.goto(`${base}/studio`, { waitUntil: "networkidle" })
     await page.waitForSelector("text=Studios")
     await assertNoHorizontalScroll(page, "360 home")
-    await page.goto(`${base}/studio/studios/cad`, { waitUntil: "networkidle" })
+    await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
     await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
     await assertNoHorizontalScroll(page, "360 cad")
     console.log("360 smoke ok")

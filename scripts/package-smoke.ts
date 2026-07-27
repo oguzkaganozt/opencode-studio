@@ -61,21 +61,27 @@ try {
   await import("node:fs/promises").then(({ mkdir }) => mkdir(domain, { recursive: true }))
 
   const cli = path.join(pkg, "dist/cli.js")
-  const status = Bun.spawn(["bun", cli, "status", "--workspace", domain], {
+  const cliEnv = {
+    ...process.env,
+    OPENCODE_STUDIO_CONFIG_HOME: studioConfigHome,
+    OPENCODE_CONFIG_HOME: openCodeHome,
+  }
+
+  // Pre-repair status may exit 1 (missing skills); still must print package line.
+  const preStatus = Bun.spawn(["bun", cli, "status", "--workspace", domain], {
     stdout: "pipe",
     stderr: "pipe",
-    env: {
-      ...process.env,
-      OPENCODE_STUDIO_CONFIG_HOME: studioConfigHome,
-      OPENCODE_CONFIG_HOME: openCodeHome,
-    },
+    env: cliEnv,
   })
-  const [cliOut, cliErr, cliCode] = await Promise.all([
-    new Response(status.stdout).text(),
-    new Response(status.stderr).text(),
-    status.exited,
+  const [preOut, preErr] = await Promise.all([
+    new Response(preStatus.stdout).text(),
+    new Response(preStatus.stderr).text(),
+    preStatus.exited,
   ])
-  if (cliCode !== 0) throw new Error(`cli status failed: ${cliErr || cliOut}`)
+  const preText = `${preOut}\n${preErr}`
+  if (!preText.includes("Package:") || !preText.includes("@oguzkaganozt/opencode-studio@")) {
+    throw new Error(`cli status missing package banner:\n${preText}`)
+  }
 
   // Configure from packed package; config lands in user-global homes (isolated here).
   await configureStudios({
@@ -98,6 +104,21 @@ try {
   }
   if (await Bun.file(path.join(domain, "opencode.json")).exists()) {
     throw new Error("configure must not write opencode.json into the domain root")
+  }
+
+  const postStatus = Bun.spawn(["bun", cli, "status", "--workspace", domain], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: cliEnv,
+  })
+  const [postOut, postErr, postCode] = await Promise.all([
+    new Response(postStatus.stdout).text(),
+    new Response(postStatus.stderr).text(),
+    postStatus.exited,
+  ])
+  if (postCode !== 0) throw new Error(`cli status after repair failed: ${postErr || postOut}`)
+  if (!postOut.includes("mcp-build123d") || !postOut.includes("skill:pcb")) {
+    throw new Error(`cli status after repair missing expected checks:\n${postOut}`)
   }
 
   console.log("package-smoke ok")
