@@ -1,7 +1,16 @@
-# Lock — Shell + Files (batch 1–2)
+# Lock — Shell + Files + CAD + PCB
 
-**Status:** Files + CAD + PCB LOCKED 2026-07-28 · **Shell unlocked** (menu/settings/chrome polish in progress)  
-**Do not restyle** Files, CAD, or PCB viewers without explicit unlock. Shell host chrome may change until re-locked.
+**Status:** Files + CAD + PCB + **Shell LOCKED** 2026-07-28  
+**Do not restyle** without explicit unlock.
+
+### Shell lock addendum (this pass)
+| Surface | Paths |
+| --- | --- |
+| Tokens / global | `ui/tokens.css`, `ui/styles.css` |
+| Primitives | `ui/components/*` |
+| Shell | `ui/app.tsx` (TopBar, SideDrawer, Home, Agent actions, frames) |
+| Agent chrome | `ui/native-agent-frame.tsx` |
+| Spec | `MASTER.md`, `pages/shell.md` |
 
 ### CAD lock addendum
 | Surface | Paths |
@@ -28,34 +37,40 @@ QA: projects list/mobile; project detail tabs; catalog empty; empty/error states
 | Shell | `ui/app.tsx` (TopBar, SideDrawer, Home, Agent chrome, frames) |
 | Agent chrome | `ui/native-agent-frame.tsx` (header chips) |
 | Files | `ui/files-explorer.tsx` |
-| Spec | `MASTER.md`, `pages/shell.md`, `pages/files.md` |
+| Spec | `MASTER.md`, `pages/shell.md`, `pages/files.md`, `pages/cad.md`, `pages/pcb.md` |
 
-## Visual QA (agent-browser)
+## Visual QA (agent-browser) — shell polish 2026-07-28
 
-Auth: HTTP Basic via `--headers` (not `user:pass@url` — Chromium rejects `fetch` when the document URL embeds credentials).
+Auth: HTTP Basic via `--headers` JSON (not `user:pass@url`). Studio UI path: `/studio/`. Live host may serve from OpenCode package cache — sync `dist/ui` for dogfood.
 
 | Check | Result |
 | --- | --- |
-| Home 1440 light/dark | Pass — cards, badges, chips |
-| Drawer nav + settings | Pass — theme, repair sticky |
-| Files list + preview | Pass — icons, crumbs, download, text well |
-| Files mobile list/preview | Pass — ← List back |
-| Home mobile | Pass — OpenCode chip |
-| Console errors (happy path) | None |
+| Home 1440 light/dark | Pass — cards, elevation, chips, badges |
+| Drawer Navigate + Settings | Pass — Appearance first; Studios on-badges; Install + details; sticky Repair |
+| Home mobile 390 | Pass — compact type, OC chip, touch targets |
+| Drawer mobile full-bleed | Pass — Navigate selected, safe close |
+| CAD shell desktop/mobile | Pass — TopBar + Agent dual-line header (viewer interior locked) |
+| Console errors (happy path) | None observed |
 | typecheck / lint / unit tests | Pass |
 
-### Fixed from QA
+### Fixed this pass
 
-- Drawer open → background chrome `inert` (home, files, studio frames)
-- Overlay `inert` when closed
-- Files empty preview less sparse (top-biased, max-width)
+- Clearer light/dark elevated vs page separation (tokens)
+- Settings radial icon; Navigate \| Settings segments
+- Settings order: Appearance → Studios → Install (paths + details) → Repair helper
+- Home ErrorState + Retry; EmptyState when zero studios
+- Studio host load skeleton / ErrorState
+- Mobile: larger icon hit targets, nav row min-height, OC chip collapse, safe-area on TopBar/footer
+- Agent header dual-line status + loading pulse overlay
 
 ### Residual (accepted)
 
 - Agent-browser a11y snapshot may still list off-screen drawer nodes; runtime `inert`/`aria-hidden` set correctly
-- URL-embedded Basic auth (`http://user:pass@host`) breaks relative `fetch` — browser limitation; use auth dialog or `Authorization` header
-- CAD/PCB viewers untouched
+- URL-embedded Basic auth breaks relative `fetch` — use Authorization header
+- CAD/PCB viewer interiors unchanged (locked)
+- Agent open state persists across routes (prior behavior)
+- Dual-line agent header is snug in 48px chrome height
 
 ## Screenshots
 
-`/tmp/opencode/dogfood-studio/screenshots/`
+`/tmp/opencode/dogfood-shell/screenshots/`

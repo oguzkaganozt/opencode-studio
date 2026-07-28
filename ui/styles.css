@@ -18,7 +18,7 @@
 html,
 body,
 #root {
-  min-height: 100%;
+  min-height: 100dvh;
 }
 
 body {
@@ -119,15 +119,18 @@ button:disabled {
 .osc-chip {
   display: inline-flex;
   height: 2rem;
+  min-height: 2rem;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
   border-radius: var(--osc-radius-md);
   border: 1px solid var(--osc-border);
   background: transparent;
   padding: 0 0.625rem;
   font-size: 12px;
   font-weight: 500;
+  line-height: 1;
   color: var(--osc-text);
+  white-space: nowrap;
   transition:
     background-color var(--osc-motion-duration) ease,
     border-color var(--osc-motion-duration) ease,
@@ -141,7 +144,7 @@ button:disabled {
 }
 
 .osc-chip:active {
-  transform: scale(0.98);
+  transform: translateY(1px);
 }
 
 .osc-chip[aria-pressed="true"] {
@@ -156,8 +159,10 @@ button:disabled {
 
 .osc-icon-btn {
   display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
   place-items: center;
   border-radius: var(--osc-radius-md);
   border: 0;
@@ -169,13 +174,22 @@ button:disabled {
     transform 140ms ease-out;
 }
 
+@media (min-width: 640px) {
+  .osc-icon-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+  }
+}
+
 .osc-icon-btn:hover {
   background: var(--osc-surface);
   color: var(--osc-text);
 }
 
 .osc-icon-btn:active {
-  transform: scale(0.96);
+  transform: translateY(1px);
 }
 
 .osc-icon-btn:focus-visible {
@@ -242,12 +256,20 @@ button:disabled {
 .osc-nav-item {
   position: relative;
   display: block;
+  min-height: 2.75rem;
   border-radius: var(--osc-radius-md);
-  padding: 0.625rem 0.75rem 0.625rem 0.875rem;
+  padding: 0.7rem 0.75rem 0.7rem 0.875rem;
   color: var(--osc-text-muted);
   transition:
     background-color var(--osc-motion-duration) ease,
     color var(--osc-motion-duration) ease;
+}
+
+@media (min-width: 640px) {
+  .osc-nav-item {
+    min-height: 0;
+    padding: 0.625rem 0.75rem 0.625rem 0.875rem;
+  }
 }
 
 .osc-nav-item:hover {
@@ -378,7 +400,111 @@ button:disabled {
   border-top: 1px solid var(--osc-border);
   background: var(--osc-bg-elevated);
   padding: 0.75rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   box-shadow: 0 -8px 20px color-mix(in srgb, var(--osc-bg) 70%, transparent);
+}
+
+.osc-topbar-inner {
+  display: flex;
+  height: var(--osc-chrome-h);
+  align-items: center;
+  gap: 0.375rem;
+  padding-inline: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .osc-topbar-inner {
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+}
+
+.osc-topbar-actions {
+  display: flex;
+  margin-left: auto;
+  min-width: 0;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+@media (min-width: 640px) {
+  .osc-topbar-actions {
+    gap: 0.5rem;
+  }
+}
+
+.osc-home-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--osc-radius-lg);
+  border: 1px solid var(--osc-border);
+  background: var(--osc-bg-elevated);
+  padding: 1.25rem;
+  box-shadow: var(--osc-shadow);
+  transition:
+    border-color var(--osc-motion-duration) ease,
+    box-shadow var(--osc-motion-duration) ease;
+}
+
+@media (min-width: 640px) {
+  .osc-home-card {
+    padding: 1.5rem;
+  }
+}
+
+.osc-home-card:hover {
+  border-color: var(--osc-border-strong);
+  box-shadow: var(--osc-shadow-md);
+}
+
+.osc-home-card:focus-visible {
+  outline: none;
+  box-shadow: var(--osc-focus-ring);
+}
+
+.osc-home-card__rail {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 2px;
+  opacity: 0;
+  transition: opacity var(--osc-motion-duration) ease;
+}
+
+.osc-home-card:hover .osc-home-card__rail,
+.osc-home-card:focus-visible .osc-home-card__rail {
+  opacity: 1;
+}
+
+.osc-agent-header {
+  display: flex;
+  height: var(--osc-chrome-h);
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--osc-border);
+  background: var(--osc-bg-elevated);
+  padding-inline: 0.75rem;
+}
+
+.osc-agent-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--osc-bg) 88%, transparent);
+  pointer-events: none;
+}
+
+.osc-agent-loading__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--osc-text-muted);
+  animation: osc-pulse 1.2s ease-in-out infinite;
 }
 
 @media (hover: none) {
@@ -461,6 +587,10 @@ button:disabled {
   .osc-chip:active,
   .osc-icon-btn:active {
     transform: none;
+  }
+
+  .osc-agent-loading__dot {
+    animation: none;
   }
 
   body::before {

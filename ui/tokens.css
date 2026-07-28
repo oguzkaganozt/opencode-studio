@@ -42,19 +42,19 @@
 html[data-theme="light"] {
   color-scheme: light;
 
-  --osc-bg: #f7f7f8;
+  --osc-bg: #f4f4f5;
   --osc-bg-elevated: #ffffff;
-  --osc-bg-subtle: #f0f0f2;
-  --osc-surface: #ececee;
-  --osc-surface-hover: #e4e4e7;
-  --osc-border: #e4e4e7;
-  --osc-border-strong: #d4d4d8;
+  --osc-bg-subtle: #ececee;
+  --osc-surface: #e8e8eb;
+  --osc-surface-hover: #dedee3;
+  --osc-border: #e0e0e4;
+  --osc-border-strong: #c8c8d0;
   --osc-text: #18181b;
   --osc-text-muted: #52525b;
   --osc-text-faint: #a1a1aa;
 
-  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
-  --osc-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
+  --osc-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.05), 0 10px 28px rgba(0, 0, 0, 0.07);
   --osc-focus-ring: 0 0 0 2px var(--osc-bg-elevated), 0 0 0 4px var(--osc-text);
 
   --osc-primary: #18181b;
@@ -79,19 +79,19 @@ html[data-theme="light"] {
 html[data-theme="dark"] {
   color-scheme: dark;
 
-  --osc-bg: #09090b;
-  --osc-bg-elevated: #141416;
-  --osc-bg-subtle: #0c0c0e;
-  --osc-surface: #1f1f23;
-  --osc-surface-hover: #2a2a2e;
-  --osc-border: #27272a;
-  --osc-border-strong: #3f3f46;
+  --osc-bg: #08080a;
+  --osc-bg-elevated: #151518;
+  --osc-bg-subtle: #0c0c0f;
+  --osc-surface: #1c1c20;
+  --osc-surface-hover: #27272c;
+  --osc-border: #2a2a30;
+  --osc-border-strong: #3f3f48;
   --osc-text: #fafafa;
   --osc-text-muted: #a1a1aa;
   --osc-text-faint: #71717a;
 
-  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 4px 16px rgba(0, 0, 0, 0.35);
-  --osc-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4), 0 12px 28px rgba(0, 0, 0, 0.45);
+  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 18px rgba(0, 0, 0, 0.4);
+  --osc-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 14px 32px rgba(0, 0, 0, 0.5);
   --osc-focus-ring: 0 0 0 2px var(--osc-bg-elevated), 0 0 0 4px var(--osc-text);
 
   --osc-primary: #fafafa;
@@ -118,19 +118,19 @@ html[data-theme="dark"] {
 html:not([data-theme]) {
   color-scheme: light;
 
-  --osc-bg: #f7f7f8;
+  --osc-bg: #f4f4f5;
   --osc-bg-elevated: #ffffff;
-  --osc-bg-subtle: #f0f0f2;
-  --osc-surface: #ececee;
-  --osc-surface-hover: #e4e4e7;
-  --osc-border: #e4e4e7;
-  --osc-border-strong: #d4d4d8;
+  --osc-bg-subtle: #ececee;
+  --osc-surface: #e8e8eb;
+  --osc-surface-hover: #dedee3;
+  --osc-border: #e0e0e4;
+  --osc-border-strong: #c8c8d0;
   --osc-text: #18181b;
   --osc-text-muted: #52525b;
   --osc-text-faint: #a1a1aa;
 
-  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
-  --osc-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --osc-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
+  --osc-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.05), 0 10px 28px rgba(0, 0, 0, 0.07);
   --osc-focus-ring: 0 0 0 2px var(--osc-bg-elevated), 0 0 0 4px var(--osc-text);
 
   --osc-primary: #18181b;

@@ -4,6 +4,8 @@ import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
 import { Badge } from "./components/badge"
 import { Button } from "./components/button"
+import { EmptyState } from "./components/empty-state"
+import { ErrorState } from "./components/error-state"
 import { FilesExplorer } from "./files-explorer"
 import { fetchJson } from "./lib/fetch-json"
 import { useFocusTrap } from "./lib/focus-trap"
@@ -131,10 +133,13 @@ function CloseIcon() {
 function SettingsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path d="M3 5.5h12M3 9h12M3 12.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="6.5" cy="5.5" r="1.5" fill="var(--osc-bg-elevated)" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="11.5" cy="9" r="1.5" fill="var(--osc-bg-elevated)" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="7.5" cy="12.5" r="1.5" fill="var(--osc-bg-elevated)" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="9" cy="9" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M9 2.5v1.4M9 14.1v1.4M2.5 9h1.4M14.1 9h1.4M4.4 4.4l1 1M12.6 12.6l1 1M13.6 4.4l-1 1M5.4 12.6l-1 1"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
@@ -288,7 +293,7 @@ function SideDrawer({
       />
       <aside
         ref={asideRef}
-        className={`fixed inset-y-0 left-0 z-50 flex w-[min(20rem,92vw)] flex-col overscroll-contain border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)] transition-transform duration-[var(--osc-motion-duration)] ease-[var(--osc-motion-ease)] ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(19.5rem,100vw)] max-w-full flex-col overscroll-contain border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)] transition-transform duration-[var(--osc-motion-duration)] ease-[var(--osc-motion-ease)] sm:w-[min(19.5rem,92vw)] ${
           open ? "translate-x-0" : "pointer-events-none -translate-x-full"
         }`}
         role="dialog"
@@ -297,7 +302,7 @@ function SideDrawer({
         aria-hidden={!open}
         inert={open ? undefined : true}
       >
-        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--osc-border)] px-3">
+        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--osc-border)] px-3 pt-[env(safe-area-inset-top,0px)]">
           <div className="flex min-w-0 items-center gap-2.5 px-0.5">
             <BrandMark />
             <span id={titleId} className="truncate text-[13px] font-semibold tracking-tight">
@@ -308,7 +313,7 @@ function SideDrawer({
             type="button"
             data-autofocus
             onClick={onClose}
-            className="osc-icon-btn size-9 shrink-0 text-[var(--osc-text-muted)]"
+            className="osc-icon-btn shrink-0 text-[var(--osc-text-muted)]"
             aria-label="Close menu"
           >
             <CloseIcon />
@@ -319,7 +324,7 @@ function SideDrawer({
           <div className="osc-segmented" role="tablist" aria-label="Menu sections">
             {(
               [
-                ["nav", "Studios"],
+                ["nav", "Navigate"],
                 ["settings", "Settings"],
               ] as const
             ).map(([id, label]) => (
@@ -368,13 +373,13 @@ function SideDrawer({
           {panel === "settings" && (
             <div className="flex min-h-full flex-col">
               <div className="flex flex-1 flex-col">
+                <ThemePreferenceControl />
+
                 <section className="osc-drawer-section" aria-labelledby="osc-studios-label">
                   <h2 id="osc-studios-label" className="osc-drawer-label">
                     Studios
                   </h2>
-                  <p className="osc-drawer-help">
-                    CAD and PCB are always on. Repair reinstalls plugins and skills if something is missing.
-                  </p>
+                  <p className="osc-drawer-help">CAD and PCB stay on. Open a studio from Navigate or Home.</p>
 
                   {csrfQuery.isError && (
                     <p
@@ -394,23 +399,31 @@ function SideDrawer({
                   )}
 
                   <ul className="osc-drawer-list">
-                    {cards.map((studio) => (
-                      <li key={studio.id}>
-                        <span className="flex min-w-0 items-center gap-2.5">
-                          <span
-                            className="size-1.5 shrink-0 rounded-full"
-                            style={{ background: `var(--osc-accent-${studio.id})` }}
-                            aria-hidden
-                          />
-                          <span className="truncate text-[13px] font-medium text-[var(--osc-text)]">{studio.label}</span>
-                        </span>
-                        <span className="shrink-0 text-[11px] text-[var(--osc-text-faint)]">always on</span>
-                      </li>
-                    ))}
+                    {cards.map((studio) => {
+                      const meta = STUDIO_META[studio.id]
+                      return (
+                        <li key={studio.id}>
+                          <span className="flex min-w-0 flex-col gap-0.5">
+                            <span className="flex min-w-0 items-center gap-2.5">
+                              <span
+                                className="size-1.5 shrink-0 rounded-full"
+                                style={{ background: `var(--osc-accent-${studio.id})` }}
+                                aria-hidden
+                              />
+                              <span className="truncate text-[13px] font-medium text-[var(--osc-text)]">{studio.label}</span>
+                            </span>
+                            {meta?.blurb ? (
+                              <span className="truncate pl-4 text-[11px] text-[var(--osc-text-faint)]">{meta.blurb}</span>
+                            ) : null}
+                          </span>
+                          <Badge tone="neutral" className="shrink-0">
+                            on
+                          </Badge>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </section>
-
-                <ThemePreferenceControl />
 
                 {(repair.isSuccess || repair.isError) && (
                   <section className="osc-drawer-section">
@@ -437,50 +450,47 @@ function SideDrawer({
                 )}
 
                 {studiosQuery.data && (
-                  <section className="osc-drawer-section" aria-label="Install paths">
-                    <h2 className="osc-drawer-label">Install</h2>
+                  <section className="osc-drawer-section" aria-labelledby="osc-install-label">
+                    <h2 id="osc-install-label" className="osc-drawer-label">
+                      Install
+                    </h2>
                     <div className="osc-drawer-meta">
                       <p>v{studiosQuery.data.packageVersion}</p>
-                      <p title={studiosQuery.data.workspace}>{studiosQuery.data.workspace}</p>
-                      {studiosQuery.data.configPath && <p title={studiosQuery.data.configPath}>{studiosQuery.data.configPath}</p>}
+                      <p title={studiosQuery.data.workspace}>workspace · {studiosQuery.data.workspace}</p>
+                      {studiosQuery.data.configPath && <p title={studiosQuery.data.configPath}>config · {studiosQuery.data.configPath}</p>}
                     </div>
-                  </section>
-                )}
-
-                {cards.length > 0 && (
-                  <section className="osc-drawer-section" aria-labelledby="osc-details-label">
-                    <h2 id="osc-details-label" className="osc-drawer-label">
-                      Details
-                    </h2>
-                    <div className="flex flex-col gap-2">
-                      {cards.map((s) => (
-                        <details
-                          key={s.id}
-                          className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2"
-                        >
-                          <summary className="cursor-pointer text-[12px] font-medium text-[var(--osc-text)]">{s.label}</summary>
-                          <dl className="mt-2 space-y-1 font-mono text-[10px] text-[var(--osc-text-faint)]">
-                            <div>
-                              <dt className="inline text-[var(--osc-text-muted)]">root </dt>
-                              <dd className="inline break-all">{s.root ?? s.rootError ?? "—"}</dd>
-                            </div>
-                            <div>
-                              <dt className="inline text-[var(--osc-text-muted)]">skill </dt>
-                              <dd className="inline">{s.skillInstalled ? s.skill : `${s.skill} (not installed)`}</dd>
-                            </div>
-                            <div>
-                              <dt className="inline text-[var(--osc-text-muted)]">engines </dt>
-                              <dd className="inline">{s.requiredEngines.join(", ") || "none"}</dd>
-                            </div>
-                          </dl>
-                        </details>
-                      ))}
-                    </div>
+                    {cards.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        {cards.map((s) => (
+                          <details
+                            key={s.id}
+                            className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2"
+                          >
+                            <summary className="cursor-pointer text-[12px] font-medium text-[var(--osc-text)]">{s.label} paths</summary>
+                            <dl className="mt-2 space-y-1 font-mono text-[10px] text-[var(--osc-text-faint)]">
+                              <div>
+                                <dt className="inline text-[var(--osc-text-muted)]">root </dt>
+                                <dd className="inline break-all">{s.root ?? s.rootError ?? "—"}</dd>
+                              </div>
+                              <div>
+                                <dt className="inline text-[var(--osc-text-muted)]">skill </dt>
+                                <dd className="inline">{s.skillInstalled ? s.skill : `${s.skill} (not installed)`}</dd>
+                              </div>
+                              <div>
+                                <dt className="inline text-[var(--osc-text-muted)]">engines </dt>
+                                <dd className="inline">{s.requiredEngines.join(", ") || "none"}</dd>
+                              </div>
+                            </dl>
+                          </details>
+                        ))}
+                      </div>
+                    )}
                   </section>
                 )}
               </div>
 
               <div className="osc-drawer-footer">
+                <p className="mb-2 text-center text-[11px] text-[var(--osc-text-faint)]">Reinstalls managed plugins and skills</p>
                 <Button type="button" className="w-full" disabled={repair.isPending || !csrfQuery.data} onClick={() => repair.mutate()}>
                   {repair.isPending ? "Repairing…" : "Repair install"}
                 </Button>
@@ -513,9 +523,9 @@ function TopBar({
 }) {
   return (
     <header
-      className={`sticky top-0 z-40 shrink-0 bg-[var(--osc-bg-elevated)] ${edge === "border" ? "border-b border-[var(--osc-border)]" : ""}`}
+      className={`sticky top-0 z-40 shrink-0 bg-[var(--osc-bg-elevated)] pt-[env(safe-area-inset-top,0px)] ${edge === "border" ? "border-b border-[var(--osc-border)]" : ""}`}
     >
-      <div className="flex h-12 items-center gap-1.5 px-2 sm:gap-2 sm:px-3">
+      <div className="osc-topbar-inner">
         <button
           type="button"
           onClick={onMenu}
@@ -527,7 +537,7 @@ function TopBar({
           <MenuIcon />
         </button>
         {studioLabel ? (
-          <div className="flex min-w-0 items-center gap-2 px-0.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-0.5">
             {studioId && (
               <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--osc-accent-${studioId})` }} aria-hidden />
             )}
@@ -536,15 +546,15 @@ function TopBar({
         ) : (
           <Link
             to="/"
-            className="flex min-w-0 items-center gap-2.5 rounded-[var(--osc-radius-md)] px-1 py-1 transition-colors duration-[var(--osc-motion-duration)] hover:bg-[var(--osc-surface)]"
+            className="flex min-w-0 items-center gap-2 rounded-[var(--osc-radius-md)] px-1 py-1 transition-colors duration-[var(--osc-motion-duration)] hover:bg-[var(--osc-surface)] sm:gap-2.5"
           >
             <BrandMark />
-            <span className="truncate text-[13px] font-semibold tracking-tight">
+            <span className="hidden truncate text-[13px] font-semibold tracking-tight min-[360px]:inline">
               opencode<span className="font-normal text-[var(--osc-text-muted)]"> studio</span>
             </span>
           </Link>
         )}
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        <div className="osc-topbar-actions">
           {actions}
           {onSettings && (
             <button type="button" onClick={onSettings} className="osc-icon-btn text-[var(--osc-text-muted)]" aria-label="Open settings">
@@ -571,20 +581,23 @@ function HomePage() {
           onSettings={() => chrome.openDrawer("settings")}
           actions={
             studiosQuery.data?.nativeOpenCodeAvailable ? (
-              <a href="/" className="osc-chip">
-                OpenCode
+              <a href="/" className="osc-chip" title="Open OpenCode" aria-label="OpenCode">
+                <span className="hidden min-[480px]:inline">OpenCode</span>
+                <span className="min-[480px]:hidden" aria-hidden="true">
+                  OC
+                </span>
               </a>
             ) : undefined
           }
         />
 
-        <main id="main-content" className="mx-auto max-w-[820px] px-5 py-14 sm:px-8 sm:py-20">
-          <div className="osc-reveal mb-12">
-            <p className="mb-3 text-[11px] font-medium tracking-[0.16em] text-[var(--osc-text-faint)] uppercase">Companion</p>
-            <h1 className="text-[2.15rem] leading-[1.12] font-semibold tracking-[-0.03em] text-pretty text-[var(--osc-text)] sm:text-[2.5rem]">
+        <main id="main-content" className="mx-auto max-w-[820px] px-5 py-10 sm:px-8 sm:py-16 md:py-20">
+          <div className="osc-reveal mb-8 sm:mb-12">
+            <p className="mb-2.5 text-[11px] font-medium tracking-[0.16em] text-[var(--osc-text-faint)] uppercase sm:mb-3">Companion</p>
+            <h1 className="text-[2rem] leading-[1.12] font-semibold tracking-[-0.03em] text-pretty text-[var(--osc-text)] sm:text-[2.5rem]">
               Studios
             </h1>
-            <p className="mt-3 max-w-md text-[15px] leading-relaxed text-[var(--osc-text-muted)]">
+            <p className="mt-2.5 max-w-md text-[14px] leading-relaxed text-[var(--osc-text-muted)] sm:mt-3 sm:text-[15px]">
               Open CAD or PCB. Design with the Agent — viewers update as artifacts land in the workspace.
             </p>
           </div>
@@ -597,26 +610,41 @@ function HomePage() {
             </div>
           )}
           {studiosQuery.isError && (
-            <p
-              className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-4 py-3 text-sm text-[var(--osc-error)]"
-              role="alert"
-            >
-              Failed to load studios: {(studiosQuery.error as Error)?.message ?? "unknown error"}
-            </p>
+            <ErrorState
+              title="Failed to load studios"
+              description={(studiosQuery.error as Error)?.message ?? "unknown error"}
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => void studiosQuery.refetch()}>
+                  Retry
+                </Button>
+              }
+            />
           )}
 
           {studiosQuery.data?.update?.updateAvailable && (
             <div
-              className="mb-10 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-5 py-4 shadow-[var(--osc-shadow)]"
+              className="mb-8 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 py-3.5 shadow-[var(--osc-shadow)] sm:mb-10 sm:px-5 sm:py-4"
               role="status"
             >
-              <p className="text-sm font-medium">
+              <p className="text-[13px] font-medium sm:text-sm">
                 Update available · v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
               </p>
               <pre className="mt-2 overflow-x-auto rounded-[var(--osc-radius-md)] bg-[var(--osc-bg-subtle)] px-3 py-2 font-mono text-[11px] text-[var(--osc-text-muted)]">
                 {`opencode-studio upgrade`}
               </pre>
             </div>
+          )}
+
+          {studiosQuery.isSuccess && cards.length === 0 && (
+            <EmptyState
+              title="No studios available"
+              description="Repair the install from Settings if plugins or skills are missing, then restart OpenCode."
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => chrome.openDrawer("settings")}>
+                  Open settings
+                </Button>
+              }
+            />
           )}
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -627,14 +655,10 @@ function HomePage() {
                   key={studio.id}
                   to={`/studios/${studio.id}`}
                   data-studio={studio.id}
-                  className="osc-reveal group relative flex flex-col overflow-hidden rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-6 shadow-[var(--osc-shadow)] transition-[border-color,box-shadow] duration-[var(--osc-motion-duration)] hover:border-[var(--osc-border-strong)] hover:shadow-[var(--osc-shadow-md)] focus-visible:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
+                  className="osc-reveal osc-home-card group"
                   style={{ animationDelay: `${Math.min(index, 6) * 40}ms` }}
                 >
-                  <span
-                    className="absolute inset-y-0 left-0 w-0.5 opacity-0 transition-opacity duration-[var(--osc-motion-duration)] group-hover:opacity-100 group-focus-visible:opacity-100"
-                    style={{ background: `var(--osc-accent-${studio.id})` }}
-                    aria-hidden
-                  />
+                  <span className="osc-home-card__rail" style={{ background: `var(--osc-accent-${studio.id})` }} aria-hidden />
                   <div className="mb-3 flex items-center gap-2">
                     <span className="size-1.5 rounded-full" style={{ background: `var(--osc-accent-${studio.id})` }} aria-hidden />
                     <h2 className="text-[15px] font-semibold tracking-tight">{studio.label}</h2>
@@ -700,11 +724,21 @@ function AgentChromeActions({
   return (
     <>
       {nativeAvailable && (
-        <a href="/" className="osc-chip">
-          OpenCode
+        <a href="/" className="osc-chip" title="Open OpenCode" aria-label="OpenCode">
+          <span className="hidden min-[480px]:inline">OpenCode</span>
+          <span className="min-[480px]:hidden" aria-hidden="true">
+            OC
+          </span>
         </a>
       )}
-      <button type="button" onClick={onToggle} className="osc-chip" aria-pressed={agentOpen} title={statusLabel}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="osc-chip"
+        aria-pressed={agentOpen}
+        aria-label={`Agent, ${statusLabel}`}
+        title={statusLabel}
+      >
         <span className={`size-1.5 rounded-full ${statusDot}`} aria-hidden />
         Agent
       </button>
@@ -738,7 +772,11 @@ function StudioFrame() {
           onMenu={() => chrome.openDrawer("nav")}
           onSettings={() => chrome.openDrawer("settings")}
         />
-        <p className="p-8 text-sm text-[var(--osc-text-muted)]">Loading…</p>
+        <div className="flex flex-1 flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
+          <span className="sr-only">Loading studio…</span>
+          <div className="osc-skeleton h-10 w-full max-w-md" aria-hidden />
+          <div className="osc-skeleton min-h-48 flex-1" aria-hidden />
+        </div>
       </div>
     )
   }
@@ -756,9 +794,17 @@ function StudioFrame() {
             onMenu={() => chrome.openDrawer("nav")}
             onSettings={() => chrome.openDrawer("settings")}
           />
-          <p className="p-8 text-sm text-[var(--osc-error)]" role="alert">
-            Failed to load studio host: {(studiosQuery.error as Error)?.message ?? "unknown error"}
-          </p>
+          <div className="p-4 sm:p-8">
+            <ErrorState
+              title="Failed to load studio host"
+              description={(studiosQuery.error as Error)?.message ?? "unknown error"}
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => void studiosQuery.refetch()}>
+                  Retry
+                </Button>
+              }
+            />
+          </div>
         </div>
         <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} studioId={studioId} initialPanel={chrome.drawerPanel} />
       </div>

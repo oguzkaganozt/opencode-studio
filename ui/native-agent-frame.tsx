@@ -220,24 +220,28 @@ export function NativeAgentFrame({
       className={`${open ? "flex" : "hidden"} absolute inset-0 z-30 min-h-0 w-full flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg)] md:static md:inset-auto md:shrink-0 ${dragging ? "select-none" : ""}`}
       style={open && mdUp ? { width, minWidth: AGENT_WIDTH_MIN, maxWidth: viewportMax } : undefined}
     >
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3">
+      <div className="osc-agent-header">
         <span className={`size-1.5 shrink-0 rounded-full ${agentStatusDotClass(status)}`} aria-hidden />
-        <span className="shrink-0 text-[12px] font-semibold tracking-[0.1em] uppercase">Agent</span>
-        <span className="ml-auto truncate text-[11px] text-[var(--osc-text-muted)]">{available ? "OpenCode" : "Unavailable"}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[12px] font-semibold tracking-[0.08em] uppercase">Agent</p>
+          <p className="truncate text-[11px] leading-tight text-[var(--osc-text-muted)]">
+            {available ? (loading ? "Connecting…" : error ? "Unavailable" : "OpenCode") : "Unavailable"}
+          </p>
+        </div>
         {available && (
-          <a href={openHref} target="_blank" rel="noreferrer" className="osc-chip h-7 shrink-0 px-2 text-[11px]">
+          <a href={openHref} target="_blank" rel="noreferrer" className="osc-chip h-8 shrink-0 px-2.5 text-[11px]">
             Open
           </a>
         )}
-        <button type="button" onClick={onClose} className="osc-chip h-7 shrink-0 px-2 text-[11px]" aria-label="Close agent">
+        <button type="button" onClick={onClose} className="osc-chip h-8 shrink-0 px-2.5 text-[11px]" aria-label="Close agent">
           Close
         </button>
       </div>
 
       {!available ? (
-        <div className="flex flex-1 flex-col justify-center gap-2 p-4">
-          <p className="text-[13px] font-medium text-[var(--osc-text)]">Native OpenCode UI is unavailable</p>
-          <p className="text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
+        <div className="flex flex-1 flex-col justify-center gap-2 px-5 py-8 sm:p-6">
+          <p className="text-[14px] font-medium text-[var(--osc-text)]">Native OpenCode UI is unavailable</p>
+          <p className="max-w-sm text-[13px] leading-relaxed text-[var(--osc-text-muted)]">
             Start <code className="font-mono text-[11px]">opencode serve</code>, open a directory so the Studio plugin can attach, then
             reload. Prompt handoffs copy to the clipboard until the agent is available.
           </p>
@@ -250,6 +254,12 @@ export function NativeAgentFrame({
               role="alert"
             >
               Failed to reach the parent OpenCode UI. Confirm opencode serve is running, then reopen the agent.
+            </div>
+          )}
+          {loading && !error && (
+            <div className="osc-agent-loading" role="status" aria-live="polite">
+              <span className="sr-only">Loading agent…</span>
+              <span className="osc-agent-loading__dot" aria-hidden />
             </div>
           )}
           {mounted && (
