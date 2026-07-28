@@ -18,7 +18,7 @@ export function NativeOpenCodePane({ available }: { available: boolean }) {
 
   if (!available) {
     return (
-      <div data-studio="opencode" className="flex min-h-0 flex-1 flex-col justify-center gap-2 px-5 py-10 sm:px-8">
+      <div data-studio="opencode" className="absolute inset-0 flex flex-col justify-center gap-2 px-5 py-10 sm:px-8">
         <p className="text-[14px] font-medium text-[var(--osc-text)]">Native OpenCode UI is unavailable</p>
         <p className="max-w-md text-[13px] leading-relaxed text-[var(--osc-text-muted)]">
           Start <code className="font-mono text-[11px]">opencode serve</code>, open a directory so the Studio plugin can attach, then
@@ -28,8 +28,9 @@ export function NativeOpenCodePane({ available }: { available: boolean }) {
     )
   }
 
+  // Fill main-content (position:relative). Default iframe height is 150px — never rely on h-full alone.
   return (
-    <div data-studio="opencode" className="relative min-h-0 flex-1 bg-[var(--osc-bg)]">
+    <div data-studio="opencode" className="absolute inset-0 min-h-0 min-w-0 bg-[var(--osc-bg)]">
       {error && (
         <div
           className="absolute inset-x-0 top-0 z-10 m-3 flex flex-wrap items-start justify-between gap-2 rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-bg-elevated)] p-3 text-[12px] text-[var(--osc-error)] shadow-[var(--osc-shadow)]"
@@ -52,7 +53,7 @@ export function NativeOpenCodePane({ available }: { available: boolean }) {
         ref={iframeRef}
         title="OpenCode"
         src={nativeOpenCodeHomeUrl()}
-        className="size-full border-0 bg-[var(--osc-bg)]"
+        className="block h-full w-full border-0 bg-[var(--osc-bg)]"
         onLoad={() => {
           setLoading(false)
           const frame = iframeRef.current

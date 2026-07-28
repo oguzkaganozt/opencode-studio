@@ -602,8 +602,8 @@ function OpenCodeFrame() {
   const available = studiosQuery.data?.nativeOpenCodeAvailable ?? false
 
   return (
-    <div data-studio="opencode" className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={chrome.drawerOpen ? true : undefined}>
+    <div data-studio="opencode" className="studio-shell flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--osc-bg)]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" inert={chrome.drawerOpen ? true : undefined}>
         <TopBar
           studioLabel="OpenCode"
           menuOpen={chrome.drawerOpen}
@@ -611,9 +611,9 @@ function OpenCodeFrame() {
           onSettings={() => chrome.openDrawer("settings")}
           edge="flush"
         />
-        <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
+        <div id="main-content" data-testid="studio-main" className="relative min-h-0 min-w-0 flex-1 overflow-hidden" tabIndex={-1}>
           {studiosQuery.isLoading ? (
-            <div className="flex flex-1 flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
+            <div className="flex h-full flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
               <span className="sr-only">Loading OpenCode…</span>
               <div className="osc-skeleton h-10 w-full max-w-md" aria-hidden />
               <div className="osc-skeleton min-h-48 flex-1" aria-hidden />
