@@ -10,7 +10,12 @@ export default function SchematicTab({ projectId }: { projectId: string }) {
   const fallback = <SvgViewer url={api.schematicSvgUrl(projectId)} label="Schematic" />
 
   if (isLoading) {
-    return <div className="flex h-full min-h-[min(560px,50dvh)] items-center justify-center text-sm text-[var(--osc-text-muted)]">Loading schematic…</div>
+    return (
+      <div className="flex h-full min-h-[min(560px,50dvh)] flex-col items-center justify-center gap-3" role="status" aria-busy="true">
+        <span className="sr-only">Loading schematic…</span>
+        <div className="pcb-skeleton h-48 w-72 max-w-[80%]" aria-hidden />
+      </div>
+    )
   }
   if (error) return fallback
 

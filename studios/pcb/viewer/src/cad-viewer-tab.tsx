@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { CadViewer } from "@tscircuit/3d-viewer"
 import { useEffect, useState } from "react"
+import { ErrorState } from "@ui/components/error-state"
 import { checkCadAssetHealth, preferKicadStepModels } from "./cad-models"
 import { ViewerErrorBoundary } from "./error-boundary"
 import { useCircuitJson } from "./use-circuit-json"
@@ -64,19 +65,26 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
   }, [])
 
   if (manifoldError) {
-    return <div className="flex items-center justify-center py-24 text-sm text-[var(--osc-error)]">Failed to load Manifold: {manifoldError}</div>
+    return <ErrorState className="m-4 border-0 py-16" title="Failed to load Manifold" description={manifoldError} />
   }
   if (!manifoldReady || isLoading) {
-    return <div className="flex items-center justify-center py-24 text-sm text-[var(--osc-text-muted)]">Loading 3D view…</div>
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16" role="status" aria-busy="true">
+        <span className="sr-only">Loading 3D view…</span>
+        <div className="pcb-skeleton h-48 w-72 max-w-[80%]" aria-hidden />
+      </div>
+    )
   }
   if (error) {
     return (
-      <div className="flex items-center justify-center py-24 text-sm text-[var(--osc-error)]">circuit.json not available. Run pcb_circuit_build first.</div>
+      <ErrorState
+        className="m-4 border-0 py-16"
+        title="circuit.json not available"
+        description="Run pcb_circuit_build first, then reopen this tab."
+      />
     )
   }
-  const fallback = (
-    <div className="flex h-full items-center justify-center text-sm text-[var(--osc-error)]">3D viewer could not render this circuit.</div>
-  )
+  const fallback = <ErrorState className="m-4 border-0 py-16" title="3D viewer could not render this circuit" />
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex shrink-0 flex-col gap-1 rounded-md border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-2 text-xs sm:flex-row sm:items-start sm:gap-2">

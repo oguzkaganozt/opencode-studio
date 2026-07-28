@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
+import { ErrorState } from "@ui/components/error-state"
 import { api, type BomEntry } from "./api"
 import { PartDetailModal } from "./part-detail"
 
@@ -32,7 +33,7 @@ function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEn
         }
       }}
     >
-      <td className="px-4 py-2.5 font-mono text-sm text-[var(--osc-success)] whitespace-nowrap">{entry.mpn ?? "—"}</td>
+      <td className="whitespace-nowrap px-4 py-2.5 font-mono text-sm text-[var(--osc-accent)]">{entry.mpn ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text)]">{entry.refdes.join(", ")}</td>
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text)] text-center">{entry.quantity}</td>
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{entry.manufacturer ?? "—"}</td>
@@ -65,11 +66,22 @@ export default function BomTab({ projectId }: { projectId: string }) {
   })
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-24 text-[var(--osc-text-muted)] text-sm">Loading BOM…</div>
+    return (
+      <div className="space-y-2 py-8" role="status" aria-busy="true">
+        <span className="sr-only">Loading BOM…</span>
+        <div className="pcb-skeleton h-10 w-full" aria-hidden />
+        <div className="pcb-skeleton h-10 w-full" aria-hidden />
+        <div className="pcb-skeleton h-10 w-2/3" aria-hidden />
+      </div>
+    )
   }
   if (error || !data) {
     return (
-      <div className="flex items-center justify-center py-24 text-[var(--osc-error)] text-sm">BOM not available. Run pcb_circuit_build first.</div>
+      <ErrorState
+        className="m-4 border-0 py-16"
+        title="BOM not available"
+        description="Run pcb_circuit_build first, then reopen this tab."
+      />
     )
   }
 
@@ -87,25 +99,23 @@ export default function BomTab({ projectId }: { projectId: string }) {
           {data.bomComplete ? "Assembly identities complete" : "Assembly blocked: missing part identities"}
         </span>
         <span className="ml-auto">
-          <a
-            href={api.bomCsvUrl(projectId)}
-            download
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--osc-border-strong)] px-2 py-0.5 text-xs text-[var(--osc-text)] hover:border-[var(--osc-text-faint)] hover:text-[var(--osc-text)] transition-colors"
-          >
+          <a href={api.bomCsvUrl(projectId)} download className="pcb-chip">
             Download CSV ↓
           </a>
         </span>
       </div>
-      <div className="border border-[var(--osc-border)] rounded-lg overflow-hidden">
-        <table className="w-full text-left">
+      <div className="pcb-table-wrap overflow-x-auto">
+        <table>
           <thead>
-            <tr className="bg-[var(--osc-bg-elevated)] border-b border-[var(--osc-border)]">
-              <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-muted)] uppercase tracking-wider">MPN</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-muted)] uppercase tracking-wider">Refdes</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-muted)] uppercase tracking-wider text-center">Qty</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-muted)] uppercase tracking-wider">Manufacturer</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-muted)] uppercase tracking-wider">Description</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-muted)] uppercase tracking-wider" />
+            <tr>
+              <th>MPN</th>
+              <th>Refdes</th>
+              <th className="text-center">Qty</th>
+              <th>Manufacturer</th>
+              <th>Description</th>
+              <th>
+                <span className="sr-only">Datasheet</span>
+              </th>
             </tr>
           </thead>
           <tbody>

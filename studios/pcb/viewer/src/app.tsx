@@ -66,7 +66,7 @@ function WorkspaceBadge() {
   const { data } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: api.workspace })
   if (!data) return null
   return (
-    <span className="ml-auto text-xs text-[var(--osc-text-faint)] truncate max-w-xs" title={data.root}>
+    <span className="ml-auto max-w-xs truncate font-mono text-[10px] text-[var(--osc-text-faint)]" title={data.root}>
       {data.root}
     </span>
   )
@@ -111,14 +111,19 @@ function DetailHealth({ project }: { project: ProjectSummary }) {
 
 function StatusBadge({ tone, label }: { tone: "success" | "warning" | "error"; label: string }) {
   const colors = {
-    success: "bg-[var(--osc-success-bg)] text-[var(--osc-success)]",
-    warning: "bg-[var(--osc-warning-bg)] text-[var(--osc-warning)]",
-    error: "bg-[var(--osc-error-bg)] text-[var(--osc-error)]",
+    success: "border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] text-[var(--osc-success)]",
+    warning: "border-[var(--osc-warning)]/30 bg-[var(--osc-warning-bg)] text-[var(--osc-warning)]",
+    error: "border-[var(--osc-error)]/30 bg-[var(--osc-error-bg)] text-[var(--osc-error)]",
   }
   const dots = { success: "bg-[var(--osc-success)]", warning: "bg-[var(--osc-warning)]", error: "bg-[var(--osc-error)]" }
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", colors[tone])}>
-      <span className={cn("w-1.5 h-1.5 rounded-full", dots[tone])} />
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium tracking-wide uppercase",
+        colors[tone],
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", dots[tone])} aria-hidden />
       {label}
     </span>
   )
@@ -128,13 +133,11 @@ function StatusBadge({ tone, label }: { tone: "success" | "warning" | "error"; l
 
 function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center py-24 text-[var(--osc-text-muted)] text-sm">
-      <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" aria-label="Loading" role="img">
-        <title>Loading</title>
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-      </svg>
-      {label}
+    <div className="space-y-3 py-10" role="status" aria-busy="true">
+      <span className="sr-only">{label}</span>
+      <div className="pcb-skeleton h-16 w-full" aria-hidden />
+      <div className="pcb-skeleton h-16 w-full" aria-hidden />
+      <div className="pcb-skeleton h-16 w-3/4" aria-hidden />
     </div>
   )
 }
@@ -151,29 +154,34 @@ function PageEmpty({ label }: { label: string }) {
 
 function ProjectCard({ project }: { project: ProjectSummary }) {
   return (
-    <Link to={studioHref(`projects/${encodeURIComponent(project.id)}/schematic`)} className="group block">
-      <div className="rounded-lg border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 transition-colors hover:border-[var(--osc-border-strong)] hover:bg-[var(--osc-surface-hover)]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate font-medium text-[var(--osc-text)]">{project.name}</p>
-            <p className="mt-0.5 truncate text-xs text-[var(--osc-text-faint)]">{project.path}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <CardHealth project={project} />
-            <svg
-              className="mt-0.5 h-4 w-4 text-[var(--osc-text-faint)] group-hover:text-[var(--osc-text-muted)]"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          </div>
+    <Link
+      to={studioHref(`projects/${encodeURIComponent(project.id)}/schematic`)}
+      className="pcb-card group relative block overflow-hidden p-5 focus-visible:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
+    >
+      <span
+        className="absolute inset-y-0 left-0 w-0.5 bg-[var(--osc-accent)] opacity-0 transition-opacity duration-[var(--osc-motion-duration)] group-hover:opacity-100 group-focus-visible:opacity-100"
+        aria-hidden
+      />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-[14px] font-semibold tracking-tight text-[var(--osc-text)]">{project.name}</p>
+          <p className="mt-1 truncate font-mono text-[11px] text-[var(--osc-text-faint)]">{project.path}</p>
         </div>
-        {project.hasGerbersZip && <p className="mt-2 text-[11px] text-[var(--osc-text-faint)]">Gerbers available</p>}
+        <div className="flex shrink-0 items-center gap-2">
+          <CardHealth project={project} />
+          <svg
+            className="mt-0.5 h-4 w-4 text-[var(--osc-text-faint)] transition-transform duration-[var(--osc-motion-duration)] group-hover:translate-x-0.5 group-hover:text-[var(--osc-text-muted)]"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </div>
       </div>
+      {project.hasGerbersZip && <p className="mt-3 text-[11px] text-[var(--osc-text-faint)]">Gerbers available</p>}
     </Link>
   )
 }
@@ -182,8 +190,12 @@ function DiagnosticGroupList({ groups, tone }: { groups: DiagnosticGroup[]; tone
   return (
     <div className="space-y-2">
       {groups.map((group) => (
-        <details key={group.type} open={tone === "error"} className="rounded border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2">
-          <summary className="cursor-pointer text-xs font-mono text-[var(--osc-text)]">
+        <details
+          key={group.type}
+          open={tone === "error"}
+          className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2"
+        >
+          <summary className="cursor-pointer font-mono text-xs text-[var(--osc-text)]">
             {group.type} <span className={tone === "error" ? "text-[var(--osc-error)]" : "text-[var(--osc-warning)]"}>({group.count})</span>
           </summary>
           {group.messages.length > 0 && (
@@ -236,7 +248,10 @@ function DiagnosticsPanel({
   }
 
   return (
-    <details className="relative shrink-0 rounded-lg border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)]" aria-label="Design diagnostics">
+    <details
+      className="relative shrink-0 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow)]"
+      aria-label="Design diagnostics"
+    >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-[var(--osc-text)] [&::-webkit-details-marker]:hidden">
         <span className="text-[var(--osc-text-faint)]" aria-hidden="true">
           ▸
@@ -245,11 +260,11 @@ function DiagnosticsPanel({
         {diagnostics.errorCount > 0 && <StatusBadge tone="error" label={`${diagnostics.errorCount} errors`} />}
         {diagnostics.warningCount > 0 && <StatusBadge tone="warning" label={`${diagnostics.warningCount} warnings`} />}
       </summary>
-      <div className="max-h-48 space-y-3 overflow-auto border-t border-[var(--osc-border)] px-4 py-3">
+      <div className="max-h-48 space-y-3 overflow-auto overscroll-contain border-t border-[var(--osc-border)] px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="inline-flex items-center rounded-md border border-[var(--osc-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--osc-text)] transition-colors hover:border-[var(--osc-text-faint)] hover:bg-[var(--osc-surface-hover)]"
+            className="pcb-chip"
             onClick={() => {
               requestAgentHandoff({
                 text: formatDiagnosticsHandoff(projectId, projectName, diagnostics),
@@ -269,7 +284,7 @@ function DiagnosticsPanel({
       </div>
       {toast && (
         <div
-          className="absolute top-2 right-3 z-10 rounded-full border border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] px-3 py-1 text-xs text-[var(--osc-success)]"
+          className="absolute top-2 right-3 z-10 rounded-[var(--osc-radius-md)] border border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] px-3 py-1.5 text-xs font-medium text-[var(--osc-success)]"
           role="status"
           aria-live="polite"
         >
@@ -284,14 +299,14 @@ function ProjectsPage() {
   const { data, isLoading, error } = useQuery({ queryKey: ["pcb", "projects"], queryFn: () => api.projects({ limit: 100 }) })
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
+    <div className="mx-auto max-w-4xl px-5 py-10 sm:px-8">
       <div className="mb-8 flex items-end justify-between gap-4">
         <div>
           <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Workspace</p>
-          <h1 className="text-xl font-semibold tracking-tight text-[var(--osc-text)]">Projects</h1>
+          <h1 className="text-pretty text-xl font-semibold tracking-tight text-[var(--osc-text)] sm:text-2xl">Projects</h1>
         </div>
         {data && (
-          <span className="text-sm text-[var(--osc-text-muted)]">
+          <span className="font-mono text-[12px] text-[var(--osc-text-muted)] tabular-nums">
             {data.total} project{data.total !== 1 ? "s" : ""}
           </span>
         )}
@@ -302,7 +317,7 @@ function ProjectsPage() {
         <PageEmpty label="No circuit projects found. Create a project with a src/circuit.tsx file in the workspace." />
       )}
       {data && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {data.projects.map((p) => (
             <ProjectCard key={p.id} project={p} />
           ))}
@@ -370,12 +385,19 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full min-h-[min(560px,50dvh)] flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-3 border-b border-[var(--osc-border)] p-3">
+        <label className="sr-only" htmlFor="pcb-circuit-json-filter">
+          Filter elements
+        </label>
         <input
-          type="text"
+          id="pcb-circuit-json-filter"
+          type="search"
+          name="circuit-json-filter"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter elements…"
-          className="flex-1 bg-[var(--osc-surface)] text-[var(--osc-text)] text-sm rounded px-3 py-1.5 outline-none placeholder:text-[var(--osc-text-faint)] focus:ring-1 focus:ring-[var(--osc-border-strong)]"
+          autoComplete="off"
+          spellCheck={false}
+          className="pcb-input flex-1 px-3 py-1.5"
         />
         <span className="text-xs text-[var(--osc-text-muted)] shrink-0">
           {filtered.length} / {elements.length} elements
@@ -451,44 +473,43 @@ function ProjectPage() {
   return (
     <Shell fill>
       <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-4 py-4 sm:px-6">
-        <div className="flex shrink-0 flex-wrap items-center gap-3">
-          <Link to={studioHref()} className="text-sm text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]">
-            ← Projects
-          </Link>
-          <span className="text-[var(--osc-border-strong)]">/</span>
-          <h1 className="text-lg font-semibold text-[var(--osc-text)]">{project.name}</h1>
-          <span className="font-mono text-xs text-[var(--osc-text-faint)]">{project.path}</span>
+        <div className="min-w-0 shrink-0 space-y-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <Link to={studioHref()} className="shrink-0 text-sm text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]">
+              ← Projects
+            </Link>
+            <span className="shrink-0 text-[var(--osc-border-strong)]" aria-hidden>
+              /
+            </span>
+            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-[var(--osc-text)]">{project.name}</h1>
+          </div>
+          <p className="truncate font-mono text-[11px] text-[var(--osc-text-faint)]" title={project.path}>
+            {project.path}
+          </p>
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <DetailHealth project={project} />
           {buildState.status === "stale" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--osc-stale-bg)] px-2 py-0.5 text-xs font-medium text-[var(--osc-stale)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--osc-stale)]" />
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--osc-stale)]/30 bg-[var(--osc-stale-bg)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--osc-stale)]">
+              <span className="size-1.5 shrink-0 rounded-full bg-[var(--osc-stale)]" aria-hidden />
               Source changed — rebuild with agent tools
             </span>
           )}
           {project.hasGerbersZip && id && (
-            <a
-              href={api.gerbersZipUrl(id)}
-              download
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--osc-border-strong)] px-2 py-0.5 text-xs text-[var(--osc-text-muted)] transition-colors hover:border-[var(--osc-text-faint)] hover:text-[var(--osc-text)]"
-            >
+            <a href={api.gerbersZipUrl(id)} download className="pcb-chip">
               Download Gerbers ↓
             </a>
           )}
           {project.assemblyReady && id && (
-            <a
-              href={api.assemblyCsvUrl(id)}
-              download
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--osc-border-strong)] px-2 py-0.5 text-xs text-[var(--osc-text-muted)] transition-colors hover:border-[var(--osc-text-faint)] hover:text-[var(--osc-text)]"
-            >
+            <a href={api.assemblyCsvUrl(id)} download className="pcb-chip">
               Pick & Place ↓
             </a>
           )}
           {!project.built && (
             <p className="ml-1 text-xs text-[var(--osc-warning)]">
-              Run <code className="rounded bg-[var(--osc-surface)] px-1">pcb_circuit_build</code> to build this project.
+              Run <code className="rounded-[var(--osc-radius-sm)] bg-[var(--osc-surface)] px-1 font-mono text-[11px]">pcb_circuit_build</code> to
+              build this project.
             </p>
           )}
         </div>
@@ -497,19 +518,14 @@ function ProjectPage() {
           <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} />
         )}
 
-        <div className="flex shrink-0 gap-1 border-b border-[var(--osc-border)]" role="tablist" aria-label="Project views">
+        <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-[var(--osc-border)]" role="tablist" aria-label="Project views">
           {VIEW_TABS.map((t) => (
             <Link
               key={t}
               role="tab"
               aria-selected={tab === t}
               to={studioHref(`projects/${encodeURIComponent(id!)}/${t}`)}
-              className={cn(
-                "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4",
-                tab === t
-                  ? "border-[var(--osc-text)] text-[var(--osc-text)]"
-                  : "border-transparent text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]",
-              )}
+              className={cn("pcb-tab shrink-0 sm:px-4", tab === t && "font-semibold")}
             >
               {tabLabel(t)}
             </Link>
@@ -594,23 +610,33 @@ function CatalogPage() {
 
   return (
     <Shell>
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold text-[var(--osc-text)]">Component Catalog</h1>
+      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Library</p>
+            <h1 className="text-pretty text-xl font-semibold tracking-tight text-[var(--osc-text)] sm:text-2xl">Component Catalog</h1>
+          </div>
           {data && (
-            <span className="text-sm text-[var(--osc-text-muted)]">
+            <span className="font-mono text-[12px] text-[var(--osc-text-muted)] tabular-nums">
               {data.total} part{data.total !== 1 ? "s" : ""}
             </span>
           )}
         </div>
 
         <div className="mb-4">
+          <label className="sr-only" htmlFor="pcb-catalog-search">
+            Search catalog
+          </label>
           <input
-            type="text"
+            id="pcb-catalog-search"
+            type="search"
+            name="catalog-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by MPN, manufacturer, description…"
-            className="w-full bg-[var(--osc-surface)] border border-[var(--osc-border-strong)] text-[var(--osc-text)] rounded-lg px-4 py-2.5 text-sm outline-none focus:border-[var(--osc-border-strong)] placeholder:text-[var(--osc-text-faint)]"
+            autoComplete="off"
+            spellCheck={false}
+            className="pcb-input w-full px-4 py-2.5"
           />
         </div>
 
@@ -621,15 +647,17 @@ function CatalogPage() {
         )}
 
         {data && data.parts.length > 0 && (
-          <div className="border border-[var(--osc-border)] rounded-lg overflow-hidden">
-            <table className="w-full text-left">
+          <div className="pcb-table-wrap overflow-x-auto">
+            <table>
               <thead>
-                <tr className="bg-[var(--osc-bg-elevated)] border-b border-[var(--osc-border)]">
-                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider">MPN</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider">Manufacturer</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider">Description</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider">Category</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-[var(--osc-text-faint)] uppercase tracking-wider"></th>
+                <tr>
+                  <th>MPN</th>
+                  <th>Manufacturer</th>
+                  <th>Description</th>
+                  <th>Category</th>
+                  <th>
+                    <span className="sr-only">Datasheet</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>

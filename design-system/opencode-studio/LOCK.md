@@ -1,8 +1,7 @@
 # Lock — Shell + Files (batch 1–2)
 
-**Status:** Shell + Files + CAD LOCKED 2026-07-28  
-**Do not restyle** host shell, Files, or CAD viewer without explicit unlock.  
-**Next overhaul batch:** PCB viewer.
+**Status:** Shell + Files + CAD + PCB LOCKED 2026-07-28  
+**Do not restyle** host shell, Files, CAD, or PCB viewers without explicit unlock.
 
 ### CAD lock addendum
 | Surface | Paths |
@@ -10,7 +9,15 @@
 | CAD viewer | `studios/cad/viewer/src/app.tsx`, `styles.css` |
 | Spec | `pages/cad.md` |
 
-QA: empty workspace desktop/mobile; chips; rail; inspector; no console errors. Fixed redundant empty HUD. No designs in workspace — geometry/click path not exercised live.
+QA: empty workspace desktop/mobile; chips; rail; inspector; compact agent mode. No designs in workspace — geometry/click path not exercised live.
+
+### PCB lock addendum
+| Surface | Paths |
+| --- | --- |
+| PCB viewer | `studios/pcb/viewer/src/*` (app, styles, tabs, svg-viewer) |
+| Spec | `pages/pcb.md` |
+
+QA: projects list/mobile; project detail tabs; catalog empty; empty/error states. Fixture project unbuilt — schematic/PCB/BOM content paths not live-rendered.
 
 ## Locked surfaces
 

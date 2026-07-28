@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { EmptyState } from "@ui/components/empty-state"
 
 function cn(...classes: (string | false | undefined | null)[]) {
   return classes.filter(Boolean).join(" ")
@@ -9,14 +10,19 @@ export function SvgViewer({ url, label }: { url: string; label: string }) {
   const [error, setError] = useState(false)
 
   return (
-    <div className="relative flex h-full min-h-[min(560px,50dvh)] w-full flex-1 items-center justify-center overflow-auto rounded-md bg-[var(--osc-canvas-bg-light)]">
+    <div className="relative flex h-full min-h-[min(560px,50dvh)] w-full flex-1 items-center justify-center overflow-auto rounded-[var(--osc-radius-md)] bg-[var(--osc-canvas-bg-light)]">
       {!loaded && !error && (
-        <div className="flex items-center justify-center py-24 text-sm text-[var(--osc-text-muted)]">Loading {label}…</div>
+        <div className="flex flex-col items-center gap-3 py-16" role="status" aria-busy="true">
+          <span className="sr-only">Loading {label}…</span>
+          <div className="pcb-skeleton h-48 w-64 max-w-[80%]" aria-hidden />
+        </div>
       )}
       {error && (
-        <div className="flex items-center justify-center py-24 text-sm text-[var(--osc-error)]">
-          {label} not available. Run pcb_circuit_export first.
-        </div>
+        <EmptyState
+          className="m-6 max-w-md border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] py-12"
+          title={`${label} not available`}
+          description="Run pcb_circuit_export first, then reopen this tab."
+        />
       )}
       <img
         src={url}

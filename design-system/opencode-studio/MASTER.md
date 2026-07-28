@@ -1,7 +1,7 @@
 # Design System Master — OpenCode Studio
 
 > **LOGIC:** Check `pages/<area>.md` first; overrides win. Else follow this file.
-> **Scope:** Host shell + Files + CAD **LOCKED** · PCB viewer next. See `LOCK.md`.
+> **Scope:** Host shell + Files + CAD + PCB **LOCKED**. See `LOCK.md`.
 
 ---
 

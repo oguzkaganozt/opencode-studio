@@ -11,7 +11,10 @@ export default function PcbTab({ projectId }: { projectId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex h-full min-h-[min(560px,50dvh)] items-center justify-center text-sm text-[var(--osc-text-muted)]">Loading PCB layout…</div>
+      <div className="flex h-full min-h-[min(560px,50dvh)] flex-col items-center justify-center gap-3" role="status" aria-busy="true">
+        <span className="sr-only">Loading PCB layout…</span>
+        <div className="pcb-skeleton h-48 w-72 max-w-[80%]" aria-hidden />
+      </div>
     )
   }
   if (error) return fallback
