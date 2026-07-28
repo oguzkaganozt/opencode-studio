@@ -76,8 +76,11 @@ function ResourceRail({
       </div>
       <nav className="min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Designs">
         {designs.length === 0 ? (
-          <p className="px-2 py-6 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">
-            No designs yet. Build with the agent, then they appear here.
+          <p className="cad-rail-empty">
+            No designs yet.
+            <span className="mt-1 block text-[12px] text-[var(--osc-text-faint)]">
+              Build with the agent — finished designs show up here.
+            </span>
           </p>
         ) : (
           designs.map((design) => {
@@ -88,16 +91,19 @@ function ResourceRail({
                 key={design.id}
                 to={studioHref(`designs/${design.id}`)}
                 data-active={active ? "true" : undefined}
-                className={`cad-rail-link block ${
+                aria-current={active ? "page" : undefined}
+                className={`cad-rail-link ${
                   active ? "" : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
                 }`}
                 onClick={onClose}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium text-[var(--osc-text)]">{design.id}</span>
-                  <span className={`mono text-[10px] ${badge.className}`}>{badge.label}</span>
+                  <span className={`mono text-[10px] uppercase tracking-wide ${badge.className}`}>{badge.label}</span>
                 </div>
-                <div className="mono mt-0.5 text-[10px] text-[var(--osc-text-faint)]">{design.partCount} part(s)</div>
+                <div className="mono mt-0.5 text-[10px] text-[var(--osc-text-faint)]">
+                  {design.partCount} {design.partCount === 1 ? "part" : "parts"}
+                </div>
               </Link>
             )
           })
@@ -154,12 +160,12 @@ function Inspector({
       </div>
       <ul className="max-h-40 min-h-0 flex-1 overflow-auto overscroll-contain p-2 md:max-h-none">
         {parts.length === 0 ? (
-          <li className="px-2 py-6 text-[13px] text-[var(--osc-text-muted)]">No parts loaded.</li>
+          <li className="cad-rail-empty">No parts loaded yet.</li>
         ) : (
           parts.map((part, index) => (
             <li key={`${part.name}-${index}`}>
               <label
-                className={`flex cursor-pointer items-center gap-2.5 rounded-[var(--osc-radius-md)] px-2 py-1.5 text-[13px] transition-colors duration-[var(--osc-motion-duration)] hover:bg-[var(--osc-surface-hover)] ${
+                className={`cad-part-row hover:bg-[var(--osc-surface-hover)] ${
                   highlights === index ? "bg-[var(--osc-surface)] text-[var(--osc-accent)]" : "text-[var(--osc-text)]"
                 }`}
               >
@@ -168,14 +174,14 @@ function Inspector({
                   checked={part.visible}
                   aria-label={`Show ${part.name}`}
                   onChange={(event) => onTogglePart(index, event.target.checked)}
-                  className="accent-[var(--osc-primary)]"
+                  className="size-3.5 shrink-0 accent-[var(--osc-primary)]"
                 />
                 <span
                   className="inline-block size-2.5 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/15"
                   style={{ background: `#${part.color.toString(16).padStart(6, "0")}` }}
                   aria-hidden
                 />
-                <span className="truncate">{part.name}</span>
+                <span className="min-w-0 truncate">{part.name}</span>
               </label>
             </li>
           ))
@@ -205,7 +211,7 @@ function Inspector({
             )
           })
         ) : (
-          <p className="col-span-2 py-6 text-center text-[12px] text-[var(--osc-text-faint)]">No renders yet</p>
+          <p className="cad-rail-empty col-span-2 text-center text-[12px]">No renders yet</p>
         )}
       </div>
     </>
@@ -427,13 +433,14 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     <div ref={rootRef} className="relative flex min-h-0 flex-1 flex-col md:flex-row" data-cad-compact={compact ? "true" : "false"}>
       {dockRails && <ResourceRail designs={designs} selectedId={localParts ? undefined : designId} mode="dock" />}
       <div className="relative min-h-0 min-w-0 flex-1 bg-[var(--osc-canvas-bg)]">
-        <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1.5">
+        <div className="cad-toolbar absolute top-3 left-3 z-10">
           {compact && (
             <>
               <button
                 type="button"
                 className="cad-chip"
                 aria-pressed={designsOpen}
+                aria-expanded={designsOpen}
                 onClick={() => {
                   setDesignsOpen((v) => !v)
                   setInspectorOpen(false)
@@ -445,6 +452,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                 type="button"
                 className="cad-chip"
                 aria-pressed={inspectorOpen}
+                aria-expanded={inspectorOpen}
                 onClick={() => {
                   setInspectorOpen((v) => !v)
                   setDesignsOpen(false)
@@ -466,12 +474,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               if (event.target.value) navigate(studioHref(`designs/${event.target.value}`))
             }}
           >
-            <option value="">{designs.length ? "— select design —" : "— no designs —"}</option>
+            <option value="">{designs.length ? "Select design…" : "No designs"}</option>
             {designs.map((design) => {
               const badge = statusBadge(design.buildStatus)
               return (
                 <option key={design.id} value={design.id}>
-                  {badge.label === "built" ? "✓" : badge.label === "stale" ? "⚠" : "·"} {design.id}
+                  {design.id} · {badge.label}
                 </option>
               )
             })}
@@ -540,13 +548,27 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         </div>
 
         {!serverParts && (
-          <div className="pointer-events-none absolute inset-0 z-[1] flex items-start justify-center pt-24 sm:items-center sm:pt-0">
-            <div className="cad-hud max-w-sm px-6 py-10 text-center">
-              <p className="text-[15px] font-medium tracking-tight text-[var(--cad-overlay-text)]">Load a design or .glb</p>
-              <p className="mt-2 text-[12px] leading-relaxed text-[var(--cad-overlay-faint)]">
-                Drop a file anywhere · Open · or choose a design
+          <div className="pointer-events-none absolute inset-0 z-[1] flex items-start justify-center px-4 pt-24 sm:items-center sm:pt-0">
+            <div className="cad-empty" role="status">
+              <p className="cad-empty__title">
+                {designQuery.isError
+                  ? "Could not load design"
+                  : designId && designQuery.isLoading
+                    ? "Loading design…"
+                    : designId
+                      ? "No build yet"
+                      : "Load a design or .glb"}
               </p>
-              <p className="mt-3 text-[10px] text-[var(--cad-overlay-faint)]">orbit: drag · zoom: scroll · pan: right-drag</p>
+              <p className="cad-empty__body">
+                {designQuery.isError
+                  ? "Reload the design, or open a .glb to inspect geometry."
+                  : designId && designQuery.isLoading
+                    ? "Fetching assembly artifacts…"
+                    : designId
+                      ? "Build this design with the agent, then reload. You can also drop a .glb anytime."
+                      : "Drop a file anywhere, use Open, or pick a design from the list."}
+              </p>
+              {!designQuery.isLoading && <p className="cad-empty__hint">orbit · zoom · pan</p>}
             </div>
           </div>
         )}
@@ -728,9 +750,9 @@ export function App() {
         <Route path="designs/:id" element={<DesignRoute />} />
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
-      <footer className="flex h-8 shrink-0 items-center justify-between border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 text-[11px] text-[var(--osc-text-faint)]">
-        <span>Read-only assembly inspection</span>
-        <span className="mono">Viewer does not mutate Data Root</span>
+      <footer className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 text-[11px] text-[var(--osc-text-faint)] sm:px-4">
+        <span className="cad-footer-meta">Read-only assembly inspection</span>
+        <span className="cad-footer-note">Viewer does not mutate Data Root</span>
       </footer>
     </div>
   )

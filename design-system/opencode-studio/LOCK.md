@@ -1,9 +1,9 @@
 # Lock — Shell + Files + CAD + PCB
 
-**Status:** Files + CAD + PCB + **Shell LOCKED** 2026-07-28  
+**Status:** Files + PCB + Shell + **CAD LOCKED** 2026-07-28  
 **Do not restyle** without explicit unlock.
 
-### Shell lock addendum (this pass)
+### Shell lock addendum
 | Surface | Paths |
 | --- | --- |
 | Tokens / global | `ui/tokens.css`, `ui/styles.css` |
@@ -12,13 +12,15 @@
 | Agent chrome | `ui/native-agent-frame.tsx` |
 | Spec | `MASTER.md`, `pages/shell.md` |
 
-### CAD lock addendum
+Shipped in **v0.5.5**.
+
+### CAD lock addendum (this pass)
 | Surface | Paths |
 | --- | --- |
 | CAD viewer | `studios/cad/viewer/src/app.tsx`, `styles.css` |
 | Spec | `pages/cad.md` |
 
-QA: empty workspace desktop/mobile; chips; rail; inspector; compact agent mode. No designs in workspace — geometry/click path not exercised live.
+QA: empty + **built** `box-lid-demo` (2 parts) desktop/mobile; Designs/Parts sheets; docked rails; toolbar wrap; load/no-build empty wells. Click/copy/prompt path not fully re-dogfooded after geometry load (parts visible, checkboxes OK).
 
 ### PCB lock addendum
 | Surface | Paths |
@@ -37,40 +39,36 @@ QA: projects list/mobile; project detail tabs; catalog empty; empty/error states
 | Shell | `ui/app.tsx` (TopBar, SideDrawer, Home, Agent chrome, frames) |
 | Agent chrome | `ui/native-agent-frame.tsx` (header chips) |
 | Files | `ui/files-explorer.tsx` |
+| CAD viewer | `studios/cad/viewer/src/app.tsx`, `styles.css` |
 | Spec | `MASTER.md`, `pages/shell.md`, `pages/files.md`, `pages/cad.md`, `pages/pcb.md` |
 
-## Visual QA (agent-browser) — shell polish 2026-07-28
+## Visual QA (agent-browser) — CAD polish 2026-07-28
 
-Auth: HTTP Basic via `--headers` JSON (not `user:pass@url`). Studio UI path: `/studio/`. Live host may serve from OpenCode package cache — sync `dist/ui` for dogfood.
+Auth: HTTP Basic via `--headers` JSON. Studio UI: `/studio/`. Content fixture: workspace `designs/box-lid-demo` built via forge.
 
 | Check | Result |
 | --- | --- |
-| Home 1440 light/dark | Pass — cards, elevation, chips, badges |
-| Drawer Navigate + Settings | Pass — Appearance first; Studios on-badges; Install + details; sticky Repair |
-| Home mobile 390 | Pass — compact type, OC chip, touch targets |
-| Drawer mobile full-bleed | Pass — Navigate selected, safe close |
-| CAD shell desktop/mobile | Pass — TopBar + Agent dual-line header (viewer interior locked) |
-| Console errors (happy path) | None observed |
-| typecheck / lint / unit tests | Pass |
+| CAD desktop built design | Pass — rails, GLB assembly, parts, status built |
+| CAD mobile compact toolbar | Pass — Designs/Parts chips, select `id · status` |
+| CAD mobile Designs sheet | Pass — built badge, 2 parts |
+| CAD mobile Parts sheet | Pass — box/lid checkboxes |
+| typecheck / browser-smoke | Pass |
 
 ### Fixed this pass
 
-- Clearer light/dark elevated vs page separation (tokens)
-- Settings radial icon; Navigate \| Settings segments
-- Settings order: Appearance → Studios → Install (paths + details) → Repair helper
-- Home ErrorState + Retry; EmptyState when zero studios
-- Studio host load skeleton / ErrorState
-- Mobile: larger icon hit targets, nav row min-height, OC chip collapse, safe-area on TopBar/footer
-- Agent header dual-line status + loading pulse overlay
+- `.cad-toolbar` / denser chips; compact select; touch rail/part rows
+- Empty wells: loading / no build / load error / no design
+- Design options without emoji glyphs (`id · built`)
+- Footer mono note hidden on narrow
+- Sheet buttons `aria-expanded`; rail `aria-current`
 
 ### Residual (accepted)
 
-- Agent-browser a11y snapshot may still list off-screen drawer nodes; runtime `inert`/`aria-hidden` set correctly
-- URL-embedded Basic auth breaks relative `fetch` — use Authorization header
-- CAD/PCB viewer interiors unchanged (locked)
-- Agent open state persists across routes (prior behavior)
-- Dual-line agent header is snug in 48px chrome height
+- Agent open state persists across routes (shell)
+- Click→Copy/Prompt not re-exercised in this QA pass after geometry load
+- Live host may need `dist/ui` sync until next package release includes CAD polish
 
 ## Screenshots
 
-`/tmp/opencode/dogfood-shell/screenshots/`
+- Shell: `/tmp/opencode/dogfood-shell/screenshots/`
+- CAD: `/tmp/opencode/dogfood-cad/screenshots/`
