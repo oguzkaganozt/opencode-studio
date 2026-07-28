@@ -7,7 +7,6 @@ import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { DEFAULT_STUDIO_HOST_URL, ensureStudioHost } from "./host-ensure"
-import { normalizeParentOpenCodeUrl } from "./opencode-bridge"
 import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
 
 export type StudioPluginOptions = UserPathOptions & {
@@ -40,11 +39,16 @@ async function resolveRoots(userPaths: UserPathOptions = {}, domainRoot?: string
   return { roots: config.roots, error: config.error }
 }
 
+/** Raw parent URL (may be http://0.0.0.0:port — keep for web bind inference). */
 function parentServerUrl(context: { serverUrl?: URL }): string | undefined {
   const raw = context.serverUrl
   if (!raw) return undefined
   try {
-    return normalizeParentOpenCodeUrl(raw)
+    const href = typeof raw === "string" ? raw : raw.href
+    if (!href) return undefined
+    // Validate parseable; do not rewrite 0.0.0.0 here (ensure normalizes for fetch).
+    void new URL(href)
+    return href.replace(/\/$/, "")
   } catch {
     return undefined
   }

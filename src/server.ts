@@ -14,6 +14,7 @@ import {
   csrfTokensEqual,
   isLoopbackHost,
   resolveBasicUsername,
+  resolveEdgePassword,
   sameOrigin,
   securityHeaders,
 } from "./core/security"
@@ -133,10 +134,28 @@ export async function createHostApp(input: HostInput) {
 
   const app = new Hono()
 
+  const password = resolveEdgePassword(env)
+  const username = resolveBasicUsername(env)
+  const needBasic = !isLoopbackHost(hostname)
+
   app.use("*", async (ctx, next) => {
     const host = ctx.req.header("host")
     if (!allowedHost(host, hostname, port)) {
       return ctx.json(errorBody("invalid_host", "Host header rejected."), 400)
+    }
+    if (needBasic && new URL(ctx.req.url).pathname !== "/studio-api/health") {
+      if (!password) {
+        return new Response(JSON.stringify(errorBody("chat_auth_required", "Set OPENCODE_SERVER_PASSWORD or OPENCODE_STUDIO_PASSWORD.")), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      if (!basicAuthMatches(ctx.req.header("authorization"), username, password)) {
+        return new Response(JSON.stringify(errorBody("unauthorized", "Basic auth required.")), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "WWW-Authenticate": `Basic realm="opencode-studio"` },
+        })
+      }
     }
     await next()
     ctx.header("X-Content-Type-Options", "nosniff")
@@ -189,29 +208,6 @@ export async function createHostApp(input: HostInput) {
     return null
   }
 
-  const chatPassword = env.OPENCODE_STUDIO_PASSWORD
-  const chatUsername = resolveBasicUsername(env)
-  const openCodeAuthorized = (authorization: string | undefined) =>
-    isLoopbackHost(hostname) || Boolean(chatPassword && basicAuthMatches(authorization, chatUsername, chatPassword))
-
-  const openCodeAuthResponse = () => {
-    if (!chatPassword) {
-      return new Response(
-        JSON.stringify(errorBody("chat_auth_required", "Set OPENCODE_STUDIO_PASSWORD before exposing OpenCode on a non-loopback host.")),
-        { status: 503, headers: { "Content-Type": "application/json" } },
-      )
-    }
-    return new Response(JSON.stringify(errorBody("unauthorized", "OpenCode Studio password required.")), {
-      status: 401,
-      headers: { "Content-Type": "application/json", "WWW-Authenticate": `Basic realm="opencode-studio"` },
-    })
-  }
-
-  const remoteAuthGuard = (ctx: any) => {
-    if (openCodeAuthorized(ctx.req.header("authorization"))) return null
-    return openCodeAuthResponse()
-  }
-
   const openCodeError = (ctx: any, error: unknown) =>
     ctx.json(errorBody("opencode_error", error instanceof Error ? error.message : String(error)), 502)
 
@@ -251,13 +247,6 @@ export async function createHostApp(input: HostInput) {
     }
   })
 
-  // Workspace file explorer (always on platform). Off-loopback requires the same Basic auth as OpenCode.
-  app.use("/api/files/*", async (ctx, next) => {
-    if (isLoopbackHost(hostname)) return next()
-    const denied = remoteAuthGuard(ctx)
-    if (denied) return denied
-    return next()
-  })
   app.route("/api/files", filesApi)
 
   // Dispatch to the hot-swappable studio mount table.
@@ -333,8 +322,7 @@ export async function createHostApp(input: HostInput) {
   })
 
   app.all("*", async (ctx) => {
-    const denied = remoteAuthGuard(ctx)
-    if (denied) return denied
+    // Basic already applied by global middleware when non-loopback.
     const origin = ctx.req.header("origin")
     if (origin && !sameOrigin(origin, hostname, port, env, ctx.req.header("host"))) {
       return ctx.json(errorBody("invalid_origin", "Origin header rejected."), 403)
@@ -356,8 +344,20 @@ export async function createHostApp(input: HostInput) {
     config,
     reloadStudios,
     closeOpenCode: () => openCode.close(),
-    openCodeAuthorized,
-    openCodeAuthResponse,
+    openCodeAuthorized: (authorization: string | undefined) =>
+      !needBasic || Boolean(password && basicAuthMatches(authorization, username, password)),
+    openCodeAuthResponse: () => {
+      if (!password) {
+        return new Response(JSON.stringify(errorBody("chat_auth_required", "Set OPENCODE_SERVER_PASSWORD or OPENCODE_STUDIO_PASSWORD.")), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify(errorBody("unauthorized", "Basic auth required.")), {
+        status: 401,
+        headers: { "Content-Type": "application/json", "WWW-Authenticate": `Basic realm="opencode-studio"` },
+      })
+    },
     openCodeWebSocketTarget: (requestUrl: string) => openCode.webSocketTarget(requestUrl),
     nativeOpenCodeAvailable,
   }

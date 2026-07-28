@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   allowedHost,
+  assertNonLoopbackPassword,
   assertWebPassword,
   basicAuthMatches,
   createCsrfToken,
@@ -10,6 +11,7 @@ import {
   isLoopbackHost,
   resolveBasicUsername,
   resolveBindMode,
+  resolveEdgePassword,
   safeExternalHref,
   sameOrigin,
 } from "../src/core/security"
@@ -134,16 +136,31 @@ describe("security", () => {
       expect(() => resolveBindMode({ local: true, web: true })).toThrow(/either --local or --web/)
     })
     test("web requires password", () => {
-      expect(() => assertWebPassword("web", {})).toThrow(/OPENCODE_STUDIO_PASSWORD/)
-      expect(() => assertWebPassword("web", { OPENCODE_STUDIO_PASSWORD: "   " })).toThrow(/OPENCODE_STUDIO_PASSWORD/)
+      expect(() => assertWebPassword("web", {})).toThrow(/PASSWORD/)
+      expect(() => assertWebPassword("web", { OPENCODE_STUDIO_PASSWORD: "   " })).toThrow(/PASSWORD/)
       expect(() => assertWebPassword("web", { OPENCODE_STUDIO_PASSWORD: "secret" })).not.toThrow()
+      expect(() => assertWebPassword("web", { OPENCODE_SERVER_PASSWORD: "secret" })).not.toThrow()
       expect(() => assertWebPassword("local", {})).not.toThrow()
+    })
+
+    test("non-loopback bind requires edge password", () => {
+      expect(() => assertNonLoopbackPassword("0.0.0.0", {})).toThrow(/PASSWORD/)
+      expect(() => assertNonLoopbackPassword("0.0.0.0", { OPENCODE_SERVER_PASSWORD: "x" })).not.toThrow()
+      expect(() => assertNonLoopbackPassword("127.0.0.1", {})).not.toThrow()
+    })
+
+    test("resolveEdgePassword prefers studio then server and trims", () => {
+      expect(resolveEdgePassword({})).toBeUndefined()
+      expect(resolveEdgePassword({ OPENCODE_SERVER_PASSWORD: "  a  " })).toBe("a")
+      expect(resolveEdgePassword({ OPENCODE_STUDIO_PASSWORD: "s", OPENCODE_SERVER_PASSWORD: "x" })).toBe("s")
     })
 
     test("resolveBasicUsername defaults and overrides", () => {
       expect(resolveBasicUsername({})).toBe(DEFAULT_BASIC_USERNAME)
       expect(resolveBasicUsername({ OPENCODE_STUDIO_USERNAME: "   " })).toBe(DEFAULT_BASIC_USERNAME)
       expect(resolveBasicUsername({ OPENCODE_STUDIO_USERNAME: "admin" })).toBe("admin")
+      expect(resolveBasicUsername({ OPENCODE_SERVER_PASSWORD: "x" })).toBe("opencode")
+      expect(resolveBasicUsername({ OPENCODE_SERVER_PASSWORD: "x", OPENCODE_SERVER_USERNAME: "u" })).toBe("u")
     })
   })
 })

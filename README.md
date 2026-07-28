@@ -50,6 +50,27 @@ Health: `opencode-studio status`. If install skipped setup: `opencode-studio rep
 
 Studio does **not** spawn OpenCode and has no separate `serve` / systemd host daemon. Lifecycle follows `opencode serve`. Opt out of auto host: `OPENCODE_STUDIO_AUTOSTART=0`.
 
+### Web / LAN (same model as `opencode serve`)
+
+When OpenCode listens on all interfaces, Studio follows (or set env explicitly):
+
+```bash
+# opencode-setup style
+export OPENCODE_SERVER_PASSWORD='strong-password'
+opencode serve --hostname 0.0.0.0 --port 4096
+# Studio binds 0.0.0.0:4173 and uses the same Basic password
+# → http://<server-ip>:4173/studio
+```
+
+| Env | Role |
+| --- | --- |
+| `OPENCODE_STUDIO_HOSTNAME` / `OPENCODE_STUDIO_BIND=0.0.0.0\|web` | Force Studio bind (default: inherit parent `0.0.0.0`, else loopback) |
+| `OPENCODE_STUDIO_PORT` | Studio port (default `4173`; multi-user: one port per Linux user) |
+| `OPENCODE_SERVER_PASSWORD` or `OPENCODE_STUDIO_PASSWORD` | Required for non-loopback — Basic on **all** Studio routes except `/studio-api/health` |
+| `OPENCODE_SERVER_USERNAME` / `OPENCODE_STUDIO_USERNAME` | Basic user (default `opencode` if only server password is set) |
+
+Multi-user: give each systemd unit its own `OPENCODE_STUDIO_PORT` (e.g. 4173 / 4174 / 4175) next to the OpenCode port.
+
 Install is **user-global** — postinstall repairs once; run `repair` only if needed. Domain data roots default to the OpenCode directory.
 
 ### Config (global)

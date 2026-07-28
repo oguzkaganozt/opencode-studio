@@ -186,16 +186,41 @@ describe("host server", () => {
     expect(body.error.code).toBe("invalid_body")
   })
 
-  test("native OpenCode requires a password on non-loopback hosts", async () => {
+  test("non-loopback requires Basic on all routes except health", async () => {
     const ctx = await isolatedHost()
     const { app } = await hostApp(ctx, { hostname: "0.0.0.0", env: {} })
     const response = await app.request("http://192.168.1.20:4173/", { headers: { host: "192.168.1.20:4173" } })
     expect(response.status).toBe(503)
     expect((await response.json()).error.code).toBe("chat_auth_required")
 
-    const config = await app.request("http://192.168.1.20:4173/api/config", {
+    const studios = await app.request("http://192.168.1.20:4173/api/studios", {
+      headers: { host: "192.168.1.20:4173" },
+    })
+    expect(studios.status).toBe(503)
+
+    const health = await app.request("http://192.168.1.20:4173/studio-api/health", {
+      headers: { host: "192.168.1.20:4173" },
+    })
+    expect(health.status).toBe(200)
+
+    const { app: secured } = await hostApp(ctx, {
+      hostname: "0.0.0.0",
+      env: { OPENCODE_SERVER_PASSWORD: "secret" },
+    })
+    const auth = `Basic ${Buffer.from("opencode:secret").toString("base64")}`
+    const okStudios = await secured.request("http://192.168.1.20:4173/api/studios", {
+      headers: { host: "192.168.1.20:4173", authorization: auth },
+    })
+    expect(okStudios.status).toBe(200)
+
+    const config = await secured.request("http://192.168.1.20:4173/api/config", {
       method: "PUT",
-      headers: { host: "192.168.1.20:4173", origin: "http://192.168.1.20:4173", "content-type": "application/json" },
+      headers: {
+        host: "192.168.1.20:4173",
+        origin: "http://192.168.1.20:4173",
+        authorization: auth,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({}),
     })
     expect(config.status).toBe(403)

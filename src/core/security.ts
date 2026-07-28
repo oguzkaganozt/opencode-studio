@@ -50,23 +50,32 @@ export function hostnameForBindMode(mode: BindMode): string {
   return BIND_MODE_HOST[mode]
 }
 
-/** Default HTTP Basic username for non-loopback OpenCode/Files auth. */
 export const DEFAULT_BASIC_USERNAME = "opencode-studio"
 
-/** HTTP Basic username: OPENCODE_STUDIO_USERNAME or default `opencode-studio`. */
-export function resolveBasicUsername(env: NodeJS.ProcessEnv = process.env): string {
-  const raw = env.OPENCODE_STUDIO_USERNAME
-  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim()
-  return DEFAULT_BASIC_USERNAME
+/** OPENCODE_STUDIO_PASSWORD or OPENCODE_SERVER_PASSWORD. */
+export function resolveEdgePassword(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const p = env.OPENCODE_STUDIO_PASSWORD?.trim() || env.OPENCODE_SERVER_PASSWORD?.trim()
+  return p || undefined
 }
 
-/** Web mode requires OPENCODE_STUDIO_PASSWORD (non-empty). */
+/** Studio user → server user → opencode (server pw only) → opencode-studio. */
+export function resolveBasicUsername(env: NodeJS.ProcessEnv = process.env): string {
+  return (
+    env.OPENCODE_STUDIO_USERNAME?.trim() ||
+    env.OPENCODE_SERVER_USERNAME?.trim() ||
+    (env.OPENCODE_SERVER_PASSWORD && !env.OPENCODE_STUDIO_PASSWORD ? "opencode" : DEFAULT_BASIC_USERNAME)
+  )
+}
+
 export function assertWebPassword(mode: BindMode, env: NodeJS.ProcessEnv = process.env) {
-  if (mode !== "web") return
-  const password = env.OPENCODE_STUDIO_PASSWORD
-  if (typeof password !== "string" || password.trim().length === 0) {
-    const user = resolveBasicUsername(env)
-    throw new Error(`web mode requires OPENCODE_STUDIO_PASSWORD (HTTP Basic user ${user})`)
+  if (mode === "web" && !resolveEdgePassword(env)) {
+    throw new Error("web mode requires OPENCODE_STUDIO_PASSWORD or OPENCODE_SERVER_PASSWORD")
+  }
+}
+
+export function assertNonLoopbackPassword(hostname: string, env: NodeJS.ProcessEnv = process.env) {
+  if (!isLoopbackHost(hostname) && !resolveEdgePassword(env)) {
+    throw new Error("non-loopback bind requires OPENCODE_STUDIO_PASSWORD or OPENCODE_SERVER_PASSWORD")
   }
 }
 
