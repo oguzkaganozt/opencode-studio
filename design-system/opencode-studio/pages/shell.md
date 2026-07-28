@@ -14,13 +14,15 @@ Calm companion chrome. Studio work (viewers) stays quiet behind the shell; chrom
 
 ## TopBar / Agent actions
 - Outline chips h-8–9, 11–12px label, gap-2.
+- Menu button: `aria-expanded` + `aria-haspopup="dialog"` when drawer open.
+- Settings gear opens drawer on Settings panel (same SideDrawer).
 - Agent toggle: status dot + “Agent”; `aria-pressed`.
 - OpenCode external-ish link only when `nativeOpenCodeAvailable`.
 
-## Drawer Settings
-- Segmented Studios | Settings.
-- Theme: System / Light / Dark segmented (keep behavior).
-- Repair install full-width primary sticky; success/warn status blocks.
+## Drawer
+- Shared `.osc-segmented` for Studios | Settings and theme.
+- Nav: Workspace (Home, Files) + Studios groups; `.osc-nav-item` + accent rail/dot; `aria-current="page"`.
+- Settings sections: Studios list · Appearance · Install meta · Details; sticky Repair footer (`.osc-drawer-footer`).
 
 ## Do not
 - Add marketing hero imagery or extra CTAs.

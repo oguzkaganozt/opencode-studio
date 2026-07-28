@@ -1,7 +1,7 @@
 # Lock — Shell + Files (batch 1–2)
 
-**Status:** Shell + Files + CAD + PCB LOCKED 2026-07-28  
-**Do not restyle** host shell, Files, CAD, or PCB viewers without explicit unlock.
+**Status:** Files + CAD + PCB LOCKED 2026-07-28 · **Shell unlocked** (menu/settings/chrome polish in progress)  
+**Do not restyle** Files, CAD, or PCB viewers without explicit unlock. Shell host chrome may change until re-locked.
 
 ### CAD lock addendum
 | Surface | Paths |

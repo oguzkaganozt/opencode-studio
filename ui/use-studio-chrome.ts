@@ -3,8 +3,11 @@ import { subscribeAgentHandoff } from "./agent-handoff"
 import { readAgentOpen, writeAgentOpen } from "./agent-open"
 import { type AgentStatus, agentStatusDotClass, agentStatusLabel } from "./agent-status"
 
+export type DrawerPanel = "nav" | "settings"
+
 export function useStudioChrome() {
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerPanel, setDrawerPanel] = useState<DrawerPanel>("nav")
   const [agentOpen, setAgentOpen] = useState(() => readAgentOpen())
   const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (readAgentOpen() ? "loading" : "closed"))
 
@@ -36,9 +39,22 @@ export function useStudioChrome() {
     setAgentOpenPersisted(false)
   }, [setAgentOpenPersisted])
 
+  const openDrawer = useCallback((panel: DrawerPanel = "nav") => {
+    setDrawerPanel(panel)
+    setDrawerOpen(true)
+  }, [])
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+  }, [])
+
   return {
     drawerOpen,
+    drawerPanel,
     setDrawerOpen,
+    setDrawerPanel,
+    openDrawer,
+    closeDrawer,
     agentOpen,
     agentStatus,
     setAgentStatus,
