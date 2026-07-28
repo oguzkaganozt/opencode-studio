@@ -4,12 +4,12 @@ import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
 import { Badge } from "./components/badge"
 import { Button } from "./components/button"
-import { EmptyState } from "./components/empty-state"
 import { ErrorState } from "./components/error-state"
 import { FilesExplorer } from "./files-explorer"
 import { fetchJson } from "./lib/fetch-json"
 import { useFocusTrap } from "./lib/focus-trap"
 import { NativeAgentFrame } from "./native-agent-frame"
+import { NativeOpenCodePane } from "./native-opencode-pane"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 import { readThemePreference, setThemePreference, type ThemePreference } from "./theme"
 import { type DrawerPanel, useStudioChrome } from "./use-studio-chrome"
@@ -54,6 +54,11 @@ type StudiosResponse = {
   update?: UpdateInfo
 }
 
+const STUDIO_META: Record<string, { short: string; blurb: string }> = {
+  cad: { short: "CAD", blurb: "Parts, assemblies, renders" },
+  pcb: { short: "PCB", blurb: "Schematic, layout, BOM" },
+}
+
 function checkTone(status: HostCheck["status"] | "unknown"): "ok" | "warn" | "fail" | "neutral" {
   if (status === "pass") return "ok"
   if (status === "warn") return "warn"
@@ -79,7 +84,7 @@ function engineBadgeLabel(status: HostCheck["status"] | "unknown") {
   return "…"
 }
 
-function StudioHealthBadges({ studio, checks }: { studio: StudioCard; checks: HostCheck[] }) {
+function StudioInstallBadges({ studio, checks }: { studio: StudioCard; checks: HostCheck[] }) {
   const skillCheck = checks.find((check) => check.id === `skill:${studio.id}`)
   const skillStatus = skillCheck?.status ?? (studio.skillInstalled ? "pass" : "fail")
   const skillMessage = skillCheck?.message ?? (studio.skillInstalled ? "Skill installed" : "Skill missing")
@@ -88,10 +93,24 @@ function StudioHealthBadges({ studio, checks }: { studio: StudioCard; checks: Ho
     return { engine, status: check?.status ?? ("unknown" as const), message: check?.message }
   })
   const rootBad = Boolean(studio.rootError)
+  const worst: HostCheck["status"] | "unknown" = rootBad
+    ? "fail"
+    : skillStatus === "fail" || engines.some((e) => e.status === "fail")
+      ? "fail"
+      : skillStatus === "warn" || engines.some((e) => e.status === "warn")
+        ? "warn"
+        : skillStatus === "pass" && engines.every((e) => e.status === "pass" || e.status === "unknown")
+          ? "pass"
+          : "unknown"
 
   return (
-    <div className="mb-5 flex flex-wrap gap-1.5">
-      <span className="sr-only">{studio.label} readiness</span>
+    <div className="mt-1.5 flex flex-wrap gap-1 pl-4">
+      <Badge
+        tone={checkTone(worst)}
+        title={[skillMessage, studio.rootError, ...engines.map((e) => e.message).filter(Boolean)].filter(Boolean).join(" · ")}
+      >
+        {worst === "pass" ? "healthy" : worst === "warn" ? "warn" : worst === "fail" ? "issues" : "…"}
+      </Badge>
       <Badge tone={checkTone(skillStatus)} title={skillMessage}>
         skill {skillBadgeLabel(skillStatus, skillMessage)}
       </Badge>
@@ -107,11 +126,6 @@ function StudioHealthBadges({ studio, checks }: { studio: StudioCard; checks: Ho
       )}
     </div>
   )
-}
-
-const STUDIO_META: Record<string, { short: string; blurb: string }> = {
-  cad: { short: "CAD", blurb: "Parts, assemblies, renders" },
-  pcb: { short: "PCB", blurb: "Schematic, layout, BOM" },
 }
 
 function MenuIcon() {
@@ -340,7 +354,7 @@ function SideDrawer({
             <nav className="flex flex-col gap-4 p-2 pb-4" aria-label="Studios">
               <div className="flex flex-col gap-0.5">
                 <p className="osc-drawer-label px-2.5 pt-1.5 pb-1">Workspace</p>
-                <DrawerNavLink to="/" active={!studioId} onNavigate={onClose} title="Home" blurb="Studio hub" />
+                <DrawerNavLink to="/" active={!studioId} onNavigate={onClose} title="OpenCode" blurb="Agent & sessions" />
                 <DrawerNavLink
                   to="/files"
                   active={studioId === "files"}
@@ -379,7 +393,7 @@ function SideDrawer({
                   <h2 id="osc-studios-label" className="osc-drawer-label">
                     Studios
                   </h2>
-                  <p className="osc-drawer-help">CAD and PCB stay on. Open a studio from Navigate or Home.</p>
+                  <p className="osc-drawer-help">CAD and PCB stay on. Open a studio from Navigate.</p>
 
                   {csrfQuery.isError && (
                     <p
@@ -397,13 +411,27 @@ function SideDrawer({
                       Config error: {studiosQuery.data.configError}
                     </p>
                   )}
+                  {studiosQuery.data?.update?.updateAvailable && (
+                    <div
+                      className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2.5 text-[12px]"
+                      role="status"
+                    >
+                      <p className="font-medium text-[var(--osc-text)]">
+                        Update available · v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
+                      </p>
+                      <pre className="mt-1.5 overflow-x-auto font-mono text-[11px] text-[var(--osc-text-muted)]">
+                        {`opencode-studio upgrade`}
+                      </pre>
+                    </div>
+                  )}
 
                   <ul className="osc-drawer-list">
                     {cards.map((studio) => {
                       const meta = STUDIO_META[studio.id]
+                      const checks = studiosQuery.data?.checks ?? []
                       return (
-                        <li key={studio.id}>
-                          <span className="flex min-w-0 flex-col gap-0.5">
+                        <li key={studio.id} className="!items-start !py-2.5">
+                          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                             <span className="flex min-w-0 items-center gap-2.5">
                               <span
                                 className="size-1.5 shrink-0 rounded-full"
@@ -415,8 +443,9 @@ function SideDrawer({
                             {meta?.blurb ? (
                               <span className="truncate pl-4 text-[11px] text-[var(--osc-text-faint)]">{meta.blurb}</span>
                             ) : null}
+                            <StudioInstallBadges studio={studio} checks={checks} />
                           </span>
-                          <Badge tone="neutral" className="shrink-0">
+                          <Badge tone="neutral" className="mt-0.5 shrink-0">
                             on
                           </Badge>
                         </li>
@@ -567,119 +596,44 @@ function TopBar({
   )
 }
 
-function HomePage() {
+function OpenCodeFrame() {
   const studiosQuery = useStudios()
   const chrome = useStudioChrome()
-  const cards = studiosQuery.data?.studios ?? []
+  const available = studiosQuery.data?.nativeOpenCodeAvailable ?? false
 
   return (
-    <div className="min-h-dvh bg-[var(--osc-bg)]">
-      <div inert={chrome.drawerOpen ? true : undefined}>
+    <div data-studio="opencode" className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={chrome.drawerOpen ? true : undefined}>
         <TopBar
+          studioLabel="OpenCode"
           menuOpen={chrome.drawerOpen}
           onMenu={() => chrome.openDrawer("nav")}
           onSettings={() => chrome.openDrawer("settings")}
-          actions={
-            studiosQuery.data?.nativeOpenCodeAvailable ? (
-              <a href="/" className="osc-chip" title="Open OpenCode" aria-label="OpenCode">
-                <span className="hidden min-[480px]:inline">OpenCode</span>
-                <span className="min-[480px]:hidden" aria-hidden="true">
-                  OC
-                </span>
-              </a>
-            ) : undefined
-          }
+          edge="flush"
         />
-
-        <main id="main-content" className="mx-auto max-w-[820px] px-5 py-10 sm:px-8 sm:py-16 md:py-20">
-          <div className="osc-reveal mb-8 sm:mb-12">
-            <p className="mb-2.5 text-[11px] font-medium tracking-[0.16em] text-[var(--osc-text-faint)] uppercase sm:mb-3">Companion</p>
-            <h1 className="text-[2rem] leading-[1.12] font-semibold tracking-[-0.03em] text-pretty text-[var(--osc-text)] sm:text-[2.5rem]">
-              Studios
-            </h1>
-            <p className="mt-2.5 max-w-md text-[14px] leading-relaxed text-[var(--osc-text-muted)] sm:mt-3 sm:text-[15px]">
-              Open CAD or PCB. Design with the Agent — viewers update as artifacts land in the workspace.
-            </p>
-          </div>
-
-          {studiosQuery.isLoading && (
-            <div className="grid gap-3 sm:grid-cols-2" role="status" aria-busy="true">
-              <span className="sr-only">Loading studios…</span>
-              <div className="osc-skeleton h-48" aria-hidden />
-              <div className="osc-skeleton h-48" aria-hidden />
+        <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
+          {studiosQuery.isLoading ? (
+            <div className="flex flex-1 flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
+              <span className="sr-only">Loading OpenCode…</span>
+              <div className="osc-skeleton h-10 w-full max-w-md" aria-hidden />
+              <div className="osc-skeleton min-h-48 flex-1" aria-hidden />
             </div>
-          )}
-          {studiosQuery.isError && (
-            <ErrorState
-              title="Failed to load studios"
-              description={(studiosQuery.error as Error)?.message ?? "unknown error"}
-              action={
-                <Button type="button" variant="outline" size="sm" onClick={() => void studiosQuery.refetch()}>
-                  Retry
-                </Button>
-              }
-            />
-          )}
-
-          {studiosQuery.data?.update?.updateAvailable && (
-            <div
-              className="mb-8 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4 py-3.5 shadow-[var(--osc-shadow)] sm:mb-10 sm:px-5 sm:py-4"
-              role="status"
-            >
-              <p className="text-[13px] font-medium sm:text-sm">
-                Update available · v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
-              </p>
-              <pre className="mt-2 overflow-x-auto rounded-[var(--osc-radius-md)] bg-[var(--osc-bg-subtle)] px-3 py-2 font-mono text-[11px] text-[var(--osc-text-muted)]">
-                {`opencode-studio upgrade`}
-              </pre>
+          ) : studiosQuery.isError ? (
+            <div className="p-4 sm:p-8">
+              <ErrorState
+                title="Failed to load host"
+                description={(studiosQuery.error as Error)?.message ?? "unknown error"}
+                action={
+                  <Button type="button" variant="outline" size="sm" onClick={() => void studiosQuery.refetch()}>
+                    Retry
+                  </Button>
+                }
+              />
             </div>
+          ) : (
+            <NativeOpenCodePane available={available} />
           )}
-
-          {studiosQuery.isSuccess && cards.length === 0 && (
-            <EmptyState
-              title="No studios available"
-              description="Repair the install from Settings if plugins or skills are missing, then restart OpenCode."
-              action={
-                <Button type="button" variant="outline" size="sm" onClick={() => chrome.openDrawer("settings")}>
-                  Open settings
-                </Button>
-              }
-            />
-          )}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {cards.map((studio, index) => {
-              const meta = STUDIO_META[studio.id]
-              return (
-                <Link
-                  key={studio.id}
-                  to={`/studios/${studio.id}`}
-                  data-studio={studio.id}
-                  className="osc-reveal osc-home-card group"
-                  style={{ animationDelay: `${Math.min(index, 6) * 40}ms` }}
-                >
-                  <span className="osc-home-card__rail" style={{ background: `var(--osc-accent-${studio.id})` }} aria-hidden />
-                  <div className="mb-3 flex items-center gap-2">
-                    <span className="size-1.5 rounded-full" style={{ background: `var(--osc-accent-${studio.id})` }} aria-hidden />
-                    <h2 className="text-[15px] font-semibold tracking-tight">{studio.label}</h2>
-                  </div>
-                  <p className="mb-1.5 text-[12px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
-                  <p className="mb-4 flex-1 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">{studio.description}</p>
-                  <StudioHealthBadges studio={studio} checks={studiosQuery.data?.checks ?? []} />
-                  <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--osc-text)]">
-                    Open {meta?.short ?? studio.label}
-                    <span
-                      className="text-[var(--osc-text-faint)] transition-transform duration-[var(--osc-motion-duration)] group-hover:translate-x-0.5"
-                      aria-hidden
-                    >
-                      →
-                    </span>
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
-        </main>
+        </div>
       </div>
       <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} initialPanel={chrome.drawerPanel} />
     </div>
@@ -709,40 +663,28 @@ function assertViewerLoadersComplete() {
 assertViewerLoadersComplete()
 
 function AgentChromeActions({
-  nativeAvailable,
   agentOpen,
   agentStatusLabel: statusLabel,
   agentStatusDotClass: statusDot,
   onToggle,
 }: {
-  nativeAvailable: boolean
   agentOpen: boolean
   agentStatusLabel: string
   agentStatusDotClass: string
   onToggle: () => void
 }) {
   return (
-    <>
-      {nativeAvailable && (
-        <a href="/" className="osc-chip" title="Open OpenCode" aria-label="OpenCode">
-          <span className="hidden min-[480px]:inline">OpenCode</span>
-          <span className="min-[480px]:hidden" aria-hidden="true">
-            OC
-          </span>
-        </a>
-      )}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="osc-chip"
-        aria-pressed={agentOpen}
-        aria-label={`Agent, ${statusLabel}`}
-        title={statusLabel}
-      >
-        <span className={`size-1.5 rounded-full ${statusDot}`} aria-hidden />
-        Agent
-      </button>
-    </>
+    <button
+      type="button"
+      onClick={onToggle}
+      className="osc-chip"
+      aria-pressed={agentOpen}
+      aria-label={`Agent, ${statusLabel}`}
+      title={statusLabel}
+    >
+      <span className={`size-1.5 rounded-full ${statusDot}`} aria-hidden />
+      Agent
+    </button>
   )
 }
 
@@ -834,7 +776,6 @@ function StudioFrame() {
           edge="flush"
           actions={
             <AgentChromeActions
-              nativeAvailable={nativeAvailable}
               agentOpen={chrome.agentOpen}
               agentStatusLabel={chrome.agentStatusLabel}
               agentStatusDotClass={chrome.agentStatusDotClass}
@@ -899,7 +840,6 @@ function FilesFrame() {
           edge="flush"
           actions={
             <AgentChromeActions
-              nativeAvailable={nativeAvailable}
               agentOpen={chrome.agentOpen}
               agentStatusLabel={chrome.agentStatusLabel}
               agentStatusDotClass={chrome.agentStatusDotClass}
@@ -930,7 +870,7 @@ export function App() {
     <>
       <SkipLink />
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<OpenCodeFrame />} />
         <Route path="/files/*" element={<FilesFrame />} />
         <Route path="/studios/:studioId/*" element={<StudioFrame />} />
         <Route path="*" element={<Navigate to="/" replace />} />

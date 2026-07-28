@@ -33,7 +33,7 @@ export function nativeFrameLooksBroken(snap: NativeFrameSnapshot | null | undefi
   return bodyText.length < 80
 }
 
-function snapshotFromDocument(doc: Document | null | undefined): NativeFrameSnapshot | null {
+export function snapshotFromDocument(doc: Document | null | undefined): NativeFrameSnapshot | null {
   if (!doc) return null
   return {
     title: doc.title,
@@ -159,8 +159,6 @@ export function NativeAgentFrame({
     onStatusChange?.(status)
   }, [onStatusChange, status])
 
-  const openHref = src === nativeOpenCodeHomeUrl() ? "/" : src
-
   const onFrameLoad = () => {
     setLoading(false)
     const frame = iframeRef.current
@@ -228,11 +226,6 @@ export function NativeAgentFrame({
             {available ? (loading ? "Connecting…" : error ? "Unavailable" : "OpenCode") : "Unavailable"}
           </p>
         </div>
-        {available && (
-          <a href={openHref} target="_blank" rel="noreferrer" className="osc-chip h-8 shrink-0 px-2.5 text-[11px]">
-            Open
-          </a>
-        )}
         <button type="button" onClick={onClose} className="osc-chip h-8 shrink-0 px-2.5 text-[11px]" aria-label="Close agent">
           Close
         </button>

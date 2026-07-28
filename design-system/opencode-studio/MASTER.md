@@ -56,9 +56,8 @@ Map to existing tokens — do not invent parallel palettes.
 
 | Use | Size / weight | Color |
 | --- | --- | --- |
-| Home H1 | ~2.15–2.5rem, semibold, tracking tight (−0.03–−0.04em) | `--osc-text` |
 | Section label | 10–11px, medium, uppercase, wide tracking | `--osc-text-faint` |
-| Nav / card title | 13–15px, medium–semibold | `--osc-text` |
+| Nav / chrome title | 13–15px, medium–semibold | `--osc-text` |
 | Body / helper | 12–15px, regular, leading relaxed | `--osc-text-muted` |
 | Chrome control | 11–12px, medium | muted → text on hover |
 | Mono meta | 10–11px IBM Plex | faint (paths, version) |
@@ -71,8 +70,7 @@ No oversized “fashion” display type. No Inter swap.
 ## Spacing & density (mid)
 
 Base unit 4px. Chrome height **48px** (`h-12`) for TopBar and drawer header; agent chrome header matches.  
-Page content: max-width ~820px home; horizontal padding 20–32px.  
-Cards: padding 20–24px; gap 12px grid.  
+OpenCode home is full-bleed under TopBar (no content max-width). Viewer pages fill remaining height.  
 Touch targets: interactive chrome ≥36px (prefer 36–40); icon-only ≥36×36.
 
 ---
@@ -109,24 +107,24 @@ Touch targets: interactive chrome ≥36px (prefer 36–40); icon-only ≥36×36.
 
 ### TopBar
 - Solid `--osc-bg-elevated` (no heavy frosted glass).
-- Left: menu ≥36px + brand or studio label + accent dot.
-- Right: actions cluster (OpenCode link, Agent toggle) — consistent outline chips.
-- `edge=flush` when studio subnav stacks below.
+- Left: menu ≥36px + brand or surface label + accent dot (studios/files).
+- Right: Agent toggle on Files/CAD/PCB only — outline chip. No leave-shell OpenCode link.
+- `edge=flush` when content is full-bleed under chrome.
 
 ### SideDrawer
 - 19.5rem max; focus trap + Escape; nav + settings panels.
-- Active studio: surface fill + 2px accent rail.
-- Settings: repair CTA sticky bottom; theme segmented control; mono meta footer.
+- Nav: OpenCode + Files + domain studios.
+- Active item: surface fill + 2px accent rail.
+- Settings: repair CTA sticky bottom; theme segmented control; mono meta footer; update banner when available.
 
 ### Agent chrome
 - Header aligns with TopBar rhythm (h-12, same border language).
-- Status dot + label; Open / Close as outline chips.
+- Status dot + label; Close chip only.
 - Resize handle: visible on hover/focus only.
+- Not shown on OpenCode home route (full-pane OpenCode instead).
 
-### Home studio cards
-- Elevated surface, 1px border; hover → stronger border + soft shadow (no big lift).
-- Accent: dot always; left rail on hover/focus-within only.
-- Health badges below description; CTA row “Open …” with subtle arrow shift ≤2px.
+### OpenCode home pane
+- Same-origin iframe of parent UI; loading pulse + broken-frame detection shared with Agent.
 
 ---
 

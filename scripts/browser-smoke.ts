@@ -161,15 +161,18 @@ async function browserSmoke(base: string) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 
     await page.goto(`${base}/studio`, { waitUntil: "networkidle" })
-    await page.waitForSelector("text=Studios")
-    await page.waitForSelector("text=CAD Studio")
+    await page.waitForSelector("text=OpenCode")
+    await page.locator('iframe[title="OpenCode"]').waitFor({ state: "attached", timeout: 15_000 })
     await page.getByRole("button", { name: "Open menu" }).click()
+    await page.getByRole("link", { name: /OpenCode/ }).waitFor()
+    await page.getByRole("link", { name: /CAD Studio|CAD/ }).waitFor()
     await page.getByRole("tab", { name: "Settings" }).click()
     await page.waitForSelector("text=Repair install")
     await page.getByRole("button", { name: "Close menu" }).click()
     await assertTailwindUtilities(page)
     await assertThemeTokens(page)
-    console.log("home ok")
+    await assertShellFillsViewport(page, "opencode")
+    console.log("opencode home ok")
 
     const studioChecks: Record<string, { wait: string; extra?: (p: Page) => Promise<void> }> = {
       cad: {
@@ -216,8 +219,8 @@ async function browserSmoke(base: string) {
     // Phone posture: no forced horizontal page scroll on home + one studio
     await page.setViewportSize({ width: 360, height: 640 })
     await page.goto(`${base}/studio`, { waitUntil: "networkidle" })
-    await page.waitForSelector("text=Studios")
-    await assertNoHorizontalScroll(page, "360 home")
+    await page.waitForSelector("text=OpenCode")
+    await assertNoHorizontalScroll(page, "360 opencode")
     await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
     await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
     await assertNoHorizontalScroll(page, "360 cad")

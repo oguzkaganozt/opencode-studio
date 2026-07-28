@@ -8,10 +8,10 @@
 | --- | --- |
 | Tokens / global | `ui/tokens.css`, `ui/styles.css` |
 | Primitives | `ui/components/*` |
-| Shell | `ui/app.tsx`, `ui/native-agent-frame.tsx` |
+| Shell | `ui/app.tsx`, `ui/native-agent-frame.tsx`, `ui/native-opencode-pane.tsx` |
 | Spec | `MASTER.md`, `pages/shell.md` |
 
-Shipped **v0.5.5**.
+Shipped **v0.5.5**. IA update (OpenCode home replaces hub cards; no leave-shell OpenCode chip) — still shell surface.
 
 ### CAD lock addendum
 | Surface | Paths |
@@ -35,7 +35,7 @@ QA: projects list; **built** `wall-sconce-rev-a` schematic/PCB/BOM tabs; diagnos
 | --- | --- |
 | Tokens / global | `ui/tokens.css`, `ui/styles.css` |
 | Primitives | `ui/components/*` |
-| Shell | `ui/app.tsx`, `ui/native-agent-frame.tsx` |
+| Shell | `ui/app.tsx`, `ui/native-agent-frame.tsx`, `ui/native-opencode-pane.tsx` |
 | Files | `ui/files-explorer.tsx` |
 | CAD viewer | `studios/cad/viewer/src/app.tsx`, `styles.css` |
 | PCB viewer | `studios/pcb/viewer/src/*` |

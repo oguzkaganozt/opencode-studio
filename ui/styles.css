@@ -433,51 +433,6 @@ button:disabled {
   }
 }
 
-.osc-home-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: var(--osc-radius-lg);
-  border: 1px solid var(--osc-border);
-  background: var(--osc-bg-elevated);
-  padding: 1.25rem;
-  box-shadow: var(--osc-shadow);
-  transition:
-    border-color var(--osc-motion-duration) ease,
-    box-shadow var(--osc-motion-duration) ease;
-}
-
-@media (min-width: 640px) {
-  .osc-home-card {
-    padding: 1.5rem;
-  }
-}
-
-.osc-home-card:hover {
-  border-color: var(--osc-border-strong);
-  box-shadow: var(--osc-shadow-md);
-}
-
-.osc-home-card:focus-visible {
-  outline: none;
-  box-shadow: var(--osc-focus-ring);
-}
-
-.osc-home-card__rail {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: 2px;
-  opacity: 0;
-  transition: opacity var(--osc-motion-duration) ease;
-}
-
-.osc-home-card:hover .osc-home-card__rail,
-.osc-home-card:focus-visible .osc-home-card__rail {
-  opacity: 1;
-}
-
 .osc-agent-header {
   display: flex;
   height: var(--osc-chrome-h);

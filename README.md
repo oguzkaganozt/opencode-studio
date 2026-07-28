@@ -39,12 +39,13 @@ opencode serve
 
 OpenCode loads the studio plugin for that directory. The plugin starts the Studio host in-process and attaches to this serve.
 
-Then open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — CAD / PCB / Files. Agent is a same-origin iframe of your parent OpenCode UI (proxied at `/`).
+Then open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — OpenCode home, CAD / PCB / Files. Parent OpenCode UI is proxied at `/` (full-pane home + Agent side panel on domain pages).
 
 | URL | What |
 | --- | --- |
-| `http://127.0.0.1:4173/studio` | OpenCode Studio Viewer |
-| `http://127.0.0.1:4173/` | Proxied native OpenCode (Agent panel) |
+| `http://127.0.0.1:4173/studio` | Studio shell (OpenCode home iframe) |
+| `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
+| `http://127.0.0.1:4173/` | Proxied native OpenCode (iframe source) |
 
 Health: `opencode-studio status`. If install skipped setup: `opencode-studio repair`, then restart OpenCode.
 
