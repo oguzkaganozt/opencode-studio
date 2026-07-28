@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import {
   allStudioIds,
   legacyStudioConfigPath,
@@ -379,7 +380,9 @@ export async function configureStudios(
     return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
   plugins.push(meta.pluginSpecifier)
-  plugins.push(`${meta.name}/media-go`)
+  // OpenCode 1.18 resolves npm plugins via exports["./server"] or package.json "main".
+  // Subpath "@pkg/media-go" does not resolve a server entry — use file:// to the installed dist.
+  plugins.push(pathToFileURL(path.join(packageRoot, "dist", "media-go.js")).href)
 
   let nextText = configWithPlugins(openCode, plugins)
   let workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
@@ -699,7 +702,10 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     const registered = entries.some((entry) => pluginEntryMatches(entry, meta.name) || pluginEntryMatches(entry, meta.pluginSpecifier))
     const mediaGo = entries.some((entry) => {
       const base = pluginBaseName(entry)
-      return base === `${meta.name}/media-go` || base?.endsWith("/media-go") === true || String(entry).includes("/media-go")
+      const s = String(entry)
+      return (
+        base === `${meta.name}/media-go` || base?.endsWith("/media-go") === true || s.includes("/media-go") || s.includes("media-go.js")
+      )
     })
     checks.push({
       id: "plugin-registration",

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { listComposedToolNames } from "../src/core/plugin-compose"
 import { configureStudios } from "../src/lifecycle"
-import { createOpenCodeStudioPlugin } from "../src/plugin"
+import { StudioPlugin } from "../src/plugin"
 import hooks from "./parity/plugin-hooks.json"
 import digests from "./parity/skill-digests.json"
 import tools from "./parity/tools.json"
@@ -53,7 +53,7 @@ describe("live tool inventory", () => {
         packageRoot,
         validateOpenCode: false,
       })
-      const plugin = createOpenCodeStudioPlugin({
+      const plugin = StudioPlugin.create({
         workspace,
         packageRoot,
         studioConfigHome,
@@ -78,7 +78,7 @@ describe("live tool inventory", () => {
       await mkdir(workspace, { recursive: true })
       const studioConfigHome = path.join(root, "studio-config")
       const openCodeHome = path.join(root, "opencode-config")
-      const plugin = createOpenCodeStudioPlugin({
+      const plugin = StudioPlugin.create({
         workspace,
         packageRoot,
         studioConfigHome,

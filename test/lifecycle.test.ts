@@ -57,7 +57,7 @@ describe("configureStudios", () => {
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
     expect(openCode.plugin).toContain(pkgName)
-    expect(openCode.plugin).toContain(`${pkgName}/media-go`)
+    expect(openCode.plugin.some((p: string) => String(p).includes("media-go.js"))).toBe(true)
     expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(false)
     expect(openCode.mcp?.build123d).toBeTruthy()
     expect(await Bun.file(path.join(ctx.workspace, "opencode.json")).exists()).toBe(false)

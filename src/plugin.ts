@@ -54,7 +54,7 @@ function parentServerUrl(context: { serverUrl?: URL }): string | undefined {
   }
 }
 
-export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): Plugin {
+function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): Plugin {
   return async (context, rawOptions) => {
     assertNotRoot("initialize the OpenCode Studio plugin")
     const packageRoot = defaults.packageRoot ?? packageRootFrom(import.meta.dir)
@@ -142,5 +142,9 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
   }
 }
 
-const OpenCodeStudioPlugin = createOpenCodeStudioPlugin()
-export default OpenCodeStudioPlugin
+/** Test helper — nested so OpenCode legacy loader does not treat it as a plugin export. */
+export const StudioPlugin = {
+  create: createOpenCodeStudioPlugin,
+}
+
+export default createOpenCodeStudioPlugin()

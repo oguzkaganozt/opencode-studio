@@ -1,14 +1,17 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@oguzkaganozt/opencode-studio",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "OpenCode Studios for CAD and PCB, plus always-on workspace media tools",
   "type": "module",
   "license": "MIT",
+  "main": "./dist/plugin.js",
   "exports": {
     ".": "./dist/plugin.js",
+    "./server": "./dist/plugin.js",
     "./media-provider": "./dist/media-provider.js",
-    "./media-go": "./dist/media-go.js"
+    "./media-go": "./dist/media-go.js",
+    "./media-go/server": "./dist/media-go.js"
   },
   "bin": {
     "opencode-studio": "dist/cli.js"
