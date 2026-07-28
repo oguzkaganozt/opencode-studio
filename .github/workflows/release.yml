@@ -37,3 +37,10 @@ jobs:
       # Trusted Publisher on npmjs.com must match:
       #   user=oguzkaganozt repo=opencode-studio workflow=release.yml environment=npm
       - run: npm publish --access public
+      - run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --latest
+        env:
+          GH_TOKEN: ${{ github.token }}
