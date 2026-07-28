@@ -24,12 +24,12 @@ import {
   resolveOpenCodeConfigPath,
 } from "./core/opencode-config"
 import {
-  build123dMcpEntry,
   BUILD123D_MCP_PACKAGE,
+  build123dMcpEntry,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
-  MANAGED_MEDIA_GO_PLUGIN_NAME,
   MANAGED_MCP_KEY,
+  MANAGED_MEDIA_GO_PLUGIN_NAME,
   type PackageMeta,
   PLATFORM_MEDIA_SKILL_ID,
   platformMediaSkillName,
