@@ -19,20 +19,22 @@ const ensureCompletion = path.join(root, "dist", "ensure-completion.js")
 const REPAIR_TIMEOUT_MS = 30_000
 const COMPLETION_TIMEOUT_MS = 8_000
 
-/** @param {NodeJS.ProcessEnv} [env] */
-export function shouldRunPostinstall(env = process.env) {
+/** Bun global install tree (single supported install channel). */
+function isBunGlobalPackageRoot(packageRoot) {
+  const normalized = String(packageRoot).replace(/\\/g, "/")
+  return normalized.includes("/.bun/install/global/")
+}
+
+/** @param {NodeJS.ProcessEnv} [env] @param {string} [packageRoot] */
+export function shouldRunPostinstall(env = process.env, packageRoot = root) {
   if (env.OPENCODE_STUDIO_SKIP_POSTINSTALL === "1" || env.OPENCODE_STUDIO_SKIP_POSTINSTALL === "true") {
     return { ok: false, reason: "OPENCODE_STUDIO_SKIP_POSTINSTALL" }
   }
   if (env.CI === "true" || env.CI === "1") {
     return { ok: false, reason: "CI" }
   }
-  const globalFlag = env.npm_config_global
-  if (globalFlag === "true" || globalFlag === "1") return { ok: true }
-  if (env.npm_config_argv?.includes('"global":true') || env.npm_config_argv?.includes("--global")) {
-    return { ok: true }
-  }
-  return { ok: false, reason: "not a global install" }
+  if (isBunGlobalPackageRoot(packageRoot)) return { ok: true }
+  return { ok: false, reason: "not a bun global install" }
 }
 
 /** @param {NodeJS.ProcessEnv} [env] */

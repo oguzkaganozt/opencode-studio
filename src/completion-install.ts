@@ -193,7 +193,11 @@ export function preferredShells(shellPath?: string): Array<"bash" | "zsh"> {
   return ["bash", "zsh"]
 }
 
-export function shouldRunPostinstallCompletion(env: NodeJS.ProcessEnv = process.env): { ok: boolean; reason?: string } {
+function isBunGlobalPackageRoot(packageRoot: string) {
+  return packageRoot.replace(/\\/g, "/").includes("/.bun/install/global/")
+}
+
+export function shouldRunPostinstallCompletion(env: NodeJS.ProcessEnv = process.env, packageRoot = ""): { ok: boolean; reason?: string } {
   if (env.OPENCODE_STUDIO_SKIP_COMPLETION === "1" || env.OPENCODE_STUDIO_SKIP_COMPLETION === "true") {
     return { ok: false, reason: "OPENCODE_STUDIO_SKIP_COMPLETION" }
   }
@@ -203,10 +207,6 @@ export function shouldRunPostinstallCompletion(env: NodeJS.ProcessEnv = process.
   if (env.CI === "true" || env.CI === "1") {
     return { ok: false, reason: "CI" }
   }
-  const globalFlag = env.npm_config_global
-  if (globalFlag === "true" || globalFlag === "1") return { ok: true }
-  if (env.npm_config_argv?.includes('"global":true') || env.npm_config_argv?.includes("--global")) {
-    return { ok: true }
-  }
-  return { ok: false, reason: "not a global install" }
+  if (packageRoot && isBunGlobalPackageRoot(packageRoot)) return { ok: true }
+  return { ok: false, reason: "not a bun global install" }
 }

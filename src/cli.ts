@@ -21,7 +21,7 @@ Commands:
   status     Health, roots, skills (exit 1 if broken)
   repair     Reinstall plugins, skills, MCP
   remove     Uninstall managed OpenCode state (package stays)
-  upgrade    npm i -g @latest (+ restart systemd unit if any)
+  upgrade    bun add -g @latest (+ restart systemd unit if any)
 
 Linux:
   service install|uninstall|start|stop|restart|status
@@ -74,7 +74,7 @@ Options:
     repair: `opencode-studio repair [options]
 
 Reinstall OpenCode plugins, CAD/PCB + media skills, and build123d MCP.
-Also runs on global npm/bun install. Use after remove, drift, or skipped postinstall.
+Also runs on global bun install. Use after remove, drift, or skipped postinstall.
 
 Options:
   --workspace <path>   Domain data root (default: cwd)
@@ -85,7 +85,7 @@ Options:
     remove: `opencode-studio remove [options]
 
 Uninstall managed plugins, skills, and build123d MCP from OpenCode home.
-Does not uninstall the npm package. Run repair to reinstall.
+Does not uninstall the global package (bun remove -g @oguzkaganozt/opencode-studio).
 
 Options:
   --workspace <path>   Optional domain root for local scrub
@@ -94,7 +94,7 @@ Options:
 `,
     upgrade: `opencode-studio upgrade [options]
 
-Install @oguzkaganozt/opencode-studio@latest via npm.
+Install @oguzkaganozt/opencode-studio@latest via bun add -g.
 Restarts the systemd user unit when present. Restart OpenCode after.
 
 Options:

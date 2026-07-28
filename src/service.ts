@@ -192,22 +192,22 @@ export async function checkPackageUpgrade(input?: { packageRoot?: string; ttlMs?
   }
 }
 
-/** npm i -g @latest; if a user systemd unit exists, refresh and restart it. */
+/** bun add -g @latest; if a user systemd unit exists, refresh and restart it. */
 export async function upgradePackage(options: ServiceOptions = {}): Promise<{
   action: "upgrade"
   packageName: string
   serviceRestarted: boolean
   unit?: string
-  npmOutput: string
+  installOutput: string
   message: string
   restartOpenCode: true
 }> {
-  const npm = Bun.which("npm")
-  if (!npm) throw new Error("npm not found on PATH")
-  const install = Bun.spawn([npm, "i", "-g", `${PACKAGE_NAME}@latest`], { stdout: "pipe", stderr: "pipe" })
+  const bun = Bun.which("bun")
+  if (!bun) throw new Error("bun not found on PATH (required to install/upgrade opencode-studio)")
+  const install = Bun.spawn([bun, "add", "-g", `${PACKAGE_NAME}@latest`], { stdout: "pipe", stderr: "pipe" })
   const [out, err, code] = await Promise.all([new Response(install.stdout).text(), new Response(install.stderr).text(), install.exited])
-  if (code !== 0) throw new Error(err.trim() || out.trim() || "npm i -g failed")
-  const npmOutput = (out.trim() || err.trim()).trim()
+  if (code !== 0) throw new Error(err.trim() || out.trim() || "bun add -g failed")
+  const installOutput = (out.trim() || err.trim()).trim()
 
   const hasUnit = await unitFileExists(options.name)
   if (!hasUnit) {
@@ -215,9 +215,9 @@ export async function upgradePackage(options: ServiceOptions = {}): Promise<{
       action: "upgrade",
       packageName: PACKAGE_NAME,
       serviceRestarted: false,
-      npmOutput,
+      installOutput,
       restartOpenCode: true,
-      message: [`Updated ${PACKAGE_NAME} (no systemd unit found — skip service restart).`, npmOutput, "", OPENCODE_RESTART_HINT]
+      message: [`Updated ${PACKAGE_NAME} (no systemd unit found — skip service restart).`, installOutput, "", OPENCODE_RESTART_HINT]
         .filter(Boolean)
         .join("\n")
         .trim(),
@@ -231,9 +231,9 @@ export async function upgradePackage(options: ServiceOptions = {}): Promise<{
     packageName: PACKAGE_NAME,
     serviceRestarted: true,
     unit: "unit" in service ? String(service.unit) : unitName(options.name),
-    npmOutput,
+    installOutput,
     restartOpenCode: true,
-    message: [`Updated ${PACKAGE_NAME} and restarted ${unitName(options.name)}.`, npmOutput, "", OPENCODE_RESTART_HINT]
+    message: [`Updated ${PACKAGE_NAME} and restarted ${unitName(options.name)}.`, installOutput, "", OPENCODE_RESTART_HINT]
       .filter(Boolean)
       .join("\n")
       .trim(),

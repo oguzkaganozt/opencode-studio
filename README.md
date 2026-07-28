@@ -15,14 +15,13 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 ## Install
 
 ```bash
-npm i -g @oguzkaganozt/opencode-studio
-# or
 bun add -g @oguzkaganozt/opencode-studio
 ```
 
-Requires **Bun ≥ 1.3** (CLI runtime) and a working OpenCode install.
+Requires **Bun ≥ 1.3** (install channel + CLI runtime) and a working OpenCode install.
+Published on the npm registry; install and upgrade only via bun.
 
-Domain engines ship with the npm package:
+Domain engines ship in the package:
 
 | Engine | Source |
 | --- | --- |
@@ -91,14 +90,14 @@ opencode-studio service install          # writes ~/.config/systemd/user/opencod
 opencode-studio service status
 opencode-studio service stop|start|restart
 opencode-studio service uninstall
-opencode-studio upgrade                  # npm i -g @latest (+ restart unit if installed)
+opencode-studio upgrade                  # bun add -g @latest (+ restart unit if installed)
 opencode-studio upgrade --check          # report only (exit 1 if update available)
 ```
 
 Options: `--workspace` (domain data root), `--local` / `--web`, `--port`, `--name <unit>` (multiple units/ports). For `--web` service install, set `OPENCODE_STUDIO_PASSWORD`; it is copied into the user unit.
 After logout, if the unit stops: `loginctl enable-linger $USER`.
 
-While `serve` is running, the home page shows a banner when a newer npm version exists (also logged to the service journal).
+While `serve` is running, the home page shows a banner when a newer registry version exists (also logged to the service journal).
 
 ### CLI
 
@@ -112,7 +111,7 @@ opencode-studio service install|uninstall|start|stop|restart|status [...]
 opencode-studio --help | -v
 ```
 
-Shell completion is installed automatically on global `npm i -g` (scripts under `~/.config/opencode-studio/`). Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1`.
+Shell completion is installed automatically on global `bun add -g` (scripts under `~/.config/opencode-studio/`). Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1`.
 
 Open a new shell after install (or `source ~/.bashrc`).
 
