@@ -17,13 +17,64 @@ function statusBadge(status: DesignSummary["buildStatus"]) {
   return { label: "unbuilt", className: "text-[var(--osc-text-faint)]" }
 }
 
-function ResourceRail({ designs, selectedId }: { designs: DesignSummary[]; selectedId?: string }) {
-  return (
-    <aside className="hidden w-56 shrink-0 overflow-auto border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:block">
-      <div className="border-b border-[var(--osc-border)] px-4 py-3.5 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
-        Designs
+const CAD_COMPACT_WIDTH = 960
+
+function useCadSpace() {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [agentOpen, setAgentOpen] = useState(false)
+  // null = not measured yet → treat as compact to avoid docked-inspector flash
+  const [width, setWidth] = useState<number | null>(null)
+
+  useEffect(() => {
+    const el = rootRef.current
+    const shell = el?.closest(".studio-shell") ?? document.querySelector(".studio-shell")
+    const read = () => setAgentOpen(shell?.getAttribute("data-agent-open") === "true")
+    read()
+    if (!shell) return
+    const mo = new MutationObserver(read)
+    mo.observe(shell, { attributes: true, attributeFilter: ["data-agent-open"] })
+    return () => mo.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const next = entries[0]?.contentRect.width ?? 0
+      setWidth(next > 0 ? next : null)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const narrow = width === null || width < CAD_COMPACT_WIDTH
+  return { rootRef, compact: agentOpen || narrow }
+}
+
+function ResourceRail({
+  designs,
+  selectedId,
+  mode,
+  onClose,
+}: {
+  designs: DesignSummary[]
+  selectedId?: string
+  mode: "dock" | "sheet"
+  onClose?: () => void
+}) {
+  const body = (
+    <>
+      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[var(--osc-border)] px-3">
+        <span className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Designs</span>
+        {onClose && (
+          <button type="button" className="osc-icon-btn size-8 text-[var(--osc-text-muted)]" aria-label="Close designs" onClick={onClose}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
       </div>
-      <nav className="flex flex-col gap-0.5 p-2" aria-label="Designs">
+      <nav className="min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Designs">
         {designs.length === 0 ? (
           <p className="px-2 py-6 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">
             No designs yet. Build with the agent, then they appear here.
@@ -36,14 +87,14 @@ function ResourceRail({ designs, selectedId }: { designs: DesignSummary[]; selec
               <Link
                 key={design.id}
                 to={studioHref(`designs/${design.id}`)}
-                className={`rounded-[var(--osc-radius-md)] px-2.5 py-2 text-[13px] transition-colors ${
-                  active
-                    ? "bg-[var(--osc-surface)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
-                    : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
+                data-active={active ? "true" : undefined}
+                className={`cad-rail-link block ${
+                  active ? "" : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
                 }`}
+                onClick={onClose}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium">{design.id}</span>
+                  <span className="truncate font-medium text-[var(--osc-text)]">{design.id}</span>
                   <span className={`mono text-[10px] ${badge.className}`}>{badge.label}</span>
                 </div>
                 <div className="mono mt-0.5 text-[10px] text-[var(--osc-text-faint)]">{design.partCount} part(s)</div>
@@ -52,6 +103,20 @@ function ResourceRail({ designs, selectedId }: { designs: DesignSummary[]; selec
           })
         )}
       </nav>
+    </>
+  )
+
+  if (mode === "sheet") {
+    return (
+      <aside className="cad-sheet cad-sheet-left flex w-[min(18rem,85vw)] flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]">
+        {body}
+      </aside>
+    )
+  }
+
+  return (
+    <aside className="hidden w-56 shrink-0 flex-col overflow-hidden border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:flex">
+      {body}
     </aside>
   )
 }
@@ -61,6 +126,8 @@ function Inspector({
   highlights,
   renders,
   designId,
+  mode,
+  onClose,
   onTogglePart,
   onOpenRender,
 }: {
@@ -68,23 +135,32 @@ function Inspector({
   highlights: number
   renders: string[]
   designId?: string
+  mode: "dock" | "sheet"
+  onClose?: () => void
   onTogglePart: (index: number, visible: boolean) => void
   onOpenRender: (url: string, label: string) => void
 }) {
-  return (
-    <aside className="flex w-full shrink-0 flex-col border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:w-60 md:border-t-0 md:border-l">
-      <div className="border-b border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
-        Parts
+  const body = (
+    <>
+      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[var(--osc-border)] px-3">
+        <span className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Parts</span>
+        {onClose && (
+          <button type="button" className="osc-icon-btn size-8 text-[var(--osc-text-muted)]" aria-label="Close inspector" onClick={onClose}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
       </div>
-      <ul className="max-h-40 flex-1 overflow-auto p-2 md:max-h-none">
+      <ul className="max-h-40 min-h-0 flex-1 overflow-auto overscroll-contain p-2 md:max-h-none">
         {parts.length === 0 ? (
           <li className="px-2 py-6 text-[13px] text-[var(--osc-text-muted)]">No parts loaded.</li>
         ) : (
           parts.map((part, index) => (
             <li key={`${part.name}-${index}`}>
               <label
-                className={`flex cursor-pointer items-center gap-2.5 rounded-[var(--osc-radius-md)] px-2 py-1.5 text-[13px] hover:bg-[var(--osc-surface-hover)] ${
-                  highlights === index ? "text-[var(--osc-accent)]" : "text-[var(--osc-text)]"
+                className={`flex cursor-pointer items-center gap-2.5 rounded-[var(--osc-radius-md)] px-2 py-1.5 text-[13px] transition-colors duration-[var(--osc-motion-duration)] hover:bg-[var(--osc-surface-hover)] ${
+                  highlights === index ? "bg-[var(--osc-surface)] text-[var(--osc-accent)]" : "text-[var(--osc-text)]"
                 }`}
               >
                 <input
@@ -95,8 +171,9 @@ function Inspector({
                   className="accent-[var(--osc-primary)]"
                 />
                 <span
-                  className="inline-block size-2.5 shrink-0 rounded-full ring-1 ring-black/10"
+                  className="inline-block size-2.5 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/15"
                   style={{ background: `#${part.color.toString(16).padStart(6, "0")}` }}
+                  aria-hidden
                 />
                 <span className="truncate">{part.name}</span>
               </label>
@@ -107,7 +184,7 @@ function Inspector({
       <div className="border-y border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
         Renders
       </div>
-      <div className="grid max-h-40 grid-cols-2 gap-2 overflow-auto p-2 md:max-h-none md:flex-1">
+      <div className="grid max-h-40 min-h-0 grid-cols-2 gap-2 overflow-auto overscroll-contain p-2 md:max-h-none md:flex-1">
         {designId && renders.length > 0 ? (
           renders.map((file) => {
             const label = file.replace(/\.png$/, "")
@@ -117,11 +194,11 @@ function Inspector({
                 key={file}
                 type="button"
                 title={label}
-                className="relative overflow-hidden rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-surface)] transition-colors hover:border-[var(--osc-border-strong)]"
+                className="relative overflow-hidden rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-surface)] transition-[border-color,box-shadow] duration-[var(--osc-motion-duration)] hover:border-[var(--osc-border-strong)] hover:shadow-[var(--osc-shadow)] focus-visible:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
                 onClick={() => onOpenRender(url, label)}
               >
-                <img src={url} alt={label} loading="lazy" className="block w-full" />
-                <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-center text-[10px] text-white">
+                <img src={url} alt={label} loading="lazy" width={160} height={120} className="block h-auto w-full" />
+                <span className="absolute inset-x-0 bottom-0 bg-[var(--cad-overlay-bg)] px-1 py-0.5 text-center font-mono text-[10px] text-[var(--cad-overlay-text)]">
                   {label}
                 </span>
               </button>
@@ -131,6 +208,20 @@ function Inspector({
           <p className="col-span-2 py-6 text-center text-[12px] text-[var(--osc-text-faint)]">No renders yet</p>
         )}
       </div>
+    </>
+  )
+
+  if (mode === "sheet") {
+    return (
+      <aside className="cad-sheet cad-sheet-right flex w-[min(18rem,85vw)] flex-col border-l border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]">
+        {body}
+      </aside>
+    )
+  }
+
+  return (
+    <aside className="flex w-full shrink-0 flex-col border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:w-60 md:border-t-0 md:border-l">
+      {body}
     </aside>
   )
 }
@@ -166,6 +257,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const navigate = useNavigate()
   const sceneRef = useRef<SceneHandle | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { rootRef, compact } = useCadSpace()
   const [localParts, setLocalParts] = useState<LoadPart[] | null>(null)
   const [status, setStatus] = useState("idle")
   const [statusTone, setStatusTone] = useState<"ok" | "waiting" | "idle">("idle")
@@ -174,8 +266,18 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const [dropActive, setDropActive] = useState(false)
   const [partUi, setPartUi] = useState<Array<{ name: string; visible: boolean; color: number }>>([])
   const [renderModal, setRenderModal] = useState<{ url: string; label: string } | null>(null)
+  const [designsOpen, setDesignsOpen] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
 
   useCadDesignEvents()
+
+  // Agent open or narrow main → collapse docked rails; free canvas.
+  useEffect(() => {
+    if (compact) {
+      setDesignsOpen(false)
+      setInspectorOpen(false)
+    }
+  }, [compact])
 
   const designsQuery = useQuery({
     queryKey: ["cad", "designs"],
@@ -217,7 +319,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       return
     }
     if (designQuery.isLoading) {
-      setStatus("loading...")
+      setStatus("loading…")
       setStatusTone("waiting")
       return
     }
@@ -252,7 +354,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       }))
     })
     setClick(null)
-    setStatus("loading...")
+    setStatus("loading…")
     setStatusTone("waiting")
   }, [])
 
@@ -268,53 +370,96 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       if (event.dataTransfer?.files.length) loadFiles(event.dataTransfer.files)
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setRenderModal(null)
+      if (event.key !== "Escape") return
+      if (renderModal) {
+        event.preventDefault()
+        event.stopPropagation()
+        setRenderModal(null)
+        return
+      }
+      if (designsOpen || inspectorOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        setDesignsOpen(false)
+        setInspectorOpen(false)
+      }
     }
     document.addEventListener("dragover", onDragOver)
     document.addEventListener("dragleave", onDragLeave)
     document.addEventListener("drop", onDrop)
-    document.addEventListener("keydown", onKeyDown)
+    document.addEventListener("keydown", onKeyDown, true)
     return () => {
       document.removeEventListener("dragover", onDragOver)
       document.removeEventListener("dragleave", onDragLeave)
       document.removeEventListener("drop", onDrop)
-      document.removeEventListener("keydown", onKeyDown)
+      document.removeEventListener("keydown", onKeyDown, true)
     }
-  }, [loadFiles])
+  }, [loadFiles, renderModal, designsOpen, inspectorOpen])
 
   const info = click ? (
     <>
-      <span className="text-amber-300">{click.part}</span> pos:{" "}
-      <span className="mono text-amber-300">
+      <span className="font-medium text-[var(--osc-warning)]">{click.part}</span> pos:{" "}
+      <span className="mono text-[var(--osc-warning)]">
         ({click.position.x}, {click.position.y}, {click.position.z})
       </span>{" "}
       normal:{" "}
-      <span className="mono text-amber-300">
+      <span className="mono text-[var(--osc-warning)]">
         ({click.normal.x.toFixed(3)}, {click.normal.y.toFixed(3)}, {click.normal.z.toFixed(3)})
       </span>{" "}
-      <span className="text-white/40">← {click.direction}</span>
-      <div className="mt-0.5 text-[10px] text-white/40">Copy for clipboard · Prompt sends to agent</div>
+      <span className="text-[var(--cad-overlay-faint)]">← {click.direction}</span>
+      <div className="mt-0.5 text-[10px] text-[var(--cad-overlay-faint)]">Copy for clipboard · Prompt sends to agent</div>
     </>
-  ) : (
+  ) : serverParts ? (
     <>
-      <span className="text-white/70">
-        {serverParts ? "click a surface to inspect it" : "select a design or open a .glb"}
-      </span>
-      <div className="mt-0.5 text-[10px] text-white/40">orbit: drag · zoom: scroll · pan: right-drag</div>
+      <span className="text-[var(--cad-overlay-muted)]">click a surface to inspect it</span>
+      <div className="mt-0.5 text-[10px] text-[var(--cad-overlay-faint)]">orbit: drag · zoom: scroll · pan: right-drag</div>
     </>
-  )
+  ) : null
+
+  const statusClass =
+    statusTone === "ok" ? "cad-status-ok" : statusTone === "waiting" ? "cad-status-wait" : "cad-status-idle"
+
+  const dockRails = !compact
+  const showDesignsSheet = compact && designsOpen
+  const showInspectorSheet = compact && inspectorOpen
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <ResourceRail designs={designs} selectedId={localParts ? undefined : designId} />
+    <div ref={rootRef} className="relative flex min-h-0 flex-1 flex-col md:flex-row" data-cad-compact={compact ? "true" : "false"}>
+      {dockRails && <ResourceRail designs={designs} selectedId={localParts ? undefined : designId} mode="dock" />}
       <div className="relative min-h-0 min-w-0 flex-1 bg-[var(--osc-canvas-bg)]">
         <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1.5">
+          {compact && (
+            <>
+              <button
+                type="button"
+                className="cad-chip"
+                aria-pressed={designsOpen}
+                onClick={() => {
+                  setDesignsOpen((v) => !v)
+                  setInspectorOpen(false)
+                }}
+              >
+                Designs
+              </button>
+              <button
+                type="button"
+                className="cad-chip"
+                aria-pressed={inspectorOpen}
+                onClick={() => {
+                  setInspectorOpen((v) => !v)
+                  setDesignsOpen(false)
+                }}
+              >
+                Parts
+              </button>
+            </>
+          )}
           <label className="sr-only" htmlFor="design-select">
             Design
           </label>
           <select
             id="design-select"
-            className="min-w-40 rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[12px] text-white backdrop-blur-md"
+            className="cad-select"
             value={localParts ? "" : (designId ?? "")}
             onChange={(event) => {
               setLocalParts(null)
@@ -347,12 +492,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               ["Fit", () => sceneRef.current?.fitCamera()],
             ] as const
           ).map(([label, onClick]) => (
-            <button
-              key={label}
-              type="button"
-              className="rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[12px] text-white/90 backdrop-blur-md transition-colors hover:border-white/25 hover:text-white"
-              onClick={onClick}
-            >
+            <button key={label} type="button" className="cad-chip" onClick={onClick}>
               {label}
             </button>
           ))}
@@ -369,7 +509,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           />
           <button
             type="button"
-            className="rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[12px] text-white/90 backdrop-blur-md transition-colors hover:border-white/25 disabled:opacity-40"
+            className="cad-chip"
             disabled={!click}
             onClick={() => {
               if (!click) return
@@ -383,7 +523,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           </button>
           <button
             type="button"
-            className="rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[12px] text-white/90 backdrop-blur-md transition-colors hover:border-white/25 disabled:opacity-40"
+            className="cad-chip"
             disabled={!click}
             onClick={() => {
               if (!click) return
@@ -394,30 +534,28 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           >
             Prompt
           </button>
-          <span
-            className={`rounded-full px-3 py-1.5 text-[12px] backdrop-blur-md ${
-              statusTone === "ok"
-                ? "bg-emerald-500/20 text-emerald-300"
-                : statusTone === "waiting"
-                  ? "bg-amber-500/20 text-amber-200"
-                  : "bg-black/70 text-white/50"
-            }`}
-            aria-live="polite"
-          >
+          <span className={`cad-chip border ${statusClass}`} aria-live="polite">
             {status}
           </span>
         </div>
 
         {!serverParts && (
-          <div className="pointer-events-none absolute top-1/2 left-1/2 z-[1] w-[min(20rem,90%)] -translate-x-1/2 -translate-y-1/2 text-center">
-            <p className="text-[15px] font-medium tracking-tight text-white/80">Load a design or .glb</p>
-            <p className="mt-2 text-[12px] text-white/40">Drop a file anywhere · or pick from the rail</p>
+          <div className="pointer-events-none absolute inset-0 z-[1] flex items-start justify-center pt-24 sm:items-center sm:pt-0">
+            <div className="cad-hud max-w-sm px-6 py-10 text-center">
+              <p className="text-[15px] font-medium tracking-tight text-[var(--cad-overlay-text)]">Load a design or .glb</p>
+              <p className="mt-2 text-[12px] leading-relaxed text-[var(--cad-overlay-faint)]">
+                Drop a file anywhere · Open · or choose a design
+              </p>
+              <p className="mt-3 text-[10px] text-[var(--cad-overlay-faint)]">orbit: drag · zoom: scroll · pan: right-drag</p>
+            </div>
           </div>
         )}
 
         <Suspense
           fallback={
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--osc-text-muted)]">Loading viewport…</div>
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--osc-text-muted)]" role="status">
+              Loading viewport…
+            </div>
           }
         >
           <AssemblyViewport
@@ -444,50 +582,94 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           />
         </Suspense>
 
-        <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 w-[calc(100%-1.25rem)] max-w-xl -translate-x-1/2 rounded-[var(--osc-radius-lg)] border border-white/10 bg-black/80 px-4 py-2.5 text-center text-[12px] text-white/90 backdrop-blur-md">
-          {info}
-        </div>
+        {info && (
+          <div className="cad-hud pointer-events-none absolute bottom-4 left-1/2 z-10 w-[calc(100%-1.25rem)] max-w-xl -translate-x-1/2 px-4 py-2.5 text-center text-[12px]">
+            {info}
+          </div>
+        )}
 
         {dropActive && (
-          <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--osc-accent)] bg-black/70 text-lg text-[var(--osc-accent)]">
+          <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-[var(--osc-radius-lg)] border-2 border-dashed border-[var(--osc-accent)] bg-black/75 text-[15px] font-medium text-[var(--osc-accent)]">
             drop .glb file(s)
           </div>
         )}
         {toast && (
           <div
-            className="absolute top-12 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] px-3 py-1 text-xs text-[var(--osc-success)] backdrop-blur-md"
+            className="absolute top-14 left-1/2 z-50 -translate-x-1/2 rounded-[var(--osc-radius-md)] border border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] px-3 py-1.5 text-xs font-medium text-[var(--osc-success)]"
             role="status"
             aria-live="polite"
           >
             {toast}
           </div>
         )}
+
+        {(showDesignsSheet || showInspectorSheet) && (
+          <button
+            type="button"
+            className="absolute inset-0 z-20 bg-[var(--osc-overlay)]"
+            aria-label="Dismiss panel"
+            onClick={() => {
+              setDesignsOpen(false)
+              setInspectorOpen(false)
+            }}
+          />
+        )}
+        {showDesignsSheet && (
+          <div className="absolute inset-y-0 left-0 z-30 flex">
+            <ResourceRail
+              designs={designs}
+              selectedId={localParts ? undefined : designId}
+              mode="sheet"
+              onClose={() => setDesignsOpen(false)}
+            />
+          </div>
+        )}
+        {showInspectorSheet && (
+          <div className="absolute inset-y-0 right-0 z-30 flex">
+            <Inspector
+              parts={partUi}
+              highlights={click?.partIndex ?? -1}
+              renders={localParts ? [] : (designQuery.data?.renders ?? [])}
+              designId={localParts ? undefined : designId}
+              mode="sheet"
+              onClose={() => setInspectorOpen(false)}
+              onTogglePart={(index, visible) => {
+                sceneRef.current?.setPartVisible(index, visible)
+                setPartUi((current) => current.map((part, i) => (i === index ? { ...part, visible } : part)))
+              }}
+              onOpenRender={(url, label) => setRenderModal({ url, label })}
+            />
+          </div>
+        )}
       </div>
 
-      <Inspector
-        parts={partUi}
-        highlights={click?.partIndex ?? -1}
-        renders={localParts ? [] : (designQuery.data?.renders ?? [])}
-        designId={localParts ? undefined : designId}
-        onTogglePart={(index, visible) => {
-          sceneRef.current?.setPartVisible(index, visible)
-          setPartUi((current) => current.map((part, i) => (i === index ? { ...part, visible } : part)))
-        }}
-        onOpenRender={(url, label) => setRenderModal({ url, label })}
-      />
+      {dockRails && (
+        <Inspector
+          parts={partUi}
+          highlights={click?.partIndex ?? -1}
+          renders={localParts ? [] : (designQuery.data?.renders ?? [])}
+          designId={localParts ? undefined : designId}
+          mode="dock"
+          onTogglePart={(index, visible) => {
+            sceneRef.current?.setPartVisible(index, visible)
+            setPartUi((current) => current.map((part, i) => (i === index ? { ...part, visible } : part)))
+          }}
+          onOpenRender={(url, label) => setRenderModal({ url, label })}
+        />
+      )}
 
       <Dialog
         open={Boolean(renderModal)}
         onClose={() => setRenderModal(null)}
         title="Render preview"
-        overlayClassName="z-[200] bg-black/92"
-        className="max-w-[min(90vw,56rem)] border-[var(--osc-border)] bg-transparent shadow-none"
+        overlayClassName="z-[200] bg-black/90"
+        className="max-w-[min(90vw,56rem)] border-[var(--osc-border-strong)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]"
       >
-        <div className="relative p-2">
+        <div className="relative p-3">
           <button
             type="button"
             data-autofocus
-            className="absolute top-3 right-3 z-10 grid size-9 place-items-center rounded-full bg-black/70 text-[var(--osc-accent)]"
+            className="osc-icon-btn absolute top-3 right-3 z-10 size-9 bg-[var(--osc-bg-elevated)] text-[var(--osc-text-muted)]"
             aria-label="Close render preview"
             onClick={() => setRenderModal(null)}
           >
@@ -496,7 +678,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             </svg>
           </button>
           {renderModal && (
-            <img src={renderModal.url} alt={renderModal.label} className="mx-auto max-h-[85vh] max-w-full border border-[var(--osc-border)]" />
+            <img
+              src={renderModal.url}
+              alt={renderModal.label}
+              className="mx-auto max-h-[85vh] max-w-full rounded-[var(--osc-radius-md)] border border-[var(--osc-border)]"
+            />
           )}
         </div>
       </Dialog>
@@ -531,7 +717,10 @@ function DesignRoute() {
 
 export function App() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col border-t border-[var(--osc-border)] bg-[var(--osc-bg)] text-[var(--osc-text)]" data-studio="cad">
+    <div
+      className="flex min-h-0 flex-1 flex-col border-t border-[var(--osc-border)] bg-[var(--osc-bg)] text-[var(--osc-text)]"
+      data-studio="cad"
+    >
       <HashRedirect />
       <div className="sr-only">CAD Studio</div>
       <Routes>

@@ -67,6 +67,8 @@ textarea {
 
 button {
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button:disabled {
@@ -91,7 +93,7 @@ button:disabled {
 
 .studio-subnav a,
 .studio-subnav .subnav-tab {
-  border-radius: 6px;
+  border-radius: var(--osc-radius-md);
   padding: 0.35rem 0.75rem;
   font-size: 13px;
   color: var(--osc-text-muted);
@@ -113,10 +115,91 @@ button:disabled {
   font-weight: 500;
 }
 
+/* Outline chip used in TopBar / agent chrome */
+.osc-chip {
+  display: inline-flex;
+  height: 2rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--osc-radius-md);
+  border: 1px solid var(--osc-border);
+  background: transparent;
+  padding: 0 0.625rem;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--osc-text);
+  transition:
+    background-color var(--osc-motion-duration) ease,
+    border-color var(--osc-motion-duration) ease,
+    color var(--osc-motion-duration) ease,
+    transform 140ms ease-out;
+}
+
+.osc-chip:hover {
+  background: var(--osc-surface);
+  border-color: var(--osc-border-strong);
+}
+
+.osc-chip:active {
+  transform: scale(0.98);
+}
+
+.osc-chip[aria-pressed="true"] {
+  background: var(--osc-surface);
+  border-color: var(--osc-border-strong);
+}
+
+.osc-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--osc-focus-ring);
+}
+
+.osc-icon-btn {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: var(--osc-radius-md);
+  border: 0;
+  background: transparent;
+  color: var(--osc-text);
+  transition:
+    background-color var(--osc-motion-duration) ease,
+    color var(--osc-motion-duration) ease,
+    transform 140ms ease-out;
+}
+
+.osc-icon-btn:hover {
+  background: var(--osc-surface);
+  color: var(--osc-text);
+}
+
+.osc-icon-btn:active {
+  transform: scale(0.96);
+}
+
+.osc-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--osc-focus-ring);
+}
+
+@media (hover: none) {
+  .osc-chip:hover,
+  .osc-icon-btn:hover {
+    background: transparent;
+    border-color: var(--osc-border);
+  }
+
+  .osc-chip[aria-pressed="true"]:hover {
+    background: var(--osc-surface);
+    border-color: var(--osc-border-strong);
+  }
+}
+
 @keyframes osc-fade-up {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -124,13 +207,44 @@ button:disabled {
   }
 }
 
+@keyframes osc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
 .osc-reveal {
-  animation: osc-fade-up calc(var(--osc-motion-duration) + 80ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: osc-fade-up calc(var(--osc-motion-duration) + 60ms) var(--osc-motion-ease) both;
+}
+
+.osc-skeleton {
+  border-radius: var(--osc-radius-lg);
+  border: 1px solid var(--osc-border);
+  background: var(--osc-bg-elevated);
+  animation: osc-pulse 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .osc-reveal {
     animation: none;
+  }
+
+  .osc-skeleton {
+    animation: none;
+  }
+
+  .osc-chip,
+  .osc-icon-btn {
+    transition: none;
+  }
+
+  .osc-chip:active,
+  .osc-icon-btn:active {
+    transform: none;
   }
 
   body::before {

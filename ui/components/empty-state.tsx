@@ -17,7 +17,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "grid place-items-center rounded-xl border border-dashed border-[var(--osc-border-strong)] px-6 py-16 text-center",
+        "grid place-items-center rounded-[var(--osc-radius-lg)] border border-dashed border-[var(--osc-border-strong)] bg-[var(--osc-bg-elevated)]/40 px-6 py-16 text-center",
         className,
       )}
     >

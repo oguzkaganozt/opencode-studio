@@ -178,7 +178,7 @@ function ThemePreferenceControl() {
     <div>
       <h2 className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Appearance</h2>
       <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">Follows your device unless you pick Light or Dark.</p>
-      <fieldset className="mt-2 m-0 min-w-0 rounded-lg border border-[var(--osc-border)] p-1">
+      <fieldset className="mt-2 m-0 min-w-0 rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg)] p-1">
         <legend className="sr-only">Theme</legend>
         <div className="flex gap-1">
           {(
@@ -195,9 +195,9 @@ function ThemePreferenceControl() {
                 setPreference(value)
                 setThemePreference(value)
               }}
-              className={`flex-1 rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors ${
+              className={`flex-1 rounded-[var(--osc-radius-sm)] px-2 py-1.5 text-[12px] font-medium transition-colors duration-[var(--osc-motion-duration)] ${
                 preference === value
-                  ? "bg-[var(--osc-surface)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
+                  ? "bg-[var(--osc-bg-elevated)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
                   : "text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]"
               }`}
               aria-pressed={preference === value}
@@ -275,15 +275,16 @@ function SideDrawer({
   return (
     <>
       <div
-        className={`fixed inset-0 z-50 bg-[var(--osc-overlay)] backdrop-blur-[2px] transition-opacity duration-[var(--osc-motion-duration)] ${
+        className={`fixed inset-0 z-50 bg-[var(--osc-overlay)] transition-opacity duration-[var(--osc-motion-duration)] ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         aria-hidden={!open}
+        inert={open ? undefined : true}
         onClick={onClose}
       />
       <aside
         ref={asideRef}
-        className={`fixed inset-y-0 left-0 z-50 flex w-[min(19.5rem,92vw)] flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[0_0_0_1px_rgba(0,0,0,0.02),8px_0_40px_rgba(0,0,0,0.08)] transition-transform duration-[var(--osc-motion-duration)] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(19.5rem,92vw)] flex-col overscroll-contain border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)] transition-transform duration-[var(--osc-motion-duration)] ease-[var(--osc-motion-ease)] ${
           open ? "translate-x-0" : "pointer-events-none -translate-x-full"
         }`}
         role="dialog"
@@ -294,7 +295,7 @@ function SideDrawer({
       >
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--osc-border)] px-3">
           <div className="flex items-center gap-2.5 px-1">
-            <span className="grid size-7 place-items-center rounded-md bg-[var(--osc-primary)] text-[10px] font-semibold tracking-tight text-[var(--osc-primary-fg)]">
+            <span className="grid size-7 place-items-center rounded-[var(--osc-radius-md)] bg-[var(--osc-primary)] text-[10px] font-semibold tracking-tight text-[var(--osc-primary-fg)]">
               os
             </span>
             <span id={titleId} className="text-[13px] font-semibold tracking-tight">
@@ -305,14 +306,14 @@ function SideDrawer({
             ref={closeRef}
             type="button"
             onClick={onClose}
-            className="grid size-8 place-items-center rounded-md text-[var(--osc-text-muted)] transition-colors hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]"
+            className="osc-icon-btn size-9 text-[var(--osc-text-muted)]"
             aria-label="Close menu"
           >
             <CloseIcon />
           </button>
         </div>
 
-        <div className="flex gap-1 border-b border-[var(--osc-border)] p-1.5">
+        <div className="flex gap-1 border-b border-[var(--osc-border)] bg-[var(--osc-bg)] p-1.5">
           {(
             [
               ["nav", "Studios"],
@@ -323,9 +324,9 @@ function SideDrawer({
               key={id}
               type="button"
               onClick={() => setPanel(id)}
-              className={`flex-1 rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors ${
+              className={`flex-1 rounded-[var(--osc-radius-sm)] px-2 py-1.5 text-[12px] font-medium transition-colors duration-[var(--osc-motion-duration)] ${
                 panel === id
-                  ? "bg-[var(--osc-surface)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
+                  ? "bg-[var(--osc-bg-elevated)] text-[var(--osc-text)] shadow-[var(--osc-shadow)]"
                   : "text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]"
               }`}
             >
@@ -343,7 +344,7 @@ function SideDrawer({
               <Link
                 to="/"
                 onClick={onClose}
-                className={`rounded-lg px-3 py-2.5 text-[13px] transition-colors ${
+                className={`rounded-[var(--osc-radius-md)] px-3 py-2.5 text-[13px] transition-colors duration-[var(--osc-motion-duration)] ${
                   !studioId
                     ? "bg-[var(--osc-surface)] font-medium text-[var(--osc-text)]"
                     : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
@@ -354,7 +355,7 @@ function SideDrawer({
               <Link
                 to="/files"
                 onClick={onClose}
-                className={`rounded-lg px-3 py-2.5 text-[13px] transition-colors ${
+                className={`rounded-[var(--osc-radius-md)] px-3 py-2.5 text-[13px] transition-colors duration-[var(--osc-motion-duration)] ${
                   studioId === "files"
                     ? "bg-[var(--osc-surface)] font-medium text-[var(--osc-text)]"
                     : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
@@ -370,7 +371,7 @@ function SideDrawer({
                     key={s.id}
                     to={`/studios/${s.id}`}
                     onClick={onClose}
-                    className={`relative rounded-lg px-3 py-2.5 transition-colors ${
+                    className={`relative rounded-[var(--osc-radius-md)] px-3 py-2.5 transition-colors duration-[var(--osc-motion-duration)] ${
                       active
                         ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
                         : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
@@ -406,21 +407,24 @@ function SideDrawer({
 
                 {csrfQuery.isError && (
                   <p
-                    className="rounded-lg border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
+                    className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
                     role="alert"
                   >
                     CSRF unavailable — cannot repair install.
                   </p>
                 )}
                 {studiosQuery.data?.configError && (
-                  <p className="rounded-lg border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-3 py-2 text-[12px]" role="alert">
+                  <p
+                    className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
+                    role="alert"
+                  >
                     Config error: {studiosQuery.data.configError}
                   </p>
                 )}
 
-                <ul className="divide-y divide-[var(--osc-border)] overflow-hidden rounded-lg border border-[var(--osc-border)]">
+                <ul className="divide-y divide-[var(--osc-border)] overflow-hidden rounded-[var(--osc-radius-md)] border border-[var(--osc-border)]">
                   {cards.map((studio) => (
-                    <li key={studio.id} className="flex items-center justify-between gap-3 bg-[var(--osc-bg-elevated)] px-3 py-3">
+                    <li key={studio.id} className="flex items-center justify-between gap-3 bg-[var(--osc-bg)] px-3 py-3">
                       <span className="flex min-w-0 items-center gap-2.5">
                         <span
                           className="size-1.5 shrink-0 rounded-full"
@@ -438,7 +442,7 @@ function SideDrawer({
 
                 {repair.isSuccess && (
                   <div
-                    className="rounded-lg border border-[var(--osc-warning)]/30 bg-[var(--osc-warning-bg)] px-3 py-2.5 text-[12px]"
+                    className="rounded-[var(--osc-radius-md)] border border-[var(--osc-warning)]/30 bg-[var(--osc-warning-bg)] px-3 py-2.5 text-[12px]"
                     role="status"
                   >
                     <p className="font-medium text-[var(--osc-warning)]">Install repaired</p>
@@ -448,7 +452,10 @@ function SideDrawer({
                   </div>
                 )}
                 {repair.isError && (
-                  <p className="text-[12px] text-[var(--osc-error)]" role="alert">
+                  <p
+                    className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
+                    role="alert"
+                  >
                     {(repair.error as Error).message}
                   </p>
                 )}
@@ -471,7 +478,7 @@ function SideDrawer({
                   <div className="space-y-2">
                     <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Details</p>
                     {cards.map((s) => (
-                      <details key={s.id} className="rounded-lg border border-[var(--osc-border)] px-3 py-2">
+                      <details key={s.id} className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] px-3 py-2">
                         <summary className="cursor-pointer text-[12px] font-medium text-[var(--osc-text)]">{s.label}</summary>
                         <dl className="mt-2 space-y-1 font-mono text-[10px] text-[var(--osc-text-faint)]">
                           <div>
@@ -522,17 +529,10 @@ function TopBar({
 }) {
   return (
     <header
-      className={`sticky top-0 z-40 shrink-0 bg-[var(--osc-bg-elevated)]/90 backdrop-blur-md ${
-        edge === "border" ? "border-b border-[var(--osc-border)]" : ""
-      }`}
+      className={`sticky top-0 z-40 shrink-0 bg-[var(--osc-bg-elevated)] ${edge === "border" ? "border-b border-[var(--osc-border)]" : ""}`}
     >
       <div className="flex h-12 items-center gap-2.5 px-2 sm:px-3">
-        <button
-          type="button"
-          onClick={onMenu}
-          className="grid size-9 place-items-center rounded-md text-[var(--osc-text)] transition-colors hover:bg-[var(--osc-surface)]"
-          aria-label="Open menu"
-        >
+        <button type="button" onClick={onMenu} className="osc-icon-btn" aria-label="Open menu">
           <MenuIcon />
         </button>
         {studioLabel ? (
@@ -543,8 +543,11 @@ function TopBar({
             <p className="truncate text-[14px] font-semibold tracking-tight text-[var(--osc-text)]">{studioLabel}</p>
           </div>
         ) : (
-          <Link to="/" className="flex min-w-0 items-center gap-2.5 rounded-md px-1 py-1 transition-colors hover:bg-[var(--osc-surface)]">
-            <span className="grid size-7 place-items-center rounded-md bg-[var(--osc-primary)] text-[10px] font-semibold tracking-tight text-[var(--osc-primary-fg)]">
+          <Link
+            to="/"
+            className="flex min-w-0 items-center gap-2.5 rounded-[var(--osc-radius-md)] px-1 py-1 transition-colors duration-[var(--osc-motion-duration)] hover:bg-[var(--osc-surface)]"
+          >
+            <span className="grid size-7 place-items-center rounded-[var(--osc-radius-md)] bg-[var(--osc-primary)] text-[10px] font-semibold tracking-tight text-[var(--osc-primary-fg)]">
               os
             </span>
             <span className="truncate text-[13px] font-semibold tracking-tight">
@@ -572,91 +575,98 @@ function HomePage() {
 
   return (
     <div className="min-h-dvh bg-[var(--osc-bg)]">
-      <TopBar
-        onMenu={openMenu}
-        actions={
-          studiosQuery.data?.nativeOpenCodeAvailable ? (
-            <a
-              href="/"
-              className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-            >
-              OpenCode
-            </a>
-          ) : undefined
-        }
-      />
-      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} initialPanel={drawerPanel} />
+      <div inert={drawerOpen ? true : undefined}>
+        <TopBar
+          onMenu={openMenu}
+          actions={
+            studiosQuery.data?.nativeOpenCodeAvailable ? (
+              <a href="/" className="osc-chip">
+                OpenCode
+              </a>
+            ) : undefined
+          }
+        />
 
-      <main id="main-content" className="mx-auto max-w-[820px] px-5 py-14 sm:px-8 sm:py-20">
-        <div className="osc-reveal mb-12">
-          <p className="mb-3 text-[11px] font-medium tracking-[0.16em] text-[var(--osc-text-faint)] uppercase">Companion</p>
-          <h1 className="text-[2.15rem] leading-[1.1] font-semibold tracking-[-0.04em] text-[var(--osc-text)] sm:text-[2.5rem]">Studios</h1>
-          <p className="mt-3 max-w-md text-[15px] leading-relaxed text-[var(--osc-text-muted)]">
-            Open CAD or PCB. Design with the Agent — viewers update as artifacts land in the workspace.
-          </p>
-        </div>
-
-        {studiosQuery.isLoading && <p className="text-sm text-[var(--osc-text-muted)]">Loading studios…</p>}
-        {studiosQuery.isError && (
-          <p
-            className="rounded-lg border border-[var(--osc-error)] bg-[var(--osc-error-bg)] px-4 py-3 text-sm text-[var(--osc-error)]"
-            role="alert"
-          >
-            Failed to load studios: {(studiosQuery.error as Error)?.message ?? "unknown error"}
-          </p>
-        )}
-
-        {studiosQuery.data?.update?.updateAvailable && (
-          <div
-            className="mb-10 rounded-xl border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-5 py-4 shadow-[var(--osc-shadow)]"
-            role="status"
-          >
-            <p className="text-sm font-medium">
-              Update available · v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
+        <main id="main-content" className="mx-auto max-w-[820px] px-5 py-14 sm:px-8 sm:py-20">
+          <div className="osc-reveal mb-12">
+            <p className="mb-3 text-[11px] font-medium tracking-[0.16em] text-[var(--osc-text-faint)] uppercase">Companion</p>
+            <h1 className="text-[2.15rem] leading-[1.12] font-semibold tracking-[-0.03em] text-pretty text-[var(--osc-text)] sm:text-[2.5rem]">
+              Studios
+            </h1>
+            <p className="mt-3 max-w-md text-[15px] leading-relaxed text-[var(--osc-text-muted)]">
+              Open CAD or PCB. Design with the Agent — viewers update as artifacts land in the workspace.
             </p>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-[var(--osc-bg-subtle)] px-3 py-2 font-mono text-[11px] text-[var(--osc-text-muted)]">
-              {`opencode-studio upgrade`}
-            </pre>
           </div>
-        )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          {cards.map((studio, index) => {
-            const meta = STUDIO_META[studio.id]
-            return (
-              <Link
-                key={studio.id}
-                to={`/studios/${studio.id}`}
-                data-studio={studio.id}
-                className="osc-reveal group relative flex flex-col overflow-hidden rounded-xl border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-6 shadow-[var(--osc-shadow)] transition-[border-color,box-shadow,transform] duration-[var(--osc-motion-duration)] hover:-translate-y-0.5 hover:border-[var(--osc-border-strong)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)]"
-                style={{ animationDelay: `${Math.min(index, 6) * 50}ms` }}
-              >
-                <span
-                  className="absolute inset-y-0 left-0 w-0.5 opacity-0 transition-opacity group-hover:opacity-100"
-                  style={{ background: `var(--osc-accent-${studio.id})` }}
-                  aria-hidden
-                />
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="size-1.5 rounded-full" style={{ background: `var(--osc-accent-${studio.id})` }} aria-hidden />
-                  <h2 className="text-[15px] font-semibold tracking-tight">{studio.label}</h2>
-                </div>
-                <p className="mb-1.5 text-[12px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
-                <p className="mb-4 flex-1 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">{studio.description}</p>
-                <StudioHealthBadges studio={studio} checks={studiosQuery.data?.checks ?? []} />
-                <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--osc-text)]">
-                  Open {meta?.short ?? studio.label}
+          {studiosQuery.isLoading && (
+            <div className="grid gap-3 sm:grid-cols-2" role="status" aria-busy="true">
+              <span className="sr-only">Loading studios…</span>
+              <div className="osc-skeleton h-48" aria-hidden />
+              <div className="osc-skeleton h-48" aria-hidden />
+            </div>
+          )}
+          {studiosQuery.isError && (
+            <p
+              className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-4 py-3 text-sm text-[var(--osc-error)]"
+              role="alert"
+            >
+              Failed to load studios: {(studiosQuery.error as Error)?.message ?? "unknown error"}
+            </p>
+          )}
+
+          {studiosQuery.data?.update?.updateAvailable && (
+            <div
+              className="mb-10 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-5 py-4 shadow-[var(--osc-shadow)]"
+              role="status"
+            >
+              <p className="text-sm font-medium">
+                Update available · v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
+              </p>
+              <pre className="mt-2 overflow-x-auto rounded-[var(--osc-radius-md)] bg-[var(--osc-bg-subtle)] px-3 py-2 font-mono text-[11px] text-[var(--osc-text-muted)]">
+                {`opencode-studio upgrade`}
+              </pre>
+            </div>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {cards.map((studio, index) => {
+              const meta = STUDIO_META[studio.id]
+              return (
+                <Link
+                  key={studio.id}
+                  to={`/studios/${studio.id}`}
+                  data-studio={studio.id}
+                  className="osc-reveal group relative flex flex-col overflow-hidden rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-6 shadow-[var(--osc-shadow)] transition-[border-color,box-shadow] duration-[var(--osc-motion-duration)] hover:border-[var(--osc-border-strong)] hover:shadow-[var(--osc-shadow-md)] focus-visible:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
+                  style={{ animationDelay: `${Math.min(index, 6) * 40}ms` }}
+                >
                   <span
-                    className="text-[var(--osc-text-faint)] transition-transform duration-[var(--osc-motion-duration)] group-hover:translate-x-0.5"
+                    className="absolute inset-y-0 left-0 w-0.5 opacity-0 transition-opacity duration-[var(--osc-motion-duration)] group-hover:opacity-100 group-focus-visible:opacity-100"
+                    style={{ background: `var(--osc-accent-${studio.id})` }}
                     aria-hidden
-                  >
-                    →
+                  />
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="size-1.5 rounded-full" style={{ background: `var(--osc-accent-${studio.id})` }} aria-hidden />
+                    <h2 className="text-[15px] font-semibold tracking-tight">{studio.label}</h2>
+                  </div>
+                  <p className="mb-1.5 text-[12px] text-[var(--osc-text-faint)]">{meta?.blurb}</p>
+                  <p className="mb-4 flex-1 text-[13px] leading-relaxed text-[var(--osc-text-muted)]">{studio.description}</p>
+                  <StudioHealthBadges studio={studio} checks={studiosQuery.data?.checks ?? []} />
+                  <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--osc-text)]">
+                    Open {meta?.short ?? studio.label}
+                    <span
+                      className="text-[var(--osc-text-faint)] transition-transform duration-[var(--osc-motion-duration)] group-hover:translate-x-0.5"
+                      aria-hidden
+                    >
+                      →
+                    </span>
                   </span>
-                </span>
-              </Link>
-            )
-          })}
-        </div>
-      </main>
+                </Link>
+              )
+            })}
+          </div>
+        </main>
+      </div>
+      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} initialPanel={drawerPanel} />
     </div>
   )
 }
@@ -699,20 +709,11 @@ function AgentChromeActions({
   return (
     <>
       {nativeAvailable && (
-        <a
-          href="/"
-          className="inline-flex h-8 items-center rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-        >
+        <a href="/" className="osc-chip">
           OpenCode
         </a>
       )}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--osc-border)] px-2.5 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-        aria-pressed={agentOpen}
-        title={statusLabel}
-      >
+      <button type="button" onClick={onToggle} className="osc-chip" aria-pressed={agentOpen} title={statusLabel}>
         <span className={`size-1.5 rounded-full ${statusDot}`} aria-hidden />
         Agent
       </button>
@@ -754,11 +755,13 @@ function StudioFrame() {
   if (studiosQuery.isError || !studiosQuery.data) {
     return (
       <div className="flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-        <TopBar studioLabel="Studio" studioId={studioId} onMenu={() => chrome.setDrawerOpen(true)} />
+        <div inert={chrome.drawerOpen ? true : undefined}>
+          <TopBar studioLabel="Studio" studioId={studioId} onMenu={() => chrome.setDrawerOpen(true)} />
+          <p className="p-8 text-sm text-[var(--osc-error)]" role="alert">
+            Failed to load studio host: {(studiosQuery.error as Error)?.message ?? "unknown error"}
+          </p>
+        </div>
         <SideDrawer open={chrome.drawerOpen} onClose={() => chrome.setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
-        <p className="p-8 text-sm text-[var(--osc-error)]" role="alert">
-          Failed to load studio host: {(studiosQuery.error as Error)?.message ?? "unknown error"}
-        </p>
       </div>
     )
   }
@@ -771,41 +774,47 @@ function StudioFrame() {
   const workspace = studiosQuery.data.workspace
 
   return (
-    <div data-studio={studioId} className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-      <TopBar
-        studioLabel={label}
-        studioId={studioId}
-        onMenu={() => chrome.setDrawerOpen(true)}
-        edge="flush"
-        actions={
-          <AgentChromeActions
-            nativeAvailable={nativeAvailable}
-            agentOpen={chrome.agentOpen}
-            agentStatusLabel={chrome.agentStatusLabel}
-            agentStatusDotClass={chrome.agentStatusDotClass}
-            onToggle={chrome.toggleAgent}
-          />
-        }
-      />
-      <SideDrawer open={chrome.drawerOpen} onClose={() => chrome.setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <NativeAgentFrame
-          workspace={workspace}
-          available={nativeAvailable}
-          open={chrome.agentOpen}
-          onClose={chrome.closeAgent}
-          onStatusChange={chrome.setAgentStatus}
+    <div
+      data-studio={studioId}
+      data-agent-open={chrome.agentOpen ? "true" : "false"}
+      className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]"
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={chrome.drawerOpen ? true : undefined}>
+        <TopBar
+          studioLabel={label}
+          studioId={studioId}
+          onMenu={() => chrome.setDrawerOpen(true)}
+          edge="flush"
+          actions={
+            <AgentChromeActions
+              nativeAvailable={nativeAvailable}
+              agentOpen={chrome.agentOpen}
+              agentStatusLabel={chrome.agentStatusLabel}
+              agentStatusDotClass={chrome.agentStatusDotClass}
+              onToggle={chrome.toggleAgent}
+            />
+          }
         />
-        <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
-          <Suspense
-            fallback={
-              <div className="flex flex-1 items-center justify-center p-8 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>
-            }
-          >
-            {page}
-          </Suspense>
+        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <NativeAgentFrame
+            workspace={workspace}
+            available={nativeAvailable}
+            open={chrome.agentOpen}
+            onClose={chrome.closeAgent}
+            onStatusChange={chrome.setAgentStatus}
+          />
+          <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
+            <Suspense
+              fallback={
+                <div className="flex flex-1 items-center justify-center p-8 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>
+              }
+            >
+              {page}
+            </Suspense>
+          </div>
         </div>
       </div>
+      <SideDrawer open={chrome.drawerOpen} onClose={() => chrome.setDrawerOpen(false)} studioId={studioId} initialPanel="nav" />
     </div>
   )
 }
@@ -814,7 +823,7 @@ function SkipLink() {
   return (
     <a
       href="#main-content"
-      className="absolute top-0 left-3 z-[100] -translate-y-full rounded-md bg-[var(--osc-primary)] px-3 py-2 text-[12px] font-medium text-[var(--osc-primary-fg)] shadow-[var(--osc-shadow)] transition-transform focus:translate-y-3 focus:outline-none"
+      className="absolute top-0 left-3 z-[100] -translate-y-full rounded-[var(--osc-radius-md)] bg-[var(--osc-primary)] px-3 py-2 text-[12px] font-medium text-[var(--osc-primary-fg)] shadow-[var(--osc-shadow)] transition-transform duration-[var(--osc-motion-duration)] focus:translate-y-3 focus:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
     >
       Skip to main content
     </a>
@@ -828,35 +837,41 @@ function FilesFrame() {
   const workspace = studiosQuery.data?.workspace ?? ""
 
   return (
-    <div data-studio="files" className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-      <TopBar
-        studioLabel="Files"
-        studioId="files"
-        onMenu={() => chrome.setDrawerOpen(true)}
-        edge="flush"
-        actions={
-          <AgentChromeActions
-            nativeAvailable={nativeAvailable}
-            agentOpen={chrome.agentOpen}
-            agentStatusLabel={chrome.agentStatusLabel}
-            agentStatusDotClass={chrome.agentStatusDotClass}
-            onToggle={chrome.toggleAgent}
-          />
-        }
-      />
-      <SideDrawer open={chrome.drawerOpen} onClose={() => chrome.setDrawerOpen(false)} studioId="files" initialPanel="nav" />
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <NativeAgentFrame
-          workspace={workspace}
-          available={nativeAvailable}
-          open={chrome.agentOpen}
-          onClose={chrome.closeAgent}
-          onStatusChange={chrome.setAgentStatus}
+    <div
+      data-studio="files"
+      data-agent-open={chrome.agentOpen ? "true" : "false"}
+      className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]"
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={chrome.drawerOpen ? true : undefined}>
+        <TopBar
+          studioLabel="Files"
+          studioId="files"
+          onMenu={() => chrome.setDrawerOpen(true)}
+          edge="flush"
+          actions={
+            <AgentChromeActions
+              nativeAvailable={nativeAvailable}
+              agentOpen={chrome.agentOpen}
+              agentStatusLabel={chrome.agentStatusLabel}
+              agentStatusDotClass={chrome.agentStatusDotClass}
+              onToggle={chrome.toggleAgent}
+            />
+          }
         />
-        <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
-          <FilesExplorer />
+        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <NativeAgentFrame
+            workspace={workspace}
+            available={nativeAvailable}
+            open={chrome.agentOpen}
+            onClose={chrome.closeAgent}
+            onStatusChange={chrome.setAgentStatus}
+          />
+          <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
+            <FilesExplorer />
+          </div>
         </div>
       </div>
+      <SideDrawer open={chrome.drawerOpen} onClose={() => chrome.setDrawerOpen(false)} studioId="files" initialPanel="nav" />
     </div>
   )
 }

@@ -17,14 +17,14 @@ export function ErrorState({
   return (
     <div
       className={cn(
-        "grid place-items-center rounded-xl border border-dashed border-[var(--osc-border-strong)] px-6 py-12 text-center",
+        "grid place-items-center rounded-[var(--osc-radius-lg)] border border-dashed border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-6 py-12 text-center",
         className,
       )}
       role="alert"
     >
       {icon ? <div className="mb-3 text-[var(--osc-error)]">{icon}</div> : null}
       <h2 className="text-[15px] font-semibold text-[var(--osc-error)]">{title}</h2>
-      {description ? <p className="mt-1.5 max-w-sm text-[13px] text-[var(--osc-text-muted)]">{description}</p> : null}
+      {description ? <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-[var(--osc-text-muted)]">{description}</p> : null}
       {action ? <div className="mt-6">{action}</div> : null}
     </div>
   )

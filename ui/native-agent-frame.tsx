@@ -220,26 +220,16 @@ export function NativeAgentFrame({
       className={`${open ? "flex" : "hidden"} absolute inset-0 z-30 min-h-0 w-full flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg)] md:static md:inset-auto md:shrink-0 ${dragging ? "select-none" : ""}`}
       style={open && mdUp ? { width, minWidth: AGENT_WIDTH_MIN, maxWidth: viewportMax } : undefined}
     >
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--osc-border)] px-3">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3">
         <span className={`size-1.5 shrink-0 rounded-full ${agentStatusDotClass(status)}`} aria-hidden />
         <span className="shrink-0 text-[12px] font-semibold tracking-[0.1em] uppercase">Agent</span>
         <span className="ml-auto truncate text-[11px] text-[var(--osc-text-muted)]">{available ? "OpenCode" : "Unavailable"}</span>
         {available && (
-          <a
-            href={openHref}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0 rounded-md border border-[var(--osc-border)] px-2 py-1 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-          >
+          <a href={openHref} target="_blank" rel="noreferrer" className="osc-chip h-7 shrink-0 px-2 text-[11px]">
             Open
           </a>
         )}
-        <button
-          type="button"
-          onClick={onClose}
-          className="shrink-0 rounded-md border border-[var(--osc-border)] px-2 py-1 text-[11px] font-medium hover:bg-[var(--osc-surface)]"
-          aria-label="Close agent"
-        >
+        <button type="button" onClick={onClose} className="osc-chip h-7 shrink-0 px-2 text-[11px]" aria-label="Close agent">
           Close
         </button>
       </div>
@@ -256,7 +246,10 @@ export function NativeAgentFrame({
       ) : (
         <div className="relative min-h-0 flex-1 bg-[var(--osc-bg)]">
           {error && (
-            <div className="absolute inset-x-0 top-0 z-10 m-3 rounded-lg border border-[var(--osc-border-strong)] bg-[var(--osc-bg-elevated)] p-3 text-[12px] text-[var(--osc-error)]">
+            <div
+              className="absolute inset-x-0 top-0 z-10 m-3 rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-bg-elevated)] p-3 text-[12px] text-[var(--osc-error)] shadow-[var(--osc-shadow)]"
+              role="alert"
+            >
               Failed to reach the native OpenCode UI. Check that the host sidecar is running, then reopen the agent.
             </div>
           )}

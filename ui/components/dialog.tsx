@@ -35,7 +35,7 @@ export function Dialog({
         aria-label={title}
         tabIndex={-1}
         className={cn(
-          "max-h-[85vh] w-full max-w-2xl overflow-auto rounded-xl border border-[var(--osc-border-strong)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow)] outline-none",
+          "max-h-[85vh] w-full max-w-2xl overflow-auto rounded-[var(--osc-radius-lg)] border border-[var(--osc-border-strong)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)] outline-none",
           className,
         )}
         onClick={(event) => event.stopPropagation()}
@@ -54,7 +54,7 @@ export function DialogHeader({ title, onClose }: { title: string; onClose: () =>
         type="button"
         data-autofocus
         onClick={onClose}
-        className="grid size-8 shrink-0 place-items-center rounded-md text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]"
+        className="osc-icon-btn size-8 text-[var(--osc-text-muted)]"
         aria-label="Close dialog"
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
