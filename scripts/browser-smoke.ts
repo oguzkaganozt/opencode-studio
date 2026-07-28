@@ -164,7 +164,7 @@ async function browserSmoke(base: string) {
     await page.waitForSelector("text=Studios")
     await page.waitForSelector("text=CAD Studio")
     await page.getByRole("button", { name: "Open menu" }).click()
-    await page.getByRole("button", { name: "Settings" }).click()
+    await page.getByRole("tab", { name: "Settings" }).click()
     await page.waitForSelector("text=Repair install")
     await page.getByRole("button", { name: "Close menu" }).click()
     await assertTailwindUtilities(page)
