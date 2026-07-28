@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
+import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
 import { safeHref } from "@ui/lib/safe-href"
 import { api, type BomEntry } from "./api"
@@ -10,7 +11,7 @@ function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEn
   const datasheetHref = entry.datasheet ? safeHref(entry.datasheet) : null
   return (
     <tr
-      className={`border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)] ${clickable ? "cursor-pointer" : ""}`}
+      className={`border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)] focus-visible:bg-[var(--osc-surface-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--osc-text)] ${clickable ? "cursor-pointer" : ""}`}
       tabIndex={clickable ? 0 : undefined}
       aria-label={entry.mpn ? `BOM line ${entry.mpn}` : "BOM line without MPN"}
       onClick={() => {
@@ -76,9 +77,19 @@ export default function BomTab({ projectId }: { projectId: string }) {
     )
   }
 
+  if (data.entries.length === 0) {
+    return (
+      <EmptyState
+        className="m-4 border-dashed py-16"
+        title="No BOM lines"
+        description="The circuit has no billable components, or the build produced an empty BOM."
+      />
+    )
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 text-sm text-[var(--osc-text-muted)]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-[var(--osc-text-muted)]">
         <span>
           {data.totalComponents} component{data.totalComponents !== 1 ? "s" : ""}
         </span>
@@ -89,9 +100,9 @@ export default function BomTab({ projectId }: { projectId: string }) {
         <span className={data.bomComplete ? "text-[var(--osc-success)]" : "text-[var(--osc-warning)]"}>
           {data.bomComplete ? "Assembly identities complete" : "Assembly blocked: missing part identities"}
         </span>
-        <span className="ml-auto">
+        <span className="sm:ml-auto">
           <a href={api.bomCsvUrl(projectId)} download className="pcb-chip">
-            Download CSV ↓
+            CSV ↓
           </a>
         </span>
       </div>
@@ -116,9 +127,7 @@ export default function BomTab({ projectId }: { projectId: string }) {
           </tbody>
         </table>
       </div>
-      {selected?.mpn && (
-        <PartDetailModal mpn={selected.mpn} fallback={selected} onClose={() => setSelected(null)} />
-      )}
+      {selected?.mpn && <PartDetailModal mpn={selected.mpn} fallback={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Dialog } from "@ui/components/dialog"
+import { useFocusTrap } from "@ui/lib/focus-trap"
 import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, renderUrl, studioHref } from "./api"
 import { type ClickInfo, type LoadPart, PART_COLORS, type SceneHandle } from "./assembly-types"
 
@@ -55,19 +56,34 @@ function ResourceRail({
   designs,
   selectedId,
   mode,
+  listStatus = "ready",
+  listError,
+  onRetry,
   onClose,
 }: {
   designs: DesignSummary[]
   selectedId?: string
   mode: "dock" | "sheet"
+  listStatus?: "loading" | "error" | "ready"
+  listError?: string
+  onRetry?: () => void
   onClose?: () => void
 }) {
+  const asideRef = useRef<HTMLElement>(null)
+  useFocusTrap(mode === "sheet", asideRef, onClose)
+
   const body = (
     <>
       <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[var(--osc-border)] px-3">
         <span className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Designs</span>
         {onClose && (
-          <button type="button" className="osc-icon-btn size-8 text-[var(--osc-text-muted)]" aria-label="Close designs" onClick={onClose}>
+          <button
+            type="button"
+            data-autofocus
+            className="osc-icon-btn size-8 text-[var(--osc-text-muted)]"
+            aria-label="Close designs"
+            onClick={onClose}
+          >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -75,7 +91,21 @@ function ResourceRail({
         )}
       </div>
       <nav className="min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Designs">
-        {designs.length === 0 ? (
+        {listStatus === "loading" ? (
+          <p className="cad-rail-empty" role="status">
+            Loading designs…
+          </p>
+        ) : listStatus === "error" ? (
+          <div className="cad-rail-empty" role="alert">
+            <p>Could not load designs.</p>
+            {listError ? <p className="mt-1 text-[12px] text-[var(--osc-text-faint)]">{listError}</p> : null}
+            {onRetry ? (
+              <button type="button" className="cad-chip mt-3" onClick={onRetry}>
+                Retry
+              </button>
+            ) : null}
+          </div>
+        ) : designs.length === 0 ? (
           <p className="cad-rail-empty">
             No designs yet.
             <span className="mt-1 block text-[12px] text-[var(--osc-text-faint)]">
@@ -99,7 +129,7 @@ function ResourceRail({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium text-[var(--osc-text)]">{design.id}</span>
-                  <span className={`mono text-[10px] uppercase tracking-wide ${badge.className}`}>{badge.label}</span>
+                  <span className={`mono text-[10px] tracking-wide uppercase ${badge.className}`}>{badge.label}</span>
                 </div>
                 <div className="mono mt-0.5 text-[10px] text-[var(--osc-text-faint)]">
                   {design.partCount} {design.partCount === 1 ? "part" : "parts"}
@@ -114,7 +144,13 @@ function ResourceRail({
 
   if (mode === "sheet") {
     return (
-      <aside className="cad-sheet cad-sheet-left flex w-[min(18rem,85vw)] flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]">
+      <aside
+        ref={asideRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Designs"
+        className="cad-sheet cad-sheet-left flex w-[min(18rem,85vw)] flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]"
+      >
         {body}
       </aside>
     )
@@ -146,12 +182,21 @@ function Inspector({
   onTogglePart: (index: number, visible: boolean) => void
   onOpenRender: (url: string, label: string) => void
 }) {
+  const asideRef = useRef<HTMLElement>(null)
+  useFocusTrap(mode === "sheet", asideRef, onClose)
+
   const body = (
     <>
       <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[var(--osc-border)] px-3">
         <span className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Parts</span>
         {onClose && (
-          <button type="button" className="osc-icon-btn size-8 text-[var(--osc-text-muted)]" aria-label="Close inspector" onClick={onClose}>
+          <button
+            type="button"
+            data-autofocus
+            className="osc-icon-btn size-8 text-[var(--osc-text-muted)]"
+            aria-label="Close inspector"
+            onClick={onClose}
+          >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -219,14 +264,20 @@ function Inspector({
 
   if (mode === "sheet") {
     return (
-      <aside className="cad-sheet cad-sheet-right flex w-[min(18rem,85vw)] flex-col border-l border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]">
+      <aside
+        ref={asideRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Parts and renders"
+        className="cad-sheet cad-sheet-right flex w-[min(18rem,85vw)] flex-col border-l border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]"
+      >
         {body}
       </aside>
     )
   }
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:w-60 md:border-t-0 md:border-l">
+    <aside className="flex w-full min-h-0 shrink-0 flex-col overflow-hidden border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:w-60 md:border-t-0 md:border-l">
       {body}
     </aside>
   )
@@ -343,12 +394,31 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   function showToast(message: string) {
     setToast(message)
-    window.setTimeout(() => setToast(null), 1800)
   }
 
+  useEffect(() => {
+    if (!toast) return
+    const id = window.setTimeout(() => setToast(null), 1800)
+    return () => window.clearTimeout(id)
+  }, [toast])
+
+  useEffect(() => {
+    return () => {
+      setLocalParts((previous) => {
+        for (const part of previous ?? []) {
+          if (part.url.startsWith("blob:")) URL.revokeObjectURL(part.url)
+        }
+        return null
+      })
+    }
+  }, [])
+
   const loadFiles = useCallback((files: FileList | File[]) => {
-    const list = Array.from(files)
-    if (list.length === 0) return
+    const list = Array.from(files).filter((file) => file.name.toLowerCase().endsWith(".glb"))
+    if (list.length === 0) {
+      setToast("Only .glb files are supported")
+      return
+    }
     setLocalParts((previous) => {
       for (const part of previous ?? []) {
         if (part.url.startsWith("blob:")) URL.revokeObjectURL(part.url)
@@ -365,16 +435,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   }, [])
 
   useEffect(() => {
-    const onDragOver = (event: DragEvent) => {
-      event.preventDefault()
-      setDropActive(true)
-    }
-    const onDragLeave = () => setDropActive(false)
-    const onDrop = (event: DragEvent) => {
-      event.preventDefault()
-      setDropActive(false)
-      if (event.dataTransfer?.files.length) loadFiles(event.dataTransfer.files)
-    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       if (renderModal) {
@@ -390,17 +450,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         setInspectorOpen(false)
       }
     }
-    document.addEventListener("dragover", onDragOver)
-    document.addEventListener("dragleave", onDragLeave)
-    document.addEventListener("drop", onDrop)
     document.addEventListener("keydown", onKeyDown, true)
-    return () => {
-      document.removeEventListener("dragover", onDragOver)
-      document.removeEventListener("dragleave", onDragLeave)
-      document.removeEventListener("drop", onDrop)
-      document.removeEventListener("keydown", onKeyDown, true)
-    }
-  }, [loadFiles, renderModal, designsOpen, inspectorOpen])
+    return () => document.removeEventListener("keydown", onKeyDown, true)
+  }, [renderModal, designsOpen, inspectorOpen])
+
+  const designsListStatus = designsQuery.isLoading ? "loading" : designsQuery.isError ? "error" : "ready"
+  const designsListError = designsQuery.isError ? ((designsQuery.error as Error)?.message ?? "unknown error") : undefined
 
   const info = click ? (
     <>
@@ -431,8 +486,30 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   return (
     <div ref={rootRef} className="relative flex min-h-0 flex-1 flex-col md:flex-row" data-cad-compact={compact ? "true" : "false"}>
-      {dockRails && <ResourceRail designs={designs} selectedId={localParts ? undefined : designId} mode="dock" />}
-      <div className="relative min-h-0 min-w-0 flex-1 bg-[var(--osc-canvas-bg)]">
+      {dockRails && (
+        <ResourceRail
+          designs={designs}
+          selectedId={localParts ? undefined : designId}
+          mode="dock"
+          listStatus={designsListStatus}
+          listError={designsListError}
+          onRetry={() => void designsQuery.refetch()}
+        />
+      )}
+      <div
+        className="relative min-h-0 min-w-0 flex-1 bg-[var(--osc-canvas-bg)]"
+        inert={showDesignsSheet || showInspectorSheet ? true : undefined}
+        onDragOver={(event) => {
+          event.preventDefault()
+          setDropActive(true)
+        }}
+        onDragLeave={() => setDropActive(false)}
+        onDrop={(event) => {
+          event.preventDefault()
+          setDropActive(false)
+          if (event.dataTransfer?.files.length) loadFiles(event.dataTransfer.files)
+        }}
+      >
         <div className="cad-toolbar absolute top-3 left-3 z-10">
           {compact && (
             <>
@@ -549,7 +626,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
         {!serverParts && (
           <div className="pointer-events-none absolute inset-0 z-[1] flex items-start justify-center px-4 pt-24 sm:items-center sm:pt-0">
-            <div className="cad-empty" role="status">
+            <div className="cad-empty" role={designQuery.isError ? "alert" : "status"}>
               <p className="cad-empty__title">
                 {designQuery.isError
                   ? "Could not load design"
@@ -561,14 +638,14 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               </p>
               <p className="cad-empty__body">
                 {designQuery.isError
-                  ? "Reload the design, or open a .glb to inspect geometry."
+                  ? ((designQuery.error as Error)?.message ?? "Reload the design, or open a .glb.")
                   : designId && designQuery.isLoading
                     ? "Fetching assembly artifacts…"
                     : designId
                       ? "Build this design with the agent, then reload. You can also drop a .glb anytime."
-                      : "Drop a file anywhere, use Open, or pick a design from the list."}
+                      : "Drop a .glb on the canvas, use Open, or pick a design from the list."}
               </p>
-              {!designQuery.isLoading && <p className="cad-empty__hint">orbit · zoom · pan</p>}
+              {!designQuery.isLoading && !designQuery.isError && <p className="cad-empty__hint">orbit · zoom · pan</p>}
             </div>
           </div>
         )}
@@ -642,6 +719,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               designs={designs}
               selectedId={localParts ? undefined : designId}
               mode="sheet"
+              listStatus={designsListStatus}
+              listError={designsListError}
+              onRetry={() => void designsQuery.refetch()}
               onClose={() => setDesignsOpen(false)}
             />
           </div>

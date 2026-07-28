@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { EmptyState } from "@ui/components/empty-state"
+import { ErrorState } from "@ui/components/error-state"
 import { cn } from "@ui/lib/cn"
 
 export function SvgViewer({ url, label }: { url: string; label: string }) {
@@ -15,10 +15,10 @@ export function SvgViewer({ url, label }: { url: string; label: string }) {
         </div>
       )}
       {error && (
-        <EmptyState
-          className="m-6 max-w-md border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] py-12"
+        <ErrorState
+          className="m-6 max-w-md border-dashed bg-[var(--osc-bg-elevated)] py-12"
           title={`${label} not available`}
-          description="Run pcb_circuit_export first, then reopen this tab."
+          description="Export SVG with pcb_circuit_export, or rebuild if the circuit changed."
         />
       )}
       <img

@@ -6,7 +6,7 @@ import { useCircuitJson } from "./use-circuit-json"
 import { ViewerFrame } from "./viewer-frame"
 
 export default function SchematicTab({ projectId }: { projectId: string }) {
-  const { data, isLoading, error } = useCircuitJson(projectId)
+  const { data, dataUpdatedAt, isLoading, error } = useCircuitJson(projectId)
   const fallback = <SvgViewer url={api.schematicSvgUrl(projectId)} label="Schematic" />
 
   if (isLoading) {
@@ -22,7 +22,7 @@ export default function SchematicTab({ projectId }: { projectId: string }) {
 
   return (
     <ViewerFrame className="bg-[var(--osc-canvas-bg-light)]">
-      <ViewerErrorBoundary key={projectId} fallback={fallback}>
+      <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
         <SchematicViewer circuitJson={data} containerStyle={{ height: "100%", width: "100%" }} />
       </ViewerErrorBoundary>
     </ViewerFrame>

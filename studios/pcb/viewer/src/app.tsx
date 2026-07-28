@@ -223,8 +223,13 @@ function DiagnosticsPanel({
 
   const showToast = (message: string) => {
     setToast(message)
-    window.setTimeout(() => setToast(null), 1800)
   }
+
+  useEffect(() => {
+    if (!toast) return
+    const id = window.setTimeout(() => setToast(null), 1800)
+    return () => window.clearTimeout(id)
+  }, [toast])
 
   return (
     <details
@@ -452,10 +457,16 @@ function ProjectPage() {
         <LoadingState />
       </Shell>
     )
-  if (error || !project)
+  if (error)
     return (
       <Shell fill>
-        <PageError message="Project not found" />
+        <PageError message="Failed to load project" description={(error as Error).message} />
+      </Shell>
+    )
+  if (!project)
+    return (
+      <Shell fill>
+        <PageError message="Project not found" description="It may have been removed from the workspace." />
       </Shell>
     )
 

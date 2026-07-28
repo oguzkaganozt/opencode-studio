@@ -6,7 +6,7 @@ import { useCircuitJson } from "./use-circuit-json"
 import { ViewerFrame } from "./viewer-frame"
 
 export default function PcbTab({ projectId }: { projectId: string }) {
-  const { data, isLoading, error } = useCircuitJson(projectId)
+  const { data, dataUpdatedAt, isLoading, error } = useCircuitJson(projectId)
   const fallback = <SvgViewer url={api.pcbSvgUrl(projectId)} label="PCB Layout" />
 
   if (isLoading) {
@@ -23,7 +23,7 @@ export default function PcbTab({ projectId }: { projectId: string }) {
   return (
     <ViewerFrame>
       {({ height }) => (
-        <ViewerErrorBoundary key={projectId} fallback={fallback}>
+        <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
           <PCBViewer circuitJson={data} height={Math.max(320, Math.floor(height))} />
         </ViewerErrorBoundary>
       )}

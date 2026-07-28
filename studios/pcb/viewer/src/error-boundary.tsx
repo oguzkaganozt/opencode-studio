@@ -3,6 +3,8 @@ import { Component, type ReactNode } from "react"
 type Props = {
   fallback: ReactNode
   children: ReactNode
+  /** Change this when underlying data reloads so a prior crash does not stick. */
+  resetKey?: string | number
 }
 
 type State = { hasError: boolean }
@@ -17,6 +19,12 @@ export class ViewerErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(): State {
     return { hasError: true }
+  }
+
+  componentDidUpdate(prev: Props) {
+    if (prev.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false })
+    }
   }
 
   componentDidCatch(error: unknown) {

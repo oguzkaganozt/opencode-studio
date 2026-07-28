@@ -111,7 +111,7 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
         )}
       </div>
       <ViewerFrame className="bg-[var(--osc-canvas-bg)]">
-        <ViewerErrorBoundary key={projectId} fallback={fallback}>
+        <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
           <CadViewer circuitJson={preferKicadStepModels(data)} />
         </ViewerErrorBoundary>
       </ViewerFrame>
