@@ -1,5 +1,5 @@
 ---
-name: media
+name: studio-media
 description: Use for image, audio, and video workspace operations, fal_* tools, chatgpt_image_*, and media_* tools. Guides agent-owned media mutations and honest path checks.
 ---
 

@@ -21,7 +21,7 @@ export const ${id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}Studio: Studio
   id: "${id}" as any,
   label: "${id} Studio",
   description: "TODO",
-  skill: "${id}-studio",
+  skill: "studio-${id}",
   requiredEngines: [],
   root: { default: "workspace", create: false },
 }
@@ -30,7 +30,7 @@ export const ${id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}Studio: Studio
 await writeFile(
   path.join(dir, "skill/SKILL.md"),
   `---
-name: ${id}-studio
+name: studio-${id}
 description: TODO
 license: MIT
 compatibility: opencode

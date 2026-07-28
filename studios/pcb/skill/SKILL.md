@@ -1,12 +1,12 @@
 ---
-name: pcb-studio
+name: studio-pcb
 description: Use for PCB design, tscircuit TSX, Circuit JSON diagnostics, Gerber, BOM, CPL/Pick & Place, or pcb_* tools. Guides incremental authoring and honest validation.
 ---
 
 # PCB Studio
 
 Use PCB Studio for electronic schematics and PCB layouts. Do not load
-`cad-studio`; that skill is for mechanical/FDM CAD with build123d.
+`studio-cad`; that skill is for mechanical/FDM CAD with build123d.
 
 Studio UI: `http://127.0.0.1:4173/studio` (not bare `/`, which is native OpenCode).
 PCB projects live under Studio → PCB. The viewer can send diagnostics to the Agent

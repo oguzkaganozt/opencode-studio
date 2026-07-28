@@ -48,12 +48,12 @@ describe("configureStudios", () => {
     expect(config.enabled).toEqual([...STUDIO_IDS])
     expect(config.configPath.startsWith(ctx.studioConfigHome)).toBe(true)
     for (const id of STUDIO_IDS) {
-      const skill = path.join(ctx.openCodeHome, `skills/${id}-studio/SKILL.md`)
+      const skill = path.join(ctx.openCodeHome, `skills/studio-${id}/SKILL.md`)
       expect(await Bun.file(skill).exists()).toBe(true)
     }
-    const marker = JSON.parse(await readFile(path.join(ctx.openCodeHome, "skills/pcb-studio/.opencode-studio-managed.json"), "utf8"))
+    const marker = JSON.parse(await readFile(path.join(ctx.openCodeHome, "skills/studio-pcb/.opencode-studio-managed.json"), "utf8"))
     expect(marker.studioId).toBe("pcb")
-    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/media/SKILL.md")).exists()).toBe(true)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-media/SKILL.md")).exists()).toBe(true)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
     expect(openCode.plugin).toContain(pkgName)
@@ -70,7 +70,7 @@ describe("configureStudios", () => {
       ...ctx,
       validateOpenCode: false,
     })
-    const skill = path.join(ctx.openCodeHome, "skills/pcb-studio/SKILL.md")
+    const skill = path.join(ctx.openCodeHome, "skills/studio-pcb/SKILL.md")
     await writeFile(skill, `${await readFile(skill, "utf8")}\n# user edit\n`)
     await expect(
       configureStudios({
@@ -89,9 +89,9 @@ describe("configureStudios", () => {
     await removeStudios({ ...ctx, validateOpenCode: false })
     const config = await readStudioConfigFile(ctx)
     expect(config.enabled).toEqual([...STUDIO_IDS])
-    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/pcb-studio/SKILL.md")).exists()).toBe(false)
-    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/cad-studio/SKILL.md")).exists()).toBe(false)
-    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/media/SKILL.md")).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-pcb/SKILL.md")).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-cad/SKILL.md")).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-media/SKILL.md")).exists()).toBe(false)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
     expect(openCode.plugin ?? []).not.toContain(pkgName)
@@ -117,7 +117,7 @@ describe("configureStudios", () => {
 
   test("configure scrubs legacy project-local managed files", async () => {
     const ctx = await isolated()
-    const skillDir = path.join(ctx.workspace, ".opencode/skills/pcb-studio")
+    const skillDir = path.join(ctx.workspace, ".opencode/skills/studio-pcb")
     await mkdir(skillDir, { recursive: true })
     const skillBody = await readFile(path.join(packageRoot, "studios/pcb/skill/SKILL.md"))
     const digest = createHash("sha256").update(skillBody).digest("hex")

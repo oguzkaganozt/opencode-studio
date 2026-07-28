@@ -93,13 +93,13 @@ try {
   })
   const studioJson = JSON.parse(await readFile(path.join(studioConfigHome, "studio.json"), "utf8"))
   if (studioJson.enabled !== undefined) throw new Error("studio.json must not write enabled (always-on)")
-  if (!(await Bun.file(path.join(openCodeHome, "skills/pcb-studio/SKILL.md")).exists())) {
+  if (!(await Bun.file(path.join(openCodeHome, "skills/studio-pcb/SKILL.md")).exists())) {
     throw new Error("packed configure did not install pcb skill")
   }
-  if (!(await Bun.file(path.join(openCodeHome, "skills/cad-studio/SKILL.md")).exists())) {
+  if (!(await Bun.file(path.join(openCodeHome, "skills/studio-cad/SKILL.md")).exists())) {
     throw new Error("packed configure did not install cad skill")
   }
-  if (!(await Bun.file(path.join(openCodeHome, "skills/media/SKILL.md")).exists())) {
+  if (!(await Bun.file(path.join(openCodeHome, "skills/studio-media/SKILL.md")).exists())) {
     throw new Error("packed configure did not install platform media skill")
   }
   if (await Bun.file(path.join(domain, "opencode.json")).exists()) {

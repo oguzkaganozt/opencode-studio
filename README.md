@@ -71,8 +71,7 @@ Install is **user-global** — postinstall repairs once; run `repair` only if ne
 | --- | --- |
 | `~/.config/opencode-studio/studio.json` | Optional absolute `roots` only (domains always on) |
 | `~/.config/opencode/opencode.json` | Unversioned plugin registrations + managed `build123d` MCP |
-| `~/.config/opencode/skills/<id>-studio/` | Managed domain skills (`cad-studio`, `pcb-studio`) |
-| `~/.config/opencode/skills/media/` | Platform media skill |
+| `~/.config/opencode/skills/studio-<id>/` | Managed skills (`studio-cad`, `studio-pcb`, `studio-media`) |
 
 ```json
 { "roots": { "cad": "/absolute/path" } }

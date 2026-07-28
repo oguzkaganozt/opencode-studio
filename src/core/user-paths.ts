@@ -6,7 +6,7 @@ import path from "node:path"
  *
  * - Optional studio roots: $XDG_CONFIG_HOME/opencode-studio/studio.json
  * - OpenCode plugin/MCP:   $XDG_CONFIG_HOME/opencode/opencode.json[c]
- * - Managed skills:        $XDG_CONFIG_HOME/opencode/skills/<id>-studio/
+ * - Managed skills:        $XDG_CONFIG_HOME/opencode/skills/studio-<id>/
  *
  * Overrides (absolute paths) for tests / isolation:
  *   OPENCODE_STUDIO_CONFIG_HOME  — studio config home (roots)

@@ -1,5 +1,5 @@
 ---
-name: cad-studio
+name: studio-cad
 description: Design, modify, build, validate, or review FDM-printable multi-part CAD products with build123d, build123d-mcp, and opencode-studio.
 license: MIT
 compatibility: opencode

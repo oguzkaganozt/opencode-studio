@@ -37,19 +37,18 @@ export function skillSourcePath(packageRoot: string, studioId: StudioId) {
 }
 
 export function skillNameFor(studioId: StudioId) {
-  return `${studioId}-studio`
+  return `studio-${studioId}`
 }
 
-/** Platform media skill (always managed). */
+/** Platform media skill (always managed). Marker studioId stays `media`. */
 export const PLATFORM_MEDIA_SKILL_ID = "media" as const
-export const LEGACY_MEDIA_SKILL_NAME = "media-studio" as const
 
 export function platformMediaSkillSourcePath(packageRoot: string) {
   return path.join(packageRoot, "src", "platform", "media", "skill", "SKILL.md")
 }
 
 export function platformMediaSkillName() {
-  return PLATFORM_MEDIA_SKILL_ID
+  return "studio-media"
 }
 
 const FORGE_RUNTIME_FILES = ["pyproject.toml", "uv.lock", "forge_cli.py", ".python-version"] as const

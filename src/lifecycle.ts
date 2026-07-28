@@ -24,7 +24,6 @@ import {
 } from "./core/opencode-config"
 import {
   BUILD123D_MCP,
-  LEGACY_MEDIA_SKILL_NAME,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
   MANAGED_MCP_KEY,
@@ -215,44 +214,6 @@ async function removeManagedSkill(target: SkillTarget, userPaths: UserPathOption
   }
 }
 
-/** Remove legacy media-studio skill if still managed. */
-async function scrubLegacyMediaSkill(userPaths: UserPathOptions = {}) {
-  const skillDirectory = path.join(resolveOpenCodeSkillsHome(userPaths), LEGACY_MEDIA_SKILL_NAME)
-  const skillFile = path.join(skillDirectory, "SKILL.md")
-  const markerFile = path.join(skillDirectory, MANAGED_MARKER_NAME)
-  const existingDigest = await currentSkillDigest(skillFile)
-  if (!existingDigest) {
-    await rm(markerFile, { force: true })
-    await rmdir(skillDirectory).catch(() => {})
-    return
-  }
-  const marker = await readMarker(markerFile)
-  if (!marker || marker.digest !== existingDigest) return
-  if (marker.studioId !== "media" && marker.studioId !== LEGACY_MEDIA_SKILL_NAME) return
-  await rm(skillFile, { force: true })
-  await rm(markerFile, { force: true })
-  await rmdir(skillDirectory).catch(() => {})
-}
-
-/** Remove legacy startup-studio skill if still managed. */
-async function scrubLegacyStartupSkill(userPaths: UserPathOptions = {}) {
-  const skillDirectory = path.join(resolveOpenCodeSkillsHome(userPaths), "startup-studio")
-  const skillFile = path.join(skillDirectory, "SKILL.md")
-  const markerFile = path.join(skillDirectory, MANAGED_MARKER_NAME)
-  const existingDigest = await currentSkillDigest(skillFile)
-  if (!existingDigest) {
-    await rm(markerFile, { force: true })
-    await rmdir(skillDirectory).catch(() => {})
-    return
-  }
-  const marker = await readMarker(markerFile)
-  if (!marker || marker.digest !== existingDigest) return
-  if (marker.studioId !== "startup") return
-  await rm(skillFile, { force: true })
-  await rm(markerFile, { force: true })
-  await rmdir(skillDirectory).catch(() => {})
-}
-
 function isManagedBuild123dEntry(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false
   const entry = value as Record<string, unknown>
@@ -291,8 +252,11 @@ async function scrubProjectLocalManagedState(input: {
   validateOpenCode?: boolean
 }) {
   const cleaned: string[] = []
-  for (const studioId of STUDIO_IDS) {
-    const skillName = skillNameFor(studioId)
+  const projectTargets: Array<{ skillName: string; studioId: string }> = [
+    { skillName: platformMediaSkillName(), studioId: PLATFORM_MEDIA_SKILL_ID },
+    ...STUDIO_IDS.map((studioId) => ({ skillName: skillNameFor(studioId), studioId })),
+  ]
+  for (const { skillName, studioId } of projectTargets) {
     const skillDirectory = path.join(input.domainRoot, ".opencode", "skills", skillName)
     const skillFile = path.join(skillDirectory, "SKILL.md")
     const markerFile = path.join(skillDirectory, MANAGED_MARKER_NAME)
@@ -474,9 +438,6 @@ export async function configureStudios(
       })
     }
 
-    await scrubLegacyMediaSkill(userPaths)
-    await scrubLegacyStartupSkill(userPaths)
-
     if (nextText !== openCode.text) {
       await atomicWriteOpenCodeConfig(configPath, nextText, openCode.exists ? openCode.text : "", {
         validate: input.validateOpenCode !== false,
@@ -585,9 +546,6 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     await removeManagedSkill(target, userPaths)
     removed.push(target.id)
   }
-
-  await scrubLegacyMediaSkill(userPaths)
-  await scrubLegacyStartupSkill(userPaths)
 
   if (nextText !== openCode.text) {
     await atomicWriteOpenCodeConfig(configPath, nextText, openCode.exists ? openCode.text : "", {
