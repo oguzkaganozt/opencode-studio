@@ -51,7 +51,7 @@ function WorkspaceBadge() {
   const { data } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: api.workspace })
   if (!data) return null
   return (
-    <span className="ml-auto max-w-xs truncate font-mono text-[10px] text-[var(--osc-text-faint)]" title={data.root}>
+    <span className="pcb-workspace-badge" title={data.root}>
       {data.root}
     </span>
   )
@@ -127,26 +127,20 @@ function LoadingState({ label = "Loading…" }: { label?: string }) {
   )
 }
 
-function PageError({ message }: { message: string }) {
-  return <ErrorState className="m-6 border-0 py-20" title={message} />
+function PageError({ message, description }: { message: string; description?: string }) {
+  return <ErrorState className="m-4 border-dashed py-16 sm:m-6 sm:py-20" title={message} description={description} />
 }
 
-function PageEmpty({ label }: { label: string }) {
-  return <EmptyState className="m-6 border-0 py-20" title={label} />
+function PageEmpty({ label, description }: { label: string; description?: string }) {
+  return <EmptyState className="m-4 border-dashed py-16 sm:m-6 sm:py-20" title={label} description={description} />
 }
 
 // ── Projects Page ─────────────────────────────────────────────────────────────
 
 function ProjectCard({ project }: { project: ProjectSummary }) {
   return (
-    <Link
-      to={studioHref(`projects/${encodeURIComponent(project.id)}/schematic`)}
-      className="pcb-card group relative block overflow-hidden p-5 focus-visible:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
-    >
-      <span
-        className="absolute inset-y-0 left-0 w-0.5 bg-[var(--osc-accent)] opacity-0 transition-opacity duration-[var(--osc-motion-duration)] group-hover:opacity-100 group-focus-visible:opacity-100"
-        aria-hidden
-      />
+    <Link to={studioHref(`projects/${encodeURIComponent(project.id)}/schematic`)} className="pcb-card group">
+      <span className="pcb-card__rail" aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-[14px] font-semibold tracking-tight text-[var(--osc-text)]">{project.name}</p>
@@ -237,9 +231,11 @@ function DiagnosticsPanel({
       className="relative shrink-0 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow)]"
       aria-label="Design diagnostics"
     >
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-[var(--osc-text)] [&::-webkit-details-marker]:hidden">
-        <span className="text-[var(--osc-text-faint)]" aria-hidden="true">
-          ▸
+      <summary className="pcb-diag-summary">
+        <span className="pcb-diag-chevron" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </span>
         Design diagnostics
         {diagnostics.errorCount > 0 && <StatusBadge tone="error" label={`${diagnostics.errorCount} errors`} />}
@@ -258,9 +254,9 @@ function DiagnosticsPanel({
               showToast("Prompt ready in agent")
             }}
           >
-            Send diagnostics to agent
+            Send to agent
           </button>
-          <span className="text-[11px] text-[var(--osc-text-faint)]">Opens Agent with a draft prompt (not auto-sent)</span>
+          <span className="text-[11px] text-[var(--osc-text-faint)]">Draft prompt — not auto-sent</span>
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           {diagnostics.errors.length > 0 && <DiagnosticGroupList groups={diagnostics.errors} tone="error" />}
@@ -284,8 +280,8 @@ function ProjectsPage() {
   const { data, isLoading, error } = useQuery({ queryKey: ["pcb", "projects"], queryFn: () => api.projects({ limit: 100 }) })
 
   return (
-    <div className="mx-auto max-w-4xl px-5 py-10 sm:px-8">
-      <div className="mb-8 flex items-end justify-between gap-4">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8 sm:py-10">
+      <div className="mb-6 flex items-end justify-between gap-4 sm:mb-8">
         <div>
           <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Workspace</p>
           <h1 className="text-pretty text-xl font-semibold tracking-tight text-[var(--osc-text)] sm:text-2xl">Projects</h1>
@@ -297,11 +293,19 @@ function ProjectsPage() {
         )}
       </div>
       {isLoading && <LoadingState />}
-      {error && <PageError message={String(error)} />}
-      {data && data.projects.length === 0 && (
-        <PageEmpty label="No circuit projects found. Create a project with a src/circuit.tsx file in the workspace." />
+      {error && (
+        <PageError
+          message="Failed to load projects"
+          description={String(error)}
+        />
       )}
-      {data && (
+      {data && data.projects.length === 0 && (
+        <PageEmpty
+          label="No circuit projects yet"
+          description="Create a project with src/circuit.tsx in the workspace (pcb_project_create), then build with the agent."
+        />
+      )}
+      {data && data.projects.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {data.projects.map((p) => (
             <ProjectCard key={p.id} project={p} />
@@ -457,16 +461,19 @@ function ProjectPage() {
 
   return (
     <Shell fill>
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-4 py-4 sm:px-6">
+      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 py-3 sm:px-6 sm:py-4">
         <div className="min-w-0 shrink-0 space-y-1">
           <div className="flex min-w-0 items-center gap-2">
-            <Link to={studioHref()} className="shrink-0 text-sm text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]">
+            <Link
+              to={studioHref()}
+              className="shrink-0 rounded-[var(--osc-radius-md)] px-1.5 py-1 text-sm text-[var(--osc-text-muted)] transition-colors hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]"
+            >
               ← Projects
             </Link>
             <span className="shrink-0 text-[var(--osc-border-strong)]" aria-hidden>
               /
             </span>
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-[var(--osc-text)]">{project.name}</h1>
+            <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-[var(--osc-text)] sm:text-lg">{project.name}</h1>
           </div>
           <p className="truncate font-mono text-[11px] text-[var(--osc-text-faint)]" title={project.path}>
             {project.path}
@@ -478,12 +485,12 @@ function ProjectPage() {
           {buildState.status === "stale" && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--osc-stale)]/30 bg-[var(--osc-stale-bg)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--osc-stale)]">
               <span className="size-1.5 shrink-0 rounded-full bg-[var(--osc-stale)]" aria-hidden />
-              Source changed — rebuild with agent tools
+              Source changed — rebuild
             </span>
           )}
           {project.hasGerbersZip && id && (
             <a href={api.gerbersZipUrl(id)} download className="pcb-chip">
-              Download Gerbers ↓
+              Gerbers ↓
             </a>
           )}
           {project.assemblyReady && id && (
@@ -492,9 +499,9 @@ function ProjectPage() {
             </a>
           )}
           {!project.built && (
-            <p className="ml-1 text-xs text-[var(--osc-warning)]">
-              Run <code className="rounded-[var(--osc-radius-sm)] bg-[var(--osc-surface)] px-1 font-mono text-[11px]">pcb_circuit_build</code> to
-              build this project.
+            <p className="w-full text-xs text-[var(--osc-warning)] sm:ml-1 sm:w-auto">
+              Run <code className="rounded-[var(--osc-radius-sm)] bg-[var(--osc-surface)] px-1 font-mono text-[11px]">pcb_circuit_build</code>{" "}
+              to build.
             </p>
           )}
         </div>
@@ -503,14 +510,14 @@ function ProjectPage() {
           <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} />
         )}
 
-        <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-[var(--osc-border)]" role="tablist" aria-label="Project views">
+        <div className="pcb-tablist" role="tablist" aria-label="Project views">
           {VIEW_TABS.map((t) => (
             <Link
               key={t}
               role="tab"
               aria-selected={tab === t}
               to={studioHref(`projects/${encodeURIComponent(id!)}/${t}`)}
-              className={cn("pcb-tab shrink-0 sm:px-4", tab === t && "font-semibold")}
+              className="pcb-tab shrink-0"
             >
               {tabLabel(t)}
             </Link>
@@ -596,8 +603,8 @@ function CatalogPage() {
 
   return (
     <Shell>
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-        <div className="mb-6 flex items-end justify-between gap-4">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+        <div className="mb-5 flex items-end justify-between gap-4 sm:mb-6">
           <div>
             <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Library</p>
             <h1 className="text-pretty text-xl font-semibold tracking-tight text-[var(--osc-text)] sm:text-2xl">Component Catalog</h1>
@@ -619,17 +626,24 @@ function CatalogPage() {
             name="catalog-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by MPN, manufacturer, description…"
+            placeholder="Search MPN, manufacturer…"
             autoComplete="off"
             spellCheck={false}
-            className="pcb-input w-full px-4 py-2.5"
+            className="pcb-input w-full px-3 py-2 sm:px-4 sm:py-2.5"
           />
         </div>
 
         {isLoading && <LoadingState />}
-        {error && <PageError message={String(error)} />}
+        {error && <PageError message="Failed to load catalog" description={String(error)} />}
         {data && data.parts.length === 0 && (
-          <PageEmpty label={search ? "No parts match your search." : "No catalog parts found in the workspace."} />
+          <PageEmpty
+            label={search ? "No parts match" : "Catalog is empty"}
+            description={
+              search
+                ? "Try a shorter MPN or manufacturer token."
+                : "Add parts under the workspace catalog directory, or search after parts exist."
+            }
+          />
         )}
 
         {data && data.parts.length > 0 && (

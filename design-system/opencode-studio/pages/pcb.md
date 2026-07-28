@@ -4,21 +4,25 @@ Overrides MASTER for PCB studio viewer.
 
 ## Intent
 Project browser + circuit inspection. Mid density tables; cyan accent for MPN/links only. Host shell stays locked.
+Mobile: touch tab strip, compact chips, dashed empty wells.
 
 ## Surfaces
-- Subnav: Projects | Catalog (uses host `.studio-subnav`)
-- Projects grid: elevated cards, health badges, path mono
+- Subnav: Projects | Catalog (host `.studio-subnav`); workspace path badge ≥md only
+- Projects grid: `.pcb-card` + accent rail on hover/focus; health badges; path mono
 - Project detail: crumb + health + downloads + diagnostics + view tabs
-- Tabs: Schematic · PCB · BOM · 3D · Circuit JSON
-- Catalog: search + table + part modal
+- Tabs: Schematic · PCB Layout · BOM · 3D · Circuit JSON (`.pcb-tablist` scroll, no scrollbar chrome)
+- Catalog: search + table (min-width scroll) + part modal
 
 ## Chrome rules
 - Radius via `--osc-radius-*`; no pill CTAs
-- Status: success/warning/error tokens + mono-ish compact badges
-- Active tab: text + border with `--osc-text` (or accent hairline)
+- Status: success/warning/error tokens + mono compact badges
+- Active tab: accent underline + semibold text
 - MPN / datasheet links: `--osc-accent` (PCB cyan)
-- Loading: skeleton or spinner; honor reduced-motion
+- Empty/error: dashed `EmptyState` / `ErrorState` with short recovery copy
+- Loading: `.pcb-skeleton` + label; honor reduced-motion
+- Diagnostics: chevron summary; “Send to agent” chip
 - Keep routes, SSE stale, agent diagnostics handoff, downloads
 
 ## Compact
 No dual side rails like CAD — agent open is fine; no special collapse required.
+Tab labels may truncate horizontally via scroll; hit targets ≥40px on narrow.

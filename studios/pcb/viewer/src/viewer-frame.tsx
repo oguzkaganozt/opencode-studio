@@ -16,7 +16,7 @@ export function ViewerFrame({
   return (
     <div
       ref={ref}
-      className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-md ${className}`}
+      className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] ${className}`}
       style={{ minHeight: "min(560px, 50dvh)" }}
     >
       {ready ? (
