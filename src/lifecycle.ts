@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises"
+import { copyFile, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import {
@@ -24,9 +24,11 @@ import {
   resolveOpenCodeConfigPath,
 } from "./core/opencode-config"
 import {
-  BUILD123D_MCP,
+  build123dMcpEntry,
+  BUILD123D_MCP_PACKAGE,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
+  MANAGED_MEDIA_GO_PLUGIN_NAME,
   MANAGED_MCP_KEY,
   type PackageMeta,
   PLATFORM_MEDIA_SKILL_ID,
@@ -40,7 +42,7 @@ import { packageRootFrom, resolveWorkspace } from "./core/paths"
 import type { StudioDoctorCheck, StudioId } from "./core/registry"
 import { CATALOG_ORDER, STUDIO_IDS } from "./core/registry"
 import { assertNotRoot } from "./core/security"
-import { pickUserPaths, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
+import { pickUserPaths, resolveOpenCodePluginsHome, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
 import { probeLocalStudioHost } from "./studio-host-bind"
 import { getStudioDefinition } from "./studios"
 
@@ -220,7 +222,32 @@ function isManagedBuild123dEntry(value: unknown) {
   if (entry.type !== "local") return false
   if (!Array.isArray(entry.command)) return false
   const command = entry.command.map(String)
-  return command.some((part) => part.includes("build123d-mcp"))
+  return command.some((part) => part.includes("build123d-mcp") || part.includes(BUILD123D_MCP_PACKAGE.split("@")[0]!))
+}
+
+function isManagedMediaGoPluginEntry(entry: unknown) {
+  const s = String(entry)
+  if (s.includes("media-go.js") || s.includes("/media-go")) return true
+  const base = pluginBaseName(entry)
+  return base === MANAGED_MEDIA_GO_PLUGIN_NAME || base?.endsWith("/media-go") === true || base?.endsWith("media-go.js") === true
+}
+
+/** Copy bundled media-go into OpenCode plugins/ for a short, stable file:// entry. */
+async function installManagedMediaGoPlugin(packageRoot: string, userPaths: UserPathOptions) {
+  const source = path.join(packageRoot, "dist", "media-go.js")
+  if (!(await Bun.file(source).exists())) {
+    throw new Error(`media-go build missing at ${source}; run bun run build`)
+  }
+  const pluginsHome = resolveOpenCodePluginsHome(userPaths)
+  await mkdir(pluginsHome, { recursive: true, mode: 0o755 })
+  const target = path.join(pluginsHome, MANAGED_MEDIA_GO_PLUGIN_NAME)
+  await copyFile(source, target)
+  return pathToFileURL(target).href
+}
+
+async function removeManagedMediaGoPluginFile(userPaths: UserPathOptions) {
+  const target = path.join(resolveOpenCodePluginsHome(userPaths), MANAGED_MEDIA_GO_PLUGIN_NAME)
+  await rm(target, { force: true }).catch(() => {})
 }
 
 async function resolveDomainRootOptional(explicit?: string) {
@@ -372,17 +399,21 @@ export async function configureStudios(
   const openCode = await readOpenCodeConfig(configPath)
   let plugins = [...pluginEntries(openCode)]
 
-  const mediaGoFile = pathToFileURL(path.join(packageRoot, "dist", "media-go.js")).href
+  // Short stable path under OpenCode home (avoids long global node_modules file:// URLs in UI).
+  const mediaGoFile = input.dryRun
+    ? pathToFileURL(path.join(resolveOpenCodePluginsHome(userPaths), MANAGED_MEDIA_GO_PLUGIN_NAME)).href
+    : await installManagedMediaGoPlugin(packageRoot, userPaths)
   plugins = plugins.filter((entry) => {
+    if (isManagedMediaGoPluginEntry(entry)) return false
     const s = String(entry)
-    if (s.includes("opencode-studio") || s.includes("media-go.js")) return false
+    if (s.includes("opencode-studio")) return false
     const base = pluginBaseName(entry)
     if (!base) return true
     if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
     return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
   plugins.push(meta.pluginSpecifier)
-  // OpenCode 1.18: npm plugins need main or exports["./server"]. Subpath is not a server entry.
+  // OpenCode 1.18: npm subpath is not a server entry — auxiliary media-go via managed file://.
   plugins.push(mediaGoFile)
 
   let nextText = configWithPlugins(openCode, plugins)
@@ -394,7 +425,9 @@ export async function configureStudios(
   if (existingMcp && !isManagedBuild123dEntry(existingMcp)) {
     throw new Error(`Conflict: mcp.${MANAGED_MCP_KEY} exists and is not the managed build123d-mcp entry`)
   }
-  mcp[MANAGED_MCP_KEY] = { ...BUILD123D_MCP }
+  // Absolute uv path: OpenCode serve often lacks ~/.local/bin on PATH.
+  const uv = await ensureUv()
+  mcp[MANAGED_MCP_KEY] = build123dMcpEntry(uv.path)
   nextText = configWithMcp({ ...working, text: nextText }, mcp)
   workingValue = { ...workingValue, mcp }
   working = { ...working, text: nextText, value: workingValue }
@@ -523,8 +556,9 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
   const openCode = await readOpenCodeConfig(configPath)
   let plugins = [...pluginEntries(openCode)]
   plugins = plugins.filter((entry) => {
+    if (isManagedMediaGoPluginEntry(entry)) return false
     const s = String(entry)
-    if (s.includes("opencode-studio") || s.includes("media-go.js")) return false
+    if (s.includes("opencode-studio")) return false
     const base = pluginBaseName(entry)
     if (!base) return true
     if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
@@ -544,6 +578,8 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     delete mcp[MANAGED_MCP_KEY]
   }
   nextText = configWithMcp({ ...working, text: nextText }, mcp)
+
+  await removeManagedMediaGoPluginFile(userPaths)
 
   const removed: string[] = []
   for (const target of skillTargets) {
@@ -703,13 +739,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     const openCode = await readOpenCodeConfig(openCodePath)
     const entries = pluginEntries(openCode)
     const registered = entries.some((entry) => pluginEntryMatches(entry, meta.name) || pluginEntryMatches(entry, meta.pluginSpecifier))
-    const mediaGo = entries.some((entry) => {
-      const base = pluginBaseName(entry)
-      const s = String(entry)
-      return (
-        base === `${meta.name}/media-go` || base?.endsWith("/media-go") === true || s.includes("/media-go") || s.includes("media-go.js")
-      )
-    })
+    const mediaGo = entries.some((entry) => isManagedMediaGoPluginEntry(entry))
     checks.push({
       id: "plugin-registration",
       status: registered ? "pass" : "warn",
@@ -719,14 +749,20 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     checks.push({
       id: "plugin-media-go",
       status: mediaGo ? "pass" : "warn",
-      message: mediaGo ? "media-go auxiliary plugin registered" : "media-go not registered",
+      message: mediaGo ? "media-go auxiliary plugin registered (OpenCode plugins/)" : "media-go not registered",
       repair: mediaGo ? undefined : "Run opencode-studio repair",
     })
-    const hasMcp = isManagedBuild123dEntry(mcpEntries(openCode)[MANAGED_MCP_KEY])
+    const mcpEntry = mcpEntries(openCode)[MANAGED_MCP_KEY]
+    const hasMcp = isManagedBuild123dEntry(mcpEntry)
+    const mcpCommand = hasMcp && mcpEntry && typeof mcpEntry === "object" ? (mcpEntry as { command?: unknown }).command : null
+    const mcpUv = Array.isArray(mcpCommand) ? String(mcpCommand[0] ?? "") : ""
+    const mcpUvOk = mcpUv.length > 0 && (mcpUv.includes("/") || mcpUv === "uv")
     checks.push({
       id: "mcp-build123d",
       status: hasMcp ? "pass" : "warn",
-      message: hasMcp ? `build123d MCP registered in ${openCodePath}` : `build123d MCP not registered in ${openCodePath}`,
+      message: hasMcp
+        ? `build123d MCP registered (${mcpUvOk && mcpUv.includes("/") ? "absolute uv" : "uv"}) in ${openCodePath}`
+        : `build123d MCP not registered in ${openCodePath}`,
       repair: hasMcp ? undefined : "Run opencode-studio repair",
     })
   } catch (error) {

@@ -53,6 +53,11 @@ export function resolveOpenCodeSkillsHome(options: UserPathOptions = {}) {
   return path.join(resolveOpenCodeHome(options), "skills")
 }
 
+/** Managed OpenCode plugin drop-ins (short file:// paths for UI). */
+export function resolveOpenCodePluginsHome(options: UserPathOptions = {}) {
+  return path.join(resolveOpenCodeHome(options), "plugins")
+}
+
 /** Pick only user-path fields from a larger options bag. */
 export function pickUserPaths(input: UserPathOptions): UserPathOptions {
   return {

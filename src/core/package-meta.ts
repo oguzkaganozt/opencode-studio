@@ -101,12 +101,24 @@ export function forgeProjectDir(_packageRoot?: string) {
   return forgeRuntimeDir()
 }
 
-export const BUILD123D_MCP = {
-  type: "local",
-  command: ["uv", "tool", "run", "--python", "3.12", "build123d-mcp@0.3.77"],
-  timeout: 120_000,
-  enabled: true,
-} as const
+/** Pin for managed build123d MCP; `uv` path is resolved at configure time. */
+export const BUILD123D_MCP_PACKAGE = "build123d-mcp@0.3.80"
+export const BUILD123D_MCP_PYTHON = "3.12"
+export const BUILD123D_MCP_TIMEOUT_MS = 120_000
+
+export function build123dMcpEntry(uvPath: string) {
+  return {
+    type: "local" as const,
+    command: [uvPath, "tool", "run", "--python", BUILD123D_MCP_PYTHON, BUILD123D_MCP_PACKAGE],
+    timeout: BUILD123D_MCP_TIMEOUT_MS,
+    enabled: true as const,
+  }
+}
+
+/** @deprecated Prefer build123dMcpEntry(uvPath) so OpenCode can find uv outside PATH. */
+export const BUILD123D_MCP = build123dMcpEntry("uv")
 
 export const MANAGED_MCP_KEY = "build123d"
 export const MANAGED_MARKER_NAME = ".opencode-studio-managed.json"
+/** Short managed path under OpenCode home for the media-go auxiliary plugin. */
+export const MANAGED_MEDIA_GO_PLUGIN_NAME = "media-go.js"
