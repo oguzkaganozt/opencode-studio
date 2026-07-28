@@ -7,6 +7,7 @@ import { PartDetailModal } from "./part-detail"
 
 function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEntry) => void }) {
   const clickable = Boolean(entry.mpn && onSelect)
+  const datasheetHref = entry.datasheet ? safeHref(entry.datasheet) : null
   return (
     <tr
       className={`border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)] ${clickable ? "cursor-pointer" : ""}`}
@@ -31,9 +32,9 @@ function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEn
         {entry.description ?? "—"}
       </td>
       <td className="px-4 py-2.5 text-sm">
-        {entry.datasheet && safeHref(entry.datasheet) && (
+        {datasheetHref && (
           <a
-            href={safeHref(entry.datasheet)!}
+            href={datasheetHref}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--osc-accent)] hover:opacity-80 text-xs"

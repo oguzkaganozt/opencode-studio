@@ -124,17 +124,19 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       throw new Error(`opencode-studio: failed to initialize platform media: ${message}`)
     }
 
-    for (const studioId of allStudioIds()) {
-      try {
-        const load = pluginLoaders[studioId]
-        const plugin = await load(loadCtx)
-        contributions.push({ studioId, hooks: await plugin(context, {}) })
-      } catch (loadError) {
-        const message = loadError instanceof Error ? loadError.message : String(loadError)
-        console.error(`[opencode-studio] failed to initialize studio "${studioId}": ${message}`)
-        throw new Error(`opencode-studio: failed to initialize studio "${studioId}": ${message}`)
-      }
-    }
+    const studioHooks = await Promise.all(
+      allStudioIds().map(async (studioId) => {
+        try {
+          const plugin = await pluginLoaders[studioId](loadCtx)
+          return { studioId, hooks: await plugin(context, {}) }
+        } catch (loadError) {
+          const message = loadError instanceof Error ? loadError.message : String(loadError)
+          console.error(`[opencode-studio] failed to initialize studio "${studioId}": ${message}`)
+          throw new Error(`opencode-studio: failed to initialize studio "${studioId}": ${message}`)
+        }
+      }),
+    )
+    contributions.push(...studioHooks)
 
     return composeStudioPlugins(contributions)
   }

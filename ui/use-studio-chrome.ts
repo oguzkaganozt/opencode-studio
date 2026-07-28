@@ -25,19 +25,13 @@ export function useStudioChrome() {
     })
   }, [])
 
-  const setAgentOpenPersisted = useCallback((next: boolean | ((value: boolean) => boolean)) => {
-    setAgentOpen((current) => {
-      return typeof next === "function" ? next(current) : next
-    })
+  const toggleAgent = useCallback(() => {
+    setAgentOpen((value) => !value)
   }, [])
 
-  const toggleAgent = useCallback(() => {
-    setAgentOpenPersisted((value) => !value)
-  }, [setAgentOpenPersisted])
-
   const closeAgent = useCallback(() => {
-    setAgentOpenPersisted(false)
-  }, [setAgentOpenPersisted])
+    setAgentOpen(false)
+  }, [])
 
   const openDrawer = useCallback((panel: DrawerPanel = "nav") => {
     setDrawerPanel(panel)
@@ -58,7 +52,6 @@ export function useStudioChrome() {
     agentOpen,
     agentStatus,
     setAgentStatus,
-    setAgentOpenPersisted,
     toggleAgent,
     closeAgent,
     agentStatusLabel: agentStatusLabel(agentStatus),

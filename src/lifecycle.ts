@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto"
+import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -75,9 +75,7 @@ async function readMarker(markerFile: string): Promise<ManagedMarker | null> {
 
 async function currentSkillDigest(skillFile: string) {
   try {
-    return createHash("sha256")
-      .update(await readFile(skillFile))
-      .digest("hex")
+    return await skillDigest(skillFile)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
     throw error
@@ -720,7 +718,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     })
     checks.push({
       id: "plugin-media-go",
-      status: mediaGo || !registered ? (mediaGo ? "pass" : "warn") : "warn",
+      status: mediaGo ? "pass" : "warn",
       message: mediaGo ? "media-go auxiliary plugin registered" : "media-go not registered",
       repair: mediaGo ? undefined : "Run opencode-studio repair",
     })

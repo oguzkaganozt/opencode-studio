@@ -145,14 +145,18 @@ function diagnosticTargets(byId: Map<string, CircuitElement>, diagnostic: Circui
   return targets
 }
 
-function diagnosticGroups(elements: CircuitElement[], suffix: "_error" | "_warning"): DiagnosticGroup[] {
-  const groups = new Map<string, { count: number; messages: string[]; targets: DiagnosticTarget[] }>()
+function elementByIdMap(elements: CircuitElement[]) {
   const byId = new Map<string, CircuitElement>()
   for (const element of elements) {
     if (typeof element.type !== "string") continue
     const id = element[`${element.type}_id`]
     if (typeof id === "string") byId.set(id, element)
   }
+  return byId
+}
+
+function diagnosticGroups(elements: CircuitElement[], suffix: "_error" | "_warning", byId: Map<string, CircuitElement>): DiagnosticGroup[] {
+  const groups = new Map<string, { count: number; messages: string[]; targets: DiagnosticTarget[] }>()
 
   for (const element of elements) {
     if (typeof element.type !== "string" || !element.type.endsWith(suffix)) continue
@@ -173,8 +177,9 @@ function diagnosticGroups(elements: CircuitElement[], suffix: "_error" | "_warni
 
 export function inspectCircuitJson(value: unknown): CircuitInspection {
   const elements = parseCircuitJson(value)
-  const errors = diagnosticGroups(elements, "_error")
-  const warnings = diagnosticGroups(elements, "_warning")
+  const byId = elementByIdMap(elements)
+  const errors = diagnosticGroups(elements, "_error", byId)
+  const warnings = diagnosticGroups(elements, "_warning", byId)
   const errorCount = errors.reduce((total, group) => total + group.count, 0)
   const warningCount = warnings.reduce((total, group) => total + group.count, 0)
 
@@ -187,16 +192,16 @@ export function inspectCircuitJson(value: unknown): CircuitInspection {
   }
 }
 
-export function manufacturingBlockers(value: unknown): ManufacturingBlocker[] {
+export function manufacturingBlockers(value: unknown, inspection?: CircuitInspection): ManufacturingBlocker[] {
   const elements = parseCircuitJson(value)
-  const inspection = inspectCircuitJson(elements)
+  const resolved = inspection ?? inspectCircuitJson(elements)
   const blockers: ManufacturingBlocker[] = []
 
-  if (!inspection.designValid) {
+  if (!resolved.designValid) {
     blockers.push({
       type: "invalid_design",
-      count: inspection.errorCount,
-      messages: inspection.errors.flatMap((group) => group.messages).slice(0, WARNING_SAMPLE_LIMIT),
+      count: resolved.errorCount,
+      messages: resolved.errors.flatMap((group) => group.messages).slice(0, WARNING_SAMPLE_LIMIT),
     })
   }
 
@@ -208,7 +213,7 @@ export function manufacturingBlockers(value: unknown): ManufacturingBlocker[] {
     blockers.push({ type: "placeholder_component", count: placeholders.length, messages: placeholders })
   }
 
-  const footprintMismatches = inspection.warnings.find((group) => group.type === "supplier_footprint_mismatch_warning")
+  const footprintMismatches = resolved.warnings.find((group) => group.type === "supplier_footprint_mismatch_warning")
   if (footprintMismatches) {
     blockers.push({
       type: "supplier_footprint_mismatch",
@@ -249,7 +254,7 @@ export function manufacturingBlockers(value: unknown): ManufacturingBlocker[] {
     })
   }
 
-  const unconnectedPins = inspection.warnings.find((group) => group.type === "source_pin_missing_trace_warning")
+  const unconnectedPins = resolved.warnings.find((group) => group.type === "source_pin_missing_trace_warning")
   if (unconnectedPins) {
     blockers.push({ type: "unconnected_pin", count: unconnectedPins.count, messages: unconnectedPins.messages })
   }

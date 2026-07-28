@@ -176,7 +176,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                     id: artifact.id,
                     engine: artifact.build.engine,
                     manifestPath,
-                    exists: await fileExists(manifestPath),
+                    exists: true,
                     parts: await Promise.all(
                       artifact.parts.map(async (part) => ({
                         id: part.id,

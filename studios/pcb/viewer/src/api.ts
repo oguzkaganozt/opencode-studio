@@ -1,17 +1,12 @@
-function apiBase() {
-  return (window as any).__OPENCODE_STUDIO__?.apiBase ?? "/api/studios/pcb"
-}
+import { apiBase as runtimeApiBase, studioHref as runtimeStudioHref } from "@ui/studio-context"
 
 function apiPath(path: string) {
-  return `${apiBase().replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`
+  const base = runtimeApiBase("/api/studios/pcb").replace(/\/$/, "")
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`
 }
 
 export function studioHref(path = "") {
-  const runtime = (window as any).__OPENCODE_STUDIO__ as { uiBase?: string } | undefined
-  const base = (runtime?.uiBase ?? "").replace(/\/$/, "")
-  const suffix = path.replace(/^\//, "")
-  if (!base) return suffix ? `/${suffix}` : "/"
-  return suffix ? `${base}/${suffix}` : base
+  return runtimeStudioHref(path)
 }
 
 export type ProjectSummary = {

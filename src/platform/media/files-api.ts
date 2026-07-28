@@ -5,6 +5,7 @@ import { Readable } from "node:stream"
 import { fileTypeFromBuffer } from "file-type"
 import { Hono } from "hono"
 import { isInside } from "../../core/paths"
+import { safeContentDisposition } from "../../core/security"
 
 const DETECTION_BYTES = 64 * 1024
 const MAX_TEXT_PREVIEW = 1_048_576
@@ -264,7 +265,7 @@ export async function createFilesApi(workspaceRoot: string) {
       "X-Content-Type-Options": "nosniff",
     }
     if (download) {
-      headers["Content-Disposition"] = `attachment; filename="${path.basename(relative).replace(/"/g, "")}"`
+      headers["Content-Disposition"] = safeContentDisposition(path.basename(relative))
     }
 
     if (range) {

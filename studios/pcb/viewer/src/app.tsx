@@ -548,6 +548,7 @@ function ProjectPage() {
 // ── Catalog Page ──────────────────────────────────────────────────────────────
 
 function PartRow({ part, onClick }: { part: PartSummary; onClick: () => void }) {
+  const datasheetHref = part.datasheet ? safeHref(part.datasheet) : null
   return (
     <tr
       className="cursor-pointer border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)] focus-visible:bg-[var(--osc-surface-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--osc-text)]"
@@ -566,9 +567,9 @@ function PartRow({ part, onClick }: { part: PartSummary; onClick: () => void }) 
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.description ?? "—"}</td>
       <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.category ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm">
-        {part.datasheet && safeHref(part.datasheet) && (
+        {datasheetHref && (
           <a
-            href={safeHref(part.datasheet)!}
+            href={datasheetHref}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-[var(--osc-accent)] hover:opacity-80"

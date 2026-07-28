@@ -67,7 +67,7 @@ export async function downloadMedia(input: {
     if (!detected || !modality) throw new Error("Downloaded content is not supported media")
 
     const defaultName = `download-${Date.now()}-${randomUUID().slice(0, 8)}.${detected.ext}`
-    const outputPath = personalOutputPath(input.library, modality, input.outputPath, defaultName)
+    const outputPath = personalOutputPath(input.library, input.outputPath, defaultName)
     const target = await prepareNewOutput({ root: input.library.root, outputPath, ask: input.ask })
     await verifyOutputParent(input.library.root, target.outputPath)
     try {

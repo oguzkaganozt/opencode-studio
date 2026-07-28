@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto"
 import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { ensureUv } from "../../src/core/engines"
+import { isInside } from "../../src/core/paths"
 import { resolveDesignDirectory, type StudioLayout } from "./library"
 import { readArtifactManifest, readDesignManifest, scaffoldDesignManifest } from "./manifest"
-import { isInside } from "./studio-path"
 
 const FORGE_TIMEOUT_MS = 120_000
 const FORGE_KILL_GRACE_MS = 2_000

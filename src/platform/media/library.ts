@@ -48,7 +48,7 @@ export function defaultOutputPath(layout: LibraryLayout, filename: string) {
  * - absolute or relative paths allowed if inside workspace
  * - bare filename or omitted → workspace/media/<filename>
  */
-export function personalOutputPath(layout: LibraryLayout, _modality: LibraryModality, requested: string | undefined, filename: string) {
+export function personalOutputPath(layout: LibraryLayout, requested: string | undefined, filename: string) {
   const resolved = (() => {
     if (!requested) return defaultOutputPath(layout, filename)
     if (path.isAbsolute(requested)) return path.normalize(requested)
@@ -204,10 +204,16 @@ export async function scanLibrary(input: {
   candidates.sort((left, right) => path.relative(input.root, left).localeCompare(path.relative(input.root, right), "en-US"))
 
   const assets: ManagedAsset[] = []
+  let skipped = 0
   for (const candidate of candidates) {
+    if (assets.length >= input.limit) break
     try {
       const asset = await inspectMediaFile(input.root, candidate)
       if (input.modality && asset.modality !== input.modality) continue
+      if (skipped < input.offset) {
+        skipped += 1
+        continue
+      }
       assets.push(asset)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
@@ -216,7 +222,7 @@ export async function scanLibrary(input: {
       }
     }
   }
-  return assets.slice(input.offset, input.offset + input.limit)
+  return assets
 }
 
 export async function ensureMediaDir(layout: LibraryLayout) {

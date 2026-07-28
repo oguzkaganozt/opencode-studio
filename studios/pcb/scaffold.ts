@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { isInside } from "./studio-path"
+import { isInside } from "../../src/core/paths"
 import { basicProjectTemplate } from "./templates"
 
 export type ScaffoldResult = {

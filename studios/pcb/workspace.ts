@@ -46,75 +46,84 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
     return
   }
 
-  // A directory is a circuit project if it has src/circuit.tsx
   const circuitSource = path.join(dir, "src", "circuit.tsx")
   if (await regularFileExists(circuitSource)) {
-    let canonicalDir: string
-    try {
-      canonicalDir = await realpath(dir)
-    } catch {
-      return
-    }
-    if (!isInside(workspaceRoot, canonicalDir) && canonicalDir !== path.resolve(workspaceRoot)) return
-
-    const relativePath = path.relative(workspaceRoot, canonicalDir) || "."
-    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return
-
-    const circuitJsonPath = path.join(canonicalDir, "dist", "src", "circuit", "circuit.json")
-    const schematicSvgPath = path.join(canonicalDir, "dist", "schematic.svg")
-    const pcbSvgPath = path.join(canonicalDir, "dist", "pcb.svg")
-    const gerbersZipPath = path.join(canonicalDir, "dist", "circuit-gerbers.zip")
-
-    const [hasCircuitJson, hasSchematicSvg, hasPcbSvg, hasGerbersZip] = await Promise.all([
-      regularFileExists(circuitJsonPath),
-      regularFileExists(schematicSvgPath),
-      regularFileExists(pcbSvgPath),
-      regularFileExists(gerbersZipPath),
-    ])
-    let inspection: CircuitInspection | null = null
-    let fabricationReady: boolean | null = null
-    let assemblyReady: boolean | null = null
-    if (hasCircuitJson) {
-      try {
-        const circuit = await readCircuitJson(workspaceRoot, circuitJsonPath)
-        inspection = inspectCircuitJson(circuit)
-        fabricationReady = manufacturingBlockers(circuit).length === 0
-        assemblyReady = fabricationReady && generateBom(circuit).bomComplete
-      } catch {
-        // Keep malformed or transient build artifacts distinguishable from valid designs.
-      }
-    }
-
-    projects.push({
-      id: encodeProjectId(relativePath),
-      name: path.basename(canonicalDir),
-      relativePath,
-      absolutePath: canonicalDir,
-      circuitSource: path.join(canonicalDir, "src", "circuit.tsx"),
-      hasCircuitJson,
-      hasSchematicSvg,
-      hasPcbSvg,
-      hasGerbersZip,
-      circuitJsonPath: hasCircuitJson ? circuitJsonPath : null,
-      schematicSvgPath: hasSchematicSvg ? schematicSvgPath : null,
-      pcbSvgPath: hasPcbSvg ? pcbSvgPath : null,
-      gerbersZipPath: hasGerbersZip ? gerbersZipPath : null,
-      inspection,
-      fabricationReady,
-      assemblyReady,
-    })
-    return // Don't recurse into a project directory
+    const project = await loadProjectAt(workspaceRoot, dir)
+    if (project) projects.push(project)
+    return
   }
 
-  for (const entry of entries) {
-    const entryPath = path.join(dir, entry)
+  const children = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(dir, entry)
+      try {
+        const info = await lstat(entryPath)
+        if (info.isSymbolicLink() || !info.isDirectory()) return null
+        return entryPath
+      } catch {
+        return null
+      }
+    }),
+  )
+  for (const child of children) {
+    if (child) await walkDir(workspaceRoot, child, projects, depth + 1)
+  }
+}
+
+async function loadProjectAt(workspaceRoot: string, dir: string): Promise<CircuitProject | null> {
+  let canonicalDir: string
+  try {
+    canonicalDir = await realpath(dir)
+  } catch {
+    return null
+  }
+  if (!isInside(workspaceRoot, canonicalDir) && canonicalDir !== path.resolve(workspaceRoot)) return null
+
+  const relativePath = path.relative(workspaceRoot, canonicalDir) || "."
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return null
+
+  const circuitJsonPath = path.join(canonicalDir, "dist", "src", "circuit", "circuit.json")
+  const schematicSvgPath = path.join(canonicalDir, "dist", "schematic.svg")
+  const pcbSvgPath = path.join(canonicalDir, "dist", "pcb.svg")
+  const gerbersZipPath = path.join(canonicalDir, "dist", "circuit-gerbers.zip")
+
+  const [hasCircuitJson, hasSchematicSvg, hasPcbSvg, hasGerbersZip] = await Promise.all([
+    regularFileExists(circuitJsonPath),
+    regularFileExists(schematicSvgPath),
+    regularFileExists(pcbSvgPath),
+    regularFileExists(gerbersZipPath),
+  ])
+  let inspection: CircuitInspection | null = null
+  let fabricationReady: boolean | null = null
+  let assemblyReady: boolean | null = null
+  if (hasCircuitJson) {
     try {
-      const info = await lstat(entryPath)
-      if (info.isSymbolicLink()) continue
-      if (info.isDirectory()) await walkDir(workspaceRoot, entryPath, projects, depth + 1)
+      const circuit = await readCircuitJson(workspaceRoot, circuitJsonPath)
+      inspection = inspectCircuitJson(circuit)
+      fabricationReady = manufacturingBlockers(circuit, inspection).length === 0
+      assemblyReady = fabricationReady && generateBom(circuit).bomComplete
     } catch {
-      // skip unreadable entries
+      // Keep malformed or transient build artifacts distinguishable from valid designs.
     }
+  }
+
+  return {
+    id: encodeProjectId(relativePath),
+    name: path.basename(canonicalDir),
+    relativePath,
+    absolutePath: canonicalDir,
+    circuitSource: path.join(canonicalDir, "src", "circuit.tsx"),
+    hasCircuitJson,
+    hasSchematicSvg,
+    hasPcbSvg,
+    hasGerbersZip,
+    circuitJsonPath: hasCircuitJson ? circuitJsonPath : null,
+    schematicSvgPath: hasSchematicSvg ? schematicSvgPath : null,
+    pcbSvgPath: hasPcbSvg ? pcbSvgPath : null,
+    gerbersZipPath: hasGerbersZip ? gerbersZipPath : null,
+    inspection,
+    fabricationReady,
+    assemblyReady,
   }
 }
 
@@ -138,8 +147,16 @@ export function decodeProjectId(id: string): string {
 
 export async function resolveProject(workspaceRoot: string, id: string): Promise<CircuitProject> {
   const relativePath = decodeProjectId(id)
-  const projects = await discoverProjects(workspaceRoot)
-  const project = projects.find((p) => p.relativePath === relativePath)
+  if (relativePath.includes("\0") || path.isAbsolute(relativePath) || relativePath.split(path.sep).includes("..")) {
+    throw new Error(`Project not found: ${relativePath}`)
+  }
+  const root = path.resolve(workspaceRoot)
+  const absolutePath = relativePath === "." ? root : path.resolve(root, relativePath)
+  if (!isInside(root, absolutePath) && absolutePath !== root) throw new Error(`Project not found: ${relativePath}`)
+  if (!(await regularFileExists(path.join(absolutePath, "src", "circuit.tsx")))) {
+    throw new Error(`Project not found: ${relativePath}`)
+  }
+  const project = await loadProjectAt(root, absolutePath)
   if (!project) throw new Error(`Project not found: ${relativePath}`)
   return project
 }

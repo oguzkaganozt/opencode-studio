@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { lazy, Suspense, useEffect, useId, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
 import { Badge } from "./components/badge"
 import { Button } from "./components/button"
 import { FilesExplorer } from "./files-explorer"
+import { fetchJson } from "./lib/fetch-json"
+import { useFocusTrap } from "./lib/focus-trap"
 import { NativeAgentFrame } from "./native-agent-frame"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 import { readThemePreference, setThemePreference, type ThemePreference } from "./theme"
@@ -108,15 +110,6 @@ function StudioHealthBadges({ studio, checks }: { studio: StudioCard; checks: Ho
 const STUDIO_META: Record<string, { short: string; blurb: string }> = {
   cad: { short: "CAD", blurb: "Parts, assemblies, renders" },
   pcb: { short: "PCB", blurb: "Schematic, layout, BOM" },
-}
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init)
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    throw new Error(body?.error?.message ?? body?.error ?? `Request failed: ${response.status}`)
-  }
-  return response.json() as Promise<T>
 }
 
 function MenuIcon() {
@@ -270,7 +263,6 @@ function SideDrawer({
 }) {
   const titleId = useId()
   const asideRef = useRef<HTMLElement>(null)
-  const closeRef = useRef<HTMLButtonElement>(null)
   const studiosQuery = useStudios()
   const csrfQuery = useCsrf()
   const repair = useRepairInstall()
@@ -280,41 +272,7 @@ function SideDrawer({
     if (open) setPanel(initialPanel)
   }, [open, initialPanel])
 
-  useEffect(() => {
-    if (!open) return
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    const t = window.setTimeout(() => closeRef.current?.focus(), 0)
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose()
-        return
-      }
-      if (e.key !== "Tab" || !asideRef.current) return
-      const nodes = [
-        ...asideRef.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ].filter((el) => !el.hasAttribute("disabled") && el.tabIndex !== -1)
-      if (nodes.length === 0) return
-      const first = nodes[0]!
-      const last = nodes[nodes.length - 1]!
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener("keydown", onKey)
-    return () => {
-      window.clearTimeout(t)
-      document.body.style.overflow = prevOverflow
-      document.removeEventListener("keydown", onKey)
-    }
-  }, [open, onClose])
+  useFocusTrap(open, asideRef, onClose)
 
   const cards = studiosQuery.data?.studios ?? []
 
@@ -347,8 +305,8 @@ function SideDrawer({
             </span>
           </div>
           <button
-            ref={closeRef}
             type="button"
+            data-autofocus
             onClick={onClose}
             className="osc-icon-btn size-9 shrink-0 text-[var(--osc-text-muted)]"
             aria-label="Close menu"
@@ -601,23 +559,16 @@ function TopBar({
 
 function HomePage() {
   const studiosQuery = useStudios()
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [drawerPanel, setDrawerPanel] = useState<DrawerPanel>("nav")
-
-  const openMenu = (panel: DrawerPanel = "nav") => {
-    setDrawerPanel(panel)
-    setDrawerOpen(true)
-  }
-
+  const chrome = useStudioChrome()
   const cards = studiosQuery.data?.studios ?? []
 
   return (
     <div className="min-h-dvh bg-[var(--osc-bg)]">
-      <div inert={drawerOpen ? true : undefined}>
+      <div inert={chrome.drawerOpen ? true : undefined}>
         <TopBar
-          menuOpen={drawerOpen}
-          onMenu={() => openMenu("nav")}
-          onSettings={() => openMenu("settings")}
+          menuOpen={chrome.drawerOpen}
+          onMenu={() => chrome.openDrawer("nav")}
+          onSettings={() => chrome.openDrawer("settings")}
           actions={
             studiosQuery.data?.nativeOpenCodeAvailable ? (
               <a href="/" className="osc-chip">
@@ -706,7 +657,7 @@ function HomePage() {
           </div>
         </main>
       </div>
-      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} initialPanel={drawerPanel} />
+      <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} initialPanel={chrome.drawerPanel} />
     </div>
   )
 }
@@ -769,11 +720,8 @@ function StudioFrame() {
   const uiBasePath = `/studios/${studioId}`
   const apiBasePath = `/api/studios/${studioId}`
 
-  if (studioId) {
-    setStudioRuntime({ studioId, uiBase: uiBasePath, apiBase: apiBasePath })
-  }
-
-  useEffect(() => {
+  // Layout (not paint) so child useQuery effects see the new studio API base on CAD↔PCB nav.
+  useLayoutEffect(() => {
     if (!studioId) return
     setStudioRuntime({ studioId, uiBase: uiBasePath, apiBase: apiBasePath })
     return () => {
@@ -819,7 +767,7 @@ function StudioFrame() {
 
   const card = studiosQuery.data.studios.find((s) => s.id === studioId)
   const Viewer = viewerLoaders[studioId]
-  const page = Viewer ? <Viewer /> : <p className="p-8 text-sm">Unknown studio</p>
+  const page = Viewer ? <Viewer key={studioId} /> : <p className="p-8 text-sm">Unknown studio</p>
   const label = card?.label ?? studioId
   const nativeAvailable = studiosQuery.data.nativeOpenCodeAvailable
   const workspace = studiosQuery.data.workspace

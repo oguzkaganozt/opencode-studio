@@ -217,7 +217,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
       try {
         const plan = input.plan(source)
         const stem = path.basename(source.filePath, path.extname(source.filePath))
-        const outputPath = personalOutputPath(library, plan.outputModality, input.outputPath, plan.defaultName(stem))
+        const outputPath = personalOutputPath(library, input.outputPath, plan.defaultName(stem))
         if (path.extname(outputPath).toLowerCase() !== `.${plan.extension}`) {
           throw new Error(`Output path must end in .${plan.extension}`)
         }
@@ -403,12 +403,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
           },
           async execute(args, toolContext) {
             const quality = args.quality ?? "auto"
-            const outputPath = personalOutputPath(
-              library,
-              "image",
-              args.outputPath,
-              `chatgpt-${Date.now()}-${randomUUID().slice(0, 8)}.png`,
-            )
+            const outputPath = personalOutputPath(library, args.outputPath, `chatgpt-${Date.now()}-${randomUUID().slice(0, 8)}.png`)
             if (path.extname(outputPath).toLowerCase() !== ".png") throw new Error("ChatGPT image outputPath must end in .png")
             const auth = await loadChatGPTAuth()
             if (!auth) throw new Error("OpenCode is not authenticated with ChatGPT OAuth")

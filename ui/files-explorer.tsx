@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useMemo, useRef, useState } from "react"
 import { EmptyState } from "./components/empty-state"
 import { ErrorState } from "./components/error-state"
+import { fetchJson } from "./lib/fetch-json"
 
 type FileEntry = {
   name: string
@@ -22,15 +23,6 @@ type ContentResponse = {
   text?: string | null
   truncated?: boolean
   url?: string
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url)
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    throw new Error(body?.error?.message ?? body?.error ?? `Request failed: ${response.status}`)
-  }
-  return response.json() as Promise<T>
 }
 
 function formatBytes(bytes?: number) {

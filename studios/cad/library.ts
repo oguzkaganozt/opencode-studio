@@ -1,8 +1,15 @@
 import { createHash } from "node:crypto"
 import { lstat, opendir, readdir, readFile, realpath, stat } from "node:fs/promises"
 import path from "node:path"
-import { type ArtifactManifest, artifactRevision, type DesignManifest, readArtifactManifest, readDesignManifest } from "./manifest"
-import { isInside } from "./studio-path"
+import { isInside } from "../../src/core/paths"
+import {
+  type ArtifactManifest,
+  artifactRevision,
+  type DesignManifest,
+  ID_PATTERN,
+  readArtifactManifest,
+  readDesignManifest,
+} from "./manifest"
 
 export type DesignEntry = {
   id: string
@@ -18,7 +25,7 @@ export type StudioLayout = {
   designsRoot: string
 }
 
-const RENDER_FILE_PATTERN = /^[a-z0-9][a-z0-9_-]*\.png$/
+export const RENDER_FILE_PATTERN = /^[a-z0-9][a-z0-9_-]*\.png$/
 
 export async function listRenders(directory: string): Promise<string[]> {
   const rendersDir = path.join(directory, "renders")
@@ -48,7 +55,7 @@ export async function initializeStudio(root: string): Promise<StudioLayout> {
 }
 
 export async function resolveDesignDirectory(layout: StudioLayout, id: string) {
-  if (!/^[a-z0-9][a-z0-9_-]*$/.test(id)) throw new Error(`Invalid design id: ${id}`)
+  if (!ID_PATTERN.test(id)) throw new Error(`Invalid design id: ${id}`)
   const directory = path.resolve(layout.designsRoot, id)
   if (!isInside(layout.designsRoot, directory)) throw new Error(`Design id escapes designs root: ${id}`)
   try {
@@ -108,12 +115,12 @@ export async function inspectDesign(_layout: StudioLayout, id: string, directory
 }
 
 export async function scanDesigns(layout: StudioLayout): Promise<DesignEntry[]> {
-  const entries: DesignEntry[] = []
+  const candidates: Array<{ id: string; directory: string }> = []
   try {
     const dir = await opendir(layout.designsRoot)
     for await (const entry of dir) {
       if (!entry.isDirectory()) continue
-      if (!/^[a-z0-9][a-z0-9_-]*$/.test(entry.name)) continue
+      if (!ID_PATTERN.test(entry.name)) continue
       const directory = path.join(layout.designsRoot, entry.name)
       try {
         const info = await lstat(directory)
@@ -123,16 +130,22 @@ export async function scanDesigns(layout: StudioLayout): Promise<DesignEntry[]> 
       } catch {
         continue
       }
-      try {
-        entries.push(await inspectDesign(layout, entry.name, directory))
-      } catch {}
+      candidates.push({ id: entry.name, directory })
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-    return entries
+    return []
   }
-  entries.sort((a, b) => a.id.localeCompare(b.id))
-  return entries
+  const settled = await Promise.all(
+    candidates.map(async ({ id, directory }) => {
+      try {
+        return await inspectDesign(layout, id, directory)
+      } catch {
+        return null
+      }
+    }),
+  )
+  return settled.filter((entry): entry is DesignEntry => entry !== null).sort((a, b) => a.id.localeCompare(b.id))
 }
 
 export async function readDesignWithArtifact(

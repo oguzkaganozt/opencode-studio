@@ -67,21 +67,27 @@ export async function buildDesignQcReport(input: {
   const parts: DesignQcReport["artifact"]["parts"] = []
 
   if (artifact) {
-    for (const part of artifact.parts) {
-      const files: Record<string, { path: string; exists: boolean }> = {}
-      for (const [format, relativePath] of Object.entries(part.files)) {
-        const resolvedPath = path.resolve(entry.directory, relativePath)
-        const exists = await fileExists(resolvedPath)
-        files[format] = { path: resolvedPath, exists }
-        if (!exists) missingFiles.push(`${part.id}/${format}`)
-      }
-      parts.push({
-        id: part.id,
-        volume_mm3: part.metrics?.volume_mm3 ?? null,
-        size_mm: part.metrics?.size_mm ?? null,
-        files,
-      })
-    }
+    const partResults = await Promise.all(
+      artifact.parts.map(async (part) => {
+        const fileEntries = await Promise.all(
+          Object.entries(part.files).map(async ([format, relativePath]) => {
+            const resolvedPath = path.resolve(entry.directory, relativePath)
+            return [format, { path: resolvedPath, exists: await fileExists(resolvedPath) }] as const
+          }),
+        )
+        const files = Object.fromEntries(fileEntries)
+        for (const [format, info] of fileEntries) {
+          if (!info.exists) missingFiles.push(`${part.id}/${format}`)
+        }
+        return {
+          id: part.id,
+          volume_mm3: part.metrics?.volume_mm3 ?? null,
+          size_mm: part.metrics?.size_mm ?? null,
+          files,
+        }
+      }),
+    )
+    parts.push(...partResults)
   }
 
   let artifactStatus: QcAxisStatus = "fail"

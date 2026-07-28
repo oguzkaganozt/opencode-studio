@@ -84,7 +84,7 @@ function finiteVector(value: unknown, label: string): [number, number, number] {
 }
 
 export function artifactRevision(artifact: Pick<ArtifactManifest, "build">): string {
-  const inputs = Object.entries(artifact.build.inputs).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  const inputs = Object.entries(artifact.build.inputs).sort(([a], [b]) => a.localeCompare(b))
   return createHash("sha256")
     .update(JSON.stringify([artifact.build.engine, inputs]))
     .digest("hex")

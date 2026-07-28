@@ -76,16 +76,21 @@ async function buildStudioMounts(input: {
     resolveStudioRoot,
   }
   // Domains always mounted (full catalog). Bad studio.json only drops optional roots.
-  for (const studioId of Object.keys(apiLoaders) as StudioId[]) {
-    try {
-      const createApi = apiLoaders[studioId]
-      const studioApp = await createApi(loadCtx)
-      studios.route(`/${studioId}`, studioApp)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      console.error(`[opencode-studio] failed to mount ${studioId}:`, error)
-      mountErrors.push(`${studioId}: ${message}`)
-    }
+  const mounted = await Promise.all(
+    (Object.keys(apiLoaders) as StudioId[]).map(async (studioId) => {
+      try {
+        const studioApp = await apiLoaders[studioId](loadCtx)
+        return { studioId, studioApp }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[opencode-studio] failed to mount ${studioId}:`, error)
+        mountErrors.push(`${studioId}: ${message}`)
+        return null
+      }
+    }),
+  )
+  for (const entry of mounted) {
+    if (entry) studios.route(`/${entry.studioId}`, entry.studioApp)
   }
 
   return { state: { studios }, mountErrors }
@@ -340,6 +345,7 @@ export async function createHostApp(input: HostInput) {
     csrfToken,
     hostname,
     port,
+    packageName: meta.name,
     packageVersion,
     config,
     reloadStudios,
@@ -364,14 +370,21 @@ export async function createHostApp(input: HostInput) {
 }
 
 export async function startHost(input: HostInput): Promise<HostHandle> {
-  const { app, hostname, port, packageVersion, closeOpenCode, openCodeAuthorized, openCodeAuthResponse, openCodeWebSocketTarget } =
-    await createHostApp(input)
-  const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
-  const meta = await loadPackageMeta(packageRoot)
-  scheduleUpdateLog({ packageName: meta.name, current: input.packageVersion ?? packageVersion })
+  const {
+    app,
+    hostname,
+    port,
+    packageName,
+    packageVersion,
+    closeOpenCode,
+    openCodeAuthorized,
+    openCodeAuthResponse,
+    openCodeWebSocketTarget,
+  } = await createHostApp(input)
+  scheduleUpdateLog({ packageName, current: input.packageVersion ?? packageVersion })
   const updateTimer = setInterval(
     () => {
-      scheduleUpdateLog({ packageName: meta.name, current: input.packageVersion ?? packageVersion })
+      scheduleUpdateLog({ packageName, current: input.packageVersion ?? packageVersion })
     },
     24 * 60 * 60 * 1000,
   )

@@ -48,7 +48,7 @@ export async function canonicalExistingDirectory(dir: string, label = "directory
 
 export async function ensureDirectory(dir: string, mode = 0o700) {
   const absolute = path.resolve(dir)
-  await import("node:fs/promises").then(({ mkdir }) => mkdir(absolute, { recursive: true, mode }))
+  await mkdir(absolute, { recursive: true, mode })
   return await realpath(absolute)
 }
 

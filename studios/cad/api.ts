@@ -1,10 +1,10 @@
 import { lstat, realpath } from "node:fs/promises"
 import path from "node:path"
 import { Hono } from "hono"
+import { isInside } from "../../src/core/paths"
 import { createSseResponse } from "../../src/core/sse"
-import { type DesignEntry, findDesign, listRenders, type StudioLayout, scanDesigns } from "./library"
-import { readArtifactManifest, readDesignManifest } from "./manifest"
-import { isInside } from "./studio-path"
+import { type DesignEntry, findDesign, listRenders, RENDER_FILE_PATTERN, type StudioLayout, scanDesigns } from "./library"
+import { ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
 import { ensureDesignWatching, onDesignEvent } from "./watcher"
 
 class StudioError extends Error {
@@ -16,9 +16,31 @@ class StudioError extends Error {
   }
 }
 
+const ARTIFACT_MIME: Record<string, string> = {
+  ".glb": "model/gltf-binary",
+  ".step": "application/step",
+  ".stl": "model/stl",
+}
+
 function safeDesignId(id: string) {
-  if (!/^[a-z0-9][a-z0-9_-]*$/.test(id)) throw new StudioError(400, "Invalid design id")
+  if (!ID_PATTERN.test(id)) throw new StudioError(400, "Invalid design id")
   return id
+}
+
+async function resolveRegularFileInside(root: string, candidate: string, escapeMessage: string, notFoundMessage: string) {
+  if (!isInside(root, candidate)) throw new StudioError(400, escapeMessage)
+  let resolved: string
+  let canonicalRoot: string
+  try {
+    resolved = await realpath(candidate)
+    canonicalRoot = await realpath(root)
+  } catch {
+    throw new StudioError(404, notFoundMessage)
+  }
+  if (!isInside(canonicalRoot, resolved)) throw new StudioError(400, escapeMessage)
+  const info = await lstat(resolved)
+  if (!info.isFile()) throw new StudioError(404, notFoundMessage)
+  return resolved
 }
 
 function designEntryDto(root: string, entry: DesignEntry) {
@@ -78,20 +100,14 @@ export function createCadApi(layout: StudioLayout) {
     const allowedPart = artifact.parts.find((part) => part.files.glb === file || part.files.step === file || part.files.stl === file)
     if (!allowedPart) return context.json({ error: "Artifact not listed in manifest" }, 404)
     const candidate = path.resolve(entry.directory, file)
-    if (!isInside(entry.directory, candidate)) return context.json({ error: "Artifact escapes design directory" }, 400)
-    let resolved: string
-    try {
-      resolved = await realpath(candidate)
-    } catch {
-      return context.json({ error: "Artifact file not found" }, 404)
-    }
-    if (!isInside(await realpath(entry.directory), resolved)) {
-      return context.json({ error: "Artifact resolves outside design directory" }, 400)
-    }
-    const info = await lstat(resolved)
-    if (!info.isFile()) return context.json({ error: "Artifact is not a regular file" }, 404)
+    const resolved = await resolveRegularFileInside(
+      entry.directory,
+      candidate,
+      "Artifact escapes design directory",
+      "Artifact file not found",
+    )
     const extension = path.extname(resolved).toLowerCase()
-    const mime = extension === ".glb" ? "model/gltf-binary" : extension === ".step" ? "application/step" : "model/stl"
+    const mime = ARTIFACT_MIME[extension] ?? "application/octet-stream"
     return new Response(Bun.file(resolved), {
       headers: { "Content-Type": mime, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" },
     })
@@ -110,24 +126,12 @@ export function createCadApi(layout: StudioLayout) {
     const file = context.req.query("file")
     if (!designId || !file) return context.json({ error: "design and file parameters are required" }, 400)
     safeDesignId(designId)
-    if (!/^[a-z0-9][a-z0-9_-]*\.png$/.test(file)) return context.json({ error: "Render file must match ^[a-z0-9][a-z0-9_-]*\\.png$" }, 400)
+    if (!RENDER_FILE_PATTERN.test(file)) return context.json({ error: "Render file must match ^[a-z0-9][a-z0-9_-]*\\.png$" }, 400)
     const entry = await findDesign(layout, designId)
     if (!entry) return context.json({ error: "Design not found" }, 404)
     const rendersDir = path.join(entry.directory, "renders")
     const candidate = path.resolve(rendersDir, file)
-    if (!isInside(rendersDir, candidate)) return context.json({ error: "Render escapes renders directory" }, 400)
-    let resolved: string
-    try {
-      resolved = await realpath(candidate)
-    } catch {
-      return context.json({ error: "Render file not found" }, 404)
-    }
-    const canonicalRenders = await realpath(rendersDir).catch(() => null)
-    if (!canonicalRenders || !isInside(canonicalRenders, resolved)) {
-      return context.json({ error: "Render resolves outside renders directory" }, 400)
-    }
-    const info = await lstat(resolved)
-    if (!info.isFile()) return context.json({ error: "Render is not a regular file" }, 404)
+    const resolved = await resolveRegularFileInside(rendersDir, candidate, "Render escapes renders directory", "Render file not found")
     return new Response(Bun.file(resolved), {
       headers: { "Content-Type": "image/png", "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" },
     })

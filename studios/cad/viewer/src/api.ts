@@ -1,17 +1,12 @@
-function apiBase() {
-  return (window as any).__OPENCODE_STUDIO__?.apiBase ?? "/api/studios/cad"
-}
+import { apiBase as runtimeApiBase, studioHref as runtimeStudioHref } from "@ui/studio-context"
 
 function api(path: string) {
-  return `${apiBase().replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`
+  const base = runtimeApiBase("/api/studios/cad").replace(/\/$/, "")
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`
 }
 
 export function studioHref(path = "") {
-  const runtime = (window as any).__OPENCODE_STUDIO__ as { uiBase?: string } | undefined
-  const base = (runtime?.uiBase ?? "").replace(/\/$/, "")
-  const suffix = path.replace(/^\//, "")
-  if (!base) return suffix ? `/${suffix}` : "/"
-  return suffix ? `${base}/${suffix}` : base
+  return runtimeStudioHref(path)
 }
 
 export type DesignSummary = {
