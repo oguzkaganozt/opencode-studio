@@ -373,16 +373,18 @@ export async function configureStudios(
   const openCode = await readOpenCodeConfig(configPath)
   let plugins = [...pluginEntries(openCode)]
 
+  const mediaGoFile = pathToFileURL(path.join(packageRoot, "dist", "media-go.js")).href
   plugins = plugins.filter((entry) => {
+    const s = String(entry)
+    if (s.includes("opencode-studio") || s.includes("media-go.js")) return false
     const base = pluginBaseName(entry)
     if (!base) return true
     if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
     return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
   plugins.push(meta.pluginSpecifier)
-  // OpenCode 1.18 resolves npm plugins via exports["./server"] or package.json "main".
-  // Subpath "@pkg/media-go" does not resolve a server entry — use file:// to the installed dist.
-  plugins.push(pathToFileURL(path.join(packageRoot, "dist", "media-go.js")).href)
+  // OpenCode 1.18: npm plugins need main or exports["./server"]. Subpath is not a server entry.
+  plugins.push(mediaGoFile)
 
   let nextText = configWithPlugins(openCode, plugins)
   let workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
@@ -522,6 +524,8 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
   const openCode = await readOpenCodeConfig(configPath)
   let plugins = [...pluginEntries(openCode)]
   plugins = plugins.filter((entry) => {
+    const s = String(entry)
+    if (s.includes("opencode-studio") || s.includes("media-go.js")) return false
     const base = pluginBaseName(entry)
     if (!base) return true
     if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
