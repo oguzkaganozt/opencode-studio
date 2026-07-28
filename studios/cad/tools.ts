@@ -25,7 +25,7 @@ const BUILD123D_TOOL_GUIDANCE: Record<string, string> = {
 type Options = {
   studioRoot: string
   forgeProjectDir: string
-  companionUrl: string
+  companionUrl?: string
   forgeRunner?: ForgeRunner
 }
 
@@ -61,8 +61,7 @@ function resolvePathOption(value: unknown, fallback: string, base: string, name:
 function options(input: PluginOptions | undefined, directory: string): Options {
   const studioRoot = resolvePathOption(input?.studioRoot, ".", directory, "studioRoot")
   const forgeProjectDir = resolvePathOption(input?.forgeProjectDir, path.resolve(import.meta.dir, "forge"), directory, "forgeProjectDir")
-  const companionUrl =
-    typeof input?.companionUrl === "string" && input.companionUrl.length > 0 ? input.companionUrl : "http://127.0.0.1:4173"
+  const companionUrl = typeof input?.companionUrl === "string" && input.companionUrl.length > 0 ? input.companionUrl : undefined
   return { studioRoot, forgeProjectDir, companionUrl }
 }
 
@@ -261,6 +260,13 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
           async execute(args) {
             if (!(await findDesign(layout, args.id))) throw new Error(`Design not found: ${args.id}`)
+            if (!config.companionUrl) {
+              const result = {
+                reachable: false,
+                error: "Studio host unavailable (ensure failed or OPENCODE_STUDIO_AUTOSTART=0). Run opencode serve and open a directory.",
+              }
+              return { title: "companion unavailable", output: asJson(result), metadata: result }
+            }
             const url = `${config.companionUrl}/designs/${encodeURIComponent(args.id)}`
             const result = { url, reachable: await companionReachable(config.companionUrl) }
             return {

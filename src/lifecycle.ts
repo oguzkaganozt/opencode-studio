@@ -41,6 +41,7 @@ import type { StudioDoctorCheck, StudioId } from "./core/registry"
 import { CATALOG_ORDER, STUDIO_IDS } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
+import { probeLocalStudioHost } from "./studio-host-bind"
 import { getStudioDefinition } from "./studios"
 
 export type ManagedMarker = {
@@ -849,6 +850,15 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       }
     }
   }
+
+  const host = await probeLocalStudioHost()
+  checks.push({
+    id: "studio-host",
+    status: host.ok ? "pass" : "warn",
+    message: host.ok
+      ? `Studio host up at ${host.url}`
+      : `Studio host not reachable at ${host.url} (start opencode serve with a project directory)`,
+  })
 
   const failed = checks.some((check) => check.status === "fail")
   return {

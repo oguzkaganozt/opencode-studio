@@ -55,32 +55,126 @@ describe("host ensure", () => {
       },
     })
     servers.push(parent)
+    // Reserve an free port, then release so ensure can bind it (avoid clashing with a live :4173).
+    const reserve = Bun.serve({ port: 0, fetch: () => new Response("ok") })
+    const freePort = reserve.port
+    reserve.stop(true)
     const packageRoot = path.resolve(import.meta.dir, "..")
+    const env = {
+      ...process.env,
+      OPENCODE_STUDIO_AUTOSTART: "1",
+      OPENCODE_STUDIO_PORT: String(freePort),
+    }
     const first = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
       workspace,
       packageRoot,
       uiDirectory: path.join(packageRoot, "dist", "ui"),
-      env: { ...process.env, OPENCODE_STUDIO_AUTOSTART: "1" },
+      env,
     })
     expect(first.ok).toBe(true)
-    if (!first.ok) return
-    expect(first.hostUrl).toContain("127.0.0.1:4173")
+    if (!first.ok) {
+      throw new Error(`ensure failed: ${first.reason}`)
+    }
+    expect(first.hostUrl).toBe(`http://127.0.0.1:${freePort}`)
 
     const second = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
       workspace: path.join(root, "other"),
       packageRoot,
       uiDirectory: path.join(packageRoot, "dist", "ui"),
+      env,
     })
     expect(second.ok).toBe(true)
     if (!second.ok) return
-    // Second call always reuses healthy :4173 (whether we started it or it was already up).
+    // Same process: reuse only via owned handle state.
     expect(second.reused).toBe(true)
     expect(second.hostUrl).toBe(first.hostUrl)
 
     const health = await fetch(`${first.hostUrl}/studio-api/health`)
     expect(health.ok).toBe(true)
+  }, 30_000)
+
+  test("foreign Studio health on port is not reused", async () => {
+    const foreign = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname === "/studio-api/health") {
+          return Response.json({ status: "ok" })
+        }
+        return new Response("no", { status: 404 })
+      },
+    })
+    servers.push(foreign)
+    const parent = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname === "/global/health") return new Response("ok")
+        return new Response("no", { status: 404 })
+      },
+    })
+    servers.push(parent)
+    const result = await ensureStudioHost({
+      parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
+      workspace: "/tmp",
+      env: {
+        ...process.env,
+        OPENCODE_STUDIO_AUTOSTART: "1",
+        OPENCODE_STUDIO_PORT: String(foreign.port),
+      },
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toMatch(/not owned by this process/)
+  })
+
+  test("owned host stays up across ensure; stop only via test reset", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "osc-ensure-dispose-"))
+    temps.push(root)
+    const workspace = path.join(root, "ws")
+    await mkdir(workspace, { recursive: true })
+    const parent = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname === "/global/health") return new Response("ok")
+        return new Response("ok")
+      },
+    })
+    servers.push(parent)
+    const reserve = Bun.serve({ port: 0, fetch: () => new Response("ok") })
+    const freePort = reserve.port
+    reserve.stop(true)
+    const packageRoot = path.resolve(import.meta.dir, "..")
+    const env = {
+      ...process.env,
+      OPENCODE_STUDIO_AUTOSTART: "1",
+      OPENCODE_STUDIO_PORT: String(freePort),
+    }
+    const first = await ensureStudioHost({
+      parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
+      workspace,
+      packageRoot,
+      uiDirectory: path.join(packageRoot, "dist", "ui"),
+      env,
+    })
+    expect(first.ok).toBe(true)
+    if (!first.ok) throw new Error(first.reason)
+    // Simulate plugin dispose: do not call reset/stop — host must remain healthy.
+    const mid = await fetch(`${first.hostUrl}/studio-api/health`)
+    expect(mid.ok).toBe(true)
+    const again = await ensureStudioHost({
+      parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
+      workspace,
+      packageRoot,
+      uiDirectory: path.join(packageRoot, "dist", "ui"),
+      env,
+    })
+    expect(again.ok).toBe(true)
+    if (!again.ok) return
+    expect(again.reused).toBe(true)
+    resetStudioHostEnsureForTests()
+    const afterStop = await fetch(`${first.hostUrl}/studio-api/health`).catch(() => null)
+    expect(afterStop?.ok ?? false).toBe(false)
   }, 30_000)
 
   test("AUTOSTART=0 skips ensure", async () => {

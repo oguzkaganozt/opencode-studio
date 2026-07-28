@@ -2,7 +2,7 @@
 import { parseArgs } from "node:util"
 import { loadPackageMeta } from "./core/package-meta"
 import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
-import { checkPackageUpgrade, upgradePackage } from "./service"
+import { checkPackageUpgrade, upgradePackage } from "./package-upgrade"
 
 function printHelp() {
   console.log(`opencode-studio

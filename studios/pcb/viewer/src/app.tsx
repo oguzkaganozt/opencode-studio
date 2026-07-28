@@ -4,30 +4,15 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } fr
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
+import { cn } from "@ui/lib/cn"
+import { safeHref } from "@ui/lib/safe-href"
 import { api, type CircuitDiagnostics, type DiagnosticGroup, type PartSummary, type ProjectSummary, studioHref } from "./api"
 import { PartDetailModal } from "./part-detail"
-
-function safeHref(raw: string | null | undefined): string | null {
-  if (typeof raw !== "string" || !raw.trim()) return null
-  try {
-    const url = new URL(raw.trim())
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null
-    return url.toString()
-  } catch {
-    return null
-  }
-}
 
 const CadViewerTab = lazy(() => import("./cad-viewer-tab"))
 const SchematicTab = lazy(() => import("./schematic-tab"))
 const PcbTab = lazy(() => import("./pcb-tab"))
 const BomTab = lazy(() => import("./bom-tab"))
-
-// ── Utility ──────────────────────────────────────────────────────────────────
-
-function cn(...classes: (string | false | undefined | null)[]) {
-  return classes.filter(Boolean).join(" ")
-}
 
 // ── Layout ───────────────────────────────────────────────────────────────────
 
@@ -383,7 +368,7 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex h-full min-h-[min(560px,50dvh)] flex-1 flex-col">
+    <div className="flex min-h-[min(560px,50dvh)] flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-3 border-b border-[var(--osc-border)] p-3">
         <label className="sr-only" htmlFor="pcb-circuit-json-filter">
           Filter elements
@@ -472,7 +457,7 @@ function ProjectPage() {
 
   return (
     <Shell fill>
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-4 py-4 sm:px-6">
+      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-4 py-4 sm:px-6">
         <div className="min-w-0 shrink-0 space-y-1">
           <div className="flex min-w-0 items-center gap-2">
             <Link to={studioHref()} className="shrink-0 text-sm text-[var(--osc-text-muted)] hover:text-[var(--osc-text)]">

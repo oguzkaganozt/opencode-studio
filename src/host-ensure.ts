@@ -3,15 +3,17 @@ import { packageRootFrom } from "./core/paths"
 import { assertNonLoopbackPassword } from "./core/security"
 import { normalizeParentOpenCodeUrl } from "./opencode-bridge"
 import { type HostHandle, startHost } from "./server"
+import {
+  DEFAULT_STUDIO_HOST_URL,
+  probeLocalStudioHost,
+  resolveStudioBind,
+  STUDIO_HOST_PORT,
+  type StudioBind,
+  studioHealthOk,
+} from "./studio-host-bind"
 
-export const STUDIO_HOST_PORT = 4173
-export const DEFAULT_STUDIO_HOST_URL = `http://127.0.0.1:${STUDIO_HOST_PORT}`
-
-export type StudioBind = {
-  hostname: string
-  port: number
-  localUrl: string
-}
+export type { StudioBind }
+export { DEFAULT_STUDIO_HOST_URL, probeLocalStudioHost, resolveStudioBind, STUDIO_HOST_PORT }
 
 export type EnsureStudioHostInput = {
   parentOpenCodeUrl: string
@@ -33,29 +35,6 @@ function autostartDisabled(value: string | undefined) {
   return v === "0" || v === "false" || v === "no" || v === "off"
 }
 
-/** Bind: env override, else parent 0.0.0.0 → web, else loopback. Port: OPENCODE_STUDIO_PORT || 4173. */
-export function resolveStudioBind(parentOpenCodeUrl: string, env: NodeJS.ProcessEnv = process.env): StudioBind {
-  let parentHost = "127.0.0.1"
-  try {
-    parentHost = new URL(parentOpenCodeUrl).hostname
-  } catch {
-    // ignore
-  }
-
-  const envHost = env.OPENCODE_STUDIO_HOSTNAME?.trim()
-  const envBind = env.OPENCODE_STUDIO_BIND?.trim().toLowerCase()
-  let hostname = "127.0.0.1"
-  if (envHost) hostname = envHost === "::" || envHost === "[::]" ? "0.0.0.0" : envHost
-  else if (envBind === "0.0.0.0" || envBind === "web" || envBind === "all") hostname = "0.0.0.0"
-  else if (parentHost === "0.0.0.0" || parentHost === "::" || parentHost === "[::]") hostname = "0.0.0.0"
-
-  const rawPort = env.OPENCODE_STUDIO_PORT?.trim()
-  const port = rawPort ? Number(rawPort) : STUDIO_HOST_PORT
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error(`Invalid OPENCODE_STUDIO_PORT: ${rawPort}`)
-
-  return { hostname, port, localUrl: `http://127.0.0.1:${port}` }
-}
-
 export async function probeParentOpenCode(baseUrl: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
   const url = normalizeParentOpenCodeUrl(baseUrl)
   const headers = new Headers()
@@ -75,15 +54,6 @@ export async function probeParentOpenCode(baseUrl: string, env: NodeJS.ProcessEn
   }
 }
 
-async function studioHealthOk(localUrl: string): Promise<boolean> {
-  try {
-    const response = await fetch(new URL("/studio-api/health", `${localUrl}/`), { signal: AbortSignal.timeout(1_500) })
-    return response.ok
-  } catch {
-    return false
-  }
-}
-
 export async function ensureStudioHost(input: EnsureStudioHostInput): Promise<EnsureStudioHostResult> {
   const env = input.env ?? process.env
   if (autostartDisabled(input.autostart ?? env.OPENCODE_STUDIO_AUTOSTART)) {
@@ -96,6 +66,13 @@ export async function ensureStudioHost(input: EnsureStudioHostInput): Promise<En
   return starting
 }
 
+function portBusyReason(port: number, message: string) {
+  if (/EADDRINUSE|address already in use/i.test(message)) {
+    return `port ${port} is in use; set OPENCODE_STUDIO_PORT or free the port`
+  }
+  return message
+}
+
 async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.ProcessEnv): Promise<EnsureStudioHostResult> {
   const parentUrl = normalizeParentOpenCodeUrl(input.parentOpenCodeUrl)
   let bind: StudioBind
@@ -106,6 +83,7 @@ async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }
 
+  // Reuse only when this process owns the host handle.
   if (state && state.bind.port === bind.port && state.bind.hostname === bind.hostname && (await studioHealthOk(state.bind.localUrl))) {
     return { ok: true, hostUrl: state.bind.localUrl, studioUrl: `${state.bind.localUrl}/studio`, reused: true }
   }
@@ -119,7 +97,10 @@ async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.
   }
 
   if (await studioHealthOk(bind.localUrl)) {
-    return { ok: true, hostUrl: bind.localUrl, studioUrl: `${bind.localUrl}/studio`, reused: true }
+    return {
+      ok: false,
+      reason: `port ${bind.port} already has a Studio health endpoint not owned by this process; set OPENCODE_STUDIO_PORT or stop the other process`,
+    }
   }
 
   if (!(await probeParentOpenCode(parentUrl, env))) {
@@ -142,7 +123,8 @@ async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.
     state = { bind: { ...bind, port: handle.server.port ?? bind.port, localUrl }, handle }
     return { ok: true, hostUrl: localUrl, studioUrl: `${localUrl}/studio`, reused: false }
   } catch (error) {
-    return { ok: false, reason: error instanceof Error ? error.message : String(error) }
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, reason: portBusyReason(bind.port, message) }
   }
 }
 

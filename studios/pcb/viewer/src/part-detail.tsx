@@ -1,18 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { Dialog, DialogHeader } from "@ui/components/dialog"
 import { ErrorState } from "@ui/components/error-state"
+import { safeHref } from "@ui/lib/safe-href"
 import { api, type BomEntry, type CatalogPartDetail } from "./api"
-
-function safeHref(raw: string | null | undefined): string | null {
-  if (typeof raw !== "string" || !raw.trim()) return null
-  try {
-    const url = new URL(raw.trim())
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null
-    return url.toString()
-  } catch {
-    return null
-  }
-}
 
 const PRIMARY_KEYS = ["mpn", "manufacturer", "description", "category", "datasheet"] as const
 

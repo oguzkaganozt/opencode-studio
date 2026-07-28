@@ -3,7 +3,7 @@ import { createStudioPlugin } from "./tools"
 
 export type CadPluginContext = {
   root: string
-  companionUrl: string
+  companionUrl?: string
   forgeProjectDir: string
 }
 

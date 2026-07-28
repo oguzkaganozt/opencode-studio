@@ -69,7 +69,7 @@ opencode serve --hostname 0.0.0.0 --port 4096
 | `OPENCODE_SERVER_PASSWORD` or `OPENCODE_STUDIO_PASSWORD` | Required for non-loopback — Basic on **all** Studio routes except `/studio-api/health` |
 | `OPENCODE_SERVER_USERNAME` / `OPENCODE_STUDIO_USERNAME` | Basic user (default `opencode` if only server password is set) |
 
-Multi-user: give each systemd unit its own `OPENCODE_STUDIO_PORT` (e.g. 4173 / 4174 / 4175) next to the OpenCode port.
+Multi-user ops: each **OpenCode** `serve` unit gets its own `OPENCODE_STUDIO_PORT` (e.g. 4173 / 4174 / 4175). Studio has no separate host systemd unit.
 
 Install is **user-global** — postinstall repairs once; run `repair` only if needed. Domain data roots default to the OpenCode directory.
 
@@ -119,7 +119,7 @@ Global install and `opencode-studio repair` register OpenCode plugins without ve
 bun install
 bun run check                 # typecheck + test + lint + build
 bun run release:check         # full gate (incl. forge, pack, browser smoke)
-bun run serve                 # host @ 127.0.0.1:4173
+bun run build && opencode serve   # plugin ensure-hosts Viewer @ :4173
 bun run dev:ui                # Vite :5173 → proxies /api
 bun run test:browser:install  # once: Playwright Chromium
 ```

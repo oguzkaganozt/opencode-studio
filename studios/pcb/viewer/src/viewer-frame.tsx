@@ -14,8 +14,18 @@ export function ViewerFrame({
   const ready = size.height > 0 && size.width > 0
 
   return (
-    <div ref={ref} className={`h-full min-h-[min(560px,50dvh)] w-full flex-1 overflow-hidden rounded-md ${className}`}>
-      {ready ? (typeof children === "function" ? children(size) : children) : null}
+    <div
+      ref={ref}
+      className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-md ${className}`}
+      style={{ minHeight: "min(560px, 50dvh)" }}
+    >
+      {ready ? (
+        typeof children === "function" ? (
+          children(size)
+        ) : (
+          <div className="min-h-0 flex-1">{children}</div>
+        )
+      ) : null}
     </div>
   )
 }

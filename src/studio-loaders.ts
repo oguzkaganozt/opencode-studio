@@ -6,7 +6,8 @@ import { CATALOG_ORDER, STUDIO_IDS, type StudioId } from "./core/registry"
 export type PluginLoadContext = {
   workspace: string
   roots: Parameters<typeof resolveStudioRoot>[0]["roots"]
-  hostUrl: string
+  /** Set only when ensure succeeded or hostUrl/OPENCODE_STUDIO_URL was explicit. */
+  hostUrl?: string
   packageRoot: string
   mediaProviderPackage: string
   resolveStudioRoot: typeof resolveStudioRoot
@@ -28,7 +29,7 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
     const root = await ctx.resolveStudioRoot({ studioId: "cad", workspace: ctx.workspace, roots: ctx.roots })
     return loadCadPlugin({
       root,
-      companionUrl: `${ctx.hostUrl}/studio/studios/cad`,
+      companionUrl: ctx.hostUrl ? `${ctx.hostUrl}/studio/studios/cad` : undefined,
       forgeProjectDir: await ctx.ensureForgeRuntimeDir(ctx.packageRoot),
     })
   },

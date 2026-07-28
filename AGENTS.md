@@ -48,13 +48,13 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 - `opencode-studio repair` and UI **Repair install** / `PUT /api/config` re-run the same install (loopback + CSRF). Restart **OpenCode** after install so plugins/skills load.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
 - Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` **uninstalls** managed plugins/skills/MCP from OpenCode home (not the npm package).
-- **OpenCode-first host:** lifecycle is owned by `opencode serve`. Plugin ensure-hosts Viewer in-process (first `context.directory` pinned), attaches to `context.serverUrl`, reverse-proxies parent at `/` for Agent. Studio **never** spawns OpenCode; no user-facing `serve`/host systemd. Bind follows parent / `OPENCODE_STUDIO_*`; port `OPENCODE_STUDIO_PORT` (default 4173). Opt out: `OPENCODE_STUDIO_AUTOSTART=0`. See `ROADMAP-OPENCODE-FIRST.md`.
+- **OpenCode-first host:** lifecycle is owned by `opencode serve`. Plugin ensure-hosts Viewer in-process (first `context.directory` pinned for the host lifetime; later OpenCode directories are unsupported — tools may disagree with the viewer), attaches to `context.serverUrl`, reverse-proxies parent at `/` for Agent. Studio **never** spawns OpenCode; no user-facing `serve`/host systemd. Bind follows parent / `OPENCODE_STUDIO_*`; port `OPENCODE_STUDIO_PORT` (default 4173; busy fails, no ephemeral). Ensure reuses only when **this process** owns the host. Opt out: `OPENCODE_STUDIO_AUTOSTART=0`. See `ROADMAP-OPENCODE-FIRST.md`.
 
 ## Hard rules
 
 - **Lean security only.** Keep the code streamlined. Ship **only** these host guards — nothing more:
-  1. Loopback default; non-loopback bind needs Basic (`OPENCODE_SERVER_PASSWORD` or `OPENCODE_STUDIO_PASSWORD`) on routes (health may stay open).
-  2. CSRF + Origin on **writes** (browser session).
+  1. Loopback default; non-loopback bind needs Basic (`OPENCODE_SERVER_PASSWORD` or `OPENCODE_STUDIO_PASSWORD`) on routes (health may stay open). On loopback only, reject mismatched `Host` (DNS rebinding) — not a multi-user auth layer.
+  2. CSRF + Origin on **writes** (browser session). Optional `OPENCODE_STUDIO_ALLOWED_ORIGINS` (comma-separated absolute origins) for reverse-proxy/dev only. Non-loopback also refuses HTTP config writes (`remote_config_disabled`); edit `studio.json` on the server.
   3. Refuse root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`.
   Do **not** add multi-user IAM, TLS termination, rate limits, audit frameworks, extra auth layers, or “defense in depth” that OpenCode itself does not use. Prefer OpenCode’s model; firewall/network is ops, not app code. When in doubt, omit.
 - **No cross-studio imports.** Shared behavior only in `src/core/` when ≥2 studios need it.

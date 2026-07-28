@@ -1,16 +1,13 @@
 import { useState } from "react"
 import { EmptyState } from "@ui/components/empty-state"
-
-function cn(...classes: (string | false | undefined | null)[]) {
-  return classes.filter(Boolean).join(" ")
-}
+import { cn } from "@ui/lib/cn"
 
 export function SvgViewer({ url, label }: { url: string; label: string }) {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
 
   return (
-    <div className="relative flex h-full min-h-[min(560px,50dvh)] w-full flex-1 items-center justify-center overflow-auto rounded-[var(--osc-radius-md)] bg-[var(--osc-canvas-bg-light)]">
+    <div className="relative flex min-h-[min(560px,50dvh)] w-full flex-1 items-center justify-center overflow-auto rounded-[var(--osc-radius-md)] bg-[var(--osc-canvas-bg-light)]">
       {!loaded && !error && (
         <div className="flex flex-col items-center gap-3 py-16" role="status" aria-busy="true">
           <span className="sr-only">Loading {label}…</span>

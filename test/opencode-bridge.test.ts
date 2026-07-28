@@ -32,7 +32,7 @@ describe("OpenCode bridge", () => {
     const bridge = createOpenCodeBridge({
       baseUrl: `http://127.0.0.1:${upstream.port}`,
       workspace: "/srv/project",
-      env: { OPENCODE_SERVER_PASSWORD: "sidecar-secret" },
+      env: { OPENCODE_SERVER_PASSWORD: "parent-secret" },
     })
 
     const response = await bridge.proxy(
@@ -48,7 +48,7 @@ describe("OpenCode bridge", () => {
     expect(body.directory).toBe("/srv/project")
     expect(body.locationDirectory).toBe("/srv/project")
     expect(body.headerDirectory).toBe(encodeURIComponent("/srv/project"))
-    expect(body.authorization).toBe(`Basic ${Buffer.from("opencode:sidecar-secret").toString("base64")}`)
+    expect(body.authorization).toBe(`Basic ${Buffer.from("opencode:parent-secret").toString("base64")}`)
 
     const post = await bridge.proxy(
       new Request("http://studio.test/api/session?location%5Bdirectory%5D=%2Fetc", {

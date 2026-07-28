@@ -11,7 +11,7 @@ export default function SchematicTab({ projectId }: { projectId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex h-full min-h-[min(560px,50dvh)] flex-col items-center justify-center gap-3" role="status" aria-busy="true">
+      <div className="flex min-h-[min(560px,50dvh)] flex-1 flex-col items-center justify-center gap-3" role="status" aria-busy="true">
         <span className="sr-only">Loading schematic…</span>
         <div className="pcb-skeleton h-48 w-72 max-w-[80%]" aria-hidden />
       </div>

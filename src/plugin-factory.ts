@@ -6,7 +6,7 @@ import { composeStudioPlugins, type StudioPluginContribution } from "./core/plug
 import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
-import { DEFAULT_STUDIO_HOST_URL, ensureStudioHost } from "./host-ensure"
+import { ensureStudioHost } from "./host-ensure"
 import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
 
 export type StudioPluginOptions = UserPathOptions & {
@@ -93,7 +93,11 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       }
     }
 
-    hostUrl = hostUrl ?? process.env.OPENCODE_STUDIO_URL?.replace(/\/$/, "") ?? DEFAULT_STUDIO_HOST_URL
+    // Explicit override only — never invent DEFAULT_STUDIO_HOST_URL after a failed ensure.
+    if (!hostUrl) {
+      const fromEnv = process.env.OPENCODE_STUDIO_URL?.trim().replace(/\/$/, "")
+      if (fromEnv) hostUrl = fromEnv
+    }
 
     const { roots } = await resolveRoots(userPaths, workspace)
 

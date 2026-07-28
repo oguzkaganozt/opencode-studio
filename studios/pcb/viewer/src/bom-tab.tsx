@@ -1,19 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 import { ErrorState } from "@ui/components/error-state"
+import { safeHref } from "@ui/lib/safe-href"
 import { api, type BomEntry } from "./api"
 import { PartDetailModal } from "./part-detail"
-
-function safeHref(raw: string | null | undefined): string | null {
-  if (typeof raw !== "string" || !raw.trim()) return null
-  try {
-    const url = new URL(raw.trim())
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null
-    return url.toString()
-  } catch {
-    return null
-  }
-}
 
 function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEntry) => void }) {
   const clickable = Boolean(entry.mpn && onSelect)

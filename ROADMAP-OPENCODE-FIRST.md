@@ -4,7 +4,7 @@ Greenfield redesign. Sole user — **no migration**, no dual-mode, no deprecatio
 
 **Deleted models:** Studio-outer host, owned OpenCode sidecar (`createOpencodeServer`), user-facing `opencode-studio serve` / host systemd, attach-disables-proxy.
 
-**Status: ready to implement from Phase 1.**
+**Status: implemented (Phases 0–5).** Historical design record — product truth is README + AGENTS.
 
 ---
 
@@ -47,8 +47,8 @@ OpenCode work unit = **directory** (`context.directory`). First directory **pins
 | Host API | Internal `startHost()` — plugin + tests/smoke only |
 | Parent | `opencode serve` only |
 | Browser | `http://127.0.0.1:4173/studio` |
-| Port | **4173** fixed; busy → **fail** (no ephemeral) |
-| Directory | First Instance wins; no rebind |
+| Port | Default **4173**; override via `OPENCODE_STUDIO_PORT`; busy → **fail** (no ephemeral fallback) |
+| Directory | First Instance wins; no rebind (later dirs: tools may disagree with viewer — known limit) |
 | Host death | With OpenCode **process**; **not** on plugin `dispose` |
 | Multi-tenant / multi-dir rebind | Out of scope |
 | Security extras | Minimal; sole user; global SSE **allow** |
@@ -59,13 +59,13 @@ OpenCode work unit = **directory** (`context.directory`). First directory **pins
 | --- | --- |
 | Host shape | **In-process** `Bun.serve` inside OpenCode plugin process |
 | Signals | `startHost` library path: **no** `SIGINT`/`SIGTERM` → `process.exit`. Tests may pass optional `onSignal` / manage lifecycle themselves |
-| Singleton | Module-level ensure + lock/health on 4173; second ensure reuses if healthy |
+| Singleton | Module-level ensure + lock; second ensure reuses **only if this process owns** the handle; foreign health on port → fail |
 | Bridge | Attach-only: `createOpenCodeBridge({ baseUrl, workspace, env? })`; proxy + WS **always** |
 | Parent URL | From `context.serverUrl`, then **normalize** bind hosts `0.0.0.0` / `::` → `127.0.0.1` |
 | Real parent | Do **not** trust URL presence (OpenCode falls back to `http://localhost:4096`). **Probe** parent health (e.g. `/global/health` or equivalent) before ensure; fail soft if dead |
 | Bootstrap UX | Host starts only after first directory Instance; plugin **logs** Studio URL; document cold `/studio` until then |
 | `OPENCODE_STUDIO_OPENCODE_URL` | Remove as product path; tests inject `parentOpenCodeUrl` / bridge `baseUrl` |
-| `OPENCODE_STUDIO_URL` | Ensure output for tools/companion (default `http://127.0.0.1:4173`) |
+| `OPENCODE_STUDIO_URL` | Optional explicit companion base; set only when ensure succeeded or operator override — never invent after failed ensure |
 | `OPENCODE_STUDIO_AUTOSTART=0` | Opt-out ensure (CI) |
 | Parent auth | Inherit / pass `OPENCODE_SERVER_*` into bridge when parent has Basic |
 | media-go | Unchanged |
@@ -107,7 +107,7 @@ browser opens /studio   →  Viewer + Agent
 
 ## Phase 2 — Host library + Agent
 
-**Files:** `src/server.ts`, `ui/app.tsx`, `ui/native-agent-frame.tsx`, `test/server.test.ts`, start gutting `cli.ts` / `service.ts`
+**Files:** `src/server.ts`, `ui/app.tsx`, `ui/native-agent-frame.tsx`, `test/server.test.ts`, start gutting `cli.ts` / `package-upgrade.ts`
 
 1. `HostInput.parentOpenCodeUrl` required (or inject bridge).
 2. Strip process-global signal → `process.exit` from library `startHost`.
@@ -150,7 +150,7 @@ plugin(context):
 
 ## Phase 4 — CLI surface finish
 
-**Files:** `src/cli.ts`, `src/service.ts`, `src/completion.ts`, `package.json`
+**Files:** `src/cli.ts`, `src/package-upgrade.ts`, `src/completion.ts`, `package.json`
 
 - Confirm zero host lifecycle commands/docs/completions/scripts.
 - Keep repair/status/remove/upgrade; status reports host up? if possible.
@@ -195,7 +195,7 @@ plugin(context):
 | `src/plugin.ts` | Ensure-host; normalize+probe; no dispose-kill |
 | `src/host-ensure.ts` | Optional singleton/ensure helper |
 | `src/studio-loaders.ts` | Dynamic hostUrl |
-| `src/cli.ts` / `service.ts` / `completion.ts` | Purge serve/service host |
+| `src/cli.ts` / `package-upgrade.ts` / `completion.ts` | Purge serve/service host |
 | `ui/*` | Agent flag + copy |
 | tests / browser-smoke | `startHost` + stub parent |
 | docs / skills | OpenCode-first narrative |
