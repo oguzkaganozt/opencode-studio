@@ -213,8 +213,9 @@ Ship gate = end of **Phase 3**. Critical path **1 → 2 → 3**.
 ## Checklist
 
 - [x] Phase 0 — contracts locked (incl. in-process, probe, bootstrap, signals)
-- [ ] Phase 1 — attach-only bridge  
-- [ ] Phase 2 — host library + Agent + gut user serve  
-- [ ] Phase 3 — plugin ensure-host  
-- [ ] Phase 4 — CLI surface finish  
-- [ ] Phase 5 — docs/smoke/purge  
+- [x] Phase 1 — attach-only bridge  
+- [x] Phase 2 — host library + Agent + gut user serve  
+- [x] Phase 3 — plugin ensure-host  
+- [x] Phase 4 — CLI surface finish  
+- [x] Phase 5 — docs/smoke/purge (README/AGENTS + browser-smoke stub parent)  
+

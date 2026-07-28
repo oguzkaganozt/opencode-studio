@@ -238,9 +238,8 @@ export function NativeAgentFrame({
         <div className="flex flex-1 flex-col justify-center gap-2 p-4">
           <p className="text-[13px] font-medium text-[var(--osc-text)]">Native OpenCode UI is unavailable</p>
           <p className="text-[12px] leading-relaxed text-[var(--osc-text-muted)]">
-            This host is attached to a shared OpenCode server (`OPENCODE_STUDIO_OPENCODE_URL`). Native UI proxying is disabled there to
-            avoid leaking events across workspaces. Open that server&apos;s own URL for the full agent UI, or run Studio without attach mode
-            so it owns a loopback sidecar. Prompt handoffs copy to the clipboard instead.
+            Start <code className="font-mono text-[11px]">opencode serve</code>, open a directory so the Studio plugin can attach, then
+            reload. Prompt handoffs copy to the clipboard until the agent is available.
           </p>
         </div>
       ) : (
@@ -250,7 +249,7 @@ export function NativeAgentFrame({
               className="absolute inset-x-0 top-0 z-10 m-3 rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-bg-elevated)] p-3 text-[12px] text-[var(--osc-error)] shadow-[var(--osc-shadow)]"
               role="alert"
             >
-              Failed to reach the native OpenCode UI. Check that the host sidecar is running, then reopen the agent.
+              Failed to reach the parent OpenCode UI. Confirm opencode serve is running, then reopen the agent.
             </div>
           )}
           {mounted && (

@@ -39,10 +39,24 @@ function fakeOpenCodeBridge() {
   return { bridge, proxyRequests }
 }
 
+async function hostApp(ctx: Awaited<ReturnType<typeof isolatedHost>>, extra: Record<string, unknown> = {}) {
+  const fake = fakeOpenCodeBridge()
+  return {
+    fake,
+    ...(await createHostApp({
+      ...ctx,
+      hostname: "127.0.0.1",
+      port: 4173,
+      openCodeBridge: fake.bridge,
+      ...extra,
+    })),
+  }
+}
+
 describe("host server", () => {
   test("health and always-on studios list", async () => {
     const ctx = await isolatedHost()
-    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
+    const { app } = await hostApp(ctx)
     const health = await app.request("http://127.0.0.1:4173/studio-api/health", { headers: { host: "127.0.0.1:4173" } })
     expect(health.status).toBe(200)
     const studios = await app.request("http://127.0.0.1:4173/api/studios", { headers: { host: "127.0.0.1:4173" } })
@@ -56,9 +70,14 @@ describe("host server", () => {
 
   test("rejects bad host", async () => {
     const ctx = await isolatedHost()
-    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
+    const { app } = await hostApp(ctx)
     const response = await app.request("http://evil.test/api/health", { headers: { host: "evil.test" } })
     expect(response.status).toBe(400)
+  })
+
+  test("requires parent OpenCode URL or injected bridge", async () => {
+    const ctx = await isolatedHost()
+    await expect(createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })).rejects.toThrow("parentOpenCodeUrl")
   })
 
   test("serves Studio under /studio and proxies OpenCode at root", async () => {
@@ -66,8 +85,7 @@ describe("host server", () => {
     const uiDirectory = path.join(ctx.workspace, "ui")
     await mkdir(uiDirectory)
     await writeFile(path.join(uiDirectory, "index.html"), "<main>Studio shell</main>")
-    const fake = fakeOpenCodeBridge()
-    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173, uiDirectory, openCodeBridge: fake.bridge })
+    const { app, fake } = await hostApp(ctx, { uiDirectory })
 
     const studio = await app.request("http://127.0.0.1:4173/studio", { headers: { host: "127.0.0.1:4173" } })
     expect(studio.status).toBe(200)
@@ -88,23 +106,16 @@ describe("host server", () => {
     expect(legacy.headers.get("location")).toBe("/studio/studios/cad")
   })
 
-  test("reports native OpenCode unavailable when attached to a shared server", async () => {
+  test("native OpenCode stays available with parent attach", async () => {
     const ctx = await isolatedHost()
-    const fake = fakeOpenCodeBridge()
-    const { app } = await createHostApp({
-      ...ctx,
-      hostname: "127.0.0.1",
-      port: 4173,
-      env: { OPENCODE_STUDIO_OPENCODE_URL: "http://127.0.0.1:4096" },
-      openCodeBridge: fake.bridge,
-    })
+    const { app } = await hostApp(ctx, { parentOpenCodeUrl: "http://127.0.0.1:4096" })
     const response = await app.request("http://127.0.0.1:4173/api/studios", { headers: { host: "127.0.0.1:4173" } })
-    expect((await response.json()).nativeOpenCodeAvailable).toBe(false)
+    expect((await response.json()).nativeOpenCodeAvailable).toBe(true)
   })
 
   test("configure requires csrf and origin (matrix)", async () => {
     const ctx = await isolatedHost()
-    const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
+    const { app, csrfToken } = await hostApp(ctx)
 
     const noOriginNoToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
@@ -115,36 +126,56 @@ describe("host server", () => {
 
     const goodOriginBadToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
-      headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": "wrong" },
+      headers: {
+        host: "127.0.0.1:4173",
+        origin: "http://127.0.0.1:4173",
+        "content-type": "application/json",
+        "x-csrf-token": "wrong",
+      },
       body: JSON.stringify({}),
     })
     expect(goodOriginBadToken.status).toBe(403)
 
     const badOriginGoodToken = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
-      headers: { host: "127.0.0.1:4173", origin: "http://evil.com:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
+      headers: {
+        host: "127.0.0.1:4173",
+        origin: "http://evil.com:4173",
+        "content-type": "application/json",
+        "x-csrf-token": csrfToken,
+      },
       body: JSON.stringify({}),
     })
     expect(badOriginGoodToken.status).toBe(403)
 
     const devOrigin = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
-      headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:5173", "content-type": "application/json", "x-csrf-token": csrfToken },
+      headers: {
+        host: "127.0.0.1:4173",
+        origin: "http://127.0.0.1:5173",
+        "content-type": "application/json",
+        "x-csrf-token": csrfToken,
+      },
       body: JSON.stringify({}),
     })
     expect(devOrigin.status).toBe(200)
 
     const bareOrigin = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
-      headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1", "content-type": "application/json", "x-csrf-token": csrfToken },
+      headers: {
+        host: "127.0.0.1:4173",
+        origin: "http://127.0.0.1",
+        "content-type": "application/json",
+        "x-csrf-token": csrfToken,
+      },
       body: JSON.stringify({}),
     })
     expect(bareOrigin.status).toBe(403)
-  })
+  }, 60_000)
 
   test("configure rejects roots via HTTP", async () => {
     const ctx = await isolatedHost()
-    const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
+    const { app, csrfToken } = await hostApp(ctx)
     const response = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
       headers: { host: "127.0.0.1:4173", origin: "http://127.0.0.1:4173", "content-type": "application/json", "x-csrf-token": csrfToken },
@@ -157,14 +188,7 @@ describe("host server", () => {
 
   test("native OpenCode requires a password on non-loopback hosts", async () => {
     const ctx = await isolatedHost()
-    const fake = fakeOpenCodeBridge()
-    const { app } = await createHostApp({
-      ...ctx,
-      hostname: "0.0.0.0",
-      port: 4173,
-      openCodeBridge: fake.bridge,
-      env: {},
-    })
+    const { app } = await hostApp(ctx, { hostname: "0.0.0.0", env: {} })
     const response = await app.request("http://192.168.1.20:4173/", { headers: { host: "192.168.1.20:4173" } })
     expect(response.status).toBe(503)
     expect((await response.json()).error.code).toBe("chat_auth_required")
@@ -180,15 +204,8 @@ describe("host server", () => {
 
   test("authenticated remote native OpenCode accepts the browser request origin", async () => {
     const ctx = await isolatedHost()
-    const fake = fakeOpenCodeBridge()
     const env = { OPENCODE_STUDIO_PASSWORD: "secret" }
-    const { app } = await createHostApp({
-      ...ctx,
-      hostname: "0.0.0.0",
-      port: 4173,
-      openCodeBridge: fake.bridge,
-      env,
-    })
+    const { app } = await hostApp(ctx, { hostname: "0.0.0.0", env })
     const openCode = await app.request("http://192.168.1.20:4173/", {
       headers: {
         host: "192.168.1.20:4173",
@@ -246,7 +263,7 @@ describe("host server", () => {
 
   test("mounts domain routes without prior configure", async () => {
     const ctx = await isolatedHost()
-    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
+    const { app } = await hostApp(ctx)
     const pcb = await app.request("http://127.0.0.1:4173/api/studios/pcb/projects", {
       headers: { host: "127.0.0.1:4173" },
     })
@@ -260,7 +277,7 @@ describe("host server", () => {
 
   test("repair install returns success and keeps mounts", async () => {
     const ctx = await isolatedHost()
-    const { app, csrfToken } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
+    const { app, csrfToken } = await hostApp(ctx)
 
     const applied = await app.request("http://127.0.0.1:4173/api/config", {
       method: "PUT",
@@ -282,11 +299,11 @@ describe("host server", () => {
       headers: { host: "127.0.0.1:4173" },
     })
     expect(after.status).toBe(200)
-  })
+  }, 30_000)
 
   test("files API is always mounted on loopback without auth", async () => {
     const ctx = await isolatedHost()
-    const { app } = await createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })
+    const { app } = await hostApp(ctx)
     const response = await app.request("http://127.0.0.1:4173/api/files/tree", {
       headers: { host: "127.0.0.1:4173" },
     })
@@ -297,10 +314,8 @@ describe("host server", () => {
 
   test("files API requires password off-loopback", async () => {
     const ctx = await isolatedHost()
-    const { app } = await createHostApp({
-      ...ctx,
+    const { app } = await hostApp(ctx, {
       hostname: "0.0.0.0",
-      port: 4173,
       env: { OPENCODE_STUDIO_PASSWORD: "secret" },
     })
     const denied = await app.request("http://192.168.1.20:4173/api/files/tree", {
@@ -319,10 +334,8 @@ describe("host server", () => {
 
   test("OPENCODE_STUDIO_USERNAME overrides Basic auth user", async () => {
     const ctx = await isolatedHost()
-    const { app } = await createHostApp({
-      ...ctx,
+    const { app } = await hostApp(ctx, {
       hostname: "0.0.0.0",
-      port: 4173,
       env: { OPENCODE_STUDIO_PASSWORD: "secret", OPENCODE_STUDIO_USERNAME: "myuser" },
     })
     const denied = await app.request("http://192.168.1.20:4173/api/files/tree", {

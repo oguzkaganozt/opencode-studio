@@ -6,21 +6,17 @@ import { composeStudioPlugins, type StudioPluginContribution } from "./core/plug
 import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
+import { DEFAULT_STUDIO_HOST_URL, ensureStudioHost } from "./host-ensure"
+import { normalizeParentOpenCodeUrl } from "./opencode-bridge"
 import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
-
-const DEFAULT_HOST_URL = "http://127.0.0.1:4173"
-
-function hostUrlFromEnv() {
-  const value = process.env.OPENCODE_STUDIO_URL
-  if (typeof value === "string" && value.length > 0) return value.replace(/\/$/, "")
-  return DEFAULT_HOST_URL
-}
 
 export type StudioPluginOptions = UserPathOptions & {
   /** Domain data root override (CAD/PCB). Defaults to OpenCode context.directory. */
   workspace?: string
   hostUrl?: string
   packageRoot?: string
+  /** When false, skip ensure-host (tests). Default true. */
+  ensureHost?: boolean
 }
 
 async function resolveRoots(userPaths: UserPathOptions = {}, domainRoot?: string) {
@@ -44,6 +40,16 @@ async function resolveRoots(userPaths: UserPathOptions = {}, domainRoot?: string
   return { roots: config.roots, error: config.error }
 }
 
+function parentServerUrl(context: { serverUrl?: URL }): string | undefined {
+  const raw = context.serverUrl
+  if (!raw) return undefined
+  try {
+    return normalizeParentOpenCodeUrl(raw)
+  } catch {
+    return undefined
+  }
+}
+
 export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): Plugin {
   return async (context, rawOptions) => {
     assertNotRoot("initialize the OpenCode Studio plugin")
@@ -56,10 +62,40 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
         : typeof defaults.workspace === "string"
           ? defaults.workspace
           : context.directory
-    const hostUrl =
+
+    let hostUrl =
       typeof rawOptions?.hostUrl === "string" && rawOptions.hostUrl.length > 0
         ? rawOptions.hostUrl.replace(/\/$/, "")
-        : (defaults.hostUrl ?? hostUrlFromEnv())
+        : typeof defaults.hostUrl === "string"
+          ? defaults.hostUrl.replace(/\/$/, "")
+          : undefined
+
+    const shouldEnsure = defaults.ensureHost !== false && rawOptions?.ensureHost !== false
+    if (!hostUrl && shouldEnsure) {
+      const parent = parentServerUrl(context)
+      if (parent) {
+        const ensured = await ensureStudioHost({
+          parentOpenCodeUrl: parent,
+          workspace,
+          packageRoot,
+          env: process.env,
+        })
+        if (ensured.ok) {
+          hostUrl = ensured.hostUrl
+          if (!ensured.reused) {
+            console.error(`[opencode-studio] Studio host ready: ${ensured.studioUrl}`)
+          }
+        } else {
+          console.error(`[opencode-studio] Studio host not started: ${ensured.reason}`)
+        }
+      } else {
+        console.error("[opencode-studio] Studio host skipped: no parent OpenCode serverUrl (use opencode serve)")
+      }
+    }
+
+    // Prefer explicit env; otherwise default :4173 so tools can probe companion health.
+    // Ensure failure is already logged — design_view reports reachable:false if host is down.
+    hostUrl = hostUrl ?? process.env.OPENCODE_STUDIO_URL?.replace(/\/$/, "") ?? DEFAULT_STUDIO_HOST_URL
 
     const { roots } = await resolveRoots(userPaths, workspace)
 
@@ -74,7 +110,6 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       ensureForgeRuntimeDir,
     }
 
-    // Platform media is always on.
     try {
       const platformPlugin = await loadPlatformMediaPlugin({
         workspace,
@@ -87,7 +122,6 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       throw new Error(`opencode-studio: failed to initialize platform media: ${message}`)
     }
 
-    // Domain studios are always on (full catalog).
     for (const studioId of allStudioIds()) {
       try {
         const load = pluginLoaders[studioId]

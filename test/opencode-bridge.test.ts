@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { createOpenCodeBridge } from "../src/opencode-bridge"
+import { createOpenCodeBridge, normalizeParentOpenCodeUrl } from "../src/opencode-bridge"
 
 const servers: Array<ReturnType<typeof Bun.serve>> = []
 
@@ -8,6 +8,11 @@ afterEach(() => {
 })
 
 describe("OpenCode bridge", () => {
+  test("normalizes bind-any parent hosts to loopback", () => {
+    expect(normalizeParentOpenCodeUrl("http://0.0.0.0:4096")).toBe("http://127.0.0.1:4096")
+    expect(normalizeParentOpenCodeUrl("http://127.0.0.1:4096/")).toBe("http://127.0.0.1:4096")
+  })
+
   test("pins native API requests to the host workspace and replaces browser auth", async () => {
     const upstream = Bun.serve({
       port: 0,
@@ -24,10 +29,11 @@ describe("OpenCode bridge", () => {
       },
     })
     servers.push(upstream)
-    const bridge = createOpenCodeBridge("/srv/project", { OPENCODE_SERVER_PASSWORD: "sidecar-secret" }, async () => ({
-      url: `http://127.0.0.1:${upstream.port}`,
-      close() {},
-    }))
+    const bridge = createOpenCodeBridge({
+      baseUrl: `http://127.0.0.1:${upstream.port}`,
+      workspace: "/srv/project",
+      env: { OPENCODE_SERVER_PASSWORD: "sidecar-secret" },
+    })
 
     const response = await bridge.proxy(
       new Request(
@@ -67,7 +73,7 @@ describe("OpenCode bridge", () => {
       },
     })
     servers.push(upstream)
-    const bridge = createOpenCodeBridge("/srv/project", {}, async () => ({ url: `http://127.0.0.1:${upstream.port}`, close() {} }))
+    const bridge = createOpenCodeBridge({ baseUrl: `http://127.0.0.1:${upstream.port}`, workspace: "/srv/project" })
     const response = await bridge.proxy(new Request("http://studio.test/assets/index.js"))
     expect((await response.json()).search).toBe("")
     bridge.close()
@@ -84,7 +90,7 @@ describe("OpenCode bridge", () => {
       },
     })
     servers.push(upstream)
-    const bridge = createOpenCodeBridge("/srv/project", {}, async () => ({ url: `http://127.0.0.1:${upstream.port}`, close() {} }))
+    const bridge = createOpenCodeBridge({ baseUrl: `http://127.0.0.1:${upstream.port}`, workspace: "/srv/project" })
     const response = await bridge.proxy(new Request("http://studio.test/assets/index.js"))
     expect(response.headers.get("content-encoding")).toBeNull()
     expect(response.headers.get("content-length")).toBeNull()
@@ -93,7 +99,7 @@ describe("OpenCode bridge", () => {
   })
 
   test("pins WebSocket targets to the host workspace", async () => {
-    const bridge = createOpenCodeBridge("/srv/project", {}, async () => ({ url: "http://127.0.0.1:4096", close() {} }))
+    const bridge = createOpenCodeBridge({ baseUrl: "http://127.0.0.1:4096", workspace: "/srv/project" })
     const target = new URL(await bridge.webSocketTarget("ws://studio.test/api/pty/one?directory=/etc&workspace=other"))
     expect(target.pathname).toBe("/api/pty/one")
     expect(target.searchParams.get("directory")).toBe("/srv/project")
@@ -102,10 +108,24 @@ describe("OpenCode bridge", () => {
     bridge.close()
   })
 
-  test("refuses native proxy when attached to a shared server", async () => {
-    const bridge = createOpenCodeBridge("/srv/project", { OPENCODE_STUDIO_OPENCODE_URL: "http://127.0.0.1:4096" })
-    await expect(bridge.proxy(new Request("http://studio.test/"))).rejects.toThrow("Studio-owned sidecar")
-    await expect(bridge.webSocketTarget("ws://studio.test/api/pty/one")).rejects.toThrow("Studio-owned sidecar")
+  test("proxies when attached to a parent OpenCode URL", async () => {
+    const upstream = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response("parent-ok")
+      },
+    })
+    servers.push(upstream)
+    const bridge = createOpenCodeBridge({
+      baseUrl: `http://127.0.0.1:${upstream.port}`,
+      workspace: "/srv/project",
+    })
+    const response = await bridge.proxy(new Request("http://studio.test/"))
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("parent-ok")
+    const ws = new URL(await bridge.webSocketTarget("ws://studio.test/api/pty/one"))
+    expect(ws.hostname).toBe("127.0.0.1")
+    expect(ws.port).toBe(String(upstream.port))
     bridge.close()
   })
 })

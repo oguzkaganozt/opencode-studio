@@ -272,6 +272,13 @@ try {
   })
   // Bind a concrete loopback port so Host-header allowlisting matches the browser.
   const port = await freePort()
+  const parent = Bun.serve({
+    port: 0,
+    fetch: () =>
+      new Response("<!doctype html><title>OpenCode</title><div id='root'>stub parent</div>", {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }),
+  })
   const { url, stop } = await startHost({
     workspace: domain,
     studioConfigHome,
@@ -280,12 +287,14 @@ try {
     hostname: "127.0.0.1",
     port,
     uiDirectory,
+    parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
   })
   try {
     await httpSmoke(url)
     await browserSmoke(url)
   } finally {
     stop()
+    parent.stop(true)
   }
 } catch (error) {
   exitCode = 1

@@ -20,7 +20,7 @@ import {
 import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { configureStudios, statusStudios } from "./lifecycle"
-import { createOpenCodeBridge, type OpenCodeBridge } from "./opencode-bridge"
+import { createOpenCodeBridge, normalizeParentOpenCodeUrl, type OpenCodeBridge } from "./opencode-bridge"
 import { apiLoaders } from "./studio-loaders"
 import { listStudioDefinitions } from "./studios"
 
@@ -31,7 +31,22 @@ export type HostInput = UserPathOptions & {
   uiDirectory?: string
   packageRoot?: string
   packageVersion?: string
+  /** Parent OpenCode HTTP base. Required unless `openCodeBridge` is injected. */
+  parentOpenCodeUrl?: string
   openCodeBridge?: OpenCodeBridge
+  /**
+   * When true, register SIGINT/SIGTERM → stop + process.exit.
+   * Default false (safe inside OpenCode plugin process).
+   */
+  handleSignals?: boolean
+}
+
+export type HostHandle = {
+  server: ReturnType<typeof Bun.serve>
+  url: string
+  studioUrl: string
+  parentOpenCodeUrl: string
+  stop: () => void
 }
 
 type StudioMountState = {
@@ -84,8 +99,19 @@ export async function createHostApp(input: HostInput) {
   const packageVersion = input.packageVersion ?? meta.version
   const csrfToken = createCsrfToken()
   const env = input.env ?? process.env
-  const nativeOpenCodeAvailable = !env.OPENCODE_STUDIO_OPENCODE_URL?.trim()
-  const openCode = input.openCodeBridge ?? createOpenCodeBridge(input.workspace, env)
+  const parentOpenCodeUrl = input.parentOpenCodeUrl?.trim() ? normalizeParentOpenCodeUrl(input.parentOpenCodeUrl) : undefined
+  if (!input.openCodeBridge && !parentOpenCodeUrl) {
+    throw new Error("parentOpenCodeUrl or openCodeBridge is required")
+  }
+  const openCode =
+    input.openCodeBridge ??
+    createOpenCodeBridge({
+      baseUrl: parentOpenCodeUrl!,
+      workspace: input.workspace,
+      env,
+    })
+  const resolvedParentUrl = parentOpenCodeUrl
+  const nativeOpenCodeAvailable = Boolean(resolvedParentUrl || input.openCodeBridge)
   const userPaths = pickUserPaths(input)
   const domain = { workspace: input.workspace, packageRoot, userPaths }
 
@@ -116,7 +142,7 @@ export async function createHostApp(input: HostInput) {
     ctx.header("X-Content-Type-Options", "nosniff")
   })
 
-  app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok" }))
+  app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok", parentOpenCodeUrl: resolvedParentUrl }))
   app.get("/api/csrf", (ctx) => ctx.json({ token: csrfToken }))
 
   app.get("/api/studios", async (ctx) => {
@@ -337,22 +363,12 @@ export async function createHostApp(input: HostInput) {
   }
 }
 
-export async function startHost(input: HostInput) {
-  const {
-    app,
-    hostname,
-    port,
-    packageVersion,
-    closeOpenCode,
-    openCodeAuthorized,
-    openCodeAuthResponse,
-    openCodeWebSocketTarget,
-    nativeOpenCodeAvailable,
-  } = await createHostApp(input)
+export async function startHost(input: HostInput): Promise<HostHandle> {
+  const { app, hostname, port, packageVersion, closeOpenCode, openCodeAuthorized, openCodeAuthResponse, openCodeWebSocketTarget } =
+    await createHostApp(input)
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
   const meta = await loadPackageMeta(packageRoot)
   scheduleUpdateLog({ packageName: meta.name, current: input.packageVersion ?? packageVersion })
-  // Re-check daily while the host stays up (systemd).
   const updateTimer = setInterval(
     () => {
       scheduleUpdateLog({ packageName: meta.name, current: input.packageVersion ?? packageVersion })
@@ -408,21 +424,22 @@ export async function startHost(input: HostInput) {
   })
   const stop = () => {
     clearInterval(updateTimer)
-    // Observation watchers must not keep the process alive after host stop (CI browser-smoke).
     void import("../studios/cad/watcher").then((m) => m.closeAllDesignWatchers()).catch(() => {})
     void import("../studios/pcb/watcher").then((m) => m.closeAllProjectWatchers()).catch(() => {})
     closeOpenCode()
     server.stop(true)
   }
-  process.on("SIGINT", () => {
-    stop()
-    process.exit(0)
-  })
-  process.on("SIGTERM", () => {
-    stop()
-    process.exit(0)
-  })
-  // Bun may assign an ephemeral port when `port` is 0 — always report the bound port.
+  if (input.handleSignals) {
+    process.on("SIGINT", () => {
+      stop()
+      process.exit(0)
+    })
+    process.on("SIGTERM", () => {
+      stop()
+      process.exit(0)
+    })
+  }
   const url = `http://${hostname}:${server.port}`
-  return { server, url, studioUrl: `${url}/studio`, opencodeUrl: nativeOpenCodeAvailable ? url : undefined, stop }
+  const parentOpenCodeUrl = input.parentOpenCodeUrl?.trim() ? normalizeParentOpenCodeUrl(input.parentOpenCodeUrl) : "injected-bridge"
+  return { server, url, studioUrl: `${url}/studio`, parentOpenCodeUrl, stop }
 }

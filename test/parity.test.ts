@@ -58,6 +58,7 @@ describe("live tool inventory", () => {
         packageRoot,
         studioConfigHome,
         openCodeHome,
+        ensureHost: false,
       })
       const composed = await plugin({ directory: workspace } as any, {})
       const names = listComposedToolNames(composed)
@@ -82,6 +83,7 @@ describe("live tool inventory", () => {
         packageRoot,
         studioConfigHome,
         openCodeHome,
+        ensureHost: false,
       })
       const composed = await plugin({ directory: workspace } as any, {})
       const names = listComposedToolNames(composed)

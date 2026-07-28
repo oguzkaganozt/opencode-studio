@@ -18,9 +18,8 @@ bun run test:browser:install                      # once: Playwright Chromium fo
 bun run test:pcb-fixture                          # regenerate PCB authoring fixtures
 bun run test:package                              # pack + verify shipped files
 bun run test:browser                              # HTTP + Chromium layout/CSS smoke (needs dist/ui)
-bun run serve                                     # host @ 127.0.0.1:4173
-bun run dev:ui                                    # Vite :5173, proxies /api → :4173
-# CLI background (Linux): opencode-studio service install|status|stop|uninstall
+bun run dev:ui                                    # Vite :5173 (UI only)
+# Studio host: started in-process by the OpenCode plugin when `opencode serve` loads a directory
 ```
 
 CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` → `bun install --frozen-lockfile` → `bun run release:check`. Bun ≥ 1.3, Python 3.12 + uv for forge/MCP.
@@ -44,12 +43,12 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 
 - **CAD and PCB are always on** (full catalog). No enable/disable toggle. Platform media + Files stay on too.
 - Optional `~/.config/opencode-studio/studio.json` holds **roots only**: `{ "roots": { "cad": "/abs", "pcb": "/abs" } }`. Missing file is fine. Legacy `enabled` is ignored.
-- CAD/PCB **data** roots default to the domain workspace (`serve --workspace` / OpenCode `context.directory`), not the config home. `roots.<id>` must be **absolute**.
+- CAD/PCB **data** roots default to the domain workspace (OpenCode `context.directory`), not the config home. `roots.<id>` must be **absolute**.
 - Global install channel is **bun only** (`bun add -g @oguzkaganozt/opencode-studio`). npm registry is publish-only. **postinstall** on bun global runs `repair` once (soft): managed skills under `~/.config/opencode/skills/studio-<id>/` (`studio-cad`, `studio-pcb`, `studio-media`; marker `.opencode-studio-managed.json`), plugin + media-go **without version pins**, MCP `build123d`. Does **not** write into project directories. Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1` or `OPENCODE_STUDIO_SKIP_CONFIGURE=1`. `opencode-studio upgrade` → `bun add -g …@latest`.
-- `opencode-studio repair` and UI **Repair install** / `PUT /api/config` re-run the same install (loopback + CSRF). **`serve` does not repair.** Restart **OpenCode** after install so plugins/skills load.
+- `opencode-studio repair` and UI **Repair install** / `PUT /api/config` re-run the same install (loopback + CSRF). Restart **OpenCode** after install so plugins/skills load.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
 - Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` **uninstalls** managed plugins/skills/MCP from OpenCode home (not the npm package).
-- Host bind modes: `serve --local` (default, `127.0.0.1`) or `serve --web` (`0.0.0.0`). Web mode requires `OPENCODE_STUDIO_PASSWORD` at startup. The integrated agent lazily starts one loopback OpenCode sidecar per host (or attaches via `OPENCODE_STUDIO_OPENCODE_URL`) and pins requests to `serve --workspace`. Native OpenCode HTTP/SSE/WebSocket traffic from an owned sidecar is proxied at `/`; Studio lives at `/studio`. The Studio Agent panel is a same-origin iframe of that native UI (lazy on first open, stays mounted). Native proxying and the embedded Agent UI are disabled in attach mode to prevent shared-server event leakage — use the external server’s own URL. All Studio HTTP writes use CSRF + Origin checks. Non-loopback native OpenCode access uses HTTP Basic (`OPENCODE_STUDIO_USERNAME` default `opencode-studio` + `OPENCODE_STUDIO_PASSWORD`); domain studio read APIs remain public on loopback; /api/files requires Basic auth off-loopback. `serve --web` prints the Basic username. Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`; TLS and multi-user authorization remain out of scope.
+- **OpenCode-first host:** lifecycle is owned by `opencode serve`. The studio plugin ensure-hosts an in-process Viewer on `127.0.0.1:4173` (first `context.directory` pinned), attaches to `context.serverUrl`, and reverse-proxies native OpenCode at `/` for the Agent iframe. Studio **never** spawns OpenCode. No user-facing `opencode-studio serve` / host systemd. Open `http://127.0.0.1:4173/studio` after a directory Instance loads. Opt out: `OPENCODE_STUDIO_AUTOSTART=0`. All Studio HTTP writes use CSRF + Origin checks. Never run as root unless `OPENCODE_STUDIO_ALLOW_ROOT=1`; TLS and multi-user authorization remain out of scope. See `ROADMAP-OPENCODE-FIRST.md`.
 
 ## Hard rules
 
