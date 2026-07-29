@@ -32,6 +32,16 @@
   box-shadow: var(--osc-focus-ring);
 }
 
+/* 3D surface: no iOS long-press select / callout / highlight */
+[data-studio="cad"] .cad-viewport-surface,
+[data-studio="cad"] .cad-viewport-surface canvas {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+
 /* Floating controls over dark canvas — solid panel, no glass */
 [data-studio="cad"] .cad-toolbar {
   display: flex;

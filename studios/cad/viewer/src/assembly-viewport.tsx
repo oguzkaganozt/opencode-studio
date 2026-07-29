@@ -1,11 +1,23 @@
 import { type MutableRefObject, useEffect, useRef } from "react"
 import { AssemblyScene } from "./assembly-scene"
-import type { ClickInfo, InteractionMode, LoadPart, RegionDraft, RegionInfo, SceneHandle } from "./assembly-types"
+import type {
+  ClickInfo,
+  InteractionMode,
+  LinkedPinPair,
+  LoadPart,
+  RegionDraft,
+  RegionInfo,
+  RegionTool,
+  SceneHandle,
+} from "./assembly-types"
 
 type AssemblyViewportProps = {
   parts: LoadPart[] | null
   interactionMode: InteractionMode
+  regionTool: RegionTool
+  linkArmed: boolean
   onPicksChange: (picks: ClickInfo[]) => void
+  onLinkedPairsChange: (pairs: LinkedPinPair[], meta: { armed: boolean; fromId: string | null }) => void
   onRegionsChange: (regions: RegionInfo[]) => void
   onRegionDraftChange: (draft: RegionDraft | null) => void
   onMessage: (message: string) => void
@@ -16,7 +28,10 @@ type AssemblyViewportProps = {
 export function AssemblyViewport({
   parts,
   interactionMode,
+  regionTool,
+  linkArmed,
   onPicksChange,
+  onLinkedPairsChange,
   onRegionsChange,
   onRegionDraftChange,
   onMessage,
@@ -26,11 +41,13 @@ export function AssemblyViewport({
   const containerRef = useRef<HTMLDivElement>(null)
   const internalRef = useRef<AssemblyScene | null>(null)
   const onPicksChangeRef = useRef(onPicksChange)
+  const onLinkedPairsChangeRef = useRef(onLinkedPairsChange)
   const onRegionsChangeRef = useRef(onRegionsChange)
   const onRegionDraftChangeRef = useRef(onRegionDraftChange)
   const onMessageRef = useRef(onMessage)
   const onLoadedRef = useRef(onLoaded)
   onPicksChangeRef.current = onPicksChange
+  onLinkedPairsChangeRef.current = onLinkedPairsChange
   onRegionsChangeRef.current = onRegionsChange
   onRegionDraftChangeRef.current = onRegionDraftChange
   onMessageRef.current = onMessage
@@ -41,6 +58,7 @@ export function AssemblyViewport({
     if (!container) return
     const scene = new AssemblyScene(container)
     scene.onPicksChange = (picks) => onPicksChangeRef.current(picks)
+    scene.onLinkedPairsChange = (pairs, meta) => onLinkedPairsChangeRef.current(pairs, meta)
     scene.onRegionsChange = (regions) => onRegionsChangeRef.current(regions)
     scene.onRegionDraftChange = (draft) => onRegionDraftChangeRef.current(draft)
     scene.onMessage = (message) => onMessageRef.current(message)
@@ -61,6 +79,14 @@ export function AssemblyViewport({
   }, [interactionMode])
 
   useEffect(() => {
+    internalRef.current?.setRegionTool(regionTool)
+  }, [regionTool])
+
+  useEffect(() => {
+    internalRef.current?.setLinkArmed(linkArmed)
+  }, [linkArmed])
+
+  useEffect(() => {
     const scene = internalRef.current
     if (!scene) return
     scene.clearPicks()
@@ -79,5 +105,11 @@ export function AssemblyViewport({
     }
   }, [parts])
 
-  return <div ref={containerRef} className="absolute inset-0" data-testid="assembly-viewport" />
+  return (
+    <div
+      ref={containerRef}
+      className="cad-viewport-surface absolute inset-0"
+      data-testid="assembly-viewport"
+    />
+  )
 }

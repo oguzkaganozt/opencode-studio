@@ -1,0 +1,142 @@
+import type { LinkedPinPair, Vec2, Vec3 } from "./assembly-types"
+import { ensureCcw2d } from "./region-geometry"
+
+export const MIN_RECT_SIDE_MM = 0.5
+/** Mesh verts farther than this from hit plane → not planar enough for Rect. */
+export const RECT_PLANE_TOL_MM = 0.35
+
+export const MAX_LINKED_PAIRS = 4
+
+export type { LinkedPinPair }
+
+export type PinPairMeasure = {
+  fromIndex: number
+  toIndex: number
+  distance_mm: number
+  quality: "construction"
+  source: "linked" | "last"
+}
+
+export type AxisAlignedRect2d = {
+  boundary2d: Vec2[]
+  width_mm: number
+  height_mm: number
+}
+
+export function distance3(a: Vec3, b: Vec3): number {
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+}
+
+export function formatMm(value: number, decimals: number): string {
+  return value.toFixed(decimals)
+}
+
+/** Last pin ↔ previous pin (1-based prompt indices). Null if fewer than 2 picks. */
+export function lastPinPairMeasure(picks: ReadonlyArray<{ position: Vec3 }>): PinPairMeasure | null {
+  if (picks.length < 2) return null
+  const toIndex = picks.length
+  const fromIndex = picks.length - 1
+  const a = picks[fromIndex - 1]!
+  const b = picks[toIndex - 1]!
+  return {
+    fromIndex,
+    toIndex,
+    distance_mm: distance3(a.position, b.position),
+    quality: "construction",
+    source: "last",
+  }
+}
+
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`
+}
+
+/** Linked pairs first (cap), then last↔previous if not already included. */
+export function collectPinPairMeasures(
+  picks: ReadonlyArray<{ id?: string; position: Vec3 }>,
+  linked: ReadonlyArray<LinkedPinPair>,
+): PinPairMeasure[] {
+  const idToIndex = new Map<string, number>()
+  picks.forEach((p, i) => {
+    if (p.id) idToIndex.set(p.id, i + 1)
+  })
+  const out: PinPairMeasure[] = []
+  const seen = new Set<string>()
+  for (const link of linked) {
+    if (out.length >= MAX_LINKED_PAIRS) break
+    const fromIndex = idToIndex.get(link.fromId)
+    const toIndex = idToIndex.get(link.toId)
+    if (fromIndex === undefined || toIndex === undefined) continue
+    const key = pairKey(link.fromId, link.toId)
+    if (seen.has(key)) continue
+    seen.add(key)
+    const a = picks[fromIndex - 1]!
+    const b = picks[toIndex - 1]!
+    out.push({
+      fromIndex,
+      toIndex,
+      distance_mm: distance3(a.position, b.position),
+      quality: "construction",
+      source: "linked",
+    })
+  }
+  const last = lastPinPairMeasure(picks)
+  if (last) {
+    const fromId = picks[last.fromIndex - 1]?.id
+    const toId = picks[last.toIndex - 1]?.id
+    const key = fromId && toId ? pairKey(fromId, toId) : `i:${last.fromIndex}|${last.toIndex}`
+    if (!seen.has(key)) {
+      out.push(last)
+    }
+  }
+  return out
+}
+
+export function undirectedPairExists(linked: ReadonlyArray<LinkedPinPair>, a: string, b: string): boolean {
+  const key = pairKey(a, b)
+  return linked.some((p) => pairKey(p.fromId, p.toId) === key)
+}
+
+/** True if all sample points lie within tolMm of the plane (origin + unit normal). */
+export function pointsNearPlane(
+  points: ReadonlyArray<Vec3>,
+  origin: Vec3,
+  normalIn: Vec3,
+  tolMm = RECT_PLANE_TOL_MM,
+): boolean {
+  if (points.length < 3) return false
+  const len = Math.hypot(normalIn.x, normalIn.y, normalIn.z)
+  if (len < 1e-12) return false
+  const nx = normalIn.x / len
+  const ny = normalIn.y / len
+  const nz = normalIn.z / len
+  for (const p of points) {
+    const d = Math.abs((p.x - origin.x) * nx + (p.y - origin.y) * ny + (p.z - origin.z) * nz)
+    if (d > tolMm) return false
+  }
+  return true
+}
+
+/** Axis-aligned rect in viewer plane UV from two opposite corners. Sides // frame u/v. */
+export function axisAlignedRect2d(corner0: Vec2, corner1: Vec2): AxisAlignedRect2d {
+  const u0 = Math.min(corner0.u, corner1.u)
+  const u1 = Math.max(corner0.u, corner1.u)
+  const v0 = Math.min(corner0.v, corner1.v)
+  const v1 = Math.max(corner0.v, corner1.v)
+  const ring = [
+    { u: u0, v: v0 },
+    { u: u1, v: v0 },
+    { u: u1, v: v1 },
+    { u: u0, v: v1 },
+  ]
+  return {
+    boundary2d: ensureCcw2d(ring),
+    width_mm: u1 - u0,
+    height_mm: v1 - v0,
+  }
+}
+
+export function rectMeetsMinSize(width_mm: number, height_mm: number, minAreaMm2: number): boolean {
+  if (width_mm < MIN_RECT_SIDE_MM || height_mm < MIN_RECT_SIDE_MM) return false
+  return width_mm * height_mm >= minAreaMm2
+}

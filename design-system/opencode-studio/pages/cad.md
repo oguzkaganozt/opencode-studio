@@ -20,15 +20,15 @@ Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. C
 
 ## Canvas chrome
 - Solid dark toolbar panel (`.cad-toolbar`) — no backdrop-blur
-- Compact: **design name** · **`N parts`** · **Pick | Region** · **Fit** · reload · open
-- Wide docked: design id · status · Pick|Region · Fit · reload/open (Parts via right rail)
+- Compact: **design name** · **`N parts`** · **Pick | Region** · (**Rect | Free** when Region) · **Fit** · reload · open
+- Wide docked: design id · status · Pick|Region · Rect|Free · Fit · reload/open (Parts via right rail)
 - No ⋯ overflow menu — all primary actions are direct toolbar controls
 - **Copy / Prompt only on surface HUD** when any annotation exists — never permanent toolbar chrome
 - Empty: dashed well + Retry / Open .glb / Designs
-- HUD: pin + region counts · last detail + **Clear / Copy / Prompt** (Clear only here, not toolbar); while drawing: loop hint only
-- **Pick**: multi-select points (cap 8); multi-pin per face; tap pin to remove; Clear = picks only
-- **Region**: freehand on locked face (cap 5); **closed on lift → keep**, open lift → discard; face-split GLB; 1-finger draw / 2-finger orbit; Clear = regions only
-- Copy/Prompt = **full** annotation state (all pins + all regions)
+- HUD: pin + region counts · **Δ** (linked and/or last pair) · last detail + **Link** (pick, ≥2 pins) / **Clear / Copy / Prompt**; while drawing: loop/W×H hint only
+- **Pick**: multi-select (cap 8); mesh snap vertex/edge/mid; **touch hold+drag** live snap reticle (early move = orbit); mouse hover ghost; **Link** A→B (max 4); tap pin removes when Link off; Clear = picks + links
+- **Region**: **Rect** (default, planar face, live W×H, 4 corners) | **Free** (loop-close freehand); cap 5; face-split GLB; 1-finger draw / 2-finger orbit; Clear = regions only
+- Copy/Prompt = **full** annotation state (pins + regions + last-pair `measures`; rect includes `kind`/`size_mm`/`frame=viewer-plane`)
 - Pins + region overlays stay visible together; faces amber; plane regions get fill+outline
 - Face data: forge multi-mesh GLB `face_<id>` + optional `topo/`; plane regions include boundary2d
 - Fit: resize + bounding-sphere framing; double-rAF after layout settles

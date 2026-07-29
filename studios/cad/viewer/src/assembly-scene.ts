@@ -7,10 +7,12 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js"
 import type {
   ClickInfo,
   InteractionMode,
+  LinkedPinPair,
   LoadPart,
   PartTopo,
   RegionDraft,
   RegionInfo,
+  RegionTool,
   Vec3,
 } from "./assembly-types"
 import {
@@ -21,6 +23,13 @@ import {
   MIN_REGION_VERTS,
   picksMatch,
 } from "./assembly-types"
+import {
+  axisAlignedRect2d,
+  MAX_LINKED_PAIRS,
+  pointsNearPlane,
+  rectMeetsMinSize,
+  undirectedPairExists,
+} from "./measure-geometry"
 import { dominantDirection } from "./geometry"
 import {
   buildPlaneFrame,
@@ -36,6 +45,14 @@ import {
   toPlane2d,
   type PlaneFrame,
 } from "./region-geometry"
+import {
+  boundaryEdgesFromTriangles,
+  dedupeVertices,
+  EDGE_SNAP_PX,
+  resolveMeshSnap,
+  VERTEX_SNAP_PX,
+  type SnapIndex,
+} from "./snap-geometry"
 
 export type { ClickInfo, LoadPart }
 
@@ -71,6 +88,11 @@ type RegionLock = {
 }
 
 const TAP_MOVE_PX = 10
+/** Hold before pick-drag arms (touch-friendly snap preview). */
+const PICK_HOLD_MS = 160
+/** Move farther than this before hold → treat as orbit, cancel pick-drag. */
+const PICK_ORBIT_SLOP_PX = 12
+const TOUCH_SNAP_SCALE = 1.4
 const SAMPLE_MIN_DIST = 0.15
 const REGION_BIAS = 0.06
 /** Screen-space snap-to-close radius (CSS px). Tight enough to avoid early close. */
@@ -98,12 +120,36 @@ export class AssemblyScene {
   private loadGeneration = 0
   private pointerDown: { x: number; y: number; id: number } | null = null
   private multiTouchActive = false
+  /** Pick long-press → drag with live snap preview (touch). */
+  private pickGesture: {
+    pointerId: number
+    startX: number
+    startY: number
+    lastX: number
+    lastY: number
+    pointerType: string
+    armed: boolean
+    cancelled: boolean
+    holdTimer: ReturnType<typeof setTimeout> | null
+  } | null = null
+  private snapPreview: {
+    clientX: number
+    clientY: number
+    world: Vec3
+    snap: string
+  } | null = null
   private picks: ClickInfo[] = []
   private pins: THREE.Group[] = []
+  private pinIdSeq = 0
+  private linkedPairs: LinkedPinPair[] = []
+  private linkArmed = false
+  private linkFromId: string | null = null
+  private readonly measureOverlay = new THREE.Group()
   private readonly pinUp = new THREE.Vector3(0, 1, 0)
   private readonly pinNormal = new THREE.Vector3()
   private readonly pinQuat = new THREE.Quaternion()
   private interactionMode: InteractionMode = "pick"
+  private regionTool: RegionTool = "rect"
   private regions: RegionInfo[] = []
   private regionLock: RegionLock | null = null
   private stroke: THREE.Vector3[] = []
@@ -113,13 +159,22 @@ export class AssemblyScene {
   private drawing = false
   private drawPointerId: number | null = null
   private strokeStartClient: { x: number; y: number } | null = null
+  /** Rect opposite corners in world mm (plane-projected). */
+  private rectCorner0: THREE.Vector3 | null = null
+  private rectCorner1: THREE.Vector3 | null = null
   /** Screen-space live stroke (always visible while drawing; WebGL fat lines are unreliable mid-gesture). */
   private readonly drawCanvas: HTMLCanvasElement
   private readonly drawCtx: CanvasRenderingContext2D
   private readonly regionOverlay = new THREE.Group()
   private regionIdSeq = 0
+  /** Lazy face-local snap index. Cleared on load. */
+  private readonly faceSnapCache = new Map<string, SnapIndex>()
+  private readonly snapProjectVec = new THREE.Vector3()
+  private readonly snapAttrVec = new THREE.Vector3()
 
   onPicksChange: ((picks: ClickInfo[]) => void) | null = null
+  onLinkedPairsChange: ((pairs: LinkedPinPair[], meta: { armed: boolean; fromId: string | null }) => void) | null =
+    null
   onRegionsChange: ((regions: RegionInfo[]) => void) | null = null
   onRegionDraftChange: ((draft: RegionDraft | null) => void) | null = null
   onMessage: ((message: string) => void) | null = null
@@ -139,6 +194,10 @@ export class AssemblyScene {
     canvas.style.width = "100%"
     canvas.style.height = "100%"
     canvas.style.touchAction = "none"
+    canvas.style.userSelect = "none"
+    canvas.setAttribute("draggable", "false")
+    container.style.userSelect = "none"
+    container.style.touchAction = "none"
     // Parent is already `absolute inset-0` (positioning context). Do not set
     // inline position:relative — that overrides absolute and collapses height.
     container.appendChild(canvas)
@@ -176,13 +235,42 @@ export class AssemblyScene {
     this.regionOverlay.raycast = () => {}
     this.regionOverlay.renderOrder = 9
     this.scene.add(this.regionOverlay)
+    this.measureOverlay.name = "__measures"
+    this.measureOverlay.raycast = () => {}
+    this.measureOverlay.renderOrder = 10
+    this.scene.add(this.measureOverlay)
 
-    canvas.addEventListener("pointerdown", this.handlePointerDown, true)
-    canvas.addEventListener("pointermove", this.handlePointerMove, true)
+    canvas.addEventListener("pointerdown", this.handlePointerDown, { capture: true, passive: false })
+    canvas.addEventListener("pointermove", this.handlePointerMove, { capture: true, passive: false })
     canvas.addEventListener("pointerup", this.handlePointerUp, true)
     canvas.addEventListener("pointercancel", this.handlePointerCancel, true)
+    canvas.addEventListener("pointerleave", this.handlePointerLeave, true)
+    canvas.addEventListener("contextmenu", this.handleContextMenu, true)
+    canvas.addEventListener("selectstart", this.handleSelectStart, true)
+    canvas.addEventListener("gesturestart", this.handleGestureBlock as EventListener, true)
     this.resize()
     this.animate()
+  }
+
+  private handleContextMenu = (event: Event) => {
+    event.preventDefault()
+  }
+
+  private handleSelectStart = (event: Event) => {
+    event.preventDefault()
+  }
+
+  private handleGestureBlock = (event: Event) => {
+    // iOS Safari pinch/long-press gesture noise on canvas
+    event.preventDefault()
+  }
+
+  private handlePointerLeave = () => {
+    if (this.pickGesture) return
+    if (this.snapPreview) {
+      this.snapPreview = null
+      this.paintDrawOverlay()
+    }
   }
 
   resize = () => {
@@ -202,6 +290,11 @@ export class AssemblyScene {
         obj.material.resolution.set(w, h)
       }
     })
+    this.measureOverlay.traverse((obj) => {
+      if (obj instanceof Line2 && obj.material instanceof LineMaterial) {
+        obj.material.resolution.set(w, h)
+      }
+    })
     this.paintDrawOverlay()
   }
 
@@ -213,9 +306,15 @@ export class AssemblyScene {
     canvas.removeEventListener("pointermove", this.handlePointerMove, true)
     canvas.removeEventListener("pointerup", this.handlePointerUp, true)
     canvas.removeEventListener("pointercancel", this.handlePointerCancel, true)
+    canvas.removeEventListener("pointerleave", this.handlePointerLeave, true)
+    canvas.removeEventListener("contextmenu", this.handleContextMenu, true)
+    canvas.removeEventListener("selectstart", this.handleSelectStart, true)
+    canvas.removeEventListener("gesturestart", this.handleGestureBlock as EventListener, true)
+    this.cancelPickGesture()
     this.clear()
     this.disposePins()
     this.disposeRegionOverlays()
+    this.disposeMeasureOverlays()
     this.drawCanvas.remove()
     this.controls.dispose()
     this.renderer.dispose()
@@ -224,6 +323,7 @@ export class AssemblyScene {
 
   clear() {
     this.loadGeneration += 1
+    this.faceSnapCache.clear()
     this.clearPicks(false)
     this.clearRegions(false)
     this.cancelRegionStroke(false)
@@ -245,20 +345,45 @@ export class AssemblyScene {
 
   getPicks = () => this.picks.slice()
   getRegions = () => this.regions.slice()
+  getLinkedPairs = () => this.linkedPairs.slice()
+  getLinkArmed = () => this.linkArmed
+  getLinkFromId = () => this.linkFromId
 
   setInteractionMode = (mode: InteractionMode) => {
     if (this.interactionMode === mode) return
     this.cancelRegionStroke(true)
+    this.cancelPickGesture()
     this.interactionMode = mode
+    if (mode !== "pick") this.setLinkArmed(false)
     this.applyControlsForMode()
     this.emitDraft()
   }
 
+  setRegionTool = (tool: RegionTool) => {
+    if (this.regionTool === tool) return
+    this.cancelRegionStroke(true)
+    this.regionTool = tool
+    this.emitDraft()
+  }
+
+  setLinkArmed = (armed: boolean) => {
+    this.linkArmed = armed
+    if (!armed) this.linkFromId = null
+    this.emitLinkedPairs()
+  }
+
   clearPicks = (emit = true) => {
     this.picks = []
+    this.linkedPairs = []
+    this.linkFromId = null
+    this.linkArmed = false
     this.syncPins()
+    this.rebuildMeasureOverlays()
     this.applySelectionColors()
-    if (emit) this.onPicksChange?.([])
+    if (emit) {
+      this.onPicksChange?.([])
+      this.emitLinkedPairs()
+    }
   }
 
   clearRegions = (emit = true) => {
@@ -285,6 +410,8 @@ export class AssemblyScene {
     this.stroke = []
     this.strokePathMm = 0
     this.strokeLeftStart = false
+    this.rectCorner0 = null
+    this.rectCorner1 = null
     this.clearDrawOverlay()
     this.applyControlsForMode()
     this.applySelectionColors()
@@ -472,6 +599,13 @@ export class AssemblyScene {
     this.onPicksChange?.(this.picks.slice())
   }
 
+  private emitLinkedPairs() {
+    this.onLinkedPairsChange?.(this.linkedPairs.slice(), {
+      armed: this.linkArmed,
+      fromId: this.linkFromId,
+    })
+  }
+
   private emitRegions() {
     this.onRegionsChange?.(this.regions.slice())
   }
@@ -481,15 +615,28 @@ export class AssemblyScene {
       this.onRegionDraftChange?.(null)
       return
     }
-    if (!this.regionLock && this.stroke.length === 0) {
+    const rectActive = this.regionTool === "rect" && this.rectCorner0 !== null
+    if (!this.regionLock && this.stroke.length === 0 && !rectActive) {
       this.onRegionDraftChange?.(null)
       return
     }
+    let width_mm: number | null = null
+    let height_mm: number | null = null
+    if (rectActive && this.regionLock?.frame && this.rectCorner0 && this.rectCorner1) {
+      const a = toPlane2d({ x: this.rectCorner0.x, y: this.rectCorner0.y, z: this.rectCorner0.z }, this.regionLock.frame)
+      const b = toPlane2d({ x: this.rectCorner1.x, y: this.rectCorner1.y, z: this.rectCorner1.z }, this.regionLock.frame)
+      const rect = axisAlignedRect2d(a, b)
+      width_mm = rect.width_mm
+      height_mm = rect.height_mm
+    }
     this.onRegionDraftChange?.({
-      active: this.drawing || this.stroke.length > 0 || this.regionLock !== null,
-      pointCount: this.stroke.length,
+      active: this.drawing || this.stroke.length > 0 || this.regionLock !== null || rectActive,
+      pointCount: this.regionTool === "rect" ? (this.rectCorner0 ? 2 : 0) : this.stroke.length,
       part: this.regionLock?.partName ?? null,
       faceId: this.regionLock?.faceId ?? null,
+      tool: this.regionTool,
+      width_mm,
+      height_mm,
     })
   }
 
@@ -719,8 +866,9 @@ export class AssemblyScene {
     if (!event.isPrimary) {
       this.multiTouchActive = true
       this.pointerDown = null
+      this.cancelPickGesture()
       // Second finger while drawing: full cancel — half endDrawGesture left lock+stroke stuck.
-      if (this.drawing || (this.regionLock && this.stroke.length > 0)) {
+      if (this.drawing || (this.regionLock && (this.stroke.length > 0 || this.rectCorner0))) {
         try {
           if (this.drawPointerId !== null) this.renderer.domElement.releasePointerCapture(this.drawPointerId)
         } catch {
@@ -733,9 +881,20 @@ export class AssemblyScene {
     if (this.multiTouchActive) return
     this.pointerDown = { x: event.clientX, y: event.clientY, id: event.pointerId }
 
+    if (this.interactionMode === "pick" && this.parts.length > 0) {
+      this.beginPickGesture(event)
+      return
+    }
+
     if (this.interactionMode !== "region" || this.parts.length === 0) return
 
-    // One continuous gesture only — incomplete strokes are discarded on lift.
+    if (this.regionTool === "rect") {
+      if (this.drawing) return
+      this.beginRectGesture(event)
+      return
+    }
+
+    // Freehand: one continuous gesture only — incomplete strokes discarded on lift.
     if (this.regionLock && this.stroke.length > 0) return
 
     if (this.regionLock) {
@@ -762,15 +921,92 @@ export class AssemblyScene {
     this.beginDraw(event, hit.point)
   }
 
-  private lockFace(hit: MeshHit) {
+  private beginRectGesture(event: PointerEvent) {
+    const hit = this.hitAt(event.clientX, event.clientY)
+    if (!hit) return
+    if (hit.faceId === null) {
+      this.onMessage?.("Region needs face-split mesh (built design)")
+      return
+    }
+    if (!this.faceIsRectEligible(hit)) {
+      this.onMessage?.(
+        hit.faceType && hit.faceType !== "plane"
+          ? `Rect needs a planar face (this is ${hit.faceType})`
+          : "Rect needs a planar face",
+      )
+      return
+    }
+    if (this.regions.length >= MAX_REGIONS) {
+      this.onMessage?.(`Max ${MAX_REGIONS} regions`)
+      return
+    }
+    const snapped = this.snapFacePoint(hit, event.clientX, event.clientY, event.pointerType)
+    const point = new THREE.Vector3(snapped.x, snapped.y, snapped.z)
+    this.lockFace({ ...hit, point }, { forcePlane: true })
+    if (!this.regionLock?.frame) {
+      this.cancelRegionStroke(true)
+      this.onMessage?.("Rect needs a planar face")
+      return
+    }
+    this.rectCorner0 = point.clone()
+    this.rectCorner1 = point.clone()
+    this.drawing = true
+    this.drawPointerId = event.pointerId
+    this.controls.enabled = false
+    event.stopPropagation()
+    event.preventDefault()
+    try {
+      this.renderer.domElement.setPointerCapture(event.pointerId)
+    } catch {
+      /* ignore */
+    }
+    this.paintDrawOverlay()
+    this.emitDraft()
+  }
+
+  private snapFacePoint(hit: MeshHit, clientX: number, clientY: number, pointerType = "mouse"): Vec3 {
+    const hitPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z }
+    if (hit.faceId === null) return hitPos
+    const th = this.snapThresholds(pointerType)
+    const snapped = resolveMeshSnap(
+      hitPos,
+      clientX,
+      clientY,
+      this.getFaceSnapIndex(hit.partIndex, hit.faceId),
+      (p) => this.projectClient(p),
+      th.vertex,
+      th.edge,
+    )
+    return snapped.position
+  }
+
+  /** Topo plane, or mesh verts near hit plane when topo type unknown. */
+  private faceIsRectEligible(hit: MeshHit): boolean {
+    if (hit.faceId === null) return false
+    if (hit.faceType === "plane") return true
+    if (hit.faceType !== null && hit.faceType !== undefined) return false
+    const verts = this.getFaceSnapIndex(hit.partIndex, hit.faceId).vertices
+    return pointsNearPlane(
+      verts,
+      { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+      { x: hit.normal.x, y: hit.normal.y, z: hit.normal.z },
+    )
+  }
+
+  private lockFace(hit: MeshHit, opts?: { forcePlane?: boolean }) {
     const meshes = this.faceMeshes(hit.partIndex, hit.faceId!)
-    const frame =
-      hit.faceType === "plane" ? buildPlaneFrame({ x: hit.point.x, y: hit.point.y, z: hit.point.z }, { x: hit.normal.x, y: hit.normal.y, z: hit.normal.z }) : null
+    const treatAsPlane = hit.faceType === "plane" || Boolean(opts?.forcePlane)
+    const frame = treatAsPlane
+      ? buildPlaneFrame(
+          { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+          { x: hit.normal.x, y: hit.normal.y, z: hit.normal.z },
+        )
+      : null
     this.regionLock = {
       partIndex: hit.partIndex,
       partName: hit.part.name,
       faceId: hit.faceId!,
-      faceType: hit.faceType,
+      faceType: hit.faceType ?? (treatAsPlane ? "plane" : null),
       normal: hit.normal.clone(),
       origin: hit.point.clone(),
       meshes,
@@ -802,13 +1038,55 @@ export class AssemblyScene {
   }
 
   private handlePointerMove = (event: PointerEvent) => {
-    if (!this.drawing || event.pointerId !== this.drawPointerId || !this.regionLock) return
     if (this.multiTouchActive) return
+
+    // Mouse hover snap ghost (no button) in pick mode.
+    if (
+      this.interactionMode === "pick" &&
+      event.pointerType === "mouse" &&
+      event.buttons === 0 &&
+      !this.pickGesture &&
+      this.parts.length > 0
+    ) {
+      this.updateSnapPreviewAt(event.clientX, event.clientY, "mouse")
+      this.paintDrawOverlay()
+      return
+    }
+
+    if (this.pickGesture && event.pointerId === this.pickGesture.pointerId) {
+      this.pickGesture.lastX = event.clientX
+      this.pickGesture.lastY = event.clientY
+      const dx = event.clientX - this.pickGesture.startX
+      const dy = event.clientY - this.pickGesture.startY
+      const distSq = dx * dx + dy * dy
+      if (!this.pickGesture.armed) {
+        if (distSq > PICK_ORBIT_SLOP_PX * PICK_ORBIT_SLOP_PX) {
+          // Early move = orbit; drop pick tracking so controls keep the gesture.
+          this.cancelPickGesture()
+        }
+        // Do not preventDefault — OrbitControls is driving.
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      this.updateSnapPreviewAt(event.clientX, event.clientY, this.pickGesture.pointerType)
+      this.paintDrawOverlay()
+      return
+    }
+
+    if (!this.drawing || event.pointerId !== this.drawPointerId || !this.regionLock) return
     const hit = this.hitAt(event.clientX, event.clientY, {
       partIndex: this.regionLock.partIndex,
       faceId: this.regionLock.faceId,
     })
     if (!hit) return
+    if (this.regionTool === "rect") {
+      const snapped = this.snapFacePoint(hit, event.clientX, event.clientY, event.pointerType)
+      this.rectCorner1 = new THREE.Vector3(snapped.x, snapped.y, snapped.z)
+      this.paintDrawOverlay()
+      this.emitDraft()
+      return
+    }
     this.appendStroke(hit.point, event.clientX, event.clientY)
   }
 
@@ -891,23 +1169,84 @@ export class AssemblyScene {
     this.drawCtx.clearRect(0, 0, w, h)
   }
 
-  /** Project live stroke to screen pixels — independent of WebGL line quirks. */
+  /** Project live stroke/rect/snap preview to screen pixels. */
   private paintDrawOverlay() {
     const w = this.container.clientWidth
     const h = this.container.clientHeight
     this.drawCtx.clearRect(0, 0, w, h)
+
+    const canvasRect = this.renderer.domElement.getBoundingClientRect()
+    const ctx = this.drawCtx
+
+    if (this.snapPreview) {
+      const worldScreen = this.clientOfWorld(
+        new THREE.Vector3(this.snapPreview.world.x, this.snapPreview.world.y, this.snapPreview.world.z),
+      )
+      const sx = (worldScreen?.x ?? this.snapPreview.clientX) - canvasRect.left
+      const sy = (worldScreen?.y ?? this.snapPreview.clientY) - canvasRect.top
+      const snapped = this.snapPreview.snap !== "free"
+      const color = snapped ? "#fbbf24" : "#22d3ee"
+      const r = snapped ? 14 : 10
+      ctx.beginPath()
+      ctx.arc(sx, sy, r + 3, 0, Math.PI * 2)
+      ctx.fillStyle = "#0b1220"
+      ctx.globalAlpha = 0.75
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(sx, sy, r, 0, Math.PI * 2)
+      ctx.strokeStyle = color
+      ctx.lineWidth = 2.5
+      ctx.globalAlpha = 1
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(sx - r - 4, sy)
+      ctx.lineTo(sx + r + 4, sy)
+      ctx.moveTo(sx, sy - r - 4)
+      ctx.lineTo(sx, sy + r + 4)
+      ctx.stroke()
+      if (snapped) {
+        ctx.font = "600 12px ui-sans-serif, system-ui, sans-serif"
+        ctx.fillStyle = color
+        ctx.textAlign = "center"
+        ctx.fillText(this.snapPreview.snap, sx, sy - r - 10)
+      }
+    }
+
+    if (this.regionTool === "rect" && this.rectCorner0 && this.rectCorner1 && this.regionLock?.frame) {
+      const frame = this.regionLock.frame
+      const a = toPlane2d({ x: this.rectCorner0.x, y: this.rectCorner0.y, z: this.rectCorner0.z }, frame)
+      const b = toPlane2d({ x: this.rectCorner1.x, y: this.rectCorner1.y, z: this.rectCorner1.z }, frame)
+      const ring = axisAlignedRect2d(a, b).boundary2d
+      const pts: Array<{ x: number; y: number }> = []
+      for (const p2 of ring) {
+        const world = fromPlane2d(p2, frame)
+        const screen = this.clientOfWorld(new THREE.Vector3(world.x, world.y, world.z))
+        if (!screen) continue
+        pts.push({ x: screen.x - canvasRect.left, y: screen.y - canvasRect.top })
+      }
+      if (pts.length < 4) return
+      ctx.beginPath()
+      ctx.moveTo(pts[0]!.x, pts[0]!.y)
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y)
+      ctx.closePath()
+      ctx.strokeStyle = "#22d3ee"
+      ctx.lineWidth = 3.5
+      ctx.globalAlpha = 1
+      ctx.stroke()
+      ctx.fillStyle = "rgba(34, 211, 238, 0.12)"
+      ctx.fill()
+      return
+    }
+
     if (this.stroke.length < 2) return
 
-    const rect = this.renderer.domElement.getBoundingClientRect()
     const pts: Array<{ x: number; y: number }> = []
     for (const p of this.stroke) {
       const screen = this.clientOfWorld(p)
       if (!screen) continue
-      pts.push({ x: screen.x - rect.left, y: screen.y - rect.top })
+      pts.push({ x: screen.x - canvasRect.left, y: screen.y - canvasRect.top })
     }
     if (pts.length < 2) return
-
-    const ctx = this.drawCtx
     ctx.lineCap = "round"
     ctx.lineJoin = "round"
 
@@ -942,6 +1281,7 @@ export class AssemblyScene {
   }
 
   private handlePointerCancel = (event: PointerEvent) => {
+    if (this.pickGesture?.pointerId === event.pointerId) this.cancelPickGesture()
     if (this.drawPointerId === event.pointerId || this.drawing) {
       this.cancelRegionStroke(true)
     }
@@ -952,6 +1292,37 @@ export class AssemblyScene {
   private handlePointerUp = (event: PointerEvent) => {
     if (!event.isPrimary) {
       this.multiTouchActive = false
+      return
+    }
+
+    if (this.pickGesture && event.pointerId === this.pickGesture.pointerId) {
+      const gesture = this.pickGesture
+      try {
+        this.renderer.domElement.releasePointerCapture(event.pointerId)
+      } catch {
+        /* ignore */
+      }
+      this.pointerDown = null
+      if (this.multiTouchActive) {
+        this.multiTouchActive = false
+        this.cancelPickGesture()
+        return
+      }
+      if (gesture.armed && !gesture.cancelled) {
+        this.pickAt(event.clientX, event.clientY, gesture.pointerType)
+        this.endPickGesture()
+        return
+      }
+      const armed = gesture.armed
+      const cancelled = gesture.cancelled
+      this.endPickGesture()
+      if (armed || cancelled) return
+      // Quick tap (hold never armed): place with snap at lift point if little movement.
+      const dx = event.clientX - gesture.startX
+      const dy = event.clientY - gesture.startY
+      if (dx * dx + dy * dy <= TAP_MOVE_PX * TAP_MOVE_PX) {
+        this.pickAt(event.clientX, event.clientY, gesture.pointerType)
+      }
       return
     }
 
@@ -966,6 +1337,13 @@ export class AssemblyScene {
       if (this.multiTouchActive) {
         this.multiTouchActive = false
         this.cancelRegionStroke(true)
+        return
+      }
+
+      if (this.regionTool === "rect") {
+        this.endDrawGesture()
+        this.applyControlsForMode()
+        if (!this.tryCommitRect()) this.cancelRegionStroke(true)
         return
       }
 
@@ -994,16 +1372,176 @@ export class AssemblyScene {
     const dy = event.clientY - start.y
     if (dx * dx + dy * dy > TAP_MOVE_PX * TAP_MOVE_PX) return
 
-    if (this.interactionMode === "pick") {
-      this.pickAt(event.clientX, event.clientY)
-      return
-    }
-
-    // Region: empty tap cancels face lock with no stroke
-    if (this.regionLock && this.stroke.length < 2) {
+    // Region freehand: empty tap cancels face lock with no stroke
+    if (
+      this.interactionMode === "region" &&
+      this.regionTool === "freehand" &&
+      this.regionLock &&
+      this.stroke.length < 2
+    ) {
       const hit = this.hitAt(event.clientX, event.clientY)
       if (!hit) this.cancelRegionStroke(true)
     }
+  }
+
+  private beginPickGesture(event: PointerEvent) {
+    this.cancelPickGesture()
+    // Do NOT preventDefault here — OrbitControls needs pointerdown for 1-finger rotate.
+    // Snap-drag only steals the gesture after a still hold (armPickDrag).
+    this.pickGesture = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      pointerType: event.pointerType,
+      armed: false,
+      cancelled: false,
+      holdTimer: setTimeout(() => this.armPickDrag(), PICK_HOLD_MS),
+    }
+  }
+
+  private armPickDrag() {
+    const g = this.pickGesture
+    if (!g || g.cancelled || g.armed || this.multiTouchActive) return
+    const dx = g.lastX - g.startX
+    const dy = g.lastY - g.startY
+    if (dx * dx + dy * dy > PICK_ORBIT_SLOP_PX * PICK_ORBIT_SLOP_PX) {
+      // User is orbiting — leave controls alone.
+      this.cancelPickGesture()
+      return
+    }
+    const hit = this.hitAt(g.lastX, g.lastY)
+    if (!hit) {
+      this.cancelPickGesture()
+      return
+    }
+    g.armed = true
+    this.controls.enabled = false
+    try {
+      this.renderer.domElement.setPointerCapture(g.pointerId)
+    } catch {
+      /* ignore */
+    }
+    this.updateSnapPreviewAt(g.lastX, g.lastY, g.pointerType)
+    this.paintDrawOverlay()
+    this.onMessage?.("Drag to snap · release to place")
+  }
+
+  private cancelPickGesture() {
+    const g = this.pickGesture
+    if (g?.holdTimer) clearTimeout(g.holdTimer)
+    if (g?.armed) {
+      try {
+        this.renderer.domElement.releasePointerCapture(g.pointerId)
+      } catch {
+        /* ignore */
+      }
+      this.controls.enabled = true
+    }
+    this.pickGesture = null
+    this.snapPreview = null
+    this.paintDrawOverlay()
+  }
+
+  private endPickGesture() {
+    const g = this.pickGesture
+    if (g?.holdTimer) clearTimeout(g.holdTimer)
+    if (g?.armed) this.controls.enabled = true
+    this.pickGesture = null
+    this.snapPreview = null
+    this.paintDrawOverlay()
+  }
+
+  private snapThresholds(pointerType: string): { vertex: number; edge: number } {
+    const touch = pointerType === "touch" || pointerType === "pen"
+    const scale = touch ? TOUCH_SNAP_SCALE : 1
+    return { vertex: VERTEX_SNAP_PX * scale, edge: EDGE_SNAP_PX * scale }
+  }
+
+  private updateSnapPreviewAt(clientX: number, clientY: number, pointerType: string) {
+    const hit = this.hitAt(clientX, clientY)
+    if (!hit) {
+      this.snapPreview = null
+      return
+    }
+    const hitPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z }
+    const th = this.snapThresholds(pointerType)
+    const snapped =
+      hit.faceId !== null
+        ? resolveMeshSnap(
+            hitPos,
+            clientX,
+            clientY,
+            this.getFaceSnapIndex(hit.partIndex, hit.faceId),
+            (p) => this.projectClient(p),
+            th.vertex,
+            th.edge,
+          )
+        : { position: hitPos, snap: "free" as const, quality: "mesh-approx" as const }
+    this.snapPreview = {
+      clientX,
+      clientY,
+      world: snapped.position,
+      snap: snapped.snap,
+    }
+  }
+
+  private tryCommitRect(): boolean {
+    const lock = this.regionLock
+    if (!lock?.frame || !this.rectCorner0 || !this.rectCorner1) return false
+    if (this.regions.length >= MAX_REGIONS) {
+      this.onMessage?.(`Max ${MAX_REGIONS} regions`)
+      return false
+    }
+    const a = toPlane2d({ x: this.rectCorner0.x, y: this.rectCorner0.y, z: this.rectCorner0.z }, lock.frame)
+    const b = toPlane2d({ x: this.rectCorner1.x, y: this.rectCorner1.y, z: this.rectCorner1.z }, lock.frame)
+    const rect = axisAlignedRect2d(a, b)
+    if (!rectMeetsMinSize(rect.width_mm, rect.height_mm, MIN_REGION_AREA_MM2)) {
+      this.onMessage?.("Region too small")
+      return false
+    }
+    const boundary2d = rect.boundary2d.map(roundVec2)
+    const boundary = boundary2d.map((p) => roundVec3(fromPlane2d(p, lock.frame!)))
+    const normal = roundVec3({ x: lock.normal.x, y: lock.normal.y, z: lock.normal.z })
+    const region: RegionInfo = {
+      id: `r${++this.regionIdSeq}`,
+      part: lock.partName,
+      partIndex: lock.partIndex,
+      faceId: lock.faceId,
+      faceType: lock.faceType,
+      boundary,
+      normal,
+      centroid: roundVec3(centroid3(boundary)),
+      approximation: "plane-projected",
+      kind: "rect",
+      size: {
+        width_mm: +rect.width_mm.toFixed(3),
+        height_mm: +rect.height_mm.toFixed(3),
+        quality: "mesh-approx",
+        frame: "viewer-plane",
+      },
+      plane: {
+        origin: roundVec3(lock.frame.origin),
+        xAxis: roundVec3(lock.frame.xAxis),
+        yAxis: roundVec3(lock.frame.yAxis),
+        boundary2d,
+      },
+    }
+    this.regions.push(region)
+    this.rebuildRegionOverlays()
+    this.regionLock = null
+    this.stroke = []
+    this.strokePathMm = 0
+    this.strokeLeftStart = false
+    this.rectCorner0 = null
+    this.rectCorner1 = null
+    this.clearDrawOverlay()
+    this.applyControlsForMode()
+    this.applySelectionColors()
+    this.emitRegions()
+    this.emitDraft()
+    return true
   }
 
   private clientOfWorld(point: THREE.Vector3): { x: number; y: number } | null {
@@ -1071,6 +1609,7 @@ export class AssemblyScene {
       normal,
       centroid: roundVec3(centroid3(boundary)),
       approximation,
+      kind: "freehand",
       plane,
     }
 
@@ -1080,6 +1619,8 @@ export class AssemblyScene {
     this.stroke = []
     this.strokePathMm = 0
     this.strokeLeftStart = false
+    this.rectCorner0 = null
+    this.rectCorner1 = null
     this.clearDrawOverlay()
     this.applyControlsForMode()
     this.applySelectionColors()
@@ -1173,12 +1714,101 @@ export class AssemblyScene {
     }
   }
 
-  private pickAt(clientX: number, clientY: number) {
+  private getFaceSnapIndex(partIndex: number, faceId: number): SnapIndex {
+    const key = `${partIndex}:${faceId}`
+    const cached = this.faceSnapCache.get(key)
+    if (cached) return cached
+    const raw: Vec3[] = []
+    const triangles: Array<[number, number, number]> = []
+    for (const mesh of this.faceMeshes(partIndex, faceId)) {
+      mesh.updateWorldMatrix(true, false)
+      const pos = mesh.geometry?.getAttribute("position")
+      if (!pos) continue
+      const base = raw.length
+      for (let i = 0; i < pos.count; i++) {
+        this.snapAttrVec.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld)
+        raw.push({ x: this.snapAttrVec.x, y: this.snapAttrVec.y, z: this.snapAttrVec.z })
+      }
+      const index = mesh.geometry.getIndex()
+      if (index) {
+        for (let i = 0; i < index.count; i += 3) {
+          triangles.push([base + index.getX(i), base + index.getX(i + 1), base + index.getX(i + 2)])
+        }
+      } else {
+        for (let i = 0; i + 2 < pos.count; i += 3) {
+          triangles.push([base + i, base + i + 1, base + i + 2])
+        }
+      }
+    }
+    const vertices = dedupeVertices(raw)
+    const edges = boundaryEdgesFromTriangles(raw, triangles)
+    const snap: SnapIndex = { vertices, edges }
+    this.faceSnapCache.set(key, snap)
+    return snap
+  }
+
+  private disposeMeasureOverlays() {
+    while (this.measureOverlay.children.length > 0) {
+      const child = this.measureOverlay.children[0]!
+      this.measureOverlay.remove(child)
+      if (child instanceof Line2) {
+        child.geometry.dispose()
+        ;(child.material as LineMaterial).dispose()
+      }
+    }
+  }
+
+  private rebuildMeasureOverlays() {
+    this.disposeMeasureOverlays()
+    const byId = new Map(this.picks.filter((p) => p.id).map((p) => [p.id!, p]))
+    for (const pair of this.linkedPairs) {
+      const a = byId.get(pair.fromId)
+      const b = byId.get(pair.toId)
+      if (!a || !b) continue
+      const positions = [a.position.x, a.position.y, a.position.z, b.position.x, b.position.y, b.position.z]
+      const line = this.makeRegionLine(positions, 2.2, 0xfbbf24)
+      line.renderOrder = 12
+      this.measureOverlay.add(line)
+    }
+  }
+
+  private projectClient(point: Vec3): { x: number; y: number } | null {
+    this.snapProjectVec.set(point.x, point.y, point.z).project(this.camera)
+    if (this.snapProjectVec.z < -1 || this.snapProjectVec.z > 1) return null
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return null
+    return {
+      x: rect.left + (this.snapProjectVec.x * 0.5 + 0.5) * rect.width,
+      y: rect.top + (-this.snapProjectVec.y * 0.5 + 0.5) * rect.height,
+    }
+  }
+
+  private pickAt(clientX: number, clientY: number, pointerType = "mouse") {
     const hit = this.hitAt(clientX, clientY)
     if (!hit) return
 
+    const hitPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z }
+    const th = this.snapThresholds(pointerType)
+    const snapped =
+      hit.faceId !== null
+        ? resolveMeshSnap(
+            hitPos,
+            clientX,
+            clientY,
+            this.getFaceSnapIndex(hit.partIndex, hit.faceId),
+            (p) => this.projectClient(p),
+            th.vertex,
+            th.edge,
+          )
+        : { position: hitPos, snap: "free" as const, quality: "mesh-approx" as const }
+
     const next: ClickInfo = {
-      position: { x: +hit.point.x.toFixed(3), y: +hit.point.y.toFixed(3), z: +hit.point.z.toFixed(3) },
+      id: `p${++this.pinIdSeq}`,
+      position: {
+        x: +snapped.position.x.toFixed(3),
+        y: +snapped.position.y.toFixed(3),
+        z: +snapped.position.z.toFixed(3),
+      },
       normal: { x: +hit.normal.x.toFixed(4), y: +hit.normal.y.toFixed(4), z: +hit.normal.z.toFixed(4) },
       part: hit.part.name,
       direction: dominantDirection(hit.normal),
@@ -1186,21 +1816,55 @@ export class AssemblyScene {
       faceId: hit.faceId,
       faceType: hit.faceType,
       triangleIndex: hit.triangleIndex,
+      snap: snapped.snap,
+      quality: snapped.quality,
     }
 
     const existing = this.picks.findIndex((p) => picksMatch(p, next))
     if (existing >= 0) {
+      const existingPick = this.picks[existing]!
+      if (this.linkArmed && existingPick.id) {
+        if (!this.linkFromId) {
+          this.linkFromId = existingPick.id
+          this.onMessage?.("Link: tap second pin")
+        } else if (this.linkFromId === existingPick.id) {
+          this.linkFromId = null
+        } else if (this.linkedPairs.length >= MAX_LINKED_PAIRS) {
+          this.onMessage?.(`Max ${MAX_LINKED_PAIRS} linked pairs`)
+        } else if (undirectedPairExists(this.linkedPairs, this.linkFromId, existingPick.id)) {
+          this.linkFromId = null
+          this.onMessage?.("Pair already linked")
+        } else {
+          this.linkedPairs.push({ fromId: this.linkFromId, toId: existingPick.id })
+          this.linkFromId = null
+          this.rebuildMeasureOverlays()
+          this.onMessage?.("Pair linked")
+        }
+        this.emitLinkedPairs()
+        return
+      }
+      const removedId = existingPick.id
       this.picks.splice(existing, 1)
+      if (removedId) {
+        this.linkedPairs = this.linkedPairs.filter((p) => p.fromId !== removedId && p.toId !== removedId)
+        if (this.linkFromId === removedId) this.linkFromId = null
+      }
     } else if (this.picks.length >= MAX_PICKS) {
-      this.picks.shift()
+      const dropped = this.picks.shift()
+      if (dropped?.id) {
+        this.linkedPairs = this.linkedPairs.filter((p) => p.fromId !== dropped.id && p.toId !== dropped.id)
+        if (this.linkFromId === dropped.id) this.linkFromId = null
+      }
       this.picks.push(next)
     } else {
       this.picks.push(next)
     }
 
     this.syncPins()
+    this.rebuildMeasureOverlays()
     this.applySelectionColors()
     this.emitPicks()
+    this.emitLinkedPairs()
   }
 
   private animate = () => {

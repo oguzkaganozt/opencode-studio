@@ -9,14 +9,17 @@ import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, re
 import {
   type ClickInfo,
   type InteractionMode,
+  type LinkedPinPair,
   type LoadPart,
   MAX_PICKS,
   MAX_REGIONS,
   PART_COLORS,
   type RegionDraft,
   type RegionInfo,
+  type RegionTool,
   type SceneHandle,
 } from "./assembly-types"
+import { collectPinPairMeasures, formatMm } from "./measure-geometry"
 
 const AssemblyViewport = lazy(async () => {
   const module = await import("./assembly-viewport")
@@ -372,8 +375,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const [status, setStatus] = useState("idle")
   const [statusTone, setStatusTone] = useState<"ok" | "waiting" | "idle">("idle")
   const [picks, setPicks] = useState<ClickInfo[]>([])
+  const [linkedPairs, setLinkedPairs] = useState<LinkedPinPair[]>([])
+  const [linkArmed, setLinkArmed] = useState(false)
+  const [linkFromId, setLinkFromId] = useState<string | null>(null)
   const [regions, setRegions] = useState<RegionInfo[]>([])
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("pick")
+  const [regionTool, setRegionTool] = useState<RegionTool>("rect")
   const [regionDraft, setRegionDraft] = useState<RegionDraft | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [dropActive, setDropActive] = useState(false)
@@ -618,6 +625,8 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   }, [])
 
   const hasAnnotations = picks.length > 0 || regions.length > 0
+  const pairMeasures = useMemo(() => collectPinPairMeasures(picks, linkedPairs), [picks, linkedPairs])
+  const primaryPair = pairMeasures[0] ?? null
 
   const formatAnnotationText = (mode: "copy" | "prompt") => {
     if (!hasAnnotations) return ""
@@ -629,10 +638,16 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         pick.faceId !== null ? `face=${pick.faceId}${pick.faceType ? ` (${pick.faceType})` : ""}` : "face=unknown"
       const point = `point_mm=(${pick.position.x}, ${pick.position.y}, ${pick.position.z})`
       const normal = `normal=(${pick.normal.x}, ${pick.normal.y}, ${pick.normal.z})`
-      return `  ${index + 1}) part=${pick.part} ${face} ${point} ${normal} direction=${pick.direction}`
+      const snap = pick.snap ?? "free"
+      const quality = pick.quality ?? "mesh-approx"
+      return `  ${index + 1}) part=${pick.part} ${face} ${point} ${normal} direction=${pick.direction} snap=${snap} quality=${quality}`
     })
     const regionLines = regions.map((region, index) => {
-      const head = `  ${index + 1}) part=${region.part} face=${region.faceId}${region.faceType ? ` type=${region.faceType}` : ""} approximation=${region.approximation}`
+      const kind = region.kind ?? "freehand"
+      const head = `  ${index + 1}) part=${region.part} face=${region.faceId}${region.faceType ? ` type=${region.faceType}` : ""} kind=${kind} approximation=${region.approximation}`
+      const sizeLine = region.size
+        ? `     size_mm=width=${formatMm(region.size.width_mm, 1)} height=${formatMm(region.size.height_mm, 1)} quality=${region.size.quality} frame=${region.size.frame}`
+        : null
       const normal = `     normal=(${region.normal.x}, ${region.normal.y}, ${region.normal.z})`
       const centroid = `     centroid_mm=(${region.centroid.x}, ${region.centroid.y}, ${region.centroid.z})`
       const boundary = `     boundary_mm=[${region.boundary.map((p) => `(${p.x},${p.y},${p.z})`).join(", ")}]`
@@ -645,17 +660,23 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           `     boundary2d_mm=[${p.boundary2d.map((q) => `(${q.u},${q.v})`).join(", ")}]`,
         )
       }
-      return [head, normal, centroid, ...planeLines, boundary].join("\n")
+      return [head, sizeLine, normal, centroid, ...planeLines, boundary].filter(Boolean).join("\n")
     })
+    const measureLines = pairMeasures.map(
+      (pair, i) =>
+        `  ${i + 1}) kind=pin_distance from_point=${pair.fromIndex} to_point=${pair.toIndex} distance_mm=${formatMm(pair.distance_mm, 2)} quality=${pair.quality} source=${pair.source}`,
+    )
 
     const blocks: string[] = []
     if (designLine) blocks.push(designLine)
     if (mode === "prompt") {
+      const measureNote = measureLines.length > 0 ? `, ${measureLines.length} measure(s)` : ""
       blocks.push(
-        `User marked annotations in the CAD viewer (${picks.length} point(s), ${regions.length} region(s)).`,
+        `User marked annotations in the CAD viewer (${picks.length} point(s), ${regions.length} region(s)${measureNote}).`,
       )
     }
     if (picks.length > 0) blocks.push(`points (${picks.length}):`, ...pointLines)
+    if (measureLines.length > 0) blocks.push(`measures (${measureLines.length}):`, ...measureLines)
     if (regions.length > 0) blocks.push(`regions (${regions.length}):`, ...regionLines)
     if (mode === "prompt") {
       const partNames = [...new Set([...picks.map((p) => p.part), ...regions.map((r) => r.part)])]
@@ -664,7 +685,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           ? ` Prefer STEP under step/ for: ${partNames.map((p) => `${p}.step`).join(", ")} (design ${designId}).`
           : ""
       blocks.push(
-        `Points = locations; regions = face zones (not exact manufacturing wires until verified). Map face ids on STEP, edit part sources, then design_build.${stepHint}`,
+        `Points = locations; regions = face zones; measures = viewer working distances (linked pairs and/or last pin pair). Working dimensions are intent only — verify on STEP with build123d measure/compare before manufacturing claims. Map face ids on STEP, edit part sources, then design_build.${stepHint}`,
       )
     }
     return blocks.join("\n")
@@ -690,6 +711,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     if (interactionMode === "pick") {
       sceneRef.current?.clearPicks()
       setPicks([])
+      setLinkedPairs([])
+      setLinkArmed(false)
+      setLinkFromId(null)
     } else {
       sceneRef.current?.clearRegions()
       sceneRef.current?.cancelRegionStroke()
@@ -701,11 +725,32 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const setMode = (mode: InteractionMode) => {
     setInteractionMode(mode)
     sceneRef.current?.setInteractionMode(mode)
+    if (mode !== "pick") {
+      setLinkArmed(false)
+      setLinkFromId(null)
+    }
+  }
+
+  const toggleLink = () => {
+    const next = !linkArmed
+    setLinkArmed(next)
+    if (!next) setLinkFromId(null)
+    sceneRef.current?.setLinkArmed(next)
+  }
+
+  const setTool = (tool: RegionTool) => {
+    setRegionTool(tool)
+    sceneRef.current?.setRegionTool(tool)
   }
 
   const lastPick = picks.length > 0 ? picks[picks.length - 1]! : null
   const lastRegion = regions.length > 0 ? regions[regions.length - 1]! : null
   const drawingRegion = Boolean(regionDraft?.active && (regionDraft.pointCount > 0 || regionDraft.faceId !== null))
+  const drawingRect =
+    drawingRegion &&
+    (regionDraft?.tool === "rect" || regionTool === "rect") &&
+    regionDraft?.width_mm != null &&
+    regionDraft?.height_mm != null
 
   const toggleDesigns = () => {
     setDesignsOpen((v) => !v)
@@ -823,6 +868,27 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               </button>
             </span>
 
+            {interactionMode === "region" ? (
+              <span className="cad-seg" role="group" aria-label="Region shape">
+                <button
+                  type="button"
+                  className="cad-chip"
+                  aria-pressed={regionTool === "rect"}
+                  onClick={() => setTool("rect")}
+                >
+                  Rect
+                </button>
+                <button
+                  type="button"
+                  className="cad-chip"
+                  aria-pressed={regionTool === "freehand"}
+                  onClick={() => setTool("freehand")}
+                >
+                  Free
+                </button>
+              </span>
+            ) : null}
+
             <button type="button" className="cad-chip" disabled={!serverParts} onClick={fitView} aria-label="Fit view">
               Fit
             </button>
@@ -893,8 +959,15 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             <AssemblyViewport
               parts={serverParts}
               interactionMode={interactionMode}
+              regionTool={regionTool}
+              linkArmed={linkArmed}
               sceneRef={sceneRef}
               onPicksChange={setPicks}
+              onLinkedPairsChange={(pairs, meta) => {
+                setLinkedPairs(pairs)
+                setLinkArmed(meta.armed)
+                setLinkFromId(meta.fromId)
+              }}
               onRegionsChange={setRegions}
               onRegionDraftChange={setRegionDraft}
               onMessage={showToast}
@@ -931,10 +1004,19 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         ? ` · face ${regionDraft.faceId}`
                         : ""}
                     </span>
-                    <span className="text-[var(--cad-overlay-muted)]"> · drawing…</span>
+                    {drawingRect ? (
+                      <span className="font-medium text-[var(--osc-warning)]">
+                        {" "}
+                        · W={formatMm(regionDraft!.width_mm!, 1)} H={formatMm(regionDraft!.height_mm!, 1)} mm
+                      </span>
+                    ) : (
+                      <span className="text-[var(--cad-overlay-muted)]"> · drawing…</span>
+                    )}
                   </div>
                   <div className="cad-hud__hint text-center">
-                    Loop near start to keep (auto-closes) · open lift discards
+                    {drawingRect || regionTool === "rect"
+                      ? "Drag opposite corner · lift to keep · 2-finger cancels"
+                      : "Loop near start to keep (auto-closes) · open lift discards"}
                   </div>
                 </>
               ) : hasAnnotations ? (
@@ -963,6 +1045,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                             <span className="font-medium text-[var(--osc-warning)]">face {lastPick.faceId}</span>
                           </>
                         ) : null}
+                        {lastPick.snap && lastPick.snap !== "free" ? (
+                          <>
+                            <span className="text-[var(--cad-overlay-muted)]"> · </span>
+                            <span className="font-medium text-[var(--osc-warning)]">snap={lastPick.snap}</span>
+                          </>
+                        ) : null}
                       </>
                     ) : null}
                     {lastRegion && interactionMode === "region" ? (
@@ -970,17 +1058,52 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         <span className="text-[var(--cad-overlay-muted)]"> · </span>
                         <span className="font-medium text-[var(--osc-warning)]">
                           {lastRegion.part} · face {lastRegion.faceId}
+                          {lastRegion.kind === "rect" && lastRegion.size
+                            ? ` · ${formatMm(lastRegion.size.width_mm, 1)}×${formatMm(lastRegion.size.height_mm, 1)}`
+                            : ""}
+                        </span>
+                      </>
+                    ) : null}
+                    {primaryPair ? (
+                      <>
+                        <span className="text-[var(--cad-overlay-muted)]"> · </span>
+                        <span className="font-medium text-[var(--osc-warning)]">
+                          Δ{primaryPair.source === "linked" ? "" : " last"}=
+                          {formatMm(primaryPair.distance_mm, 1)} mm
+                          {pairMeasures.length > 1 ? ` · ${pairMeasures.length}Δ` : ""}
+                        </span>
+                      </>
+                    ) : null}
+                    {linkArmed ? (
+                      <>
+                        <span className="text-[var(--cad-overlay-muted)]"> · </span>
+                        <span className="font-medium text-[var(--osc-warning)]">
+                          {linkFromId ? "link: 2nd pin" : "link: 1st pin"}
                         </span>
                       </>
                     ) : null}
                   </div>
                   <div className="cad-hud__hint text-center">
                     {interactionMode === "pick"
-                      ? `Multi-point OK · tap pin to remove · max ${MAX_PICKS}${picks.length >= MAX_PICKS ? " (full)" : ""}`
-                      : `Freehand on face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`}
+                      ? linkArmed
+                        ? "Link mode · tap two pins · empty face still places pins"
+                        : `Multi-point OK · tap pin to remove · max ${MAX_PICKS}${picks.length >= MAX_PICKS ? " (full)" : ""}${primaryPair ? " · Δ shown" : ""}`
+                      : regionTool === "rect"
+                        ? `Rect on planar face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`
+                        : `Freehand on face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`}
                     {hasAnnotations ? " · Copy sends all annotations" : ""}
                   </div>
                   <div className="cad-hud__actions">
+                    {interactionMode === "pick" && picks.length >= 2 ? (
+                      <button
+                        type="button"
+                        className={`cad-chip${linkArmed ? " cad-chip--accent" : ""}`}
+                        aria-pressed={linkArmed}
+                        onClick={toggleLink}
+                      >
+                        Link
+                      </button>
+                    ) : null}
                     <button type="button" className="cad-chip" onClick={clearModeAnnotations}>
                       Clear
                     </button>
@@ -996,13 +1119,17 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                 <>
                   <div className="cad-hud__primary text-center text-[var(--cad-overlay-muted)]">
                     {interactionMode === "region"
-                      ? "Tap a face, then draw a closed area"
+                      ? regionTool === "rect"
+                        ? "Drag a rectangle on a planar face"
+                        : "Tap a face, then draw a closed area"
                       : "Tap surfaces to mark picks"}
                   </div>
                   <div className="cad-hud__hint text-center">
                     {interactionMode === "region"
-                      ? "1-finger draw · close the loop to keep · 2-finger orbit"
-                      : "Multi-select · Clear on bar · pinch zoom"}
+                      ? regionTool === "rect"
+                        ? "Plane faces only · corners snap · 2-finger orbit"
+                        : "1-finger draw · close the loop to keep · 2-finger orbit"
+                      : "Tap place · hold+drag to snap · pinch zoom"}
                   </div>
                 </>
               )}

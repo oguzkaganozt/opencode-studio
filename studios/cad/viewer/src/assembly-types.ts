@@ -17,7 +17,11 @@ export type PartTopo = {
 export type Vec3 = { x: number; y: number; z: number }
 export type Vec2 = { u: number; v: number }
 
+export type PickSnap = "vertex" | "edge" | "midpoint" | "free"
+export type PickQuality = "mesh-approx"
+
 export type ClickInfo = {
+  id?: string
   position: Vec3
   normal: Vec3
   part: string
@@ -26,7 +30,11 @@ export type ClickInfo = {
   faceId: number | null
   faceType: string | null
   triangleIndex: number | null
+  snap?: PickSnap
+  quality?: PickQuality
 }
+
+export type LinkedPinPair = { fromId: string; toId: string }
 
 /** True when two picks are the same pin (same part, nearly same point). */
 export function picksMatch(a: ClickInfo, b: ClickInfo, tol = 0.35): boolean {
@@ -44,6 +52,7 @@ export const MIN_REGION_VERTS = 3
 export const MIN_REGION_AREA_MM2 = 1
 
 export type InteractionMode = "pick" | "region"
+export type RegionTool = "freehand" | "rect"
 
 export type RegionInfo = {
   id: string
@@ -55,6 +64,13 @@ export type RegionInfo = {
   normal: Vec3
   centroid: Vec3
   approximation: "plane-projected" | "mesh-samples"
+  kind?: "freehand" | "rect"
+  size?: {
+    width_mm: number
+    height_mm: number
+    quality: "mesh-approx" | "construction"
+    frame: "viewer-plane"
+  }
   plane?: {
     origin: Vec3
     xAxis: Vec3
@@ -68,6 +84,9 @@ export type RegionDraft = {
   pointCount: number
   part: string | null
   faceId: number | null
+  tool?: RegionTool
+  width_mm?: number | null
+  height_mm?: number | null
 }
 
 export type LoadPart = {
@@ -83,10 +102,15 @@ export type SceneHandle = {
   resize: () => void
   setPartVisible: (index: number, visible: boolean) => void
   setInteractionMode: (mode: InteractionMode) => void
+  setRegionTool: (tool: RegionTool) => void
+  setLinkArmed: (armed: boolean) => void
   clearPicks: () => void
   clearRegions: () => void
   getPicks: () => ClickInfo[]
   getRegions: () => RegionInfo[]
+  getLinkedPairs: () => LinkedPinPair[]
+  getLinkArmed: () => boolean
+  getLinkFromId: () => string | null
   commitRegion: () => boolean
   cancelRegionStroke: () => void
 }
