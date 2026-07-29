@@ -223,3 +223,18 @@ export function rectMeetsMinSize(width_mm: number, height_mm: number, minAreaMm2
   if (width_mm < MIN_RECT_SIDE_MM || height_mm < MIN_RECT_SIDE_MM) return false
   return width_mm * height_mm >= minAreaMm2
 }
+
+/** Screen-space point-in-polygon (ray cast). Ring open or closed. */
+export function pointInPoly2(x: number, y: number, ring: ReadonlyArray<{ x: number; y: number }>): boolean {
+  if (ring.length < 3) return false
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i]!.x
+    const yi = ring[i]!.y
+    const xj = ring[j]!.x
+    const yj = ring[j]!.y
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi + 0) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}

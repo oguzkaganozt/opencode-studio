@@ -30,6 +30,7 @@ import {
   nearestEdgeOffsets,
   pointsNearPlane,
   axisAlignedRectCentered,
+  pointInPoly2,
   rectCenter2d,
   rectMeetsMinSize,
   undirectedPairExists,
@@ -111,6 +112,8 @@ const MIN_CLOSE_PATH_MM = 14
 const REGION_INK = 0x22d3ee
 const REGION_INK_HALO = 0x0b1220
 const REGION_FILL = 0x22d3ee
+const REGION_INK_SELECTED = 0xfbbf24
+const REGION_FILL_SELECTED = 0xfbbf24
 
 export class AssemblyScene {
   readonly parts: ScenePart[] = []
@@ -175,6 +178,7 @@ export class AssemblyScene {
   private readonly drawCtx: CanvasRenderingContext2D
   private readonly regionOverlay = new THREE.Group()
   private regionIdSeq = 0
+  private selectedRegionId: string | null = null
   /** Lazy face-local snap index. Cleared on load. */
   private readonly faceSnapCache = new Map<string, SnapIndex>()
   private readonly snapProjectVec = new THREE.Vector3()
@@ -185,6 +189,7 @@ export class AssemblyScene {
     null
   onRegionsChange: ((regions: RegionInfo[]) => void) | null = null
   onRegionDraftChange: ((draft: RegionDraft | null) => void) | null = null
+  onSelectedRegionChange: ((id: string | null) => void) | null = null
   onMessage: ((message: string) => void) | null = null
 
   constructor(container: HTMLElement) {
@@ -356,6 +361,11 @@ export class AssemblyScene {
   getLinkedPairs = () => this.linkedPairs.slice()
   getLinkArmed = () => this.linkArmed
   getLinkFromId = () => this.linkFromId
+  getSelectedRegionId = () => this.selectedRegionId
+
+  setSelectedRegionId = (id: string | null) => {
+    this.selectRegion(id, true)
+  }
 
   setInteractionMode = (mode: InteractionMode) => {
     if (this.interactionMode === mode) return
@@ -363,6 +373,10 @@ export class AssemblyScene {
     this.cancelPickGesture()
     this.interactionMode = mode
     if (mode !== "pick") this.setLinkArmed(false)
+    if (mode === "select" && this.snapPreview) {
+      this.snapPreview = null
+      this.paintDrawOverlay()
+    }
     this.applyControlsForMode()
     this.emitDraft()
   }
@@ -401,9 +415,13 @@ export class AssemblyScene {
   clearRegions = (emit = true) => {
     this.cancelRegionStroke(emit)
     this.regions = []
+    this.selectedRegionId = null
     this.disposeRegionOverlays()
     this.applySelectionColors()
-    if (emit) this.onRegionsChange?.([])
+    if (emit) {
+      this.onRegionsChange?.([])
+      this.onSelectedRegionChange?.(null)
+    }
   }
 
   commitRegion = (): boolean => {
@@ -456,8 +474,10 @@ export class AssemblyScene {
         boundary2d,
       },
     }
+    this.selectedRegionId = id
     this.rebuildRegionOverlays()
     this.emitRegions()
+    this.onSelectedRegionChange?.(id)
     return true
   }
 
@@ -665,6 +685,35 @@ export class AssemblyScene {
 
   private emitRegions() {
     this.onRegionsChange?.(this.regions.slice())
+  }
+
+  private selectRegion(id: string | null, rebuild = true) {
+    if (id !== null && !this.regions.some((r) => r.id === id)) id = null
+    if (this.selectedRegionId === id) return
+    this.selectedRegionId = id
+    if (rebuild) this.rebuildRegionOverlays()
+    this.paintDrawOverlay()
+    this.onSelectedRegionChange?.(this.selectedRegionId)
+  }
+
+  /** Topmost region whose screen polygon contains the pointer. */
+  private hitRegionAt(clientX: number, clientY: number): RegionInfo | null {
+    const canvasRect = this.renderer.domElement.getBoundingClientRect()
+    if (canvasRect.width <= 0 || canvasRect.height <= 0) return null
+    const sx = clientX - canvasRect.left
+    const sy = clientY - canvasRect.top
+    for (let i = this.regions.length - 1; i >= 0; i--) {
+      const region = this.regions[i]!
+      if (region.boundary.length < 3) continue
+      const ring: Array<{ x: number; y: number }> = []
+      for (const p of region.boundary) {
+        const screen = this.clientOfWorld(new THREE.Vector3(p.x, p.y, p.z))
+        if (!screen) continue
+        ring.push({ x: screen.x - canvasRect.left, y: screen.y - canvasRect.top })
+      }
+      if (ring.length >= 3 && pointInPoly2(sx, sy, ring)) return region
+    }
+    return null
   }
 
   private emitDraft() {
@@ -942,6 +991,9 @@ export class AssemblyScene {
       this.beginPickGesture(event)
       return
     }
+
+    // Select: tap handled on pointerup (orbit-friendly).
+    if (this.interactionMode === "select") return
 
     if (this.interactionMode !== "region" || this.parts.length === 0) return
 
@@ -1436,10 +1488,11 @@ export class AssemblyScene {
       }
     }
 
-    // Committed rect sizes stay on-canvas (snap-style), including after typed W/H.
+    // Committed rect sizes on-canvas; selected rect uses amber labels.
     if (!(this.regionTool === "rect" && this.rectCorner0)) {
       for (const region of this.regions) {
         if (region.kind !== "rect" || !region.size || !region.plane) continue
+        const selected = region.id === this.selectedRegionId
         this.paintRectSizeLabels(
           ctx,
           canvasRect,
@@ -1447,7 +1500,7 @@ export class AssemblyScene {
           region.plane.boundary2d,
           region.size.width_mm,
           region.size.height_mm,
-          region.size.quality === "construction" ? "#fbbf24" : "#22d3ee",
+          selected || region.size.quality === "construction" ? "#fbbf24" : "#22d3ee",
         )
       }
     }
@@ -1546,6 +1599,12 @@ export class AssemblyScene {
     const dy = event.clientY - start.y
     if (dx * dx + dy * dy > TAP_MOVE_PX * TAP_MOVE_PX) return
 
+    if (this.interactionMode === "select") {
+      const hit = this.hitRegionAt(event.clientX, event.clientY)
+      this.setSelectedRegionId(hit?.id ?? null)
+      return
+    }
+
     if (this.interactionMode === "region" && this.regionTool === "face") {
       this.tryCommitFaceAt(event.clientX, event.clientY)
       return
@@ -1633,10 +1692,12 @@ export class AssemblyScene {
       plane,
     }
     this.regions.push(region)
+    this.selectedRegionId = region.id
     this.snapPreview = null
     this.rebuildRegionOverlays()
     this.applySelectionColors()
     this.emitRegions()
+    this.onSelectedRegionChange?.(region.id)
     this.emitDraft()
     this.paintDrawOverlay()
     return true
@@ -1800,6 +1861,7 @@ export class AssemblyScene {
       },
     }
     this.regions.push(region)
+    this.selectedRegionId = region.id
     this.rebuildRegionOverlays()
     this.regionLock = null
     this.stroke = []
@@ -1811,6 +1873,7 @@ export class AssemblyScene {
     this.applyControlsForMode()
     this.applySelectionColors()
     this.emitRegions()
+    this.onSelectedRegionChange?.(region.id)
     this.emitDraft()
     return true
   }
@@ -1885,6 +1948,7 @@ export class AssemblyScene {
     }
 
     this.regions.push(region)
+    this.selectedRegionId = region.id
     this.rebuildRegionOverlays()
     this.regionLock = null
     this.stroke = []
@@ -1896,6 +1960,7 @@ export class AssemblyScene {
     this.applyControlsForMode()
     this.applySelectionColors()
     this.emitRegions()
+    this.onSelectedRegionChange?.(region.id)
     this.emitDraft()
     return true
   }
@@ -1925,6 +1990,9 @@ export class AssemblyScene {
     for (const region of this.regions) {
       const group = new THREE.Group()
       group.name = region.id
+      const selected = region.id === this.selectedRegionId
+      const ink = selected ? REGION_INK_SELECTED : REGION_INK
+      const fill = selected ? REGION_FILL_SELECTED : REGION_FILL
       const n = new THREE.Vector3(region.normal.x, region.normal.y, region.normal.z).normalize()
       if (n.lengthSq() < 1e-8) n.set(0, 1, 0)
 
@@ -1937,7 +2005,7 @@ export class AssemblyScene {
         const positions: number[] = []
         for (const p of closed) positions.push(p.x, p.y, p.z)
         group.add(this.makeRegionLine(positions, 10, REGION_INK_HALO))
-        group.add(this.makeRegionLine(positions, 4, REGION_INK))
+        group.add(this.makeRegionLine(positions, selected ? 5 : 4, ink))
       }
 
       if (region.approximation === "plane-projected" && region.plane && pts.length >= 3) {
@@ -1951,9 +2019,9 @@ export class AssemblyScene {
         shape.closePath()
         const geom = new THREE.ShapeGeometry(shape)
         const mat = new THREE.MeshBasicMaterial({
-          color: REGION_FILL,
+          color: fill,
           transparent: true,
-          opacity: 0.22,
+          opacity: selected ? 0.32 : 0.22,
           side: THREE.DoubleSide,
           depthWrite: false,
           depthTest: false,

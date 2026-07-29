@@ -374,6 +374,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const [linkArmed, setLinkArmed] = useState(false)
   const [linkFromId, setLinkFromId] = useState<string | null>(null)
   const [regions, setRegions] = useState<RegionInfo[]>([])
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("pick")
   const [regionTool, setRegionTool] = useState<RegionTool>("face")
   const [regionDraft, setRegionDraft] = useState<RegionDraft | null>(null)
@@ -495,6 +496,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     })
     setPicks([])
     setRegions([])
+    setSelectedRegionId(null)
     setRegionDraft(null)
     setStatus("loading…")
     setStatusTone("waiting")
@@ -509,6 +511,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     })
     setPicks([])
     setRegions([])
+    setSelectedRegionId(null)
     setRegionDraft(null)
     setPartUi([])
   }, [])
@@ -690,7 +693,13 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const promptClick = () => {
     if (!hasAnnotations) {
-      showToast(interactionMode === "region" ? "Draw a region first" : "Tap a surface first")
+      showToast(
+        interactionMode === "region"
+          ? "Draw a region first"
+          : interactionMode === "select"
+            ? "Select or mark annotations first"
+            : "Tap a surface first",
+      )
       return
     }
     requestAgentHandoff({ text: formatAnnotationText(), source: "cad", open: true, copyFallback: true })
@@ -704,12 +713,14 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       setLinkedPairs([])
       setLinkArmed(false)
       setLinkFromId(null)
-    } else {
-      sceneRef.current?.clearRegions()
-      sceneRef.current?.cancelRegionStroke()
-      setRegions([])
-      setRegionDraft(null)
+      return
     }
+    // region + select: wipe regions
+    sceneRef.current?.clearRegions()
+    sceneRef.current?.cancelRegionStroke()
+    setRegions([])
+    setSelectedRegionId(null)
+    setRegionDraft(null)
   }
 
   const setMode = (mode: InteractionMode) => {
@@ -734,8 +745,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   }
 
   const lastPick = picks.length > 0 ? picks[picks.length - 1]! : null
-  const lastRegion = regions.length > 0 ? regions[regions.length - 1]! : null
-  const lastRect = lastRegion?.kind === "rect" && lastRegion.size ? lastRegion : null
+  const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null
+  // Only the real selection — never fall back to “last rect” (wrong W×H when face/empty selected).
+  const activeRect = selectedRegion?.kind === "rect" && selectedRegion.size ? selectedRegion : null
   const drawingRegion = Boolean(regionDraft?.active && (regionDraft.pointCount > 0 || regionDraft.faceId !== null))
   const drawingRect =
     drawingRegion &&
@@ -744,20 +756,20 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     regionDraft?.height_mm != null
 
   useEffect(() => {
-    if (!lastRect?.size) {
+    if (!activeRect?.size) {
       setRectWInput("")
       setRectHInput("")
       setRectSizeDirty(false)
       return
     }
-    const dp = lastRect.size.quality === "construction" ? 2 : 1
-    setRectWInput(formatMm(lastRect.size.width_mm, dp))
-    setRectHInput(formatMm(lastRect.size.height_mm, dp))
+    const dp = activeRect.size.quality === "construction" ? 2 : 1
+    setRectWInput(formatMm(activeRect.size.width_mm, dp))
+    setRectHInput(formatMm(activeRect.size.height_mm, dp))
     setRectSizeDirty(false)
-  }, [lastRect?.id, lastRect?.size?.width_mm, lastRect?.size?.height_mm, lastRect?.size?.quality])
+  }, [activeRect?.id, activeRect?.size?.width_mm, activeRect?.size?.height_mm, activeRect?.size?.quality])
 
   const applyRectSize = () => {
-    if (!lastRect?.size) return
+    if (!activeRect?.size) return
     // Only apply after real keystrokes — focus/blur alone must not rewrite size or quality.
     // (Display rounds to 1–2 dp while storage is 3 dp; float compare would false-positive.)
     if (!rectSizeDirty) return
@@ -765,15 +777,15 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     const h = Number.parseFloat(rectHInput)
     if (!Number.isFinite(w) || !Number.isFinite(h)) {
       setToast("Enter valid W and H (mm)")
-      const dp = lastRect.size.quality === "construction" ? 2 : 1
-      setRectWInput(formatMm(lastRect.size.width_mm, dp))
-      setRectHInput(formatMm(lastRect.size.height_mm, dp))
+      const dp = activeRect.size.quality === "construction" ? 2 : 1
+      setRectWInput(formatMm(activeRect.size.width_mm, dp))
+      setRectHInput(formatMm(activeRect.size.height_mm, dp))
       setRectSizeDirty(false)
       return
     }
-    const ok = sceneRef.current?.setRegionRectSize(lastRect.id, w, h)
+    const ok = sceneRef.current?.setRegionRectSize(activeRect.id, w, h)
     if (!ok) {
-      const size = lastRect.size
+      const size = activeRect.size
       const dp = size.quality === "construction" ? 2 : 1
       setRectWInput(formatMm(size.width_mm, dp))
       setRectHInput(formatMm(size.height_mm, dp))
@@ -895,6 +907,14 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               >
                 Region
               </button>
+              <button
+                type="button"
+                className="cad-chip"
+                aria-pressed={interactionMode === "select"}
+                onClick={() => setMode("select")}
+              >
+                Select
+              </button>
             </span>
 
             {interactionMode === "region" ? (
@@ -1007,6 +1027,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               }}
               onRegionsChange={setRegions}
               onRegionDraftChange={setRegionDraft}
+              onSelectedRegionChange={setSelectedRegionId}
               onMessage={showToast}
               onLoaded={(result) => {
                 const scene = sceneRef.current
@@ -1087,11 +1108,18 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         ) : null}
                       </>
                     ) : null}
-                    {lastRegion && interactionMode === "region" ? (
+                    {(interactionMode === "region" || interactionMode === "select") && selectedRegion ? (
                       <>
                         <span className="text-[var(--cad-overlay-muted)]"> · </span>
                         <span className="font-medium text-[var(--osc-warning)]">
-                          {lastRegion.part} · face {lastRegion.faceId}
+                          {selectedRegion.part} · face {selectedRegion.faceId}
+                          {selectedRegion.kind === "rect"
+                            ? " · rect"
+                            : selectedRegion.kind === "face"
+                              ? " · face"
+                              : selectedRegion.kind === "freehand"
+                                ? " · free"
+                                : ""}
                         </span>
                       </>
                     ) : null}
@@ -1119,15 +1147,21 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                       ? linkArmed
                         ? "Link mode · tap two pins · empty face still places pins"
                         : `Multi-point OK · tap pin to remove · max ${MAX_PICKS}${picks.length >= MAX_PICKS ? " (full)" : ""}${primaryPair ? " · Δ shown" : ""}`
-                      : regionTool === "face"
-                        ? `Tap a face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`
-                        : regionTool === "rect"
-                          ? `Rect on planar face · edit W×H · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`
-                          : `Freehand on face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`}
+                      : interactionMode === "select"
+                        ? activeRect?.size
+                          ? "Selected rect · edit W×H · empty tap deselects"
+                          : selectedRegionId
+                            ? "Region selected · tap empty to deselect"
+                            : "Tap a region to select · empty deselects"
+                        : regionTool === "face"
+                          ? `Tap a face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`
+                          : regionTool === "rect"
+                            ? `Rect on planar face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`
+                            : `Freehand on face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`}
                     {hasAnnotations ? " · Prompt sends all annotations" : ""}
                   </div>
                   <div className="cad-hud__actions">
-                    {interactionMode === "region" && lastRect?.size ? (
+                    {interactionMode === "select" && activeRect?.size ? (
                       <div className="cad-hud__dims" role="group" aria-label="Rectangle size mm">
                         <label className="cad-hud__dim">
                           <span>W</span>
@@ -1199,22 +1233,26 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               ) : (
                 <>
                   <div className="cad-hud__primary text-center text-[var(--cad-overlay-muted)]">
-                    {interactionMode === "region"
-                      ? regionTool === "face"
-                        ? "Tap a face to select it"
-                        : regionTool === "rect"
-                          ? "Drag a rectangle on a planar face"
-                          : "Tap a face, then draw a closed area"
-                      : "Tap surfaces to mark picks"}
+                    {interactionMode === "select"
+                      ? "Tap a marked region to select it"
+                      : interactionMode === "region"
+                        ? regionTool === "face"
+                          ? "Tap a face to mark it"
+                          : regionTool === "rect"
+                            ? "Drag a rectangle on a planar face"
+                            : "Tap a face, then draw a closed area"
+                        : "Tap surfaces to mark picks"}
                   </div>
                   <div className="cad-hud__hint text-center">
-                    {interactionMode === "region"
-                      ? regionTool === "face"
-                        ? "Whole face · outline from mesh · orbit freely"
-                        : regionTool === "rect"
-                          ? "Plane faces only · corners snap · 2-finger orbit"
-                          : "1-finger draw · close the loop to keep · 2-finger orbit"
-                      : "Tap place · hold+drag to snap · pinch zoom"}
+                    {interactionMode === "select"
+                      ? "Select mode · no draw · orbit freely"
+                      : interactionMode === "region"
+                        ? regionTool === "face"
+                          ? "Whole face · outline from mesh · orbit freely"
+                          : regionTool === "rect"
+                            ? "Plane faces only · corners snap · 2-finger orbit"
+                            : "1-finger draw · close the loop to keep · 2-finger orbit"
+                        : "Tap place · hold+drag to snap · pinch zoom"}
                   </div>
                 </>
               )}

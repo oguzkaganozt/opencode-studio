@@ -8,6 +8,7 @@ import {
   formatMm,
   lastPinPairMeasure,
   nearestEdgeOffsets,
+  pointInPoly2,
   pointToSegment,
   pointsNearPlane,
   rectCenter2d,
@@ -74,6 +75,17 @@ describe("measure-geometry", () => {
     expect(r.height_mm).toBeCloseTo(6, 10)
     expect(rectCenter2d(r.boundary2d).u).toBeCloseTo(4, 10)
     expect(rectCenter2d(r.boundary2d).v).toBeCloseTo(-2, 10)
+  })
+
+  test("pointInPoly2 square", () => {
+    const ring = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ]
+    expect(pointInPoly2(5, 5, ring)).toBe(true)
+    expect(pointInPoly2(15, 5, ring)).toBe(false)
   })
 
   test("rectMeetsMinSize", () => {

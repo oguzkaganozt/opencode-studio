@@ -20,6 +20,7 @@ type AssemblyViewportProps = {
   onLinkedPairsChange: (pairs: LinkedPinPair[], meta: { armed: boolean; fromId: string | null }) => void
   onRegionsChange: (regions: RegionInfo[]) => void
   onRegionDraftChange: (draft: RegionDraft | null) => void
+  onSelectedRegionChange: (id: string | null) => void
   onMessage: (message: string) => void
   onLoaded: (result: { loaded: number; failed: number }) => void
   sceneRef: MutableRefObject<SceneHandle | null>
@@ -34,6 +35,7 @@ export function AssemblyViewport({
   onLinkedPairsChange,
   onRegionsChange,
   onRegionDraftChange,
+  onSelectedRegionChange,
   onMessage,
   onLoaded,
   sceneRef,
@@ -44,12 +46,14 @@ export function AssemblyViewport({
   const onLinkedPairsChangeRef = useRef(onLinkedPairsChange)
   const onRegionsChangeRef = useRef(onRegionsChange)
   const onRegionDraftChangeRef = useRef(onRegionDraftChange)
+  const onSelectedRegionChangeRef = useRef(onSelectedRegionChange)
   const onMessageRef = useRef(onMessage)
   const onLoadedRef = useRef(onLoaded)
   onPicksChangeRef.current = onPicksChange
   onLinkedPairsChangeRef.current = onLinkedPairsChange
   onRegionsChangeRef.current = onRegionsChange
   onRegionDraftChangeRef.current = onRegionDraftChange
+  onSelectedRegionChangeRef.current = onSelectedRegionChange
   onMessageRef.current = onMessage
   onLoadedRef.current = onLoaded
 
@@ -61,6 +65,7 @@ export function AssemblyViewport({
     scene.onLinkedPairsChange = (pairs, meta) => onLinkedPairsChangeRef.current(pairs, meta)
     scene.onRegionsChange = (regions) => onRegionsChangeRef.current(regions)
     scene.onRegionDraftChange = (draft) => onRegionDraftChangeRef.current(draft)
+    scene.onSelectedRegionChange = (id) => onSelectedRegionChangeRef.current(id)
     scene.onMessage = (message) => onMessageRef.current(message)
     internalRef.current = scene
     sceneRef.current = scene

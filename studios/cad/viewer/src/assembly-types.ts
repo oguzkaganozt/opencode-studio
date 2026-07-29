@@ -51,7 +51,7 @@ export const MAX_REGION_VERTS = 64
 export const MIN_REGION_VERTS = 3
 export const MIN_REGION_AREA_MM2 = 1
 
-export type InteractionMode = "pick" | "region"
+export type InteractionMode = "pick" | "region" | "select"
 export type RegionTool = "face" | "rect" | "freehand"
 
 export type RegionInfo = {
@@ -115,4 +115,7 @@ export type SceneHandle = {
   cancelRegionStroke: () => void
   /** Resize a committed rect region (center fixed). Sets size.quality=construction. */
   setRegionRectSize: (id: string, width_mm: number, height_mm: number) => boolean
+  /** Active region for HUD W×H (rect only useful). */
+  getSelectedRegionId: () => string | null
+  setSelectedRegionId: (id: string | null) => void
 }
