@@ -1,6 +1,7 @@
 */step
 */stl
 */glb
+*/topo
 */renders
 */.artifacts
 */.build.lock
@@ -8,3 +9,4 @@
 */.step.tmp/
 */.stl.tmp/
 */.glb.tmp/
+*/.topo.tmp/

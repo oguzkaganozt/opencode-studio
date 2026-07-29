@@ -20,10 +20,11 @@ export type DesignSummary = {
 
 export type ArtifactPart = {
   id: string
-  files: { step: string; stl: string; glb: string }
+  files: { step: string; stl: string; glb: string; topo?: string }
   metrics: {
     volume_mm3: number
     size_mm: { x: number; y: number; z: number }
+    face_count?: number
   }
 }
 
@@ -38,6 +39,7 @@ export type DesignDetail = DesignSummary & {
     schema: number
     id: string
     parts: ArtifactPart[]
+    build?: { engine: string; inputs: Record<string, string> }
   } | null
   renders: string[]
 }

@@ -22,12 +22,13 @@ describe("manifest validation smoke", () => {
       parts: [
         {
           id: "body",
-          files: { step: "step/body.step", stl: "stl/body.stl", glb: "glb/body.glb" },
+          files: { step: "step/body.step", stl: "stl/body.stl", glb: "glb/body.glb", topo: "topo/body.json" },
           metrics: {
             volume_mm3: 1,
             size_mm: { x: 1, y: 1, z: 1 },
             bounds_mm: { min: [0, 0, 0], max: [1, 1, 1] },
             solid_count: 1,
+            face_count: 6,
           },
         },
       ],
@@ -37,6 +38,7 @@ describe("manifest validation smoke", () => {
       },
     })
     expect(artifact.parts).toHaveLength(1)
+    expect(artifact.parts[0]?.files.topo).toBe("topo/body.json")
   })
 
   test("rejects unsafe artifact paths and invalid design ids", () => {

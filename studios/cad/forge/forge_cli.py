@@ -15,16 +15,42 @@ from pathlib import Path
 from typing import Any
 
 from build123d import Mesher, Shape, export_step, import_step
+import numpy as np
 import trimesh
+from OCP.BRep import BRep_Tool
+from OCP.BRepAdaptor import BRepAdaptor_Surface
+from OCP.BRepMesh import BRepMesh_IncrementalMesh
+from OCP.GeomAbs import GeomAbs_SurfaceType
+from OCP.TopAbs import TopAbs_FACE, TopAbs_Orientation
+from OCP.TopExp import TopExp
+from OCP.TopLoc import TopLoc_Location
+from OCP.TopoDS import TopoDS
+from OCP.TopTools import TopTools_IndexedMapOfShape
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-OUTPUT_DIRS = ("step", "stl", "glb")
+OUTPUT_DIRS = ("step", "stl", "glb", "topo")
 ARTIFACTS_DIR = ".artifacts"
 LOCK_DIR = ".build.lock"
 FORGE_ENGINE = "forge-cad/1"
 STEP_VOLUME_REL_TOL = 1e-7
 STEP_VOLUME_ABS_TOL_MM3 = 1e-6
 STEP_BOUNDS_ABS_TOL_MM = 1e-6
+MESH_LINEAR_DEFLECTION = 0.1
+MESH_ANGULAR_DEFLECTION = 0.5
+
+_SURFACE_TYPE_NAMES = {
+    GeomAbs_SurfaceType.GeomAbs_Plane: "plane",
+    GeomAbs_SurfaceType.GeomAbs_Cylinder: "cylinder",
+    GeomAbs_SurfaceType.GeomAbs_Cone: "cone",
+    GeomAbs_SurfaceType.GeomAbs_Sphere: "sphere",
+    GeomAbs_SurfaceType.GeomAbs_Torus: "torus",
+    GeomAbs_SurfaceType.GeomAbs_BezierSurface: "bezier",
+    GeomAbs_SurfaceType.GeomAbs_BSplineSurface: "bspline",
+    GeomAbs_SurfaceType.GeomAbs_SurfaceOfRevolution: "revolution",
+    GeomAbs_SurfaceType.GeomAbs_SurfaceOfExtrusion: "extrusion",
+    GeomAbs_SurfaceType.GeomAbs_OffsetSurface: "offset",
+    GeomAbs_SurfaceType.GeomAbs_OtherSurface: "other",
+}
 
 
 def load_manifest(design_dir: Path) -> dict[str, Any]:
@@ -99,12 +125,117 @@ def build_shape(source: Path, part_id: str) -> Shape:
     return shape
 
 
-def export_glb(stl_path: Path, glb_path: Path) -> None:
-    mesh = trimesh.load_mesh(stl_path)
-    if mesh is None or (hasattr(mesh, "is_empty") and mesh.is_empty):
-        raise ValueError(f"Could not create GLB from empty mesh: {stl_path}")
-    scene = mesh if isinstance(mesh, trimesh.Scene) else trimesh.Scene(mesh)
+def _surface_type_name(face) -> str:
+    try:
+        kind = BRepAdaptor_Surface(face).GetType()
+        return _SURFACE_TYPE_NAMES.get(kind, "other")
+    except Exception:
+        return "other"
+
+
+def tessellate_shape(
+    shape: Shape,
+    *,
+    linear_deflection: float = MESH_LINEAR_DEFLECTION,
+    angular_deflection: float = MESH_ANGULAR_DEFLECTION,
+) -> tuple[np.ndarray, np.ndarray, list[int], list[dict[str, Any]]]:
+    """Tessellate B-rep with stable per-triangle face ids (0-based map order)."""
+    topo = shape.wrapped
+    BRepMesh_IncrementalMesh(topo, linear_deflection, False, angular_deflection, True)
+
+    face_map = TopTools_IndexedMapOfShape()
+    TopExp.MapShapes_s(topo, TopAbs_FACE, face_map)
+    if face_map.Size() == 0:
+        raise ValueError("Shape has no faces to tessellate")
+
+    vertices: list[tuple[float, float, float]] = []
+    triangles: list[tuple[int, int, int]] = []
+    triangle_face_ids: list[int] = []
+    face_records: list[dict[str, Any]] = []
+
+    for face_index in range(1, face_map.Size() + 1):
+        face = TopoDS.Face_s(face_map.FindKey(face_index))
+        face_id = face_index - 1
+        location = TopLoc_Location()
+        triangulation = BRep_Tool.Triangulation_s(face, location)
+        if triangulation is None or triangulation.NbTriangles() == 0:
+            face_records.append({"id": face_id, "triangleCount": 0, "type": _surface_type_name(face)})
+            continue
+
+        transform = location.Transformation()
+        base = len(vertices)
+        for node_index in range(1, triangulation.NbNodes() + 1):
+            point = triangulation.Node(node_index)
+            point.Transform(transform)
+            vertices.append((point.X(), point.Y(), point.Z()))
+
+        reversed_face = face.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
+        tri_count = 0
+        for tri_index in range(1, triangulation.NbTriangles() + 1):
+            n1, n2, n3 = triangulation.Triangle(tri_index).Get()
+            i1, i2, i3 = base + n1 - 1, base + n2 - 1, base + n3 - 1
+            if reversed_face:
+                triangles.append((i1, i3, i2))
+            else:
+                triangles.append((i1, i2, i3))
+            triangle_face_ids.append(face_id)
+            tri_count += 1
+
+        face_records.append({"id": face_id, "triangleCount": tri_count, "type": _surface_type_name(face)})
+
+    if not triangles:
+        raise ValueError("Tessellation produced no triangles")
+
+    return (
+        np.asarray(vertices, dtype=np.float64),
+        np.asarray(triangles, dtype=np.int64),
+        triangle_face_ids,
+        face_records,
+    )
+
+
+def export_glb_with_topo(
+    shape: Shape,
+    glb_path: Path,
+    topo_path: Path,
+    part_id: str,
+) -> dict[str, Any]:
+    vertices, faces, triangle_face_ids, face_records = tessellate_shape(shape)
+    if len(faces) == 0:
+        raise ValueError(f"Could not create GLB for empty tessellation: {part_id}")
+
+    # One glTF mesh per B-rep face (name face_<id>) so the viewer can pick without a sidecar.
+    tris_by_face: dict[int, list[int]] = {}
+    for tri_index, face_id in enumerate(triangle_face_ids):
+        tris_by_face.setdefault(face_id, []).append(tri_index)
+
+    scene = trimesh.Scene()
+    for face_id, tri_indices in tris_by_face.items():
+        used: list[int] = sorted({int(v) for i in tri_indices for v in faces[i]})
+        remap = {old: new for new, old in enumerate(used)}
+        face_vertices = vertices[used]
+        face_triangles = np.asarray(
+            [[remap[int(a)], remap[int(b)], remap[int(c)]] for i in tri_indices for a, b, c in [faces[i]]],
+            dtype=np.int64,
+        )
+        mesh = trimesh.Trimesh(vertices=face_vertices, faces=face_triangles, process=False)
+        name = f"face_{face_id}"
+        scene.add_geometry(mesh, node_name=name, geom_name=name)
+
+    if len(scene.geometry) == 0:
+        raise ValueError(f"Could not create GLB for empty tessellation: {part_id}")
     scene.export(glb_path, file_type="glb")
+
+    topo = {
+        "schema": 1,
+        "partId": part_id,
+        "faceCount": len(face_records),
+        "triangleCount": len(triangle_face_ids),
+        "triangleFaceIds": triangle_face_ids,
+        "faces": face_records,
+    }
+    topo_path.write_text(json.dumps(topo, separators=(",", ":")) + "\n", encoding="utf-8")
+    return topo
 
 
 def validate_step_round_trip(source: Shape, step_path: Path, part_id: str) -> None:
@@ -135,13 +266,14 @@ def export_part(shape: Shape, part_id: str, tmp_dirs: dict[str, Path]) -> dict[s
     step_path = tmp_dirs["step"] / f"{part_id}.step"
     stl_path = tmp_dirs["stl"] / f"{part_id}.stl"
     glb_path = tmp_dirs["glb"] / f"{part_id}.glb"
+    topo_path = tmp_dirs["topo"] / f"{part_id}.json"
 
     export_step(shape, step_path)
     validate_step_round_trip(shape, step_path, part_id)
     mesher = Mesher()
     mesher.add_shape(shape)
     mesher.write(stl_path)
-    export_glb(stl_path, glb_path)
+    topo = export_glb_with_topo(shape, glb_path, topo_path, part_id)
 
     box = shape.bounding_box()
     size = box.size
@@ -151,10 +283,12 @@ def export_part(shape: Shape, part_id: str, tmp_dirs: dict[str, Path]) -> dict[s
             "step": f"step/{step_path.name}",
             "stl": f"stl/{stl_path.name}",
             "glb": f"glb/{glb_path.name}",
+            "topo": f"topo/{topo_path.name}",
         },
         "metrics": {
             "volume_mm3": round(shape.volume, 3),
             "solid_count": len(shape.solids()),
+            "face_count": topo["faceCount"],
             "bounds_mm": {
                 "min": [round(value, 3) for value in box.min],
                 "max": [round(value, 3) for value in box.max],
@@ -173,6 +307,7 @@ def ensure_public_links(design_dir: Path) -> None:
         "step": f"{ARTIFACTS_DIR}/current/step",
         "stl": f"{ARTIFACTS_DIR}/current/stl",
         "glb": f"{ARTIFACTS_DIR}/current/glb",
+        "topo": f"{ARTIFACTS_DIR}/current/topo",
         "manifest.json": f"{ARTIFACTS_DIR}/current/manifest.json",
     }
     for name, target in targets.items():

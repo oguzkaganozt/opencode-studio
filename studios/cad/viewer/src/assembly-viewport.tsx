@@ -1,27 +1,49 @@
 import { type MutableRefObject, useEffect, useRef } from "react"
 import { AssemblyScene } from "./assembly-scene"
-import type { ClickInfo, LoadPart, SceneHandle } from "./assembly-types"
+import type { ClickInfo, InteractionMode, LoadPart, RegionDraft, RegionInfo, SceneHandle } from "./assembly-types"
 
 type AssemblyViewportProps = {
   parts: LoadPart[] | null
-  onClick: (info: ClickInfo | null) => void
+  interactionMode: InteractionMode
+  onPicksChange: (picks: ClickInfo[]) => void
+  onRegionsChange: (regions: RegionInfo[]) => void
+  onRegionDraftChange: (draft: RegionDraft | null) => void
+  onMessage: (message: string) => void
   onLoaded: (result: { loaded: number; failed: number }) => void
   sceneRef: MutableRefObject<SceneHandle | null>
 }
 
-export function AssemblyViewport({ parts, onClick, onLoaded, sceneRef }: AssemblyViewportProps) {
+export function AssemblyViewport({
+  parts,
+  interactionMode,
+  onPicksChange,
+  onRegionsChange,
+  onRegionDraftChange,
+  onMessage,
+  onLoaded,
+  sceneRef,
+}: AssemblyViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const internalRef = useRef<AssemblyScene | null>(null)
-  const onClickRef = useRef(onClick)
+  const onPicksChangeRef = useRef(onPicksChange)
+  const onRegionsChangeRef = useRef(onRegionsChange)
+  const onRegionDraftChangeRef = useRef(onRegionDraftChange)
+  const onMessageRef = useRef(onMessage)
   const onLoadedRef = useRef(onLoaded)
-  onClickRef.current = onClick
+  onPicksChangeRef.current = onPicksChange
+  onRegionsChangeRef.current = onRegionsChange
+  onRegionDraftChangeRef.current = onRegionDraftChange
+  onMessageRef.current = onMessage
   onLoadedRef.current = onLoaded
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
     const scene = new AssemblyScene(container)
-    scene.onClick = (info) => onClickRef.current(info)
+    scene.onPicksChange = (picks) => onPicksChangeRef.current(picks)
+    scene.onRegionsChange = (regions) => onRegionsChangeRef.current(regions)
+    scene.onRegionDraftChange = (draft) => onRegionDraftChangeRef.current(draft)
+    scene.onMessage = (message) => onMessageRef.current(message)
     internalRef.current = scene
     sceneRef.current = scene
     const observer = new ResizeObserver(() => scene.resize())
@@ -35,11 +57,17 @@ export function AssemblyViewport({ parts, onClick, onLoaded, sceneRef }: Assembl
   }, [sceneRef])
 
   useEffect(() => {
+    internalRef.current?.setInteractionMode(interactionMode)
+  }, [interactionMode])
+
+  useEffect(() => {
     const scene = internalRef.current
     if (!scene) return
+    scene.clearPicks()
+    scene.clearRegions()
+    scene.cancelRegionStroke()
     if (!parts) {
       scene.clear()
-      onClickRef.current(null)
       return
     }
     let cancelled = false

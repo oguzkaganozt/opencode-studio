@@ -19,7 +19,9 @@ Shipped **v0.5.5**. IA update (OpenCode home replaces hub cards; no leave-shell 
 | CAD viewer | `studios/cad/viewer/src/app.tsx`, `styles.css` |
 | Spec | `pages/cad.md` |
 
-Shipped **v0.5.6**. Built `box-lid-demo` desktop/mobile QA.
+Re-polished **2026-07-29** (toolbar; status pill; empty recovery).  
+**Mobile fix 2026-07-29:** sheets outside `inert` (iPhone freeze); phone bottom sheets; lean toolbar.  
+**Face pick 2026-07-29:** forge multi-mesh GLB `face_N` + `topo/*.json`; viewer face highlight + pin; structured Prompt. Prior ship **v0.5.6**.
 
 ### PCB lock addendum (this pass)
 | Surface | Paths |

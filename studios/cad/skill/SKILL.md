@@ -217,9 +217,12 @@ Call `design_view(id)` to get the design URL and companion reachability. The Stu
 
 Do **not** run `opencode-studio serve` — that command was removed. Studio UI is `/studio` (bare `/` is the proxied native OpenCode Agent). The CAD viewer auto-discovers built designs in the dropdown. Select a design to load the full assembly as a 3D scene.
 
-- **Click** a surface to highlight a part and see position + normal.
-- **Copy** - copies `clicked on <part> at (...) normal (...)` to clipboard.
-- **Prompt** - opens the companion Agent panel (native OpenCode UI) on a new draft with a prefilled feedback prompt: `The user clicked on "<part>" near position (...) where the surface faces (...). Edit the geometry in this area.` Review and send from the agent to direct geometry edits (not auto-sent).
+Annotation tools (toolbar **Pick | Region**):
+- **Pick** — tap surfaces to multi-select points (max 8): each pick drops a pin and highlights the B-rep face when available. Multiple pins on one face are allowed. Tap near an existing pin to remove it. **Clear** removes picks only.
+- **Region** — freehand closed zones on one locked face at a time (max 5). Requires face-split GLB from `design_build` (`face_*` meshes). Press on a face, draw, loop back to start to keep; lift without closing discards the stroke. 1-finger draws; 2-finger orbits. Multi-face intent = multiple regions. **Clear** removes regions only.
+- Pins and regions stay visible together. **Copy** / **Prompt** always send the **full** annotation state (all points + all regions), not only the active tool.
+
+- **Copy / Prompt payload** — `design=… revision=…`, then optional `points (N):` lines (`part`, `face`, `point_mm`, `normal`) and `regions (M):` blocks (`part`, `face`, `type`, `approximation`, `normal`, `centroid_mm`, `boundary_mm`, and for planes `plane_origin` / axes / `boundary2d_mm`). Prefer STEP under `step/` for listed parts. Points = locations; regions = face zones (not exact manufacturing wires until verified in session). Map viewer face ids onto STEP, edit part sources, then `design_build`. Review and send from the agent (not auto-sent).
 
 The viewer subscribes to design change events (SSE) and refreshes when builds or sources change.
 

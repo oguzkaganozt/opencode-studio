@@ -24,12 +24,15 @@ export type ArtifactPart = {
     step: string
     stl: string
     glb: string
+    /** Face-index map for viewer pick (optional on legacy builds). */
+    topo?: string
   }
   metrics: {
     volume_mm3: number
     size_mm: { x: number; y: number; z: number }
     bounds_mm?: { min: [number, number, number]; max: [number, number, number] }
     solid_count?: number
+    face_count?: number
   }
 }
 
@@ -180,6 +183,9 @@ export function validateArtifactManifest(value: unknown): ArtifactManifest {
       const expected = `${extension}/${partId}.${extension}`
       if (f[extension] !== expected) throw new ManifestError(`Part ${partId} ${extension} path must be ${expected}`)
     }
+    if (f.topo !== undefined && f.topo !== `topo/${partId}.json`) {
+      throw new ManifestError(`Part ${partId} topo path must be topo/${partId}.json`)
+    }
     const metrics = p.metrics
     if (typeof metrics !== "object" || metrics === null) throw new ManifestError(`Part ${partId} missing metrics`)
     const metric = metrics as Record<string, unknown>
@@ -200,6 +206,12 @@ export function validateArtifactManifest(value: unknown): ArtifactManifest {
       (typeof metric.solid_count !== "number" || !Number.isInteger(metric.solid_count) || metric.solid_count <= 0)
     ) {
       throw new ManifestError(`Part ${partId} solid_count must be a positive integer`)
+    }
+    if (
+      metric.face_count !== undefined &&
+      (typeof metric.face_count !== "number" || !Number.isInteger(metric.face_count) || metric.face_count <= 0)
+    ) {
+      throw new ManifestError(`Part ${partId} face_count must be a positive integer`)
     }
   }
   const build = obj.build

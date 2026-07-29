@@ -1,24 +1,78 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { Navigate, Route, Routes, useNavigate, useParams } from "react-router"
 import { requestAgentHandoff } from "@ui/agent-handoff"
+import { Badge } from "@ui/components/badge"
 import { Dialog } from "@ui/components/dialog"
 import { useFocusTrap } from "@ui/lib/focus-trap"
 import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, renderUrl, studioHref } from "./api"
-import { type ClickInfo, type LoadPart, PART_COLORS, type SceneHandle } from "./assembly-types"
+import {
+  type ClickInfo,
+  type InteractionMode,
+  type LoadPart,
+  MAX_PICKS,
+  MAX_REGIONS,
+  PART_COLORS,
+  type RegionDraft,
+  type RegionInfo,
+  type SceneHandle,
+} from "./assembly-types"
 
 const AssemblyViewport = lazy(async () => {
   const module = await import("./assembly-viewport")
   return { default: module.AssemblyViewport }
 })
 
-function statusBadge(status: DesignSummary["buildStatus"]) {
-  if (status === "built") return { label: "built", className: "text-[var(--osc-success)]" }
-  if (status === "stale") return { label: "stale", className: "text-[var(--osc-warning)]" }
-  return { label: "unbuilt", className: "text-[var(--osc-text-faint)]" }
+function statusBadge(status: DesignSummary["buildStatus"]): { label: string; tone: "ok" | "warn" | "neutral" } {
+  if (status === "built") return { label: "built", tone: "ok" }
+  if (status === "stale") return { label: "stale", tone: "warn" }
+  return { label: "unbuilt", tone: "neutral" }
 }
 
 const CAD_COMPACT_WIDTH = 960
+const CAD_PHONE_WIDTH = 640
+
+function CloseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ReloadIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M13.5 8A5.5 5.5 0 1 1 11.2 3.4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path d="M11 2.5v2.75h2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function OpenIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 5.5V3.75A1.25 1.25 0 0 1 3.75 2.5h2.4L7.5 4h4.75A1.25 1.25 0 0 1 13.5 5.25V6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.75 6.5h10.5l-.85 5.1a1.25 1.25 0 0 1-1.23 1.05H4.83a1.25 1.25 0 0 1-1.23-1.05L2.75 6.5Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
 
 function useCadSpace() {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -49,48 +103,49 @@ function useCadSpace() {
   }, [])
 
   const narrow = width === null || width < CAD_COMPACT_WIDTH
-  return { rootRef, compact: agentOpen || narrow }
+  const phone = width === null || width < CAD_PHONE_WIDTH
+  return { rootRef, compact: agentOpen || narrow, phone, width }
 }
 
-function ResourceRail({
+type SheetPlacement = "side-left" | "side-right" | "bottom"
+
+function DesignsPanel({
   designs,
   selectedId,
-  mode,
   listStatus = "ready",
   listError,
   onRetry,
   onClose,
+  onSelect,
+  showClose,
 }: {
   designs: DesignSummary[]
   selectedId?: string
-  mode: "dock" | "sheet"
   listStatus?: "loading" | "error" | "ready"
   listError?: string
   onRetry?: () => void
   onClose?: () => void
+  onSelect: (id: string) => void
+  showClose?: boolean
 }) {
-  const asideRef = useRef<HTMLElement>(null)
-  useFocusTrap(mode === "sheet", asideRef, onClose)
-
-  const body = (
+  return (
     <>
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[var(--osc-border)] px-3">
-        <span className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Designs</span>
-        {onClose && (
-          <button
-            type="button"
-            data-autofocus
-            className="osc-icon-btn size-8 text-[var(--osc-text-muted)]"
-            aria-label="Close designs"
-            onClick={onClose}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+      <div className="cad-rail-header">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="cad-rail-label">Designs</span>
+          {listStatus === "ready" && designs.length > 0 ? (
+            <span className="cad-rail-meta" aria-hidden>
+              {designs.length}
+            </span>
+          ) : null}
+        </div>
+        {showClose && onClose ? (
+          <button type="button" data-autofocus className="osc-icon-btn size-10 text-[var(--osc-text-muted)]" aria-label="Close designs" onClick={onClose}>
+            <CloseIcon />
           </button>
-        )}
+        ) : null}
       </div>
-      <nav className="min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Designs">
+      <nav className="cad-rail-scroll min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Designs">
         {listStatus === "loading" ? (
           <p className="cad-rail-empty" role="status">
             Loading designs…
@@ -100,7 +155,7 @@ function ResourceRail({
             <p>Could not load designs.</p>
             {listError ? <p className="mt-1 text-[12px] text-[var(--osc-text-faint)]">{listError}</p> : null}
             {onRetry ? (
-              <button type="button" className="cad-chip mt-3" onClick={onRetry}>
+              <button type="button" className="cad-rail-action mt-3" onClick={onRetry}>
                 Retry
               </button>
             ) : null}
@@ -108,178 +163,176 @@ function ResourceRail({
         ) : designs.length === 0 ? (
           <p className="cad-rail-empty">
             No designs yet.
-            <span className="mt-1 block text-[12px] text-[var(--osc-text-faint)]">
-              Build with the agent — finished designs show up here.
-            </span>
+            <span className="mt-1.5 block text-[12px] text-[var(--osc-text-faint)]">Build with the agent — finished designs show up here.</span>
           </p>
         ) : (
           designs.map((design) => {
             const active = design.id === selectedId
             const badge = statusBadge(design.buildStatus)
             return (
-              <Link
+              <button
                 key={design.id}
-                to={studioHref(`designs/${design.id}`)}
+                type="button"
                 data-active={active ? "true" : undefined}
-                aria-current={active ? "page" : undefined}
+                aria-current={active ? "true" : undefined}
                 className={`cad-rail-link ${
                   active ? "" : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
                 }`}
-                onClick={onClose}
+                onClick={() => onSelect(design.id)}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium text-[var(--osc-text)]">{design.id}</span>
-                  <span className={`mono text-[10px] tracking-wide uppercase ${badge.className}`}>{badge.label}</span>
+                  <span className="truncate text-left font-medium text-[var(--osc-text)]">{design.id}</span>
+                  <Badge tone={badge.tone} className="shrink-0">
+                    {badge.label}
+                  </Badge>
                 </div>
-                <div className="mono mt-0.5 text-[10px] text-[var(--osc-text-faint)]">
+                <div className="mono mt-0.5 text-left text-[10px] text-[var(--osc-text-faint)]">
                   {design.partCount} {design.partCount === 1 ? "part" : "parts"}
                 </div>
-              </Link>
+              </button>
             )
           })
         )}
       </nav>
     </>
   )
-
-  if (mode === "sheet") {
-    return (
-      <aside
-        ref={asideRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Designs"
-        className="cad-sheet cad-sheet-left flex w-[min(18rem,85vw)] flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]"
-      >
-        {body}
-      </aside>
-    )
-  }
-
-  return (
-    <aside className="hidden w-56 shrink-0 flex-col overflow-hidden border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:flex">
-      {body}
-    </aside>
-  )
 }
 
-function Inspector({
+function PartsPanel({
   parts,
   highlights,
   renders,
   designId,
-  mode,
   onClose,
   onTogglePart,
+  onSetAllVisible,
   onOpenRender,
+  showClose,
 }: {
   parts: Array<{ name: string; visible: boolean; color: number }>
   highlights: number
   renders: string[]
   designId?: string
-  mode: "dock" | "sheet"
   onClose?: () => void
   onTogglePart: (index: number, visible: boolean) => void
+  onSetAllVisible: (visible: boolean) => void
   onOpenRender: (url: string, label: string) => void
+  showClose?: boolean
 }) {
-  const asideRef = useRef<HTMLElement>(null)
-  useFocusTrap(mode === "sheet", asideRef, onClose)
+  const allVisible = parts.length > 0 && parts.every((p) => p.visible)
+  const noneVisible = parts.length > 0 && parts.every((p) => !p.visible)
 
-  const body = (
+  return (
     <>
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[var(--osc-border)] px-3">
-        <span className="text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">Parts</span>
-        {onClose && (
-          <button
-            type="button"
-            data-autofocus
-            className="osc-icon-btn size-8 text-[var(--osc-text-muted)]"
-            aria-label="Close inspector"
-            onClick={onClose}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+      <div className="cad-rail-header">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="cad-rail-label">Parts</span>
+          {parts.length > 0 ? (
+            <span className="cad-rail-meta" aria-hidden>
+              {parts.filter((p) => p.visible).length}/{parts.length}
+            </span>
+          ) : null}
+        </div>
+        {showClose && onClose ? (
+          <button type="button" data-autofocus className="osc-icon-btn size-10 text-[var(--osc-text-muted)]" aria-label="Close parts" onClick={onClose}>
+            <CloseIcon />
           </button>
-        )}
+        ) : null}
       </div>
-      <ul className="max-h-40 min-h-0 flex-1 overflow-auto overscroll-contain p-2 md:max-h-none">
+      {parts.length > 1 ? (
+        <div className="flex shrink-0 items-center justify-end gap-1 border-b border-[var(--osc-border)] px-2 py-1.5">
+          <button type="button" className="cad-ghost-btn" disabled={allVisible} onClick={() => onSetAllVisible(true)}>
+            Show all
+          </button>
+          <button type="button" className="cad-ghost-btn" disabled={noneVisible} onClick={() => onSetAllVisible(false)}>
+            Hide all
+          </button>
+        </div>
+      ) : null}
+      <ul className="cad-rail-scroll min-h-0 flex-1 overflow-auto overscroll-contain p-2">
         {parts.length === 0 ? (
-          <li className="cad-rail-empty">No parts loaded yet.</li>
+          <li className="cad-rail-empty list-none">No parts loaded yet.</li>
         ) : (
           parts.map((part, index) => (
             <li key={`${part.name}-${index}`}>
-              <label
+              <button
+                type="button"
                 className={`cad-part-row hover:bg-[var(--osc-surface-hover)] ${
                   highlights === index ? "bg-[var(--osc-surface)] text-[var(--osc-accent)]" : "text-[var(--osc-text)]"
                 }`}
+                aria-pressed={part.visible}
+                aria-label={`${part.visible ? "Hide" : "Show"} ${part.name}`}
+                onClick={() => onTogglePart(index, !part.visible)}
               >
-                <input
-                  type="checkbox"
-                  checked={part.visible}
-                  aria-label={`Show ${part.name}`}
-                  onChange={(event) => onTogglePart(index, event.target.checked)}
-                  className="size-3.5 shrink-0 accent-[var(--osc-primary)]"
-                />
+                <span className={`cad-part-check${part.visible ? " is-on" : ""}`} aria-hidden />
                 <span
-                  className="inline-block size-2.5 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/15"
+                  className="cad-part-swatch"
                   style={{ background: `#${part.color.toString(16).padStart(6, "0")}` }}
                   aria-hidden
                 />
-                <span className="min-w-0 truncate">{part.name}</span>
-              </label>
+                <span className="min-w-0 flex-1 truncate text-left">{part.name}</span>
+              </button>
             </li>
           ))
         )}
       </ul>
-      <div className="border-y border-[var(--osc-border)] px-4 py-3 text-[11px] font-medium tracking-[0.12em] text-[var(--osc-text-faint)] uppercase">
-        Renders
+      <div className="cad-section-label">
+        <span>Renders</span>
+        {renders.length > 0 ? <span className="cad-rail-meta normal-case tracking-normal">{renders.length}</span> : null}
       </div>
-      <div className="grid max-h-40 min-h-0 grid-cols-2 gap-2 overflow-auto overscroll-contain p-2 md:max-h-none md:flex-1">
+      <div className="cad-rail-scroll grid min-h-0 grid-cols-2 gap-2 overflow-auto overscroll-contain p-2 md:flex-1">
         {designId && renders.length > 0 ? (
           renders.map((file) => {
             const label = file.replace(/\.png$/, "")
             const url = renderUrl(designId, file)
             return (
-              <button
-                key={file}
-                type="button"
-                title={label}
-                className="relative overflow-hidden rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-surface)] transition-[border-color,box-shadow] duration-[var(--osc-motion-duration)] hover:border-[var(--osc-border-strong)] hover:shadow-[var(--osc-shadow)] focus-visible:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
-                onClick={() => onOpenRender(url, label)}
-              >
-                <img src={url} alt={label} loading="lazy" width={160} height={120} className="block h-auto w-full" />
-                <span className="absolute inset-x-0 bottom-0 bg-[var(--cad-overlay-bg)] px-1 py-0.5 text-center font-mono text-[10px] text-[var(--cad-overlay-text)]">
-                  {label}
-                </span>
+              <button key={file} type="button" title={label} className="cad-render-tile" onClick={() => onOpenRender(url, label)}>
+                <img src={url} alt={label} loading="lazy" width={160} height={120} />
+                <span className="cad-render-tile__label">{label}</span>
               </button>
             )
           })
         ) : (
-          <p className="cad-rail-empty col-span-2 text-center text-[12px]">No renders yet</p>
+          <p className="cad-rail-empty col-span-2">No renders yet</p>
         )}
       </div>
     </>
   )
+}
 
-  if (mode === "sheet") {
-    return (
-      <aside
-        ref={asideRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Parts and renders"
-        className="cad-sheet cad-sheet-right flex w-[min(18rem,85vw)] flex-col border-l border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]"
-      >
-        {body}
-      </aside>
-    )
-  }
+function SheetShell({
+  open,
+  placement,
+  label,
+  onClose,
+  children,
+}: {
+  open: boolean
+  placement: SheetPlacement
+  label: string
+  onClose: () => void
+  children: ReactNode
+}) {
+  const panelRef = useRef<HTMLElement>(null)
+  useFocusTrap(open, panelRef, onClose)
+
+  if (!open) return null
+
+  const sideClass =
+    placement === "side-left"
+      ? "cad-sheet cad-sheet-left cad-sheet--side cad-sheet--left"
+      : placement === "side-right"
+        ? "cad-sheet cad-sheet-right cad-sheet--side cad-sheet--right"
+        : "cad-sheet cad-sheet--bottom"
 
   return (
-    <aside className="flex w-full min-h-0 shrink-0 flex-col overflow-hidden border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] md:w-60 md:border-t-0 md:border-l">
-      {body}
-    </aside>
+    <div className="cad-sheet-layer" role="presentation">
+      <button type="button" className="cad-scrim" aria-label="Dismiss panel" onClick={onClose} />
+      <aside ref={panelRef} role="dialog" aria-modal="true" aria-label={label} className={`cad-rail ${sideClass}`}>
+        {placement === "bottom" ? <div className="cad-sheet-handle" aria-hidden /> : null}
+        {children}
+      </aside>
+    </div>
   )
 }
 
@@ -314,11 +367,14 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const navigate = useNavigate()
   const sceneRef = useRef<SceneHandle | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { rootRef, compact } = useCadSpace()
+  const { rootRef, compact, phone } = useCadSpace()
   const [localParts, setLocalParts] = useState<LoadPart[] | null>(null)
   const [status, setStatus] = useState("idle")
   const [statusTone, setStatusTone] = useState<"ok" | "waiting" | "idle">("idle")
-  const [click, setClick] = useState<ClickInfo | null>(null)
+  const [picks, setPicks] = useState<ClickInfo[]>([])
+  const [regions, setRegions] = useState<RegionInfo[]>([])
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>("pick")
+  const [regionDraft, setRegionDraft] = useState<RegionDraft | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const [partUi, setPartUi] = useState<Array<{ name: string; visible: boolean; color: number }>>([])
@@ -328,7 +384,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   useCadDesignEvents()
 
-  // Agent open or narrow main → collapse docked rails; free canvas.
   useEffect(() => {
     if (compact) {
       setDesignsOpen(false)
@@ -348,12 +403,15 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   })
 
   const designs = designsQuery.data ?? []
+  const selectedDesign = !localParts && designId ? designs.find((d) => d.id === designId) : undefined
 
   useEffect(() => {
     if (!designId && designs.length > 0 && !localParts) {
       navigate(studioHref(`designs/${designs[0]!.id}`), { replace: true })
     }
   }, [designId, designs, localParts, navigate])
+
+  const designRevision = designQuery.data?.revision ?? null
 
   const serverParts = useMemo<LoadPart[] | null>(() => {
     if (localParts) return localParts
@@ -365,6 +423,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       name: part.id,
       url: artifactUrl(designId, part.files.glb),
       color: PART_COLORS[index % PART_COLORS.length]!,
+      topoUrl: part.files.topo ? artifactUrl(designId, part.files.topo) : undefined,
     }))
   }, [designId, designQuery.data, localParts])
 
@@ -429,10 +488,48 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         color: PART_COLORS[index % PART_COLORS.length]!,
       }))
     })
-    setClick(null)
+    setPicks([])
+    setRegions([])
+    setRegionDraft(null)
     setStatus("loading…")
     setStatusTone("waiting")
   }, [])
+
+  const clearLocalParts = useCallback(() => {
+    setLocalParts((previous) => {
+      for (const part of previous ?? []) {
+        if (part.url.startsWith("blob:")) URL.revokeObjectURL(part.url)
+      }
+      return null
+    })
+    setPicks([])
+    setRegions([])
+    setRegionDraft(null)
+    setPartUi([])
+  }, [])
+
+  const setAllPartsVisible = useCallback((visible: boolean) => {
+    const scene = sceneRef.current
+    if (!scene) return
+    for (let i = 0; i < (scene.parts?.length ?? 0); i++) {
+      scene.setPartVisible(i, visible)
+    }
+    setPartUi((current) => current.map((part) => ({ ...part, visible })))
+  }, [])
+
+  const closeSheets = useCallback(() => {
+    setDesignsOpen(false)
+    setInspectorOpen(false)
+  }, [])
+
+  const selectDesign = useCallback(
+    (id: string) => {
+      clearLocalParts()
+      closeSheets()
+      navigate(studioHref(`designs/${id}`))
+    },
+    [clearLocalParts, closeSheets, navigate],
+  )
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -446,318 +543,540 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       if (designsOpen || inspectorOpen) {
         event.preventDefault()
         event.stopPropagation()
-        setDesignsOpen(false)
-        setInspectorOpen(false)
+        closeSheets()
+        return
+      }
+      if (regionDraft?.active) {
+        event.preventDefault()
+        event.stopPropagation()
+        sceneRef.current?.cancelRegionStroke()
+        setRegionDraft(null)
       }
     }
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
-  }, [renderModal, designsOpen, inspectorOpen])
+  }, [renderModal, designsOpen, inspectorOpen, closeSheets, regionDraft])
 
   const designsListStatus = designsQuery.isLoading ? "loading" : designsQuery.isError ? "error" : "ready"
   const designsListError = designsQuery.isError ? ((designsQuery.error as Error)?.message ?? "unknown error") : undefined
 
-  const info = click ? (
-    <>
-      <span className="font-medium text-[var(--osc-warning)]">{click.part}</span> pos:{" "}
-      <span className="mono text-[var(--osc-warning)]">
-        ({click.position.x}, {click.position.y}, {click.position.z})
-      </span>{" "}
-      normal:{" "}
-      <span className="mono text-[var(--osc-warning)]">
-        ({click.normal.x.toFixed(3)}, {click.normal.y.toFixed(3)}, {click.normal.z.toFixed(3)})
-      </span>{" "}
-      <span className="text-[var(--cad-overlay-faint)]">← {click.direction}</span>
-      <div className="mt-0.5 text-[10px] text-[var(--cad-overlay-faint)]">Copy for clipboard · Prompt sends to agent</div>
-    </>
-  ) : serverParts ? (
-    <>
-      <span className="text-[var(--cad-overlay-muted)]">click a surface to inspect it</span>
-      <div className="mt-0.5 text-[10px] text-[var(--cad-overlay-faint)]">orbit: drag · zoom: scroll · pan: right-drag</div>
-    </>
-  ) : null
+  const partCount = partUi.length
+  const partsLabel =
+    statusTone === "ok" && partCount > 0
+      ? `${partCount} ${partCount === 1 ? "part" : "parts"}`
+      : statusTone === "waiting"
+        ? status
+        : statusTone === "ok"
+          ? "0 parts"
+          : status
+
+  const canOpenParts = Boolean(serverParts) || partCount > 0
+  const dockRails = !compact
+  const sheetOpen = compact && (designsOpen || inspectorOpen)
+  const designsPlacement: SheetPlacement = phone ? "bottom" : "side-left"
+  const partsPlacement: SheetPlacement = phone ? "bottom" : "side-right"
+
+  const emptyTitle = designQuery.isError
+    ? "Could not load design"
+    : designId && designQuery.isLoading
+      ? "Loading design…"
+      : localParts
+        ? "Loading files…"
+        : designId
+          ? "No build yet"
+          : "Load a design or .glb"
+
+  const emptyBody = designQuery.isError
+    ? ((designQuery.error as Error)?.message ?? "Reload the design, or open a .glb.")
+    : designId && designQuery.isLoading
+      ? "Fetching assembly artifacts…"
+      : designId
+        ? "Build this design with the agent, then reload. You can also open a .glb anytime."
+        : "Open a .glb, or pick a design from Designs."
+
+  const showEmptyActions = !designQuery.isLoading && !localParts
+
+  const openFilePicker = () => fileInputRef.current?.click()
+
+  const reload = () => {
+    if (localParts) {
+      setLocalParts([...localParts])
+      return
+    }
+    void designQuery.refetch()
+  }
+
+  const fitView = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const scene = sceneRef.current
+        if (!scene) return
+        scene.resize()
+        scene.fitCamera()
+      })
+    })
+  }, [])
+
+  const hasAnnotations = picks.length > 0 || regions.length > 0
+
+  const formatAnnotationText = (mode: "copy" | "prompt") => {
+    if (!hasAnnotations) return ""
+    const designLine = designId
+      ? `design=${designId}${designRevision ? ` revision=${designRevision.slice(0, 12)}` : ""}`
+      : ""
+    const pointLines = picks.map((pick, index) => {
+      const face =
+        pick.faceId !== null ? `face=${pick.faceId}${pick.faceType ? ` (${pick.faceType})` : ""}` : "face=unknown"
+      const point = `point_mm=(${pick.position.x}, ${pick.position.y}, ${pick.position.z})`
+      const normal = `normal=(${pick.normal.x}, ${pick.normal.y}, ${pick.normal.z})`
+      return `  ${index + 1}) part=${pick.part} ${face} ${point} ${normal} direction=${pick.direction}`
+    })
+    const regionLines = regions.map((region, index) => {
+      const head = `  ${index + 1}) part=${region.part} face=${region.faceId}${region.faceType ? ` type=${region.faceType}` : ""} approximation=${region.approximation}`
+      const normal = `     normal=(${region.normal.x}, ${region.normal.y}, ${region.normal.z})`
+      const centroid = `     centroid_mm=(${region.centroid.x}, ${region.centroid.y}, ${region.centroid.z})`
+      const boundary = `     boundary_mm=[${region.boundary.map((p) => `(${p.x},${p.y},${p.z})`).join(", ")}]`
+      const planeLines: string[] = []
+      if (region.plane) {
+        const p = region.plane
+        planeLines.push(
+          `     plane_origin_mm=(${p.origin.x}, ${p.origin.y}, ${p.origin.z})`,
+          `     plane_x=(${p.xAxis.x}, ${p.xAxis.y}, ${p.xAxis.z}) plane_y=(${p.yAxis.x}, ${p.yAxis.y}, ${p.yAxis.z})`,
+          `     boundary2d_mm=[${p.boundary2d.map((q) => `(${q.u},${q.v})`).join(", ")}]`,
+        )
+      }
+      return [head, normal, centroid, ...planeLines, boundary].join("\n")
+    })
+
+    const blocks: string[] = []
+    if (designLine) blocks.push(designLine)
+    if (mode === "prompt") {
+      blocks.push(
+        `User marked annotations in the CAD viewer (${picks.length} point(s), ${regions.length} region(s)).`,
+      )
+    }
+    if (picks.length > 0) blocks.push(`points (${picks.length}):`, ...pointLines)
+    if (regions.length > 0) blocks.push(`regions (${regions.length}):`, ...regionLines)
+    if (mode === "prompt") {
+      const partNames = [...new Set([...picks.map((p) => p.part), ...regions.map((r) => r.part)])]
+      const stepHint =
+        designId && partNames.length > 0
+          ? ` Prefer STEP under step/ for: ${partNames.map((p) => `${p}.step`).join(", ")} (design ${designId}).`
+          : ""
+      blocks.push(
+        `Points = locations; regions = face zones (not exact manufacturing wires until verified). Map face ids on STEP, edit part sources, then design_build.${stepHint}`,
+      )
+    }
+    return blocks.join("\n")
+  }
+
+  const copyClick = () => {
+    if (!hasAnnotations) return
+    void copyFeedback(formatAnnotationText("copy"))
+      .then(() => showToast("Copied"))
+      .catch(() => showToast("Clipboard unavailable"))
+  }
+
+  const promptClick = () => {
+    if (!hasAnnotations) {
+      showToast(interactionMode === "region" ? "Draw a region first" : "Tap a surface first")
+      return
+    }
+    requestAgentHandoff({ text: formatAnnotationText("prompt"), source: "cad", open: true, copyFallback: true })
+    showToast("Opened in agent")
+  }
+
+  const clearModeAnnotations = () => {
+    if (interactionMode === "pick") {
+      sceneRef.current?.clearPicks()
+      setPicks([])
+    } else {
+      sceneRef.current?.clearRegions()
+      sceneRef.current?.cancelRegionStroke()
+      setRegions([])
+      setRegionDraft(null)
+    }
+  }
+
+  const setMode = (mode: InteractionMode) => {
+    setInteractionMode(mode)
+    sceneRef.current?.setInteractionMode(mode)
+  }
+
+  const lastPick = picks.length > 0 ? picks[picks.length - 1]! : null
+  const lastRegion = regions.length > 0 ? regions[regions.length - 1]! : null
+  const drawingRegion = Boolean(regionDraft?.active && (regionDraft.pointCount > 0 || regionDraft.faceId !== null))
+
+  const toggleDesigns = () => {
+    setDesignsOpen((v) => !v)
+    setInspectorOpen(false)
+  }
+
+  const toggleParts = () => {
+    setInspectorOpen((v) => !v)
+    setDesignsOpen(false)
+  }
+
+  const designControlLabel = localParts ? "Local GLB" : (selectedDesign?.id ?? (designs.length ? "Designs" : "No designs"))
 
   const statusClass =
     statusTone === "ok" ? "cad-status-ok" : statusTone === "waiting" ? "cad-status-wait" : "cad-status-idle"
 
-  const dockRails = !compact
-  const showDesignsSheet = compact && designsOpen
-  const showInspectorSheet = compact && inspectorOpen
-
   return (
-    <div ref={rootRef} className="relative flex min-h-0 flex-1 flex-col md:flex-row" data-cad-compact={compact ? "true" : "false"}>
+    <div
+      ref={rootRef}
+      className="relative flex min-h-0 flex-1 flex-col md:flex-row"
+      data-cad-compact={compact ? "true" : "false"}
+      data-cad-phone={phone ? "true" : "false"}
+    >
       {dockRails && (
-        <ResourceRail
-          designs={designs}
-          selectedId={localParts ? undefined : designId}
-          mode="dock"
-          listStatus={designsListStatus}
-          listError={designsListError}
-          onRetry={() => void designsQuery.refetch()}
-        />
+        <aside className="cad-rail hidden w-56 shrink-0 border-r border-[var(--osc-border)] md:flex">
+          <DesignsPanel
+            designs={designs}
+            selectedId={localParts ? undefined : designId}
+            listStatus={designsListStatus}
+            listError={designsListError}
+            onRetry={() => void designsQuery.refetch()}
+            onSelect={selectDesign}
+          />
+        </aside>
       )}
-      <div
-        className="relative min-h-0 min-w-0 flex-1 bg-[var(--osc-canvas-bg)]"
-        inert={showDesignsSheet || showInspectorSheet ? true : undefined}
-        onDragOver={(event) => {
-          event.preventDefault()
-          setDropActive(true)
-        }}
-        onDragLeave={() => setDropActive(false)}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDropActive(false)
-          if (event.dataTransfer?.files.length) loadFiles(event.dataTransfer.files)
-        }}
-      >
-        <div className="cad-toolbar absolute top-3 left-3 z-10">
-          {compact && (
-            <>
+
+      <div className="relative min-h-0 min-w-0 flex-1 bg-[var(--osc-canvas-bg)]">
+        {/* Canvas + chrome only — sheets live as siblings so inert never blocks them */}
+        <div
+          className="absolute inset-0"
+          inert={sheetOpen ? true : undefined}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setDropActive(true)
+          }}
+          onDragLeave={() => setDropActive(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDropActive(false)
+            if (event.dataTransfer?.files.length) loadFiles(event.dataTransfer.files)
+          }}
+        >
+          <div className="cad-toolbar absolute top-3 left-3 z-10" role="toolbar" aria-label="CAD viewer">
+            {compact ? (
               <button
                 type="button"
-                className="cad-chip"
+                className={`cad-design-id${localParts ? " cad-design-id--local" : ""}`}
                 aria-pressed={designsOpen}
                 aria-expanded={designsOpen}
+                aria-label={localParts ? "Local files — clear or pick a design" : `Design ${designControlLabel}`}
+                title={localParts ? "Clear local · pick a design" : "Change design"}
                 onClick={() => {
-                  setDesignsOpen((v) => !v)
-                  setInspectorOpen(false)
+                  if (localParts) clearLocalParts()
+                  toggleDesigns()
                 }}
               >
-                Designs
+                {designControlLabel}
+              </button>
+            ) : localParts ? (
+              <button type="button" className="cad-design-id cad-design-id--local" onClick={clearLocalParts} title="Clear local GLB">
+                Local GLB
+              </button>
+            ) : selectedDesign ? (
+              <span className="cad-design-id" title={selectedDesign.id}>
+                {selectedDesign.id}
+              </span>
+            ) : null}
+
+            {compact ? (
+              <button
+                type="button"
+                className={`cad-status-btn ${statusClass}`}
+                aria-pressed={inspectorOpen}
+                aria-expanded={inspectorOpen}
+                aria-label={canOpenParts ? `Parts, ${partsLabel}` : partsLabel}
+                disabled={statusTone === "waiting" && !canOpenParts}
+                onClick={toggleParts}
+              >
+                {partsLabel}
+              </button>
+            ) : (
+              <span className={`cad-status ${statusClass}`} aria-live="polite">
+                {partsLabel}
+              </span>
+            )}
+
+            <span className="cad-sep" aria-hidden />
+
+            <span className="cad-seg" role="group" aria-label="Annotation tool">
+              <button
+                type="button"
+                className="cad-chip"
+                aria-pressed={interactionMode === "pick"}
+                onClick={() => setMode("pick")}
+              >
+                Pick
               </button>
               <button
                 type="button"
                 className="cad-chip"
-                aria-pressed={inspectorOpen}
-                aria-expanded={inspectorOpen}
-                onClick={() => {
-                  setInspectorOpen((v) => !v)
-                  setDesignsOpen(false)
-                }}
+                aria-pressed={interactionMode === "region"}
+                onClick={() => setMode("region")}
               >
-                Parts
+                Region
               </button>
-            </>
-          )}
-          <label className="sr-only" htmlFor="design-select">
-            Design
-          </label>
-          <select
-            id="design-select"
-            className="cad-select"
-            value={localParts ? "" : (designId ?? "")}
-            onChange={(event) => {
-              setLocalParts(null)
-              if (event.target.value) navigate(studioHref(`designs/${event.target.value}`))
-            }}
-          >
-            <option value="">{designs.length ? "Select design…" : "No designs"}</option>
-            {designs.map((design) => {
-              const badge = statusBadge(design.buildStatus)
-              return (
-                <option key={design.id} value={design.id}>
-                  {design.id} · {badge.label}
-                </option>
-              )
-            })}
-          </select>
-          {(
-            [
-              ["Open", () => fileInputRef.current?.click()],
-              [
-                "Reload",
-                () => {
-                  if (localParts) {
-                    setLocalParts([...localParts])
-                    return
-                  }
-                  void designQuery.refetch()
-                },
-              ],
-              ["Fit", () => sceneRef.current?.fitCamera()],
-            ] as const
-          ).map(([label, onClick]) => (
-            <button key={label} type="button" className="cad-chip" onClick={onClick}>
-              {label}
+            </span>
+
+            <button type="button" className="cad-chip" disabled={!serverParts} onClick={fitView} aria-label="Fit view">
+              Fit
             </button>
-          ))}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".glb"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              if (event.target.files) loadFiles(event.target.files)
-              event.target.value = ""
-            }}
-          />
-          <button
-            type="button"
-            className="cad-chip"
-            disabled={!click}
-            onClick={() => {
-              if (!click) return
-              const text = `clicked on ${click.part} at (${click.position.x}, ${click.position.y}, ${click.position.z}) normal (${click.normal.x}, ${click.normal.y}, ${click.normal.z})`
-              void copyFeedback(text)
-                .then(() => showToast("copied!"))
-                .catch(() => showToast("clipboard unavailable"))
-            }}
+            <button type="button" className="cad-chip cad-chip--icon" onClick={reload} aria-label="Reload">
+              <ReloadIcon />
+            </button>
+            <button type="button" className="cad-chip cad-chip--icon" onClick={openFilePicker} aria-label="Open GLB file">
+              <OpenIcon />
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".glb"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                if (event.target.files) loadFiles(event.target.files)
+                event.target.value = ""
+              }}
+            />
+          </div>
+
+          {!serverParts && (
+            <div className="pointer-events-none absolute inset-0 z-[1] flex items-start justify-center px-4 pt-28 sm:items-center sm:pt-0">
+              <div className="cad-empty" role={designQuery.isError ? "alert" : "status"}>
+                <p className="cad-empty__title">{emptyTitle}</p>
+                <p className="cad-empty__body">{emptyBody}</p>
+                {!designQuery.isLoading && !designQuery.isError && !localParts ? (
+                  <p className="cad-empty__hint">orbit · zoom · pan</p>
+                ) : null}
+                {showEmptyActions ? (
+                  <div className="cad-empty__actions">
+                    {designQuery.isError ? (
+                      <button type="button" className="cad-chip" onClick={() => void designQuery.refetch()}>
+                        Retry
+                      </button>
+                    ) : null}
+                    <button type="button" className="cad-chip cad-chip--accent" onClick={openFilePicker}>
+                      Open .glb
+                    </button>
+                    {compact && designs.length > 0 ? (
+                      <button
+                        type="button"
+                        className="cad-chip"
+                        onClick={() => {
+                          setDesignsOpen(true)
+                          setInspectorOpen(false)
+                        }}
+                      >
+                        Designs
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          <Suspense
+            fallback={
+              <div className="cad-viewport-loading" role="status">
+                <div className="cad-skeleton" aria-hidden />
+                <span>Loading viewport…</span>
+              </div>
+            }
           >
-            Copy
-          </button>
-          <button
-            type="button"
-            className="cad-chip"
-            disabled={!click}
-            onClick={() => {
-              if (!click) return
-              const text = `The user clicked on "${click.part}" near position (${click.position.x}, ${click.position.y}, ${click.position.z}) where the surface faces (${click.normal.x}, ${click.normal.y}, ${click.normal.z}). Edit the geometry in this area.`
-              requestAgentHandoff({ text, source: "cad" })
-              showToast("Prompt ready in agent")
-            }}
-          >
-            Prompt
-          </button>
-          <span className={`cad-chip border ${statusClass}`} aria-live="polite">
-            {status}
-          </span>
+            <AssemblyViewport
+              parts={serverParts}
+              interactionMode={interactionMode}
+              sceneRef={sceneRef}
+              onPicksChange={setPicks}
+              onRegionsChange={setRegions}
+              onRegionDraftChange={setRegionDraft}
+              onMessage={showToast}
+              onLoaded={(result) => {
+                const scene = sceneRef.current
+                setPartUi(
+                  (scene?.parts ?? []).map((part) => ({
+                    name: part.name,
+                    visible: part.visible,
+                    color: part.origColor,
+                  })),
+                )
+                if (result.failed > 0) {
+                  setStatus(`${result.loaded} loaded, ${result.failed} failed`)
+                  setStatusTone("waiting")
+                } else {
+                  setStatus(localParts ? `${result.loaded} file(s)` : `${result.loaded} part(s)`)
+                  setStatusTone("ok")
+                }
+              }}
+            />
+          </Suspense>
+
+          {!sheetOpen && (hasAnnotations || drawingRegion || serverParts) ? (
+            <div
+              className={`cad-hud absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-10 w-[calc(100%-1.25rem)] max-w-xl -translate-x-1/2 px-3 py-2.5 ${hasAnnotations || drawingRegion ? "" : "pointer-events-none"}`}
+            >
+              {drawingRegion ? (
+                <>
+                  <div className="cad-hud__primary text-center">
+                    <span className="font-medium text-[var(--osc-warning)]">
+                      {regionDraft?.part ?? "face"}
+                      {regionDraft?.faceId !== null && regionDraft?.faceId !== undefined
+                        ? ` · face ${regionDraft.faceId}`
+                        : ""}
+                    </span>
+                    <span className="text-[var(--cad-overlay-muted)]"> · drawing…</span>
+                  </div>
+                  <div className="cad-hud__hint text-center">
+                    Loop near start to keep (auto-closes) · open lift discards
+                  </div>
+                </>
+              ) : hasAnnotations ? (
+                <>
+                  <div className="cad-hud__primary text-center">
+                    {picks.length > 0 ? (
+                      <span className="font-medium text-[var(--osc-warning)]">
+                        {picks.length} pin{picks.length === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                    {picks.length > 0 && regions.length > 0 ? (
+                      <span className="text-[var(--cad-overlay-muted)]"> · </span>
+                    ) : null}
+                    {regions.length > 0 ? (
+                      <span className="font-medium text-[var(--osc-warning)]">
+                        {regions.length} region{regions.length === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                    {lastPick && interactionMode === "pick" ? (
+                      <>
+                        <span className="text-[var(--cad-overlay-muted)]"> · </span>
+                        <span className="font-medium text-[var(--osc-warning)]">{lastPick.part}</span>
+                        {lastPick.faceId !== null ? (
+                          <>
+                            <span className="text-[var(--cad-overlay-muted)]"> · </span>
+                            <span className="font-medium text-[var(--osc-warning)]">face {lastPick.faceId}</span>
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {lastRegion && interactionMode === "region" ? (
+                      <>
+                        <span className="text-[var(--cad-overlay-muted)]"> · </span>
+                        <span className="font-medium text-[var(--osc-warning)]">
+                          {lastRegion.part} · face {lastRegion.faceId}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                  <div className="cad-hud__hint text-center">
+                    {interactionMode === "pick"
+                      ? `Multi-point OK · tap pin to remove · max ${MAX_PICKS}${picks.length >= MAX_PICKS ? " (full)" : ""}`
+                      : `Freehand on face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`}
+                    {hasAnnotations ? " · Copy sends all annotations" : ""}
+                  </div>
+                  <div className="cad-hud__actions">
+                    <button type="button" className="cad-chip" onClick={clearModeAnnotations}>
+                      Clear
+                    </button>
+                    <button type="button" className="cad-chip" onClick={copyClick}>
+                      Copy
+                    </button>
+                    <button type="button" className="cad-chip cad-chip--accent" onClick={promptClick}>
+                      Prompt agent
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="cad-hud__primary text-center text-[var(--cad-overlay-muted)]">
+                    {interactionMode === "region"
+                      ? "Tap a face, then draw a closed area"
+                      : "Tap surfaces to mark picks"}
+                  </div>
+                  <div className="cad-hud__hint text-center">
+                    {interactionMode === "region"
+                      ? "1-finger draw · close the loop to keep · 2-finger orbit"
+                      : "Multi-select · Clear on bar · pinch zoom"}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+
+          {dropActive && <div className="cad-drop">Drop .glb file(s)</div>}
+          {toast && (
+            <div className="cad-toast" role="status" aria-live="polite">
+              {toast}
+            </div>
+          )}
         </div>
 
-        {!serverParts && (
-          <div className="pointer-events-none absolute inset-0 z-[1] flex items-start justify-center px-4 pt-24 sm:items-center sm:pt-0">
-            <div className="cad-empty" role={designQuery.isError ? "alert" : "status"}>
-              <p className="cad-empty__title">
-                {designQuery.isError
-                  ? "Could not load design"
-                  : designId && designQuery.isLoading
-                    ? "Loading design…"
-                    : designId
-                      ? "No build yet"
-                      : "Load a design or .glb"}
-              </p>
-              <p className="cad-empty__body">
-                {designQuery.isError
-                  ? ((designQuery.error as Error)?.message ?? "Reload the design, or open a .glb.")
-                  : designId && designQuery.isLoading
-                    ? "Fetching assembly artifacts…"
-                    : designId
-                      ? "Build this design with the agent, then reload. You can also drop a .glb anytime."
-                      : "Drop a .glb on the canvas, use Open, or pick a design from the list."}
-              </p>
-              {!designQuery.isLoading && !designQuery.isError && <p className="cad-empty__hint">orbit · zoom · pan</p>}
-            </div>
-          </div>
-        )}
-
-        <Suspense
-          fallback={
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--osc-text-muted)]" role="status">
-              Loading viewport…
-            </div>
-          }
+        {/* Sheets are OUTSIDE the inert canvas subtree — fixes iOS Safari freeze */}
+        <SheetShell
+          open={compact && designsOpen}
+          placement={designsPlacement}
+          label="Designs"
+          onClose={() => setDesignsOpen(false)}
         >
-          <AssemblyViewport
-            parts={serverParts}
-            sceneRef={sceneRef}
-            onClick={setClick}
-            onLoaded={(result) => {
-              const scene = sceneRef.current
-              setPartUi(
-                (scene?.parts ?? []).map((part) => ({
-                  name: part.name,
-                  visible: part.visible,
-                  color: part.origColor,
-                })),
-              )
-              if (result.failed > 0) {
-                setStatus(`${result.loaded} loaded, ${result.failed} failed`)
-                setStatusTone("waiting")
-              } else {
-                setStatus(localParts ? `${result.loaded} file(s)` : `${result.loaded} part(s)`)
-                setStatusTone("ok")
-              }
-            }}
+          <DesignsPanel
+            designs={designs}
+            selectedId={localParts ? undefined : designId}
+            listStatus={designsListStatus}
+            listError={designsListError}
+            onRetry={() => void designsQuery.refetch()}
+            onClose={() => setDesignsOpen(false)}
+            onSelect={selectDesign}
+            showClose
           />
-        </Suspense>
+        </SheetShell>
 
-        {info && (
-          <div className="cad-hud pointer-events-none absolute bottom-4 left-1/2 z-10 w-[calc(100%-1.25rem)] max-w-xl -translate-x-1/2 px-4 py-2.5 text-center text-[12px]">
-            {info}
-          </div>
-        )}
-
-        {dropActive && (
-          <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-[var(--osc-radius-lg)] border-2 border-dashed border-[var(--osc-accent)] bg-black/75 text-[15px] font-medium text-[var(--osc-accent)]">
-            drop .glb file(s)
-          </div>
-        )}
-        {toast && (
-          <div
-            className="absolute top-14 left-1/2 z-50 -translate-x-1/2 rounded-[var(--osc-radius-md)] border border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] px-3 py-1.5 text-xs font-medium text-[var(--osc-success)]"
-            role="status"
-            aria-live="polite"
-          >
-            {toast}
-          </div>
-        )}
-
-        {(showDesignsSheet || showInspectorSheet) && (
-          <button
-            type="button"
-            className="absolute inset-0 z-20 bg-[var(--osc-overlay)]"
-            aria-label="Dismiss panel"
-            onClick={() => {
-              setDesignsOpen(false)
+        <SheetShell
+          open={compact && inspectorOpen}
+          placement={partsPlacement}
+          label="Parts and renders"
+          onClose={() => setInspectorOpen(false)}
+        >
+          <PartsPanel
+            parts={partUi}
+            highlights={lastPick?.partIndex ?? -1}
+            renders={localParts ? [] : (designQuery.data?.renders ?? [])}
+            designId={localParts ? undefined : designId}
+            onClose={() => setInspectorOpen(false)}
+            showClose
+            onTogglePart={(index, visible) => {
+              sceneRef.current?.setPartVisible(index, visible)
+              setPartUi((current) => current.map((part, i) => (i === index ? { ...part, visible } : part)))
+            }}
+            onSetAllVisible={setAllPartsVisible}
+            onOpenRender={(url, label) => {
               setInspectorOpen(false)
+              setRenderModal({ url, label })
             }}
           />
-        )}
-        {showDesignsSheet && (
-          <div className="absolute inset-y-0 left-0 z-30 flex">
-            <ResourceRail
-              designs={designs}
-              selectedId={localParts ? undefined : designId}
-              mode="sheet"
-              listStatus={designsListStatus}
-              listError={designsListError}
-              onRetry={() => void designsQuery.refetch()}
-              onClose={() => setDesignsOpen(false)}
-            />
-          </div>
-        )}
-        {showInspectorSheet && (
-          <div className="absolute inset-y-0 right-0 z-30 flex">
-            <Inspector
-              parts={partUi}
-              highlights={click?.partIndex ?? -1}
-              renders={localParts ? [] : (designQuery.data?.renders ?? [])}
-              designId={localParts ? undefined : designId}
-              mode="sheet"
-              onClose={() => setInspectorOpen(false)}
-              onTogglePart={(index, visible) => {
-                sceneRef.current?.setPartVisible(index, visible)
-                setPartUi((current) => current.map((part, i) => (i === index ? { ...part, visible } : part)))
-              }}
-              onOpenRender={(url, label) => setRenderModal({ url, label })}
-            />
-          </div>
-        )}
+        </SheetShell>
       </div>
 
       {dockRails && (
-        <Inspector
-          parts={partUi}
-          highlights={click?.partIndex ?? -1}
-          renders={localParts ? [] : (designQuery.data?.renders ?? [])}
-          designId={localParts ? undefined : designId}
-          mode="dock"
-          onTogglePart={(index, visible) => {
-            sceneRef.current?.setPartVisible(index, visible)
-            setPartUi((current) => current.map((part, i) => (i === index ? { ...part, visible } : part)))
-          }}
-          onOpenRender={(url, label) => setRenderModal({ url, label })}
-        />
+        <aside className="cad-rail flex w-full min-h-0 shrink-0 border-t border-[var(--osc-border)] md:w-60 md:border-t-0 md:border-l">
+          <PartsPanel
+            parts={partUi}
+            highlights={lastPick?.partIndex ?? -1}
+            renders={localParts ? [] : (designQuery.data?.renders ?? [])}
+            designId={localParts ? undefined : designId}
+            onTogglePart={(index, visible) => {
+              sceneRef.current?.setPartVisible(index, visible)
+              setPartUi((current) => current.map((part, i) => (i === index ? { ...part, visible } : part)))
+            }}
+            onSetAllVisible={setAllPartsVisible}
+            onOpenRender={(url, label) => setRenderModal({ url, label })}
+          />
+        </aside>
       )}
 
       <Dialog
@@ -771,13 +1090,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           <button
             type="button"
             data-autofocus
-            className="osc-icon-btn absolute top-3 right-3 z-10 size-9 bg-[var(--osc-bg-elevated)] text-[var(--osc-text-muted)]"
+            className="osc-icon-btn absolute top-3 right-3 z-10 size-10 bg-[var(--osc-bg-elevated)] text-[var(--osc-text-muted)]"
             aria-label="Close render preview"
             onClick={() => setRenderModal(null)}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <CloseIcon />
           </button>
           {renderModal && (
             <img
@@ -830,7 +1147,7 @@ export function App() {
         <Route path="designs/:id" element={<DesignRoute />} />
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
-      <footer className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 text-[11px] text-[var(--osc-text-faint)] sm:px-4">
+      <footer className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 text-[11px] text-[var(--osc-text-faint)] sm:px-4 pb-[env(safe-area-inset-bottom)]">
         <span className="cad-footer-meta">Read-only assembly inspection</span>
         <span className="cad-footer-note">Viewer does not mutate Data Root</span>
       </footer>

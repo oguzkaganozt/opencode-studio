@@ -3,28 +3,43 @@
 Overrides MASTER for CAD studio viewer (not host shell).
 
 ## Intent
-Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. CAD amber accent on selection rail / highlight only.
-Mobile/compact is first-class (toolbar wrap, sheet rails, larger hit targets).
+Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. CAD amber accent on selection rail / highlight / Prompt when armed only.
+**Mobile/phone is first-class** — bottom sheets, 44px targets, safe-area.
 
 ## Layout
 - Root: `flex-1 min-h-0` under host shell (never `h-full` / restyle `.studio-shell`)
 - **Wide (main ≥960px, agent closed):** docked Designs rail + canvas + Parts/Renders
-- **Compact (agent open OR main <960px):** docked rails hide; canvas full-width; toolbar **Designs** / **Parts** open overlay sheets (`aria-expanded`)
+- **Compact tablet (agent open OR main &lt;960, width ≥640):** side sheets (left Designs / right Parts)
+- **Phone (width &lt;640):** **bottom sheets** (thumb zone)
 - Host sets `data-agent-open` on `.studio-shell` for CAD to observe
-- Footer: 32px meta strip; long mono note hidden &lt;sm
+- Footer: 32px meta strip + safe-area; long mono note hidden &lt;sm
+
+## Critical interaction rule
+- Canvas chrome may use `inert` while a sheet is open.
+- **Sheets + scrim must be siblings outside the inert subtree** (never children). Nested `inert` freezes iOS Safari taps inside the sheet.
 
 ## Canvas chrome
-- Solid dark panels (`rgba` black ~0.82–0.88), **no backdrop-blur**
-- `.cad-toolbar` + `.cad-chip` / `.cad-select` (compact select on narrow)
-- Empty canvas: `.cad-empty` dashed well — distinct copy for no design / no build / load error
-- Status: success/warning tokens, not neon
-- Click readout: mono + accent/warning tokens (not raw amber Tailwind)
-- Design select options: `{id} · {built|stale|unbuilt}` — no emoji status glyphs
+- Solid dark toolbar panel (`.cad-toolbar`) — no backdrop-blur
+- Compact: **design name** · **`N parts`** · **Pick | Region** · **Fit** · reload · open
+- Wide docked: design id · status · Pick|Region · Fit · reload/open (Parts via right rail)
+- No ⋯ overflow menu — all primary actions are direct toolbar controls
+- **Copy / Prompt only on surface HUD** when any annotation exists — never permanent toolbar chrome
+- Empty: dashed well + Retry / Open .glb / Designs
+- HUD: pin + region counts · last detail + **Clear / Copy / Prompt** (Clear only here, not toolbar); while drawing: loop hint only
+- **Pick**: multi-select points (cap 8); multi-pin per face; tap pin to remove; Clear = picks only
+- **Region**: freehand on locked face (cap 5); **closed on lift → keep**, open lift → discard; face-split GLB; 1-finger draw / 2-finger orbit; Clear = regions only
+- Copy/Prompt = **full** annotation state (all pins + all regions)
+- Pins + region overlays stay visible together; faces amber; plane regions get fill+outline
+- Face data: forge multi-mesh GLB `face_<id>` + optional `topo/`; plane regions include boundary2d
+- Fit: resize + bounding-sphere framing; double-rAF after layout settles
+- Prompt: `requestAgentHandoff({ copyFallback: true })` for iOS reliability
 
 ## Rails / sheets
-- Designs empty + Parts empty use `.cad-rail-empty`
-- Rail links: accent rail when `aria-current="page"` / `data-active`
-- Part rows: larger touch targets on sheet; checkbox ≥14px
+- Designs: **buttons** (not Links) → navigate + close sheet
+- Parts: **pressable rows** with custom check (no native checkbox — iOS reliability)
+- Show all / Hide all when ≥2 parts; Badge status on designs
+- Bottom sheet: handle, max ~78dvh, safe-area padding, touch scroll (`overscroll-contain`)
+- Focus trap: safe restore (skip inert/disconnected); Escape + scrim dismiss
 
 ## Keep
 - Routes, EventSource, agent handoff, GLB drop/open, fit/reload/copy/prompt

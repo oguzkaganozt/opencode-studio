@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import trimesh
 from build123d import Box
 from forge_cli import build_design
 
@@ -44,10 +45,21 @@ class BuildDesignTest(unittest.TestCase):
                 metrics["bounds_mm"],
                 {"min": [-5.0, -5.0, -5.0], "max": [5.0, 5.0, 5.0]},
             )
-            for rel in ("step/body.step", "stl/body.stl", "glb/body.glb"):
+            for rel in ("step/body.step", "stl/body.stl", "glb/body.glb", "topo/body.json"):
                 self.assertTrue((design / rel).is_file())
+            self.assertEqual(manifest["parts"][0]["files"]["topo"], "topo/body.json")
+            self.assertGreaterEqual(metrics.get("face_count", 0), 6)
+            topo = json.loads((design / "topo" / "body.json").read_text(encoding="utf-8"))
+            self.assertEqual(topo["schema"], 1)
+            self.assertEqual(topo["partId"], "body")
+            self.assertEqual(topo["faceCount"], metrics["face_count"])
+            self.assertEqual(len(topo["triangleFaceIds"]), topo["triangleCount"])
+            glb_scene = trimesh.load(design / "glb" / "body.glb")
+            geom_names = list(getattr(glb_scene, "geometry", {}).keys()) if hasattr(glb_scene, "geometry") else []
+            face_named = [name for name in geom_names if name.startswith("face_")]
+            self.assertGreaterEqual(len(face_named), 6, f"GLB must expose face_* meshes, got {geom_names}")
             self.assertTrue(manifest_path.is_file())
-            for rel in ("step", "stl", "glb", "manifest.json"):
+            for rel in ("step", "stl", "glb", "topo", "manifest.json"):
                 self.assertTrue((design / rel).is_symlink())
             self.assertTrue((design / ".artifacts" / "current").is_symlink())
 

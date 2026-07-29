@@ -20,6 +20,7 @@ const ARTIFACT_MIME: Record<string, string> = {
   ".glb": "model/gltf-binary",
   ".step": "application/step",
   ".stl": "model/stl",
+  ".json": "application/json",
 }
 
 function safeDesignId(id: string) {
@@ -97,7 +98,9 @@ export function createCadApi(layout: StudioLayout) {
     if (!entry) return context.json({ error: "Design not found" }, 404)
     const artifact = await readArtifactManifest(entry.directory, entry.id)
     if (!artifact) return context.json({ error: "Design has no built artifacts; run design_build first" }, 404)
-    const allowedPart = artifact.parts.find((part) => part.files.glb === file || part.files.step === file || part.files.stl === file)
+    const allowedPart = artifact.parts.find(
+      (part) => part.files.glb === file || part.files.step === file || part.files.stl === file || part.files.topo === file,
+    )
     if (!allowedPart) return context.json({ error: "Artifact not listed in manifest" }, 404)
     const candidate = path.resolve(entry.directory, file)
     const resolved = await resolveRegularFileInside(
