@@ -11,6 +11,7 @@ Mobile: touch tab strip, compact chips, dashed empty wells.
 - Projects grid: `.pcb-card` + accent rail on hover/focus; health badges; path mono
 - Project detail: crumb + health + downloads + diagnostics + view tabs
 - Tabs: Schematic · PCB Layout · BOM · 3D · Circuit JSON (`.pcb-tablist` scroll, no scrollbar chrome)
+- Active route tabs scroll into view; every tab owns bounded scrolling and has a recoverable error boundary
 - Catalog: search + table (min-width scroll) + part modal
 
 ## Chrome rules
@@ -24,6 +25,7 @@ Mobile: touch tab strip, compact chips, dashed empty wells.
 - Diagnostics: chevron summary; “Send to agent” chip
 - Warning counts live only in Design diagnostics; do not repeat them in detail readiness.
 - Keep routes, SSE stale, agent diagnostics handoff, downloads
+- Artifact events refresh project, Circuit JSON, and BOM data together
 
 ## Compact
 No dual side rails like CAD — agent open is fine; no special collapse required.

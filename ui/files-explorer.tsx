@@ -27,9 +27,10 @@ type ContentResponse = {
 
 function formatBytes(bytes?: number) {
   if (bytes === undefined) return ""
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  const units = ["B", "KB", "MB", "GB", "TB"]
+  const unitIndex = bytes === 0 ? 0 : Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / 1024 ** unitIndex
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: unitIndex === 0 ? 0 : 1 }).format(value)} ${units[unitIndex]}`
 }
 
 function parentPath(current: string) {
@@ -74,16 +75,26 @@ function UpIcon() {
   )
 }
 
+function RefreshIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M11.5 7A4.5 4.5 0 1 1 9.8 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="M9.5 1.8v2.6h2.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function MobileBack({ onBack }: { onBack?: () => void }) {
   if (!onBack) return null
   return (
-    <button type="button" className="osc-chip h-8 shrink-0 px-2.5 text-[11px] md:hidden" onClick={onBack}>
+    <button type="button" className="osc-chip h-10 shrink-0 px-2.5 text-[11px] md:hidden" onClick={onBack}>
       ← List
     </button>
   )
 }
 
 function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry | null; selectedPath: string | null; onBack?: () => void }) {
+  const [mediaError, setMediaError] = useState(false)
   const contentQuery = useQuery({
     queryKey: ["files", "content", selected?.path],
     enabled: Boolean(selected && selected.kind === "file"),
@@ -128,7 +139,8 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]" role="status" aria-busy="true">
         <span className="sr-only">Loading preview…</span>
-        <div className="flex h-12 items-center gap-3 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-4">
+        <div className="flex h-12 items-center gap-3 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 sm:px-4">
+          <MobileBack onBack={onBack} />
           <div className="osc-skeleton h-4 w-40" />
         </div>
         <div className="flex-1 p-4">
@@ -145,7 +157,16 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
             <MobileBack onBack={onBack} />
           </div>
         )}
-        <ErrorState className="m-4 flex-1 border-0 py-12" title="Preview failed" description={(contentQuery.error as Error).message} />
+        <ErrorState
+          className="m-4 flex-1 border-0 py-12"
+          title="Preview failed"
+          description={`${(contentQuery.error as Error).message}. Retry, or return to the file list.`}
+          action={
+            <button type="button" className="osc-chip" onClick={() => void contentQuery.refetch()}>
+              Retry preview
+            </button>
+          }
+        />
       </div>
     )
   }
@@ -162,38 +183,68 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
           <MobileBack onBack={onBack} />
           <div className="min-w-0">
             <p className="truncate text-[13px] font-medium text-[var(--osc-text)]">{selected.name}</p>
-            <p className="truncate font-mono text-[10px] text-[var(--osc-text-faint)]">
+            <p className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]">
               {selected.path}
               {selected.bytes !== undefined ? ` · ${formatBytes(selected.bytes)}` : ""}
               {selected.mime ? ` · ${selected.mime}` : ""}
             </p>
           </div>
         </div>
-        <a href={downloadHref} className="osc-chip h-8 shrink-0 px-2.5 text-[11px]">
+        <a href={downloadHref} className="osc-chip h-10 shrink-0 px-2.5 text-[11px] sm:h-8">
           Download
         </a>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-4">
-        {data.preview === "image" && (
+        {mediaError ? (
+          <ErrorState
+            className="mx-auto max-w-md border-0 bg-transparent py-12"
+            title="Media preview failed"
+            description="Retry the inline preview, or download the original file."
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <button type="button" className="osc-chip" onClick={() => setMediaError(false)}>
+                  Retry
+                </button>
+                <a href={downloadHref} className="osc-chip">
+                  Download
+                </a>
+              </div>
+            }
+          />
+        ) : data.preview === "image" ? (
           <img
             src={rawHref}
             alt={selected.name}
+            onError={() => setMediaError(true)}
             className="mx-auto max-h-full max-w-full rounded-[var(--osc-radius-md)] object-contain shadow-[var(--osc-shadow)]"
           />
-        )}
-        {data.preview === "audio" && <audio controls src={rawHref} className="w-full" />}
-        {data.preview === "video" && (
-          <video controls src={rawHref} className="mx-auto max-h-full max-w-full rounded-[var(--osc-radius-md)]" />
-        )}
-        {data.preview === "text" &&
-          (data.truncated || data.text === null ? (
+        ) : data.preview === "audio" ? (
+          <audio
+            aria-label={`Audio preview: ${selected.name}`}
+            controls
+            src={rawHref}
+            onError={() => setMediaError(true)}
+            className="w-full"
+          />
+        ) : data.preview === "video" ? (
+          <video
+            aria-label={`Video preview: ${selected.name}`}
+            controls
+            src={rawHref}
+            onError={() => setMediaError(true)}
+            className="mx-auto max-h-full max-w-full rounded-[var(--osc-radius-md)]"
+          />
+        ) : data.preview === "text" ? (
+          data.truncated || data.text === null ? (
             <p className="text-sm text-[var(--osc-text-muted)]">Text too large to preview — use Download.</p>
           ) : (
-            <pre className="overflow-auto rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-[var(--osc-text)]">
+            <pre className="overflow-auto rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-[var(--osc-text)] md:whitespace-pre md:break-normal">
               {data.text}
             </pre>
-          ))}
-        {data.preview === "none" && <p className="text-sm text-[var(--osc-text-muted)]">No inline preview for this type. Use Download.</p>}
+          )
+        ) : (
+          <p className="text-sm text-[var(--osc-text-muted)]">No inline preview for this type. Use Download.</p>
+        )}
       </div>
     </div>
   )
@@ -236,13 +287,15 @@ export function FilesExplorer() {
   const navigateDir = (next: string) => {
     setDirPath(next)
     resetList()
-    queueMicrotask(() => listColumnRef.current?.focus())
+    queueMicrotask(() => filterRef.current?.focus())
   }
 
-  const moveCursor = (next: number) => {
+  const moveCursor = (next: number, focus = false) => {
     setCursor(next)
     queueMicrotask(() => {
-      listRef.current?.querySelector<HTMLElement>("[data-active='true']")?.scrollIntoView({ block: "nearest" })
+      const row = listRef.current?.querySelector<HTMLElement>(`[data-index='${next}']`)
+      row?.scrollIntoView({ block: "nearest" })
+      if (focus) row?.focus({ preventScroll: true })
     })
   }
 
@@ -303,12 +356,12 @@ export function FilesExplorer() {
 
     if (event.key === "ArrowDown" || event.key === "j") {
       event.preventDefault()
-      moveCursor(Math.min(safeCursor + 1, entries.length - 1))
+      moveCursor(Math.min(safeCursor + 1, entries.length - 1), true)
       return
     }
     if (event.key === "ArrowUp" || event.key === "k") {
       event.preventDefault()
-      moveCursor(Math.max(safeCursor - 1, 0))
+      moveCursor(Math.max(safeCursor - 1, 0), true)
       return
     }
     if (event.key === "Enter") {
@@ -331,7 +384,7 @@ export function FilesExplorer() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]" data-studio="files">
-      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-2 sm:px-3">
+      <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-2 sm:h-10 sm:px-3">
         <button
           type="button"
           className="osc-icon-btn size-8 text-[var(--osc-text-muted)] disabled:opacity-40"
@@ -342,7 +395,11 @@ export function FilesExplorer() {
         >
           <UpIcon />
         </button>
-        <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5 text-[12px]" aria-label="Breadcrumb">
+        <nav
+          className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-contain whitespace-nowrap text-[12px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-label="Breadcrumb"
+          title={dirPath || "workspace"}
+        >
           <button
             type="button"
             className={`max-w-[8rem] truncate rounded-[var(--osc-radius-sm)] px-1.5 py-1 font-medium transition-colors duration-[var(--osc-motion-duration)] hover:bg-[var(--osc-surface)] ${
@@ -375,7 +432,16 @@ export function FilesExplorer() {
             )
           })}
         </nav>
-        <span className="hidden shrink-0 font-mono text-[10px] tracking-wide text-[var(--osc-text-faint)] uppercase sm:inline">
+        <button
+          type="button"
+          className="osc-icon-btn size-10 shrink-0 text-[var(--osc-text-muted)] sm:size-8"
+          onClick={() => void treeQuery.refetch()}
+          aria-label={treeQuery.isFetching ? "Refreshing files" : "Refresh files"}
+          disabled={treeQuery.isFetching}
+        >
+          <RefreshIcon />
+        </button>
+        <span className="hidden shrink-0 font-mono text-[10px] tracking-wide text-[var(--osc-text-muted)] uppercase sm:inline">
           read-only
         </span>
       </div>
@@ -407,8 +473,8 @@ export function FilesExplorer() {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault()
                   listColumnRef.current?.focus()
-                  if (event.key === "ArrowDown") moveCursor(Math.min(safeCursor + 1, Math.max(entries.length - 1, 0)))
-                  if (event.key === "ArrowUp") moveCursor(Math.max(safeCursor - 1, 0))
+                  if (event.key === "ArrowDown") moveCursor(0, true)
+                  if (event.key === "ArrowUp") moveCursor(Math.max(entries.length - 1, 0), true)
                 }
               }}
               placeholder="Filter…  /"
@@ -427,7 +493,16 @@ export function FilesExplorer() {
               </div>
             )}
             {treeQuery.error && (
-              <ErrorState className="m-3 border-0 py-8" title="Could not load files" description={(treeQuery.error as Error).message} />
+              <ErrorState
+                className="m-3 border-0 py-8"
+                title="Could not load files"
+                description={`${(treeQuery.error as Error).message}. Check the workspace and retry.`}
+                action={
+                  <button type="button" className="osc-chip" onClick={() => void treeQuery.refetch()}>
+                    Retry
+                  </button>
+                }
+              />
             )}
             {treeQuery.data && treeQuery.data.entries.length === 0 && (
               <EmptyState className="m-3 border-0 bg-transparent py-10" title="Empty directory" />
@@ -437,6 +512,11 @@ export function FilesExplorer() {
                 className="m-3 border-0 bg-transparent py-10"
                 title="No matches"
                 description="Clear the filter or try another name."
+                action={
+                  <button type="button" className="osc-chip" onClick={() => setFilter("")}>
+                    Clear filter
+                  </button>
+                }
               />
             )}
             {entries.length > 0 && (
@@ -448,21 +528,20 @@ export function FilesExplorer() {
                     <li key={entry.path}>
                       <button
                         type="button"
+                        data-index={index}
                         data-active={active ? "true" : undefined}
-                        aria-current={selectedRow ? "true" : undefined}
-                        className={`relative flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors duration-[var(--osc-motion-duration)] hover:bg-[var(--osc-surface-hover)] ${
-                          selectedRow
-                            ? "bg-[var(--osc-surface)] font-medium text-[var(--osc-text)]"
-                            : active
-                              ? "bg-[var(--osc-surface)] text-[var(--osc-text)]"
-                              : "text-[var(--osc-text)]"
+                        aria-pressed={entry.kind === "file" ? selectedRow : undefined}
+                        tabIndex={active ? 0 : -1}
+                        className={`relative flex min-h-9 w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors duration-[var(--osc-motion-duration)] hover:bg-[var(--osc-surface-hover)] focus-visible:z-10 focus-visible:outline-none focus-visible:shadow-[var(--osc-focus-ring)] ${
+                          selectedRow ? "bg-[var(--osc-surface)] font-medium text-[var(--osc-text)]" : "text-[var(--osc-text)]"
                         }`}
+                        onFocus={() => setCursor(index)}
                         onClick={() => {
                           moveCursor(index)
                           openEntry(entry)
                         }}
                       >
-                        {(selectedRow || active) && (
+                        {selectedRow && (
                           <span
                             className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[var(--osc-accent)]"
                             aria-hidden
@@ -477,7 +556,7 @@ export function FilesExplorer() {
                         </span>
                         <span className="min-w-0 flex-1 truncate">{entry.name}</span>
                         {entry.kind === "file" && (
-                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--osc-text-faint)]">
+                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--osc-text-muted)]">
                             {formatBytes(entry.bytes)}
                           </span>
                         )}
@@ -490,7 +569,12 @@ export function FilesExplorer() {
           </div>
         </div>
         <div className={`min-h-0 min-w-0 flex-1 flex-col ${showPreviewMobile ? "flex" : "hidden md:flex"}`}>
-          <PreviewPane selected={selected} selectedPath={selectedPath} onBack={selectedPath ? () => setSelectedPath(null) : undefined} />
+          <PreviewPane
+            key={selectedPath ?? "none"}
+            selected={selected}
+            selectedPath={selectedPath}
+            onBack={selectedPath ? () => setSelectedPath(null) : undefined}
+          />
         </div>
       </div>
     </div>

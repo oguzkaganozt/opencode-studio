@@ -206,6 +206,7 @@ async function browserSmoke(base: string) {
       assert(uiBase === `/studios/${id}`, `${id}: router uiBase should be basename-relative, got ${String(uiBase)}`)
       if (check.extra) await check.extra(page)
       await assertShellFillsViewport(page, id)
+      assert((await page.title()) === `${id.toUpperCase()} · OpenCode Studio`, `${id}: unexpected document title ${await page.title()}`)
       await assertNoHorizontalScroll(page, `1280 ${id}`)
       // Studio utilities still present after lazy CSS load
       await assertTailwindUtilities(page)
@@ -214,11 +215,20 @@ async function browserSmoke(base: string) {
 
     await page.goto(`${base}/studio/files`, { waitUntil: "networkidle" })
     await page.waitForSelector("text=workspace", { timeout: 15_000 })
+    const filesFilter = page.getByRole("searchbox", { name: "Filter files" })
+    await filesFilter.focus()
+    await filesFilter.fill("README")
+    await filesFilter.press("ArrowDown")
+    const focusedFile = await page.evaluate(() => document.activeElement?.textContent ?? "")
+    assert(focusedFile.includes("README.md"), `files: ArrowDown should focus first row, got ${focusedFile}`)
+    await page.keyboard.press("Enter")
+    await page.getByText("README.md", { exact: true }).last().waitFor()
     const filesAgentButtons = await page.getByRole("button", { name: /^Agent/ }).count()
     const filesAgentFrames = await page.locator('[aria-label="OpenCode agent"]').count()
     assert(filesAgentButtons === 0, `files: agent button should not render, got ${filesAgentButtons}`)
     assert(filesAgentFrames === 0, `files: agent frame should not mount, got ${filesAgentFrames}`)
     await assertShellFillsViewport(page, "files")
+    assert((await page.title()) === "Files · OpenCode Studio", `files: unexpected document title ${await page.title()}`)
     await assertNoHorizontalScroll(page, "1280 files")
     console.log("files explorer ok")
 
@@ -247,8 +257,38 @@ async function browserSmoke(base: string) {
     await page.goto(`${base}/studio/studios/pcb`, { waitUntil: "domcontentloaded" })
     await page.waitForSelector("text=PCB Studio", { timeout: 15_000 })
     await page.getByRole("navigation").getByRole("link", { name: "Projects" }).waitFor()
+    const pcbMainCount = await page.locator("main").count()
+    assert(pcbMainCount === 1, `360 pcb: expected one main landmark, got ${pcbMainCount}`)
     await assertNoHorizontalScroll(page, "360 pcb")
     console.log("360 smoke ok")
+
+    await page.goto(`${base}/studio/studios/pcb/catalog`, { waitUntil: "domcontentloaded" })
+    await page.getByRole("button", { name: "TEST-1" }).click()
+    await page.getByRole("dialog").waitFor()
+    await page.getByRole("button", { name: "Close dialog" }).click()
+    await page.waitForURL(`${base}/studio/studios/pcb/catalog`)
+    await page.goBack({ waitUntil: "domcontentloaded" })
+    assert(!page.url().includes("part="), `catalog: Back reopened the closed part modal (${page.url()})`)
+    assert((await page.getByRole("dialog").count()) === 0, "catalog: Back should not reopen the closed part modal")
+    console.log("catalog history ok")
+
+    await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
+    await page.getByRole("button", { name: /^Agent/ }).click()
+    const mobileAgentFrame = page.locator('iframe[title="OpenCode agent"]')
+    await mobileAgentFrame.waitFor({ state: "attached", timeout: 30_000 })
+    const mobileAgentClose = page.getByRole("button", { name: "Close agent" })
+    await mobileAgentClose.focus()
+    await page.keyboard.press("Tab")
+    const mobileAgentFocus = await page.evaluate(() => ({
+      tag: document.activeElement?.tagName,
+      title: document.activeElement?.getAttribute("title"),
+    }))
+    assert(
+      mobileAgentFocus.tag === "IFRAME" && mobileAgentFocus.title === "OpenCode agent",
+      `360 agent: Tab from Close should enter iframe, got ${JSON.stringify(mobileAgentFocus)}`,
+    )
+    await mobileAgentClose.click()
+    console.log("360 agent focus ok")
 
     // Native agent iframe: closed by default; open once and confirm same-origin frame
     await page.setViewportSize({ width: 1280, height: 800 })
@@ -286,7 +326,16 @@ async function freePort(): Promise<number> {
 const studioConfigHome = path.join(workspace, "studio-config")
 const openCodeHome = path.join(workspace, "opencode-config")
 const domain = path.join(workspace, "domain")
-await import("node:fs/promises").then(({ mkdir }) => mkdir(domain, { recursive: true }))
+await import("node:fs/promises").then(async ({ mkdir, writeFile }) => {
+  await mkdir(domain, { recursive: true })
+  await writeFile(path.join(domain, "README.md"), "# Browser smoke fixture\n")
+  const catalogDir = path.join(domain, "catalog", "parts")
+  await mkdir(catalogDir, { recursive: true })
+  await writeFile(
+    path.join(catalogDir, "TEST-1.yml"),
+    "mpn: TEST-1\nmanufacturer: Studio QA\ndescription: Browser history fixture\ncategory: test\n",
+  )
+})
 
 let exitCode = 0
 try {

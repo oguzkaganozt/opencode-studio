@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { lazy, Suspense, useEffect, useState } from "react"
+import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { EmptyState } from "@ui/components/empty-state"
@@ -8,6 +8,7 @@ import { cn } from "@ui/lib/cn"
 import { safeHref } from "@ui/lib/safe-href"
 import { api, type CircuitDiagnostics, type DiagnosticGroup, type PartSummary, type ProjectSummary, studioHref } from "./api"
 import { PartDetailModal } from "./part-detail"
+import { ViewerErrorBoundary } from "./error-boundary"
 
 const CadViewerTab = lazy(() => import("./cad-viewer-tab"))
 const SchematicTab = lazy(() => import("./schematic-tab"))
@@ -21,7 +22,7 @@ function Shell({ children, fill = false }: { children: React.ReactNode; fill?: b
     <div data-studio="pcb" className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]">
       <header className="studio-subnav">
         <span className="sr-only">PCB Studio</span>
-        <nav className="flex items-center gap-0.5">
+        <nav className="flex items-center gap-0.5" aria-label="PCB sections">
           <NavLink to={studioHref()} end>
             Projects
           </NavLink>
@@ -29,7 +30,7 @@ function Shell({ children, fill = false }: { children: React.ReactNode; fill?: b
         </nav>
         <WorkspaceBadge />
       </header>
-      <main className={cn("min-h-0 flex-1", fill ? "flex flex-col overflow-hidden" : "overflow-auto")}>{children}</main>
+      <div className={cn("min-h-0 flex-1", fill ? "flex flex-col overflow-hidden" : "overflow-auto")}>{children}</div>
     </div>
   )
 }
@@ -155,8 +156,21 @@ function LoadingState({ label = "Loading…" }: { label?: string }) {
   )
 }
 
-function PageError({ message, description }: { message: string; description?: string }) {
-  return <ErrorState className="m-4 border-dashed py-16 sm:m-6 sm:py-20" title={message} description={description} />
+function PageError({ message, description, onRetry }: { message: string; description?: string; onRetry?: () => void }) {
+  return (
+    <ErrorState
+      className="m-4 border-dashed py-16 sm:m-6 sm:py-20"
+      title={message}
+      description={description}
+      action={
+        onRetry ? (
+          <button type="button" className="pcb-chip" onClick={onRetry}>
+            Retry
+          </button>
+        ) : undefined
+      }
+    />
+  )
 }
 
 function PageEmpty({ label, description, action }: { label: string; description?: string; action?: React.ReactNode }) {
@@ -176,7 +190,9 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-[14px] font-semibold tracking-tight text-[var(--osc-text)]">{project.name}</p>
-          <p className="mt-1 truncate font-mono text-[11px] text-[var(--osc-text-faint)]">{project.path}</p>
+          <p className="mt-1 truncate font-mono text-[11px] text-[var(--osc-text-muted)]" title={project.path}>
+            {project.path}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <CardHealth project={project} />
@@ -327,7 +343,7 @@ function DiagnosticsPanel({
                 open: true,
                 copyFallback: true,
               })
-              showToast("Opened repair prompt in agent")
+              showToast("Opened repair draft in agent")
             }}
           >
             Fix with agent
@@ -369,7 +385,7 @@ async function loadAllProjects() {
 
 function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { data, isLoading, error } = useQuery({ queryKey: ["pcb", "projects"], queryFn: loadAllProjects })
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ["pcb", "projects"], queryFn: loadAllProjects })
   const search = searchParams.get("q") ?? ""
   const filter = searchParams.get("status") ?? "all"
   const normalizedSearch = search.trim().toLowerCase()
@@ -410,13 +426,30 @@ function ProjectsPage() {
       {error && (
         <PageError
           message="Failed to load projects"
-          description={String(error)}
+          description={`${String(error)}. Check the workspace and retry.`}
+          onRetry={() => void refetch()}
         />
       )}
       {data && data.projects.length === 0 && (
         <PageEmpty
           label="No circuit projects yet"
           description="Create a project with src/circuit.tsx in the workspace (pcb_project_create), then build with the agent."
+          action={
+            <button
+              type="button"
+              className="pcb-chip pcb-chip--primary"
+              onClick={() =>
+                requestAgentHandoff({
+                  text: "Create a new PCB project in this workspace, ask me for the circuit requirements, then build and validate it.",
+                  source: "pcb",
+                  open: true,
+                  copyFallback: true,
+                })
+              }
+            >
+              Draft project request
+            </button>
+          }
         />
       )}
       {data && data.projects.length > 0 && (
@@ -498,36 +531,39 @@ function tabLabel(tab: ViewTab) {
 }
 
 function CircuitJsonViewer({ projectId }: { projectId: string }) {
-  const [data, setData] = useState<unknown>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
-
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetch(api.circuitJsonUrl(projectId))
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
-      })
-      .then((json) => {
-        setData(json)
-        setLoading(false)
-      })
-      .catch((e) => {
-        setError(String(e))
-        setLoading(false)
-      })
-  }, [projectId])
-
-  if (loading) return <LoadingState label="Loading circuit.json…" />
-  if (error) return <PageError message="circuit.json not available. Run pcb_circuit_build first." />
-
+  const deferredSearch = useDeferredValue(search)
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["pcb", "circuitJson", projectId],
+    queryFn: async () => {
+      const response = await fetch(api.circuitJsonUrl(projectId))
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      return response.json() as Promise<unknown>
+    },
+  })
   const elements = Array.isArray(data) ? data : []
+  const indexedElements = useMemo(
+    () => elements.map((element: any) => ({ element, searchText: JSON.stringify(element).toLowerCase() })),
+    [elements],
+  )
   const types = [...new Set(elements.map((element: any) => String(element.type ?? "unknown")))].sort()
-  const normalizedSearch = search.trim().toLowerCase()
-  const filtered = normalizedSearch ? elements.filter((e: any) => JSON.stringify(e).toLowerCase().includes(normalizedSearch)) : elements
+  const normalizedSearch = deferredSearch.trim().toLowerCase()
+  const filtered = normalizedSearch
+    ? indexedElements.filter(({ searchText }) => searchText.includes(normalizedSearch)).map(({ element }) => element)
+    : elements
+
+  if (isLoading) return <LoadingState label="Loading circuit.json…" />
+  if (error)
+    return (
+      <PageError
+        message="Circuit JSON is unavailable"
+        description="Build the project if artifacts do not exist. If it is already built, retry the request."
+        onRetry={() => void refetch()}
+      />
+    )
+  if (!Array.isArray(data)) {
+    return <PageError message="Circuit JSON has an unexpected format" description="Rebuild the project, then retry this view." onRetry={() => void refetch()} />
+  }
 
   const byType: Record<string, any[]> = {}
   for (const el of filtered) {
@@ -603,6 +639,7 @@ function ProjectPage() {
   const navigate = useNavigate()
   const tab: ViewTab = isViewTab(rawTab) ? rawTab : "schematic"
   const buildState = useProjectEvents(id)
+  const tablistRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (!id) return
@@ -611,10 +648,15 @@ function ProjectPage() {
     }
   }, [id, rawTab, navigate])
 
+  useEffect(() => {
+    tablistRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" })
+  }, [tab])
+
   const {
     data: project,
     isLoading,
     error,
+    refetch,
   } = useQuery({
     queryKey: ["pcb", "project", id],
     queryFn: () => api.project(id!),
@@ -630,7 +672,11 @@ function ProjectPage() {
   if (error)
     return (
       <Shell fill>
-        <PageError message="Failed to load project" description={(error as Error).message} />
+        <PageError
+          message="Failed to load project"
+          description={`${(error as Error).message}. Check the project path and retry.`}
+          onRetry={() => void refetch()}
+        />
       </Shell>
     )
   if (!project)
@@ -665,7 +711,7 @@ function ProjectPage() {
             </span>
             <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-[var(--osc-text)] sm:text-lg">{project.name}</h1>
           </div>
-          <p className="truncate font-mono text-[11px] text-[var(--osc-text-faint)]" title={project.path}>
+          <p className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]" title={project.path}>
             {project.path}
           </p>
         </div>
@@ -680,7 +726,7 @@ function ProjectPage() {
           )}
           {(buildState.status === "stale" || !project.built) && (
             <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestBuild}>
-              {project.built ? "Rebuild with agent" : "Build with agent"}
+              {project.built ? "Draft rebuild request" : "Draft build request"}
             </button>
           )}
           {project.hasGerbersZip && id && (
@@ -699,7 +745,7 @@ function ProjectPage() {
           <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} />
         )}
 
-        <nav className="pcb-tablist" aria-label="Project views">
+        <nav ref={tablistRef} className="pcb-tablist" aria-label="Project views. Scroll horizontally for more views.">
           {VIEW_TABS.map((t) => (
             <Link
               key={t}
@@ -712,28 +758,39 @@ function ProjectPage() {
           ))}
         </nav>
 
-        <section className="flex min-h-0 flex-1 flex-col" aria-label={`${tabLabel(tab)} view`}>
-          {tab === "schematic" && id && (
-            <Suspense fallback={<LoadingState label="Loading schematic viewer…" />}>
-              <SchematicTab projectId={id} />
-            </Suspense>
-          )}
-          {tab === "pcb" && id && (
-            <Suspense fallback={<LoadingState label="Loading PCB viewer…" />}>
-              <PcbTab projectId={id} />
-            </Suspense>
-          )}
-          {tab === "3d" && id && (
-            <Suspense fallback={<LoadingState label="Loading 3D viewer…" />}>
-              <CadViewerTab projectId={id} />
-            </Suspense>
-          )}
-          {tab === "bom" && id && (
-            <Suspense fallback={<LoadingState label="Loading BOM…" />}>
-              <BomTab projectId={id} />
-            </Suspense>
-          )}
-          {tab === "json" && id && <CircuitJsonViewer projectId={id} />}
+        <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label={`${tabLabel(tab)} view`}>
+          <ViewerErrorBoundary
+            resetKey={`${id}-${tab}`}
+            fallback={
+              <PageError
+                message={`${tabLabel(tab)} view failed to load`}
+                description="Reload the page to retry this viewer. Other project views remain available."
+                onRetry={() => window.location.reload()}
+              />
+            }
+          >
+            {tab === "schematic" && id && (
+              <Suspense fallback={<LoadingState label="Loading schematic viewer…" />}>
+                <SchematicTab projectId={id} />
+              </Suspense>
+            )}
+            {tab === "pcb" && id && (
+              <Suspense fallback={<LoadingState label="Loading PCB viewer…" />}>
+                <PcbTab projectId={id} />
+              </Suspense>
+            )}
+            {tab === "3d" && id && (
+              <Suspense fallback={<LoadingState label="Loading 3D viewer…" />}>
+                <CadViewerTab projectId={id} />
+              </Suspense>
+            )}
+            {tab === "bom" && id && (
+              <Suspense fallback={<LoadingState label="Loading BOM…" />}>
+                <BomTab projectId={id} />
+              </Suspense>
+            )}
+            {tab === "json" && id && <CircuitJsonViewer projectId={id} />}
+          </ViewerErrorBoundary>
         </section>
       </div>
     </Shell>
@@ -792,9 +849,35 @@ function PartCard({ part, onSelect }: { part: PartSummary; onSelect: () => void 
 }
 
 function CatalogPage() {
-  const [search, setSearch] = useState("")
-  const [selected, setSelected] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const search = searchParams.get("q") ?? ""
+  const selected = searchParams.get("part")
   const debouncedSearch = useDebounce(search, 200)
+
+  const updateCatalogSearch = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set("q", value)
+    else next.delete("q")
+    setSearchParams(next, { replace: true })
+  }
+
+  const selectPart = (mpn: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.set("part", mpn)
+    setSearchParams(next, { state: { catalogPartModal: true } })
+  }
+
+  const closePart = () => {
+    if ((location.state as { catalogPartModal?: boolean } | null)?.catalogPartModal) {
+      navigate(-1)
+      return
+    }
+    const next = new URLSearchParams(searchParams)
+    next.delete("part")
+    setSearchParams(next, { replace: true })
+  }
 
   const requestCatalogHelp = () => {
     requestAgentHandoff({
@@ -805,9 +888,10 @@ function CatalogPage() {
     })
   }
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["pcb", "catalog", debouncedSearch],
     queryFn: () => api.catalog(debouncedSearch || undefined),
+    placeholderData: (previous) => previous,
   })
 
   return (
@@ -834,7 +918,7 @@ function CatalogPage() {
             type="search"
             name="catalog-search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => updateCatalogSearch(e.target.value)}
             placeholder="Search MPN, manufacturer…"
             autoComplete="off"
             spellCheck={false}
@@ -842,8 +926,14 @@ function CatalogPage() {
           />
         </div>
 
+        {isFetching && !isLoading ? (
+          <p className="mb-3 text-[11px] text-[var(--osc-text-muted)]" role="status">
+            Searching catalog…
+          </p>
+        ) : null}
+
         {isLoading && <LoadingState />}
-        {error && <PageError message="Failed to load catalog" description={String(error)} />}
+        {error && <PageError message="Failed to load catalog" description={`${String(error)}. Check the catalog and retry.`} onRetry={() => void refetch()} />}
         {data && data.parts.length === 0 && (
           <PageEmpty
             label={search ? "No parts match" : "Catalog is empty"}
@@ -866,34 +956,35 @@ function CatalogPage() {
           <>
             <div className="pcb-table-wrap pcb-desktop-table overflow-x-auto">
               <table>
+                <caption className="sr-only">PCB component catalog</caption>
                 <thead>
                   <tr>
-                    <th>MPN</th>
-                    <th>Manufacturer</th>
-                    <th>Description</th>
-                    <th>Category</th>
-                    <th>
+                    <th scope="col">MPN</th>
+                    <th scope="col">Manufacturer</th>
+                    <th scope="col">Description</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">
                       <span className="sr-only">Datasheet</span>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.parts.map((p) => (
-                    <PartRow key={p.mpn} part={p} onSelect={() => setSelected(p.mpn)} />
+                    <PartRow key={p.mpn} part={p} onSelect={() => selectPart(p.mpn)} />
                   ))}
                 </tbody>
               </table>
             </div>
             <div className="pcb-mobile-list">
               {data.parts.map((part) => (
-                <PartCard key={part.mpn} part={part} onSelect={() => setSelected(part.mpn)} />
+                <PartCard key={part.mpn} part={part} onSelect={() => selectPart(part.mpn)} />
               ))}
             </div>
           </>
         )}
       </div>
 
-      {selected && <PartDetailModal mpn={selected} onClose={() => setSelected(null)} />}
+      {selected && <PartDetailModal mpn={selected} onClose={closePart} />}
     </Shell>
   )
 }
@@ -925,6 +1016,7 @@ function useProjectEvents(projectId: string | undefined) {
         if (event.type === "artifacts-changed") {
           setBuildState({ status: "idle" })
           queryClient.invalidateQueries({ queryKey: ["pcb", "circuitJson", projectId] })
+          queryClient.invalidateQueries({ queryKey: ["pcb", "bom", projectId] })
           queryClient.invalidateQueries({ queryKey: ["pcb", "project", projectId] })
           queryClient.invalidateQueries({ queryKey: ["pcb", "projects"] })
         }

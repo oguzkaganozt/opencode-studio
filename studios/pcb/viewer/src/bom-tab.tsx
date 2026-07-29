@@ -102,7 +102,7 @@ function BomCard({ entry, onSelect }: { entry: BomEntry; onSelect: (entry: BomEn
 
 export default function BomTab({ projectId }: { projectId: string }) {
   const [selected, setSelected] = useState<BomEntry | null>(null)
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["pcb", "bom", projectId],
     queryFn: () => api.bom(projectId),
   })
@@ -122,7 +122,12 @@ export default function BomTab({ projectId }: { projectId: string }) {
       <ErrorState
         className="m-4 border-0 py-16"
         title="BOM not available"
-        description="Run pcb_circuit_build first, then reopen this tab."
+        description="Build the project if BOM artifacts do not exist. If it is already built, retry the request."
+        action={
+          <button type="button" className="pcb-chip" onClick={() => void refetch()}>
+            Retry
+          </button>
+        }
       />
     )
   }
@@ -148,7 +153,7 @@ export default function BomTab({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="pcb-bom-tab min-h-0 flex-1 space-y-4 overflow-auto overscroll-contain pb-1">
       <div className="pcb-bom-overview">
         <div className="pcb-bom-metrics" aria-label="BOM summary">
           <span>
@@ -182,14 +187,15 @@ export default function BomTab({ projectId }: { projectId: string }) {
       </div>
       <div className="pcb-table-wrap pcb-desktop-table overflow-x-auto">
         <table>
+          <caption className="sr-only">Bill of materials</caption>
           <thead>
             <tr>
-              <th>MPN</th>
-              <th>Refdes</th>
-              <th className="text-center">Qty</th>
-              <th>Manufacturer</th>
-              <th>Description</th>
-              <th>
+              <th scope="col">MPN</th>
+              <th scope="col">Refdes</th>
+              <th scope="col" className="text-center">Qty</th>
+              <th scope="col">Manufacturer</th>
+              <th scope="col">Description</th>
+              <th scope="col">
                 <span className="sr-only">Datasheet</span>
               </th>
             </tr>

@@ -3,6 +3,8 @@
 **Status:** Files + Shell + CAD + **PCB LOCKED** 2026-07-28  
 **Do not restyle** without explicit unlock.
 
+Comprehensive UI/UX pass explicitly unlocked by the user and re-locked 2026-07-29. Shared contrast/semantics, Files keyboard + preview flow, CAD inspection status/tooling, PCB tab/data workflows, and mobile targets were re-verified with `bun run check`, browser smoke, and 360/1280 light/dark screenshots.
+
 Settings drawer and Files Agent behavior were explicitly unlocked and overhauled on 2026-07-29.
 
 ### Shell lock addendum

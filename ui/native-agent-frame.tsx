@@ -2,6 +2,7 @@ import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } f
 import { subscribeAgentHandoff } from "./agent-handoff"
 import { type AgentStatus, agentStatusDotClass, deriveAgentStatus } from "./agent-status"
 import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, clampAgentWidth, readAgentWidth, viewportAgentWidthMax, writeAgentWidth } from "./agent-width"
+import { useFocusTrap } from "./lib/focus-trap"
 import { nativeOpenCodeHomeUrl, nativePromptDraftUrl } from "./native-agent-url"
 
 function sameOriginPath(href: string): string | null {
@@ -68,6 +69,7 @@ export function NativeAgentFrame({
   onStatusChange?: (status: AgentStatus) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const asideRef = useRef<HTMLElement>(null)
   const widthRef = useRef(readAgentWidth())
   const mdUp = useMdUp()
   const [mounted, setMounted] = useState(false)
@@ -76,6 +78,7 @@ export function NativeAgentFrame({
   const [error, setError] = useState(false)
   const [width, setWidth] = useState(() => readAgentWidth())
   const [dragging, setDragging] = useState(false)
+  const [frameRevision, setFrameRevision] = useState(0)
   const [viewportMax, setViewportMax] = useState(() =>
     typeof window !== "undefined" ? viewportAgentWidthMax(window.innerWidth) : AGENT_WIDTH_MAX,
   )
@@ -148,6 +151,8 @@ export function NativeAgentFrame({
     return () => document.removeEventListener("keydown", onKey)
   }, [open, onClose])
 
+  useFocusTrap(open && !mdUp, asideRef, onClose)
+
   const status = deriveAgentStatus({
     open,
     available,
@@ -175,6 +180,23 @@ export function NativeAgentFrame({
       return
     }
     setError(nativeFrameLooksBroken(snapshotFromDocument(doc)))
+  }
+
+  const retryFrame = () => {
+    setMounted(true)
+    setError(false)
+    setLoading(true)
+    setFrameRevision((revision) => revision + 1)
+  }
+
+  const focusAgentFrame = () => {
+    const frame = iframeRef.current
+    if (frame) frame.focus({ preventScroll: true })
+    else asideRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus({ preventScroll: true })
+  }
+
+  const focusAgentClose = () => {
+    asideRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus({ preventScroll: true })
   }
 
   const beginResize = (event: ReactPointerEvent<HTMLElement>) => {
@@ -212,12 +234,18 @@ export function NativeAgentFrame({
 
   return (
     <aside
+      ref={asideRef}
       aria-label="OpenCode agent"
       data-agent-open={open ? "true" : "false"}
       data-agent-width={width}
       className={`${open ? "flex" : "hidden"} absolute inset-0 z-30 min-h-0 w-full flex-col border-r border-[var(--osc-border)] bg-[var(--osc-bg)] md:static md:inset-auto md:shrink-0 ${dragging ? "select-none" : ""}`}
       style={open && mdUp ? { width, minWidth: AGENT_WIDTH_MIN, maxWidth: viewportMax } : undefined}
     >
+      {!mdUp ? (
+        <button type="button" className="sr-only" onFocus={focusAgentFrame}>
+          Focus agent frame
+        </button>
+      ) : null}
       <div className="osc-agent-header">
         <span className={`size-1.5 shrink-0 rounded-full ${agentStatusDotClass(status)}`} aria-hidden />
         <div className="min-w-0 flex-1">
@@ -226,7 +254,13 @@ export function NativeAgentFrame({
             {available ? (loading ? "Connecting…" : error ? "Unavailable" : "OpenCode") : "Unavailable"}
           </p>
         </div>
-        <button type="button" onClick={onClose} className="osc-chip h-8 shrink-0 px-2.5 text-[11px]" aria-label="Close agent">
+        <button
+          type="button"
+          data-autofocus
+          onClick={onClose}
+          className="osc-chip h-8 shrink-0 px-2.5 text-[11px]"
+          aria-label="Close agent"
+        >
           Close
         </button>
       </div>
@@ -243,10 +277,13 @@ export function NativeAgentFrame({
         <div className="relative min-h-0 flex-1 bg-[var(--osc-bg)]">
           {error && (
             <div
-              className="absolute inset-x-0 top-0 z-10 m-3 rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-bg-elevated)] p-3 text-[12px] text-[var(--osc-error)] shadow-[var(--osc-shadow)]"
+              className="absolute inset-x-0 top-0 z-10 m-3 flex flex-wrap items-center justify-between gap-3 rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-bg-elevated)] p-3 text-[12px] text-[var(--osc-error)] shadow-[var(--osc-shadow)]"
               role="alert"
             >
-              Failed to reach the parent OpenCode UI. Confirm opencode serve is running, then reopen the agent.
+              <span className="min-w-0 flex-1">Failed to reach the parent OpenCode UI. Confirm opencode serve is running, then retry.</span>
+              <button type="button" className="osc-chip shrink-0" onClick={retryFrame}>
+                Retry
+              </button>
             </div>
           )}
           {loading && !error && (
@@ -257,6 +294,7 @@ export function NativeAgentFrame({
           )}
           {mounted && (
             <iframe
+              key={frameRevision}
               ref={iframeRef}
               title="OpenCode agent"
               src={src}
@@ -266,6 +304,12 @@ export function NativeAgentFrame({
           )}
         </div>
       )}
+
+      {!mdUp ? (
+        <button type="button" className="sr-only" onFocus={focusAgentClose}>
+          Return to agent controls
+        </button>
+      ) : null}
 
       {open && mdUp && (
         // biome-ignore lint/a11y/useSemanticElements: vertical drag handle; hr is horizontal by default

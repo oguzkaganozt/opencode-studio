@@ -148,9 +148,11 @@ Touch targets: interactive chrome ≥36px (prefer 36–40); icon-only ≥36×36.
 | 0 Foundation | tokens + global styles | `ui/tokens.css`, `ui/styles.css` |
 | 1 Primitives | button, badge, empty, error, dialog | `ui/components/*` |
 | 2 Shell | TopBar, drawer, home, agent actions, agent header | `ui/app.tsx`, `ui/native-agent-frame.tsx` |
-| 3 Pass | a11y + motion + visual QA | skills below |
+| 3 Files | keyboard model, preview states, responsive crumbs | `ui/files-explorer.tsx` |
+| 4 Studios | CAD inspection + PCB project workflows | `studios/*/viewer/src/*` |
+| 5 Pass | a11y + motion + visual QA | browser smoke + screenshots |
 
-Out of scope: `studios/*/viewer/**`, `ui/files-explorer.tsx` interior (frame chrome only if shared).
+The 2026-07-29 comprehensive pass covered the shared shell, Files, CAD, and PCB while preserving routes, APIs, and the established visual identity.
 
 ---
 

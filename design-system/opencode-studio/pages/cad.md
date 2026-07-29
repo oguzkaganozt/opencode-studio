@@ -27,12 +27,14 @@ Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. C
 - Empty: dashed well + Retry / Open .glb / Designs
 - HUD: pin + region counts · **Δ** · last detail + **Link** / **Clear / Prompt**; while drawing: loop/W×H hint only
 - **Pick**: multi-select (cap 8); mesh snap (`vertex|edge|midpoint|center`) + canvas edge-distance guides (viewer-only); **touch hold+drag** snap reticle; **Link** A→B (max 4); Clear = picks + links
+- Toolbar order is **Pin | Region | Select**; phone overflow keeps a visible thin scroll cue and coarse-pointer targets are 44px
 - **Region**: **Face** (default, tap whole face) | **Rect** (planar, live W×H on canvas) | **Free** (loop-close freehand); cap 5; face-split GLB; Clear = regions only
 - **Select**: tap pin or region (no draw); **Delete** = selected only; selected rect → HUD W/H; empty deselects; **Clear** = all annotations
 - Prompt = **full** annotation state (pins + regions + measures; `kind=face|rect|freehand`; rect includes `size_mm`/`frame=viewer-plane`)
 - Pins + region overlays stay visible together; faces amber; plane regions get fill+outline
 - Face data: forge multi-mesh GLB `face_<id>` + optional `topo/`; plane regions include boundary2d
 - Fit: resize + bounding-sphere framing; double-rAF after layout settles
+- Scene loading and all-parts-hidden states stay explicit; Fit enables only after geometry loads
 - Prompt: `requestAgentHandoff({ copyFallback: true })` for iOS reliability
 
 ## Rails / sheets

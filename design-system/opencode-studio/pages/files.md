@@ -10,9 +10,12 @@ Read-only workspace browser. Mid density, keyboard-first, quiet chrome. Rose acc
 - Split: list ~18rem (md+) | preview flex-1; mobile stacks (list ↔ preview)
 - List rows: 32–36px hit; dir/file glyph; name truncate; bytes mono faint
 - Filter: search input, `/` focus, Escape clear
+- Keyboard list: roving focus; Arrow/j/k moves focus; selected preview keeps the rose rail
+- Deep breadcrumbs stay single-line and horizontally scroll; refresh is always available
 
 ## States
 - Loading: skeleton rows (list) / skeleton well (preview)
+- Mobile preview header (Back + file identity) persists through loading and error states
 - Empty dir / no filter matches: EmptyState
 - Preview error: ErrorState + recovery copy
 - No selection: EmptyState “Select a file…”

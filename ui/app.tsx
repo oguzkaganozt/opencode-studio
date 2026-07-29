@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
-import { Link, Navigate, Route, Routes, useParams } from "react-router"
+import { Component, lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router"
 import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
 import { Badge } from "./components/badge"
 import { Button } from "./components/button"
@@ -320,7 +320,28 @@ function SideDrawer({
                 ["settings", "Settings"],
               ] as const
             ).map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={panel === id} onClick={() => setPanel(id)}>
+              <button
+                key={id}
+                id={`osc-drawer-tab-${id}`}
+                type="button"
+                role="tab"
+                aria-selected={panel === id}
+                aria-controls={`osc-drawer-panel-${id}`}
+                tabIndex={panel === id ? 0 : -1}
+                onClick={() => setPanel(id)}
+                onKeyDown={(event) => {
+                  const next =
+                    event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "Home"
+                      ? "nav"
+                      : event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "End"
+                        ? "settings"
+                        : null
+                  if (!next) return
+                  event.preventDefault()
+                  setPanel(next)
+                  queueMicrotask(() => document.getElementById(`osc-drawer-tab-${next}`)?.focus())
+                }}
+              >
                 {label}
               </button>
             ))}
@@ -329,7 +350,13 @@ function SideDrawer({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {panel === "nav" && (
-            <nav className="flex flex-col gap-4 p-2 pb-4" aria-label="Studios">
+            <nav
+              id="osc-drawer-panel-nav"
+              className="flex flex-col gap-4 p-2 pb-4"
+              role="tabpanel"
+              aria-labelledby="osc-drawer-tab-nav"
+              aria-label="Studios"
+            >
               <div className="flex flex-col gap-0.5">
                 <p className="osc-drawer-label px-2.5 pt-1.5 pb-1">Workspace</p>
                 <DrawerNavLink to="/" active={!studioId} onNavigate={onClose} title="OpenCode" blurb="Agent & sessions" />
@@ -363,7 +390,7 @@ function SideDrawer({
           )}
 
           {panel === "settings" && (
-            <div className="osc-settings">
+            <div id="osc-drawer-panel-settings" className="osc-settings" role="tabpanel" aria-labelledby="osc-drawer-tab-settings">
               <section className="osc-settings-section" aria-labelledby="osc-appearance-label">
                 <div className="osc-settings-heading">
                   <h2 id="osc-appearance-label">Appearance</h2>
@@ -616,7 +643,7 @@ function TopBar({
             {studioId && (
               <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--osc-accent-${studioId})` }} aria-hidden />
             )}
-            <p className="truncate text-[14px] font-semibold tracking-tight text-[var(--osc-text)]">{studioLabel}</p>
+            <h1 className="truncate text-[14px] font-semibold tracking-tight text-[var(--osc-text)]">{studioLabel}</h1>
           </div>
         ) : (
           <Link
@@ -657,7 +684,7 @@ function OpenCodeFrame() {
           onSettings={() => chrome.openDrawer("settings")}
           edge="flush"
         />
-        <div id="main-content" data-testid="studio-main" className="relative min-h-0 min-w-0 flex-1 overflow-hidden" tabIndex={-1}>
+        <main id="main-content" data-testid="studio-main" className="relative min-h-0 min-w-0 flex-1 overflow-hidden" tabIndex={-1}>
           {studiosQuery.isLoading ? (
             <div className="flex h-full flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
               <span className="sr-only">Loading OpenCode…</span>
@@ -679,7 +706,7 @@ function OpenCodeFrame() {
           ) : (
             <NativeOpenCodePane available={available} />
           )}
-        </div>
+        </main>
       </div>
       <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} initialPanel={chrome.drawerPanel} />
     </div>
@@ -707,6 +734,30 @@ function assertViewerLoadersComplete() {
   }
 }
 assertViewerLoadersComplete()
+
+class ViewerRouteBoundary extends Component<{ children: React.ReactNode; studioLabel: string }, { error: boolean }> {
+  state = { error: false }
+
+  static getDerivedStateFromError() {
+    return { error: true }
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <ErrorState
+        className="m-4 flex-1 sm:m-8"
+        title={`${this.props.studioLabel} viewer failed to load`}
+        description="Reload the viewer. The Studio menu and settings remain available."
+        action={
+          <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
+            Reload viewer
+          </Button>
+        }
+      />
+    )
+  }
+}
 
 function AgentChromeActions({
   agentOpen,
@@ -754,17 +805,20 @@ function StudioFrame() {
   if (studiosQuery.isLoading) {
     return (
       <div className="flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-        <TopBar
-          studioLabel="Loading…"
-          menuOpen={chrome.drawerOpen}
-          onMenu={() => chrome.openDrawer("nav")}
-          onSettings={() => chrome.openDrawer("settings")}
-        />
-        <div className="flex flex-1 flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
-          <span className="sr-only">Loading studio…</span>
-          <div className="osc-skeleton h-10 w-full max-w-md" aria-hidden />
-          <div className="osc-skeleton min-h-48 flex-1" aria-hidden />
+        <div className="flex min-h-0 flex-1 flex-col" inert={chrome.drawerOpen ? true : undefined}>
+          <TopBar
+            studioLabel="Loading…"
+            menuOpen={chrome.drawerOpen}
+            onMenu={() => chrome.openDrawer("nav")}
+            onSettings={() => chrome.openDrawer("settings")}
+          />
+          <main id="main-content" className="flex flex-1 flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true" tabIndex={-1}>
+            <span className="sr-only">Loading studio…</span>
+            <div className="osc-skeleton h-10 w-full max-w-md" aria-hidden />
+            <div className="osc-skeleton min-h-48 flex-1" aria-hidden />
+          </main>
         </div>
+        <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} studioId={studioId} initialPanel={chrome.drawerPanel} />
       </div>
     )
   }
@@ -837,15 +891,17 @@ function StudioFrame() {
             onClose={chrome.closeAgent}
             onStatusChange={chrome.setAgentStatus}
           />
-          <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
+          <main id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
             <Suspense
               fallback={
                 <div className="flex flex-1 items-center justify-center p-8 text-sm text-[var(--osc-text-muted)]">Loading studio…</div>
               }
             >
-              {page}
+              <ViewerRouteBoundary key={studioId} studioLabel={label}>
+                {page}
+              </ViewerRouteBoundary>
             </Suspense>
-          </div>
+          </main>
         </div>
       </div>
       <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} studioId={studioId} initialPanel={chrome.drawerPanel} />
@@ -879,9 +935,9 @@ function FilesFrame() {
           edge="flush"
         />
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
+          <main id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
             <FilesExplorer />
-          </div>
+          </main>
         </div>
       </div>
       <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} studioId="files" initialPanel={chrome.drawerPanel} />
@@ -890,6 +946,19 @@ function FilesFrame() {
 }
 
 export function App() {
+  const location = useLocation()
+
+  useEffect(() => {
+    const title = location.pathname.startsWith("/files")
+      ? "Files"
+      : location.pathname.startsWith("/studios/cad")
+        ? "CAD"
+        : location.pathname.startsWith("/studios/pcb")
+          ? "PCB"
+          : "OpenCode"
+    document.title = `${title} · OpenCode Studio`
+  }, [location.pathname])
+
   return (
     <>
       <SkipLink />

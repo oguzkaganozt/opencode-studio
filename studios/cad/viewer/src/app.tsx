@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Badge } from "@ui/components/badge"
-import { Dialog } from "@ui/components/dialog"
+import { Dialog, DialogHeader } from "@ui/components/dialog"
 import { useFocusTrap } from "@ui/lib/focus-trap"
 import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, renderUrl, studioHref } from "./api"
 import {
@@ -35,7 +35,13 @@ function statusBadge(status: DesignSummary["buildStatus"]): { label: string; ton
 const CAD_COMPACT_WIDTH = 1120
 const CAD_PHONE_WIDTH = 640
 
-type Toast = { message: string; tone: "info" | "error" }
+type Toast = { message: string; tone: "info" | "success" | "error" }
+
+function sceneMessageTone(message: string): Toast["tone"] {
+  if (message === "Pair linked") return "success"
+  if (message.startsWith("Drag to snap") || message.startsWith("Link: tap")) return "info"
+  return "error"
+}
 
 function CloseIcon() {
   return (
@@ -122,6 +128,7 @@ function DesignsPanel({
   onRetry,
   onClose,
   onSelect,
+  onCloseLocal,
   showClose,
 }: {
   designs: DesignSummary[]
@@ -131,6 +138,7 @@ function DesignsPanel({
   onRetry?: () => void
   onClose?: () => void
   onSelect: (id: string) => void
+  onCloseLocal?: () => void
   showClose?: boolean
 }) {
   return (
@@ -150,6 +158,13 @@ function DesignsPanel({
           </button>
         ) : null}
       </div>
+      {onCloseLocal ? (
+        <div className="border-b border-[var(--osc-border)] p-2">
+          <button type="button" className="cad-rail-action w-full" onClick={onCloseLocal}>
+            Close local files
+          </button>
+        </div>
+      ) : null}
       <nav className="cad-rail-scroll min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Designs">
         {listStatus === "loading" ? (
           <p className="cad-rail-empty" role="status">
@@ -158,7 +173,7 @@ function DesignsPanel({
         ) : listStatus === "error" ? (
           <div className="cad-rail-empty" role="alert">
             <p>Could not load designs.</p>
-            {listError ? <p className="mt-1 text-[12px] text-[var(--osc-text-faint)]">{listError}</p> : null}
+            {listError ? <p className="mt-1 text-[12px] text-[var(--osc-text-muted)]">{listError}</p> : null}
             {onRetry ? (
               <button type="button" className="cad-rail-action mt-3" onClick={onRetry}>
                 Retry
@@ -168,7 +183,7 @@ function DesignsPanel({
         ) : designs.length === 0 ? (
           <p className="cad-rail-empty">
             No designs yet.
-            <span className="mt-1.5 block text-[12px] text-[var(--osc-text-faint)]">Build with the agent — finished designs show up here.</span>
+            <span className="mt-1.5 block text-[12px] text-[var(--osc-text-muted)]">Build with the agent — finished designs show up here.</span>
           </p>
         ) : (
           designs.map((design) => {
@@ -314,12 +329,14 @@ function PartsPanel({
 function SheetShell({
   open,
   placement,
+  id,
   label,
   onClose,
   children,
 }: {
   open: boolean
   placement: SheetPlacement
+  id: string
   label: string
   onClose: () => void
   children: ReactNode
@@ -338,8 +355,8 @@ function SheetShell({
 
   return (
     <div className="cad-sheet-layer" role="presentation">
-      <button type="button" className="cad-scrim" aria-label="Dismiss panel" onClick={onClose} />
-      <aside ref={panelRef} role="dialog" aria-modal="true" aria-label={label} className={`cad-rail ${sideClass}`}>
+      <button type="button" tabIndex={-1} aria-hidden="true" className="cad-scrim" onClick={onClose} />
+      <aside id={id} ref={panelRef} role="dialog" aria-modal="true" aria-label={label} className={`cad-rail ${sideClass}`}>
         {placement === "bottom" ? <div className="cad-sheet-handle" aria-hidden /> : null}
         {children}
       </aside>
@@ -375,7 +392,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { rootRef, compact, phone } = useCadSpace()
   const [localParts, setLocalParts] = useState<LoadPart[] | null>(null)
-  const [status, setStatus] = useState("idle")
+  const [status, setStatus] = useState("no model")
   const [statusTone, setStatusTone] = useState<"ok" | "waiting" | "idle">("idle")
   const [picks, setPicks] = useState<ClickInfo[]>([])
   const [linkedPairs, setLinkedPairs] = useState<LinkedPinPair[]>([])
@@ -446,7 +463,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   useEffect(() => {
     if (localParts) return
     if (!designId) {
-      setStatus("idle")
+      setStatus("no model")
       setStatusTone("idle")
       return
     }
@@ -489,7 +506,8 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   }, [])
 
   const loadFiles = useCallback((files: FileList | File[]) => {
-    const list = Array.from(files).filter((file) => file.name.toLowerCase().endsWith(".glb"))
+    const allFiles = Array.from(files)
+    const list = allFiles.filter((file) => file.name.toLowerCase().endsWith(".glb"))
     if (list.length === 0) {
       setToast({ message: "Only .glb files are supported", tone: "error" })
       return
@@ -511,6 +529,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     setRegionDraft(null)
     setStatus("loading…")
     setStatusTone("waiting")
+    if (list.length < allFiles.length) {
+      setToast({ message: `Loaded ${list.length} GLB${list.length === 1 ? "" : "s"}; skipped ${allFiles.length - list.length}`, tone: "info" })
+    }
   }, [])
 
   const clearLocalParts = useCallback(() => {
@@ -592,6 +613,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const renderCount = localParts ? 0 : (designQuery.data?.renders.length ?? 0)
   const canOpenParts = Boolean(serverParts) || partCount > 0 || renderCount > 0
+  const visiblePartCount = partUi.filter((part) => part.visible).length
+  const allPartsHidden = partUi.length > 0 && visiblePartCount === 0
+  const sceneBusy = Boolean(serverParts) && statusTone === "waiting" && status.includes("loading")
   const dockRails = !compact
   const sheetOpen = compact && (designsOpen || inspectorOpen)
   const designsPlacement: SheetPlacement = phone ? "bottom" : "side-left"
@@ -911,8 +935,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               <button
                 type="button"
                 className={`cad-design-id${localParts ? " cad-design-id--local" : ""}${staleBuild ? " cad-design-id--stale" : ""}`}
-                aria-pressed={designsOpen}
                 aria-expanded={designsOpen}
+                aria-controls="cad-designs-sheet"
+                aria-haspopup="dialog"
                 aria-label={
                   localParts
                     ? "Choose a design instead of local files"
@@ -939,8 +964,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               <button
                 type="button"
                 className={`cad-status-btn ${statusClass}`}
-                aria-pressed={inspectorOpen}
                 aria-expanded={inspectorOpen}
+                aria-controls="cad-parts-sheet"
+                aria-haspopup="dialog"
                 aria-label={canOpenParts ? `Parts and renders, ${partsLabel}${renderCount ? `, ${renderCount} renders` : ""}` : partsLabel}
                 disabled={statusTone === "waiting" && !canOpenParts}
                 onClick={toggleParts}
@@ -959,15 +985,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               <button
                 type="button"
                 className="cad-chip"
-                aria-pressed={interactionMode === "select"}
-                title="Select and edit annotations"
-                onClick={() => setMode("select")}
-              >
-                Select
-              </button>
-              <button
-                type="button"
-                className="cad-chip"
                 aria-pressed={interactionMode === "pick"}
                 title="Place precise pins on surfaces"
                 onClick={() => setMode("pick")}
@@ -982,6 +999,15 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                 onClick={() => setMode("region")}
               >
                 Region
+              </button>
+              <button
+                type="button"
+                className="cad-chip"
+                aria-pressed={interactionMode === "select"}
+                title="Select and edit annotations"
+                onClick={() => setMode("select")}
+              >
+                Select
               </button>
             </span>
 
@@ -1014,10 +1040,10 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               </span>
             ) : null}
 
-            <button type="button" className="cad-chip" disabled={!serverParts} onClick={fitView} aria-label="Fit view">
+            <button type="button" className="cad-chip" disabled={partCount === 0} onClick={fitView} aria-label="Fit view">
               Fit
             </button>
-            <button type="button" className="cad-chip cad-chip--icon" onClick={reload} aria-label="Reload">
+            <button type="button" className="cad-chip cad-chip--icon" disabled={!designId && !localParts} onClick={reload} aria-label="Reload">
               <ReloadIcon />
             </button>
             <button type="button" className="cad-chip cad-chip--icon" onClick={openFilePicker} aria-label="Open GLB file">
@@ -1075,6 +1101,22 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             </div>
           )}
 
+          {sceneBusy ? (
+            <div className="cad-scene-progress" role="status" aria-live="polite">
+              <span className="cad-skeleton" aria-hidden />
+              Loading geometry…
+            </div>
+          ) : null}
+
+          {allPartsHidden ? (
+            <div className="cad-all-hidden" role="status">
+              <span>All parts hidden</span>
+              <button type="button" className="cad-chip" onClick={() => setAllPartsVisible(true)}>
+                Show all
+              </button>
+            </div>
+          ) : null}
+
           <Suspense
             fallback={
               <div className="cad-viewport-loading" role="status">
@@ -1099,7 +1141,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               onRegionDraftChange={setRegionDraft}
               onSelectedRegionChange={setSelectedRegionId}
               onSelectedPinChange={setSelectedPinId}
-              onMessage={(message) => showToast(message, "error")}
+              onMessage={(message) => showToast(message, sceneMessageTone(message))}
               onError={() => {
                 setStatus("viewport unavailable")
                 setStatusTone("waiting")
@@ -1390,6 +1432,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         {/* Sheets are OUTSIDE the inert canvas subtree — fixes iOS Safari freeze */}
         <SheetShell
           open={compact && designsOpen}
+          id="cad-designs-sheet"
           placement={designsPlacement}
           label="Designs"
           onClose={() => setDesignsOpen(false)}
@@ -1402,12 +1445,14 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             onRetry={() => void designsQuery.refetch()}
             onClose={() => setDesignsOpen(false)}
             onSelect={selectDesign}
+            onCloseLocal={localParts ? clearLocalParts : undefined}
             showClose
           />
         </SheetShell>
 
         <SheetShell
           open={compact && inspectorOpen}
+          id="cad-parts-sheet"
           placement={partsPlacement}
           label="Parts and renders"
           onClose={() => setInspectorOpen(false)}
@@ -1454,25 +1499,17 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       <Dialog
         open={Boolean(renderModal)}
         onClose={() => setRenderModal(null)}
-        title="Render preview"
+        title={renderModal ? `Render preview: ${renderModal.label}` : "Render preview"}
         overlayClassName="z-[200] bg-black/90"
         className="max-w-[min(90vw,56rem)] border-[var(--osc-border-strong)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)]"
       >
+        <DialogHeader title={renderModal?.label ?? "Render preview"} onClose={() => setRenderModal(null)} />
         <div className="relative p-3">
-          <button
-            type="button"
-            data-autofocus
-            className="osc-icon-btn absolute top-3 right-3 z-10 size-10 bg-[var(--osc-bg-elevated)] text-[var(--osc-text-muted)]"
-            aria-label="Close render preview"
-            onClick={() => setRenderModal(null)}
-          >
-            <CloseIcon />
-          </button>
           {renderModal && (
             <img
               src={renderModal.url}
               alt={renderModal.label}
-              className="mx-auto max-h-[85vh] max-w-full rounded-[var(--osc-radius-md)] border border-[var(--osc-border)]"
+              className="mx-auto max-h-[calc(85dvh-5rem)] max-w-full rounded-[var(--osc-radius-md)] border border-[var(--osc-border)]"
             />
           )}
         </div>
@@ -1520,8 +1557,8 @@ export function App() {
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
       <footer className="flex min-h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-1 text-[11px] text-[var(--osc-text-muted)] sm:px-4 pb-[max(.25rem,env(safe-area-inset-bottom))]">
-        <span className="cad-footer-meta">Read-only assembly inspection</span>
-        <span className="cad-footer-note">Viewer does not mutate Data Root</span>
+        <span className="cad-footer-meta">Inspect + annotate · source files unchanged</span>
+        <span className="cad-footer-note">Measurements are working references until verified on STEP</span>
       </footer>
     </div>
   )

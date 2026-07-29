@@ -93,6 +93,9 @@ button:disabled {
 
 .studio-subnav a,
 .studio-subnav .subnav-tab {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
   border-radius: var(--osc-radius-md);
   padding: 0.35rem 0.75rem;
   font-size: 13px;
@@ -327,7 +330,7 @@ button:disabled {
   font-size: 11px;
   font-weight: 400;
   line-height: 1.35;
-  color: var(--osc-text-faint);
+  color: var(--osc-text-muted);
 }
 
 .osc-drawer-label {
@@ -392,7 +395,7 @@ button:disabled {
   margin-top: 0.125rem;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--osc-text-faint);
+  color: var(--osc-text-muted);
 }
 
 .osc-health-card,
@@ -837,6 +840,22 @@ button:disabled {
   .osc-segmented > button[aria-pressed="true"]:hover,
   .osc-segmented > button[aria-selected="true"]:hover {
     color: var(--osc-text);
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible,
+  .osc-chip:focus-visible,
+  .osc-icon-btn:focus-visible,
+  .osc-nav-item:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  .osc-nav-item[aria-current="page"] .osc-nav-item__rail,
+  .osc-status-dot {
+    forced-color-adjust: none;
   }
 }
 
