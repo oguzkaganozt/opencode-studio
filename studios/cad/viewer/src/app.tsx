@@ -375,6 +375,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const [linkFromId, setLinkFromId] = useState<string | null>(null)
   const [regions, setRegions] = useState<RegionInfo[]>([])
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
+  const [selectedPinId, setSelectedPinId] = useState<string | null>(null)
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("pick")
   const [regionTool, setRegionTool] = useState<RegionTool>("face")
   const [regionDraft, setRegionDraft] = useState<RegionDraft | null>(null)
@@ -497,6 +498,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     setPicks([])
     setRegions([])
     setSelectedRegionId(null)
+    setSelectedPinId(null)
     setRegionDraft(null)
     setStatus("loading…")
     setStatusTone("waiting")
@@ -512,6 +514,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     setPicks([])
     setRegions([])
     setSelectedRegionId(null)
+    setSelectedPinId(null)
     setRegionDraft(null)
     setPartUi([])
   }, [])
@@ -713,14 +716,42 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       setLinkedPairs([])
       setLinkArmed(false)
       setLinkFromId(null)
+      setSelectedPinId(null)
       return
     }
-    // region + select: wipe regions
+    if (interactionMode === "select") {
+      // Bulk wipe of all annotations (Delete removes only the selection).
+      sceneRef.current?.clearPicks()
+      sceneRef.current?.clearRegions()
+      sceneRef.current?.cancelRegionStroke()
+      setPicks([])
+      setLinkedPairs([])
+      setLinkArmed(false)
+      setLinkFromId(null)
+      setRegions([])
+      setSelectedRegionId(null)
+      setSelectedPinId(null)
+      setRegionDraft(null)
+      return
+    }
     sceneRef.current?.clearRegions()
     sceneRef.current?.cancelRegionStroke()
     setRegions([])
     setSelectedRegionId(null)
     setRegionDraft(null)
+  }
+
+  const deleteSelected = () => {
+    const ok = sceneRef.current?.deleteSelected()
+    if (!ok) {
+      showToast("Nothing selected")
+      return
+    }
+    setPicks(sceneRef.current?.getPicks() ?? [])
+    setLinkedPairs(sceneRef.current?.getLinkedPairs() ?? [])
+    setRegions(sceneRef.current?.getRegions() ?? [])
+    setSelectedRegionId(sceneRef.current?.getSelectedRegionId() ?? null)
+    setSelectedPinId(sceneRef.current?.getSelectedPinId() ?? null)
   }
 
   const setMode = (mode: InteractionMode) => {
@@ -746,8 +777,10 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const lastPick = picks.length > 0 ? picks[picks.length - 1]! : null
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null
+  const selectedPin = picks.find((p) => p.id === selectedPinId) ?? null
   // Only the real selection — never fall back to “last rect” (wrong W×H when face/empty selected).
   const activeRect = selectedRegion?.kind === "rect" && selectedRegion.size ? selectedRegion : null
+  const hasSelectTarget = Boolean(selectedRegion || selectedPin)
   const drawingRegion = Boolean(regionDraft?.active && (regionDraft.pointCount > 0 || regionDraft.faceId !== null))
   const drawingRect =
     drawingRegion &&
@@ -1028,6 +1061,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               onRegionsChange={setRegions}
               onRegionDraftChange={setRegionDraft}
               onSelectedRegionChange={setSelectedRegionId}
+              onSelectedPinChange={setSelectedPinId}
               onMessage={showToast}
               onLoaded={(result) => {
                 const scene = sceneRef.current
@@ -1108,6 +1142,15 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         ) : null}
                       </>
                     ) : null}
+                    {interactionMode === "select" && selectedPin ? (
+                      <>
+                        <span className="text-[var(--cad-overlay-muted)]"> · </span>
+                        <span className="font-medium text-[var(--osc-warning)]">
+                          pin · {selectedPin.part}
+                          {selectedPin.faceId !== null ? ` · face ${selectedPin.faceId}` : ""}
+                        </span>
+                      </>
+                    ) : null}
                     {(interactionMode === "region" || interactionMode === "select") && selectedRegion ? (
                       <>
                         <span className="text-[var(--cad-overlay-muted)]"> · </span>
@@ -1148,11 +1191,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         ? "Link mode · tap two pins · empty face still places pins"
                         : `Multi-point OK · tap pin to remove · max ${MAX_PICKS}${picks.length >= MAX_PICKS ? " (full)" : ""}${primaryPair ? " · Δ shown" : ""}`
                       : interactionMode === "select"
-                        ? activeRect?.size
-                          ? "Selected rect · edit W×H · empty tap deselects"
-                          : selectedRegionId
-                            ? "Region selected · tap empty to deselect"
-                            : "Tap a region to select · empty deselects"
+                        ? hasSelectTarget
+                          ? activeRect?.size
+                            ? "Selected · edit W×H or Delete · empty deselects"
+                            : "Selected · Delete removes it · empty deselects"
+                          : "Tap a pin or region · empty deselects"
                         : regionTool === "face"
                           ? `Tap a face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`
                           : regionTool === "rect"
@@ -1222,6 +1265,16 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         Link
                       </button>
                     ) : null}
+                    {interactionMode === "select" ? (
+                      <button
+                        type="button"
+                        className="cad-chip cad-chip--warn"
+                        disabled={!hasSelectTarget}
+                        onClick={deleteSelected}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
                     <button type="button" className="cad-chip" onClick={clearModeAnnotations}>
                       Clear
                     </button>
@@ -1234,7 +1287,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                 <>
                   <div className="cad-hud__primary text-center text-[var(--cad-overlay-muted)]">
                     {interactionMode === "select"
-                      ? "Tap a marked region to select it"
+                      ? "Tap a pin or region to select it"
                       : interactionMode === "region"
                         ? regionTool === "face"
                           ? "Tap a face to mark it"

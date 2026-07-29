@@ -118,4 +118,8 @@ export type SceneHandle = {
   /** Active region for HUD W×H (rect only useful). */
   getSelectedRegionId: () => string | null
   setSelectedRegionId: (id: string | null) => void
+  getSelectedPinId: () => string | null
+  setSelectedPinId: (id: string | null) => void
+  /** Remove the Select-mode selection (pin or region). */
+  deleteSelected: () => boolean
 }

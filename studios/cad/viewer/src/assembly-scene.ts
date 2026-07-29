@@ -179,6 +179,7 @@ export class AssemblyScene {
   private readonly regionOverlay = new THREE.Group()
   private regionIdSeq = 0
   private selectedRegionId: string | null = null
+  private selectedPinId: string | null = null
   /** Lazy face-local snap index. Cleared on load. */
   private readonly faceSnapCache = new Map<string, SnapIndex>()
   private readonly snapProjectVec = new THREE.Vector3()
@@ -190,6 +191,7 @@ export class AssemblyScene {
   onRegionsChange: ((regions: RegionInfo[]) => void) | null = null
   onRegionDraftChange: ((draft: RegionDraft | null) => void) | null = null
   onSelectedRegionChange: ((id: string | null) => void) | null = null
+  onSelectedPinChange: ((id: string | null) => void) | null = null
   onMessage: ((message: string) => void) | null = null
 
   constructor(container: HTMLElement) {
@@ -362,9 +364,38 @@ export class AssemblyScene {
   getLinkArmed = () => this.linkArmed
   getLinkFromId = () => this.linkFromId
   getSelectedRegionId = () => this.selectedRegionId
+  getSelectedPinId = () => this.selectedPinId
 
   setSelectedRegionId = (id: string | null) => {
     this.selectRegion(id, true)
+  }
+
+  setSelectedPinId = (id: string | null) => {
+    this.selectPin(id)
+  }
+
+  deleteSelected = (): boolean => {
+    if (this.selectedPinId) {
+      const ok = this.removePickById(this.selectedPinId)
+      if (!ok) this.selectPin(null)
+      return ok
+    }
+    if (this.selectedRegionId) {
+      const idx = this.regions.findIndex((r) => r.id === this.selectedRegionId)
+      if (idx < 0) {
+        this.selectRegion(null, true)
+        return false
+      }
+      this.regions.splice(idx, 1)
+      this.selectedRegionId = null
+      this.rebuildRegionOverlays()
+      this.applySelectionColors()
+      this.emitRegions()
+      this.onSelectedRegionChange?.(null)
+      this.paintDrawOverlay()
+      return true
+    }
+    return false
   }
 
   setInteractionMode = (mode: InteractionMode) => {
@@ -403,12 +434,14 @@ export class AssemblyScene {
     this.linkedPairs = []
     this.linkFromId = null
     this.linkArmed = false
+    this.selectedPinId = null
     this.syncPins()
     this.rebuildMeasureOverlays()
     this.applySelectionColors()
     if (emit) {
       this.onPicksChange?.([])
       this.emitLinkedPairs()
+      this.onSelectedPinChange?.(null)
     }
   }
 
@@ -474,10 +507,8 @@ export class AssemblyScene {
         boundary2d,
       },
     }
-    this.selectedRegionId = id
-    this.rebuildRegionOverlays()
+    this.selectRegion(id, true)
     this.emitRegions()
-    this.onSelectedRegionChange?.(id)
     return true
   }
 
@@ -620,6 +651,23 @@ export class AssemblyScene {
       this.pinQuat.setFromUnitVectors(this.pinUp, this.pinNormal)
       pin.quaternion.copy(this.pinQuat)
       pin.visible = true
+      const selected = Boolean(pick.id && pick.id === this.selectedPinId)
+      const ink = selected ? 0xfbbf24 : 0x22d3ee
+      pin.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return
+        const mat = obj.material
+        if (mat instanceof THREE.MeshBasicMaterial || mat instanceof THREE.MeshStandardMaterial) {
+          if (mat.transparent && mat.opacity < 0.5) {
+            mat.color.setHex(ink)
+          } else if (mat instanceof THREE.MeshStandardMaterial) {
+            mat.color.setHex(selected ? 0xfbbf24 : 0xe8eef7)
+            mat.emissive?.setHex(selected ? 0x4a3000 : 0x000000)
+            mat.emissiveIntensity = selected ? 0.35 : 0
+          } else {
+            mat.color.setHex(ink)
+          }
+        }
+      })
     }
     this.updatePinScales()
   }
@@ -689,11 +737,74 @@ export class AssemblyScene {
 
   private selectRegion(id: string | null, rebuild = true) {
     if (id !== null && !this.regions.some((r) => r.id === id)) id = null
-    if (this.selectedRegionId === id) return
+    if (this.selectedRegionId === id) {
+      if (id !== null && this.selectedPinId) this.selectPin(null)
+      return
+    }
     this.selectedRegionId = id
+    if (id !== null && this.selectedPinId) {
+      this.selectedPinId = null
+      this.syncPins()
+      this.onSelectedPinChange?.(null)
+    }
     if (rebuild) this.rebuildRegionOverlays()
     this.paintDrawOverlay()
     this.onSelectedRegionChange?.(this.selectedRegionId)
+  }
+
+  private selectPin(id: string | null) {
+    if (id !== null && !this.picks.some((p) => p.id === id)) id = null
+    if (this.selectedPinId === id) {
+      if (id !== null && this.selectedRegionId) this.selectRegion(null, true)
+      return
+    }
+    this.selectedPinId = id
+    if (id !== null && this.selectedRegionId) {
+      this.selectedRegionId = null
+      this.rebuildRegionOverlays()
+      this.paintDrawOverlay()
+      this.onSelectedRegionChange?.(null)
+    }
+    this.syncPins()
+    this.onSelectedPinChange?.(this.selectedPinId)
+  }
+
+  /** Drop a pin by id; cleans links and selection. Returns false if missing. */
+  private removePickById(id: string): boolean {
+    const idx = this.picks.findIndex((p) => p.id === id)
+    if (idx < 0) return false
+    this.picks.splice(idx, 1)
+    this.linkedPairs = this.linkedPairs.filter((p) => p.fromId !== id && p.toId !== id)
+    if (this.linkFromId === id) this.linkFromId = null
+    if (this.selectedPinId === id) {
+      this.selectedPinId = null
+      this.onSelectedPinChange?.(null)
+    }
+    this.syncPins()
+    this.rebuildMeasureOverlays()
+    this.applySelectionColors()
+    this.emitPicks()
+    this.emitLinkedPairs()
+    return true
+  }
+
+  /** Nearest pin within screen radius (Select mode). */
+  private hitPinAt(clientX: number, clientY: number, radiusPx = 22): ClickInfo | null {
+    let best: ClickInfo | null = null
+    let bestD = radiusPx * radiusPx
+    for (const pick of this.picks) {
+      if (!pick.id) continue
+      const screen = this.projectClient(pick.position)
+      if (!screen) continue
+      const dx = screen.x - clientX
+      const dy = screen.y - clientY
+      const d = dx * dx + dy * dy
+      if (d <= bestD) {
+        bestD = d
+        best = pick
+      }
+    }
+    return best
   }
 
   /** Topmost region whose screen polygon contains the pointer. */
@@ -1600,8 +1711,18 @@ export class AssemblyScene {
     if (dx * dx + dy * dy > TAP_MOVE_PX * TAP_MOVE_PX) return
 
     if (this.interactionMode === "select") {
-      const hit = this.hitRegionAt(event.clientX, event.clientY)
-      this.setSelectedRegionId(hit?.id ?? null)
+      const pin = this.hitPinAt(event.clientX, event.clientY)
+      if (pin?.id) {
+        this.selectPin(pin.id)
+        return
+      }
+      const region = this.hitRegionAt(event.clientX, event.clientY)
+      if (region) {
+        this.selectRegion(region.id, true)
+        return
+      }
+      this.selectPin(null)
+      this.selectRegion(null, true)
       return
     }
 
@@ -1692,14 +1813,11 @@ export class AssemblyScene {
       plane,
     }
     this.regions.push(region)
-    this.selectedRegionId = region.id
     this.snapPreview = null
-    this.rebuildRegionOverlays()
+    this.selectRegion(region.id, true)
     this.applySelectionColors()
     this.emitRegions()
-    this.onSelectedRegionChange?.(region.id)
     this.emitDraft()
-    this.paintDrawOverlay()
     return true
   }
 
@@ -1861,8 +1979,7 @@ export class AssemblyScene {
       },
     }
     this.regions.push(region)
-    this.selectedRegionId = region.id
-    this.rebuildRegionOverlays()
+    this.selectRegion(region.id, true)
     this.regionLock = null
     this.stroke = []
     this.strokePathMm = 0
@@ -1873,7 +1990,6 @@ export class AssemblyScene {
     this.applyControlsForMode()
     this.applySelectionColors()
     this.emitRegions()
-    this.onSelectedRegionChange?.(region.id)
     this.emitDraft()
     return true
   }
@@ -1948,8 +2064,7 @@ export class AssemblyScene {
     }
 
     this.regions.push(region)
-    this.selectedRegionId = region.id
-    this.rebuildRegionOverlays()
+    this.selectRegion(region.id, true)
     this.regionLock = null
     this.stroke = []
     this.strokePathMm = 0
@@ -1960,7 +2075,6 @@ export class AssemblyScene {
     this.applyControlsForMode()
     this.applySelectionColors()
     this.emitRegions()
-    this.onSelectedRegionChange?.(region.id)
     this.emitDraft()
     return true
   }
@@ -2183,17 +2297,20 @@ export class AssemblyScene {
         this.emitLinkedPairs()
         return
       }
-      const removedId = existingPick.id
-      this.picks.splice(existing, 1)
-      if (removedId) {
-        this.linkedPairs = this.linkedPairs.filter((p) => p.fromId !== removedId && p.toId !== removedId)
-        if (this.linkFromId === removedId) this.linkFromId = null
+      if (existingPick.id) {
+        this.removePickById(existingPick.id)
+        return
       }
+      this.picks.splice(existing, 1)
     } else if (this.picks.length >= MAX_PICKS) {
       const dropped = this.picks.shift()
       if (dropped?.id) {
         this.linkedPairs = this.linkedPairs.filter((p) => p.fromId !== dropped.id && p.toId !== dropped.id)
         if (this.linkFromId === dropped.id) this.linkFromId = null
+        if (this.selectedPinId === dropped.id) {
+          this.selectedPinId = null
+          this.onSelectedPinChange?.(null)
+        }
       }
       this.picks.push(next)
     } else {
