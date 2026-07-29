@@ -63,10 +63,11 @@ function WorkspaceBadge() {
 function CardHealth({ project }: { project: ProjectSummary }) {
   if (!project.built) return <StatusBadge tone="warning" label="Not built" />
   if (project.designValid === null) return <StatusBadge tone="warning" label="Health unknown" />
-  if (!project.designValid) return <StatusBadge tone="error" label={`${project.errorCount} errors`} />
+  if (!project.designValid) return <StatusBadge tone="error" label={`Design · ${project.errorCount} errors`} />
   if (project.fabricationReady === false) return <StatusBadge tone="error" label="Fab blocked" />
+  if (project.assemblyReady === false) return <StatusBadge tone="warning" label="Assembly blocked" />
   if ((project.warningCount ?? 0) > 0) return <StatusBadge tone="warning" label={`${project.warningCount} warnings`} />
-  return <StatusBadge tone="success" label="Valid" />
+  return <StatusBadge tone="success" label="Ready" />
 }
 
 /** Detail page: health + fab/assembly only (artifacts via downloads). */
@@ -76,12 +77,15 @@ function DetailHealth({ project }: { project: ProjectSummary }) {
   return (
     <>
       {project.designValid ? (
-        <StatusBadge tone="success" label="Valid" />
+        <StatusBadge tone="success" label="Design valid" />
       ) : (
-        <StatusBadge tone="error" label={`${project.errorCount} errors`} />
+        <StatusBadge tone="error" label={`Design · ${project.errorCount} errors`} />
       )}
       {project.fabricationReady !== null && (
-        <StatusBadge tone={project.fabricationReady ? "success" : "error"} label={project.fabricationReady ? "Fab ready" : "Fab blocked"} />
+        <StatusBadge
+          tone={project.fabricationReady ? "success" : "error"}
+          label={project.fabricationReady ? "Fabrication ready" : "Fabrication blocked"}
+        />
       )}
       {project.assemblyReady !== null && (
         <StatusBadge
@@ -219,7 +223,7 @@ function DiagnosticsPanel({
   projectName: string
 }) {
   const [toast, setToast] = useState<string | null>(null)
-  if (diagnostics.errorCount === 0 && diagnostics.warningCount === 0) return null
+  const [open, setOpen] = useState(diagnostics.errorCount > 0)
 
   const showToast = (message: string) => {
     setToast(message)
@@ -227,12 +231,20 @@ function DiagnosticsPanel({
 
   useEffect(() => {
     if (!toast) return
-    const id = window.setTimeout(() => setToast(null), 1800)
+    const id = window.setTimeout(() => setToast(null), 3200)
     return () => window.clearTimeout(id)
   }, [toast])
 
+  useEffect(() => {
+    if (diagnostics.errorCount > 0) setOpen(true)
+  }, [diagnostics.errorCount])
+
+  if (diagnostics.errorCount === 0 && diagnostics.warningCount === 0) return null
+
   return (
     <details
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
       className="relative shrink-0 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow)]"
       aria-label="Design diagnostics"
     >
@@ -246,7 +258,7 @@ function DiagnosticsPanel({
         {diagnostics.errorCount > 0 && <StatusBadge tone="error" label={`${diagnostics.errorCount} errors`} />}
         {diagnostics.warningCount > 0 && <StatusBadge tone="warning" label={`${diagnostics.warningCount} warnings`} />}
       </summary>
-      <div className="max-h-48 space-y-3 overflow-auto overscroll-contain border-t border-[var(--osc-border)] px-4 py-3">
+      <div className="pcb-diag-content space-y-3 overflow-auto overscroll-contain border-t border-[var(--osc-border)] px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -255,13 +267,15 @@ function DiagnosticsPanel({
               requestAgentHandoff({
                 text: formatDiagnosticsHandoff(projectId, projectName, diagnostics),
                 source: "pcb",
+                open: true,
+                copyFallback: true,
               })
-              showToast("Prompt ready in agent")
+              showToast("Opened repair prompt in agent")
             }}
           >
-            Send to agent
+            Fix with agent
           </button>
-          <span className="text-[11px] text-[var(--osc-text-faint)]">Draft prompt — not auto-sent</span>
+          <span className="text-[11px] text-[var(--osc-text-muted)]">Review the draft before sending</span>
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           {diagnostics.errors.length > 0 && <DiagnosticGroupList groups={diagnostics.errors} tone="error" />}
@@ -470,9 +484,18 @@ function ProjectPage() {
       </Shell>
     )
 
+  const requestBuild = () => {
+    requestAgentHandoff({
+      text: `Build the PCB project "${project.name}" (${project.id}), inspect all diagnostics, and verify designValid, fabricationReady, and assemblyReady.`,
+      source: "pcb",
+      open: true,
+      copyFallback: true,
+    })
+  }
+
   return (
     <Shell fill>
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 py-3 sm:px-6 sm:py-4">
+      <div className="pcb-project-page mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 py-3 sm:px-6 sm:py-4">
         <div className="min-w-0 shrink-0 space-y-1">
           <div className="flex min-w-0 items-center gap-2">
             <Link
@@ -499,6 +522,11 @@ function ProjectPage() {
               Source changed — rebuild
             </span>
           )}
+          {(buildState.status === "stale" || !project.built) && (
+            <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestBuild}>
+              {project.built ? "Rebuild with agent" : "Build with agent"}
+            </button>
+          )}
           {project.hasGerbersZip && id && (
             <a href={api.gerbersZipUrl(id)} download className="pcb-chip">
               Gerbers ↓
@@ -509,33 +537,26 @@ function ProjectPage() {
               Pick & Place ↓
             </a>
           )}
-          {!project.built && (
-            <p className="w-full text-xs text-[var(--osc-warning)] sm:ml-1 sm:w-auto">
-              Run <code className="rounded-[var(--osc-radius-sm)] bg-[var(--osc-surface)] px-1 font-mono text-[11px]">pcb_circuit_build</code>{" "}
-              to build.
-            </p>
-          )}
         </div>
 
         {project.diagnostics && id && (
           <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} />
         )}
 
-        <div className="pcb-tablist" role="tablist" aria-label="Project views">
+        <nav className="pcb-tablist" aria-label="Project views">
           {VIEW_TABS.map((t) => (
             <Link
               key={t}
-              role="tab"
-              aria-selected={tab === t}
+              aria-current={tab === t ? "page" : undefined}
               to={studioHref(`projects/${encodeURIComponent(id!)}/${t}`)}
               className="pcb-tab shrink-0"
             >
               {tabLabel(t)}
             </Link>
           ))}
-        </div>
+        </nav>
 
-        <div className="flex min-h-0 flex-1 flex-col" role="tabpanel">
+        <section className="flex min-h-0 flex-1 flex-col" aria-label={`${tabLabel(tab)} view`}>
           {tab === "schematic" && id && (
             <Suspense fallback={<LoadingState label="Loading schematic viewer…" />}>
               <SchematicTab projectId={id} />
@@ -557,7 +578,7 @@ function ProjectPage() {
             </Suspense>
           )}
           {tab === "json" && id && <CircuitJsonViewer projectId={id} />}
-        </div>
+        </section>
       </div>
     </Shell>
   )

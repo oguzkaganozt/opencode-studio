@@ -4,9 +4,11 @@ import { useElementSize } from "./use-element-size"
 /** Flex-fill host for PCB viewers — replaces fixed h-[560px]. */
 export function ViewerFrame({
   children,
+  label,
   className = "",
 }: {
   children: ReactNode | ((size: { width: number; height: number }) => ReactNode)
+  label: string
   className?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -17,7 +19,8 @@ export function ViewerFrame({
     <div
       ref={ref}
       className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] ${className}`}
-      style={{ minHeight: "min(560px, 50dvh)" }}
+      role="region"
+      aria-label={label}
     >
       {ready ? (
         typeof children === "function" ? (

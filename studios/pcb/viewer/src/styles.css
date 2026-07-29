@@ -91,6 +91,12 @@
   box-shadow: var(--osc-focus-ring);
 }
 
+[data-studio="pcb"] .pcb-chip--primary {
+  border-color: color-mix(in srgb, var(--osc-accent) 55%, var(--osc-border-strong));
+  background: color-mix(in srgb, var(--osc-accent) 12%, transparent);
+  color: var(--osc-text);
+}
+
 [data-studio="pcb"] .pcb-table-wrap {
   overflow-x: auto;
   overflow-y: hidden;
@@ -207,7 +213,7 @@
   color: var(--osc-text);
 }
 
-[data-studio="pcb"] .pcb-tab[aria-selected="true"] {
+[data-studio="pcb"] .pcb-tab[aria-current="page"] {
   border-bottom-color: var(--osc-accent);
   color: var(--osc-text);
   font-weight: 600;
@@ -264,6 +270,45 @@
   transform: rotate(90deg);
 }
 
+[data-studio="pcb"] .pcb-diag-content {
+  max-height: min(18rem, 34dvh);
+}
+
+[data-studio="pcb"] .pcb-viewer-notice {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--osc-border);
+  background: var(--osc-warning-bg);
+  padding: 0.5rem 0.75rem;
+  font-size: 12px;
+  color: var(--osc-text-muted);
+}
+
+@media (max-width: 639px) {
+  [data-studio="pcb"] .pcb-project-page {
+    gap: 0.65rem;
+  }
+
+  [data-studio="pcb"] .pcb-diag-summary {
+    flex-wrap: wrap;
+    padding: 0.65rem 0.75rem;
+  }
+
+  [data-studio="pcb"] .pcb-diag-content {
+    max-height: 26dvh;
+    padding-inline: 0.75rem;
+  }
+
+  [data-studio="pcb"] .pcb-viewer-notice {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 [data-studio="pcb"] .pcb-viewer-empty {
   display: flex;
   min-height: min(560px, 50dvh);
@@ -310,7 +355,7 @@
     color: var(--osc-text-muted);
   }
 
-  [data-studio="pcb"] .pcb-tab[aria-selected="true"]:hover {
+  [data-studio="pcb"] .pcb-tab[aria-current="page"]:hover {
     color: var(--osc-text);
   }
 }
@@ -331,7 +376,10 @@
     transform: none;
   }
 
-  [data-studio="pcb"] details[open] > .pcb-diag-summary .pcb-diag-chevron {
-    transform: none;
+}
+
+@media (pointer: coarse) {
+  [data-studio="pcb"] .pcb-chip {
+    min-height: 2.5rem;
   }
 }

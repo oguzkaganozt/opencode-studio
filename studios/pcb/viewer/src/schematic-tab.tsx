@@ -6,8 +6,15 @@ import { useCircuitJson } from "./use-circuit-json"
 import { ViewerFrame } from "./viewer-frame"
 
 export default function SchematicTab({ projectId }: { projectId: string }) {
-  const { data, dataUpdatedAt, isLoading, error } = useCircuitJson(projectId)
-  const fallback = <SvgViewer url={api.schematicSvgUrl(projectId)} label="Schematic" />
+  const { data, dataUpdatedAt, isLoading, error, refetch } = useCircuitJson(projectId)
+  const fallback = (
+    <SvgViewer
+      url={api.schematicSvgUrl(projectId)}
+      label="Schematic"
+      notice={error ? "Circuit data unavailable. Trying the exported schematic." : "Interactive viewer failed. Showing the exported schematic."}
+      onRetry={() => void refetch()}
+    />
+  )
 
   if (isLoading) {
     return (
@@ -21,7 +28,7 @@ export default function SchematicTab({ projectId }: { projectId: string }) {
   if (error) return fallback
 
   return (
-    <ViewerFrame className="bg-[var(--osc-canvas-bg-light)]">
+    <ViewerFrame label="Interactive schematic" className="bg-[var(--osc-canvas-bg-light)]">
       <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
         <SchematicViewer circuitJson={data} containerStyle={{ height: "100%", width: "100%" }} />
       </ViewerErrorBoundary>

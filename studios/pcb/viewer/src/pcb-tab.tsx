@@ -6,8 +6,15 @@ import { useCircuitJson } from "./use-circuit-json"
 import { ViewerFrame } from "./viewer-frame"
 
 export default function PcbTab({ projectId }: { projectId: string }) {
-  const { data, dataUpdatedAt, isLoading, error } = useCircuitJson(projectId)
-  const fallback = <SvgViewer url={api.pcbSvgUrl(projectId)} label="PCB Layout" />
+  const { data, dataUpdatedAt, isLoading, error, refetch } = useCircuitJson(projectId)
+  const fallback = (
+    <SvgViewer
+      url={api.pcbSvgUrl(projectId)}
+      label="PCB layout"
+      notice={error ? "Circuit data unavailable. Trying the exported PCB layout." : "Interactive viewer failed. Showing the exported PCB layout."}
+      onRetry={() => void refetch()}
+    />
+  )
 
   if (isLoading) {
     return (
@@ -21,10 +28,10 @@ export default function PcbTab({ projectId }: { projectId: string }) {
   if (error) return fallback
 
   return (
-    <ViewerFrame>
+    <ViewerFrame label="Interactive PCB layout">
       {({ height }) => (
         <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
-          <PCBViewer circuitJson={data} height={Math.max(320, Math.floor(height))} />
+          <PCBViewer circuitJson={data} height={Math.max(1, Math.floor(height))} />
         </ViewerErrorBoundary>
       )}
     </ViewerFrame>

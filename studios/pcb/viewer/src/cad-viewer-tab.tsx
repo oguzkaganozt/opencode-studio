@@ -110,7 +110,7 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
           </details>
         )}
       </div>
-      <ViewerFrame className="bg-[var(--osc-canvas-bg)]">
+      <ViewerFrame label="Interactive PCB 3D view" className="bg-[var(--osc-canvas-bg)]">
         <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
           <CadViewer circuitJson={preferKicadStepModels(data)} />
         </ViewerErrorBoundary>

@@ -233,6 +233,10 @@ async function browserSmoke(base: string) {
       compactToolbar.scrollHeight <= compactToolbar.clientHeight + 1,
       `360 cad: toolbar wrapped vertically (${compactToolbar.scrollHeight}px > ${compactToolbar.clientHeight}px)`,
     )
+    await page.goto(`${base}/studio/studios/pcb`, { waitUntil: "domcontentloaded" })
+    await page.waitForSelector("text=PCB Studio", { timeout: 15_000 })
+    await page.getByRole("navigation").getByRole("link", { name: "Projects" }).waitFor()
+    await assertNoHorizontalScroll(page, "360 pcb")
     console.log("360 smoke ok")
 
     // Native agent iframe: closed by default; open once and confirm same-origin frame
