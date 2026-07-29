@@ -3,6 +3,8 @@
 **Status:** Files + Shell + CAD + **PCB LOCKED** 2026-07-28  
 **Do not restyle** without explicit unlock.
 
+Settings drawer and Files Agent behavior were explicitly unlocked and overhauled on 2026-07-29.
+
 ### Shell lock addendum
 | Surface | Paths |
 | --- | --- |

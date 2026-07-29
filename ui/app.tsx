@@ -66,28 +66,9 @@ function checkTone(status: HostCheck["status"] | "unknown"): "ok" | "warn" | "fa
   return "neutral"
 }
 
-function skillBadgeLabel(status: HostCheck["status"] | "unknown", message?: string) {
-  if (status === "pass") return "ok"
-  if (status === "warn") return "drift"
-  if (status === "unknown") return "…"
-  const text = (message ?? "").toLowerCase()
-  if (text.includes("user-modified")) return "modified"
-  if (text.includes("unmarked")) return "unmarked"
-  if (text.includes("missing")) return "missing"
-  return "fail"
-}
-
-function engineBadgeLabel(status: HostCheck["status"] | "unknown") {
-  if (status === "pass") return "ok"
-  if (status === "warn") return "warn"
-  if (status === "fail") return "missing"
-  return "…"
-}
-
-function StudioInstallBadges({ studio, checks }: { studio: StudioCard; checks: HostCheck[] }) {
+function studioHealth(studio: StudioCard, checks: HostCheck[]) {
   const skillCheck = checks.find((check) => check.id === `skill:${studio.id}`)
   const skillStatus = skillCheck?.status ?? (studio.skillInstalled ? "pass" : "fail")
-  const skillMessage = skillCheck?.message ?? (studio.skillInstalled ? "Skill installed" : "Skill missing")
   const engines = studio.requiredEngines.map((engine) => {
     const check = checks.find((item) => item.id === `engine:${studio.id}:${engine}`)
     return { engine, status: check?.status ?? ("unknown" as const), message: check?.message }
@@ -103,29 +84,15 @@ function StudioInstallBadges({ studio, checks }: { studio: StudioCard; checks: H
           ? "pass"
           : "unknown"
 
-  return (
-    <div className="mt-1.5 flex flex-wrap gap-1 pl-4">
-      <Badge
-        tone={checkTone(worst)}
-        title={[skillMessage, studio.rootError, ...engines.map((e) => e.message).filter(Boolean)].filter(Boolean).join(" · ")}
-      >
-        {worst === "pass" ? "healthy" : worst === "warn" ? "warn" : worst === "fail" ? "issues" : "…"}
-      </Badge>
-      <Badge tone={checkTone(skillStatus)} title={skillMessage}>
-        skill {skillBadgeLabel(skillStatus, skillMessage)}
-      </Badge>
-      {engines.map(({ engine, status, message }) => (
-        <Badge key={engine} tone={checkTone(status)} title={message ?? engine}>
-          {engine} {engineBadgeLabel(status)}
-        </Badge>
-      ))}
-      {rootBad && (
-        <Badge tone="fail" title={studio.rootError}>
-          root error
-        </Badge>
-      )}
-    </div>
-  )
+  return {
+    status: worst,
+    label: worst === "pass" ? "Ready" : worst === "warn" ? "Review" : worst === "fail" ? "Action needed" : "Checking",
+    skill: {
+      status: skillStatus,
+      message: skillCheck?.message ?? (studio.skillInstalled ? "Installed" : "Not installed"),
+    },
+    engines,
+  }
 }
 
 function MenuIcon() {
@@ -209,13 +176,13 @@ function ThemePreferenceControl() {
   const [preference, setPreference] = useState<ThemePreference>(() => readThemePreference())
 
   return (
-    <section className="osc-drawer-section" aria-labelledby="osc-appearance-label">
-      <h2 id="osc-appearance-label" className="osc-drawer-label">
-        Appearance
-      </h2>
-      <p className="osc-drawer-help">Follows your device unless you pick Light or Dark.</p>
-      <fieldset className="m-0 min-w-0 border-0 p-0">
-        <legend className="sr-only">Theme</legend>
+    <fieldset className="osc-setting-card">
+      <legend className="sr-only">Theme</legend>
+      <div>
+        <p className="osc-setting-card__title">Theme</p>
+        <p className="osc-setting-card__description">Use your device setting or choose a fixed theme.</p>
+      </div>
+      <div className="mt-3">
         <div className="osc-segmented">
           {(
             [
@@ -237,8 +204,8 @@ function ThemePreferenceControl() {
             </button>
           ))}
         </div>
-      </fieldset>
-    </section>
+      </div>
+    </fieldset>
   )
 }
 
@@ -294,6 +261,17 @@ function SideDrawer({
   useFocusTrap(open, asideRef, onClose)
 
   const cards = studiosQuery.data?.studios ?? []
+  const healthRows = cards.map((studio) => ({ studio, health: studioHealth(studio, studiosQuery.data?.checks ?? []) }))
+  const hostFindings = studiosQuery.data?.checks?.filter((check) => check.status !== "pass") ?? []
+  const healthStatus =
+    studiosQuery.isError ||
+    studiosQuery.data?.configError ||
+    studiosQuery.data?.ok === false ||
+    healthRows.some(({ health }) => health.status === "fail")
+      ? "fail"
+      : healthRows.some(({ health }) => health.status === "warn")
+        ? "warn"
+        : "pass"
 
   return (
     <>
@@ -307,7 +285,7 @@ function SideDrawer({
       />
       <aside
         ref={asideRef}
-        className={`fixed inset-y-0 left-0 z-50 flex w-[min(19.5rem,100vw)] max-w-full flex-col overscroll-contain border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)] transition-transform duration-[var(--osc-motion-duration)] ease-[var(--osc-motion-ease)] sm:w-[min(19.5rem,92vw)] ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-full max-w-full flex-col overscroll-contain border-r border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow-md)] transition-transform duration-[var(--osc-motion-duration)] ease-[var(--osc-motion-ease)] sm:w-[min(22rem,92vw)] ${
           open ? "translate-x-0" : "pointer-events-none -translate-x-full"
         }`}
         role="dialog"
@@ -385,145 +363,213 @@ function SideDrawer({
           )}
 
           {panel === "settings" && (
-            <div className="flex min-h-full flex-col">
-              <div className="flex flex-1 flex-col">
+            <div className="osc-settings">
+              <section className="osc-settings-section" aria-labelledby="osc-appearance-label">
+                <div className="osc-settings-heading">
+                  <h2 id="osc-appearance-label">Appearance</h2>
+                  <p>Personalize how Studio looks.</p>
+                </div>
                 <ThemePreferenceControl />
+              </section>
 
-                <section className="osc-drawer-section" aria-labelledby="osc-studios-label">
-                  <h2 id="osc-studios-label" className="osc-drawer-label">
-                    Studios
-                  </h2>
-                  <p className="osc-drawer-help">CAD and PCB stay on. Open a studio from Navigate.</p>
+              <section className="osc-settings-section" aria-labelledby="osc-health-label">
+                <div className="osc-settings-heading">
+                  <h2 id="osc-health-label">System health</h2>
+                  <p>Studio integrations and required tools.</p>
+                </div>
 
-                  {csrfQuery.isError && (
-                    <p
-                      className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
-                      role="alert"
-                    >
-                      CSRF unavailable — cannot repair install.
-                    </p>
-                  )}
-                  {studiosQuery.data?.configError && (
-                    <p
-                      className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
-                      role="alert"
-                    >
-                      Config error: {studiosQuery.data.configError}
-                    </p>
-                  )}
-                  {studiosQuery.data?.update?.updateAvailable && (
-                    <div
-                      className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2.5 text-[12px]"
-                      role="status"
-                    >
-                      <p className="font-medium text-[var(--osc-text)]">
-                        Update available · v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
-                      </p>
-                      <pre className="mt-1.5 overflow-x-auto font-mono text-[11px] text-[var(--osc-text-muted)]">
-                        {`opencode-studio upgrade`}
-                      </pre>
+                {studiosQuery.isLoading ? (
+                  <div className="osc-health-summary" role="status" aria-busy="true">
+                    <span className="osc-status-dot" data-status="unknown" aria-hidden />
+                    <div>
+                      <p>Checking installation</p>
+                      <span>Reading Studio configuration…</span>
                     </div>
-                  )}
+                  </div>
+                ) : (
+                  <div className="osc-health-card">
+                    <div className="osc-health-summary">
+                      <span className="osc-status-dot" data-status={healthStatus} aria-hidden />
+                      <div>
+                        <p>
+                          {studiosQuery.isError || studiosQuery.data?.configError
+                            ? "Configuration needs attention"
+                            : studiosQuery.data?.ok === false
+                              ? "Installation needs attention"
+                              : healthStatus === "fail"
+                                ? "Action needed"
+                                : healthStatus === "warn"
+                                  ? "Review recommended"
+                                  : "Everything is ready"}
+                        </p>
+                        <span>
+                          {studiosQuery.isError
+                            ? "Studio status could not be loaded."
+                            : studiosQuery.data?.configError
+                              ? "Review the configuration error below."
+                              : studiosQuery.data?.ok === false
+                                ? "Open a studio status row or Advanced for details."
+                                : "CAD and PCB are available in this workspace."}
+                        </span>
+                      </div>
+                    </div>
 
-                  <ul className="osc-drawer-list">
-                    {cards.map((studio) => {
-                      const meta = STUDIO_META[studio.id]
-                      const checks = studiosQuery.data?.checks ?? []
+                    {healthRows.map(({ studio, health }) => {
                       return (
-                        <li key={studio.id} className="!items-start !py-2.5">
-                          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                            <span className="flex min-w-0 items-center gap-2.5">
+                        <details key={studio.id} className="osc-health-row">
+                          <summary>
+                            <span className="osc-health-row__identity">
                               <span
                                 className="size-1.5 shrink-0 rounded-full"
                                 style={{ background: `var(--osc-accent-${studio.id})` }}
                                 aria-hidden
                               />
-                              <span className="truncate text-[13px] font-medium text-[var(--osc-text)]">{studio.label}</span>
+                              <span>{studio.label}</span>
                             </span>
-                            {meta?.blurb ? (
-                              <span className="truncate pl-4 text-[11px] text-[var(--osc-text-faint)]">{meta.blurb}</span>
-                            ) : null}
-                            <StudioInstallBadges studio={studio} checks={checks} />
-                          </span>
-                          <Badge tone="neutral" className="mt-0.5 shrink-0">
-                            on
-                          </Badge>
-                        </li>
+                            <Badge tone={checkTone(health.status)}>{health.label}</Badge>
+                          </summary>
+                          <dl className="osc-health-details">
+                            <div>
+                              <dt>Skill</dt>
+                              <dd>{health.skill.message}</dd>
+                            </div>
+                            {health.engines.map((engine) => (
+                              <div key={engine.engine}>
+                                <dt>{engine.engine}</dt>
+                                <dd>{engine.message ?? (engine.status === "unknown" ? "Checking" : engine.status)}</dd>
+                              </div>
+                            ))}
+                            {studio.rootError && (
+                              <div>
+                                <dt>Root</dt>
+                                <dd>{studio.rootError}</dd>
+                              </div>
+                            )}
+                          </dl>
+                        </details>
                       )
                     })}
-                  </ul>
-                </section>
-
-                {(repair.isSuccess || repair.isError) && (
-                  <section className="osc-drawer-section">
-                    {repair.isSuccess && (
-                      <div
-                        className="rounded-[var(--osc-radius-md)] border border-[var(--osc-warning)]/30 bg-[var(--osc-warning-bg)] px-3 py-2.5 text-[12px]"
-                        role="status"
-                      >
-                        <p className="font-medium text-[var(--osc-warning)]">Install repaired</p>
-                        <p className="mt-1 text-[var(--osc-text-muted)]">
-                          {studiosQuery.data?.restartRequiredHint ?? "Restart OpenCode so plugins and skills match."}
-                        </p>
-                      </div>
-                    )}
-                    {repair.isError && (
-                      <p
-                        className="rounded-[var(--osc-radius-md)] border border-[var(--osc-error)]/40 bg-[var(--osc-error-bg)] px-3 py-2 text-[12px] text-[var(--osc-error)]"
-                        role="alert"
-                      >
-                        {(repair.error as Error).message}
-                      </p>
-                    )}
-                  </section>
+                  </div>
                 )}
 
-                {studiosQuery.data && (
-                  <section className="osc-drawer-section" aria-labelledby="osc-install-label">
-                    <h2 id="osc-install-label" className="osc-drawer-label">
-                      Install
-                    </h2>
-                    <div className="osc-drawer-meta">
-                      <p>v{studiosQuery.data.packageVersion}</p>
-                      <p title={studiosQuery.data.workspace}>workspace · {studiosQuery.data.workspace}</p>
-                      {studiosQuery.data.configPath && <p title={studiosQuery.data.configPath}>config · {studiosQuery.data.configPath}</p>}
+                {studiosQuery.isError && (
+                  <p className="osc-settings-alert" data-tone="error" role="alert">
+                    {(studiosQuery.error as Error)?.message ?? "Could not load Studio status."}
+                  </p>
+                )}
+                {studiosQuery.data?.configError && (
+                  <p className="osc-settings-alert" data-tone="error" role="alert">
+                    {studiosQuery.data.configError}
+                  </p>
+                )}
+                {studiosQuery.data?.update?.updateAvailable && (
+                  <div className="osc-update-card" role="status">
+                    <div>
+                      <p>Update available</p>
+                      <span>
+                        v{studiosQuery.data.update.current} → v{studiosQuery.data.update.latest}
+                      </span>
                     </div>
+                    <code>opencode-studio upgrade</code>
+                  </div>
+                )}
+              </section>
+
+              <section className="osc-settings-section" aria-labelledby="osc-advanced-label">
+                <details className="osc-advanced">
+                  <summary>
+                    <span>
+                      <strong id="osc-advanced-label">Advanced</strong>
+                      <small>Version, paths and installation repair</small>
+                    </span>
+                  </summary>
+                  <div className="osc-advanced__content">
+                    {hostFindings.length > 0 && (
+                      <div className="osc-install-findings" role="status">
+                        <p>Installation findings</p>
+                        <ul>
+                          {hostFindings.map((finding) => (
+                            <li key={finding.id}>{finding.message}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {studiosQuery.data && (
+                      <dl className="osc-install-meta">
+                        <div>
+                          <dt>Version</dt>
+                          <dd>v{studiosQuery.data.packageVersion}</dd>
+                        </div>
+                        <div>
+                          <dt>Workspace</dt>
+                          <dd title={studiosQuery.data.workspace}>{studiosQuery.data.workspace}</dd>
+                        </div>
+                        {studiosQuery.data.configPath && (
+                          <div>
+                            <dt>Config</dt>
+                            <dd title={studiosQuery.data.configPath}>{studiosQuery.data.configPath}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    )}
+
                     {cards.length > 0 && (
-                      <div className="flex flex-col gap-2">
-                        {cards.map((s) => (
-                          <details
-                            key={s.id}
-                            className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2"
-                          >
-                            <summary className="cursor-pointer text-[12px] font-medium text-[var(--osc-text)]">{s.label} paths</summary>
-                            <dl className="mt-2 space-y-1 font-mono text-[10px] text-[var(--osc-text-faint)]">
+                      <div className="osc-path-list">
+                        {cards.map((studio) => (
+                          <details key={studio.id}>
+                            <summary>{studio.label} details</summary>
+                            <dl>
                               <div>
-                                <dt className="inline text-[var(--osc-text-muted)]">root </dt>
-                                <dd className="inline break-all">{s.root ?? s.rootError ?? "—"}</dd>
+                                <dt>Root</dt>
+                                <dd>{studio.root ?? studio.rootError ?? "—"}</dd>
                               </div>
                               <div>
-                                <dt className="inline text-[var(--osc-text-muted)]">skill </dt>
-                                <dd className="inline">{s.skillInstalled ? s.skill : `${s.skill} (not installed)`}</dd>
+                                <dt>Skill</dt>
+                                <dd>{studio.skillInstalled ? studio.skill : `${studio.skill} (not installed)`}</dd>
                               </div>
                               <div>
-                                <dt className="inline text-[var(--osc-text-muted)]">engines </dt>
-                                <dd className="inline">{s.requiredEngines.join(", ") || "none"}</dd>
+                                <dt>Engines</dt>
+                                <dd>{studio.requiredEngines.join(", ") || "None"}</dd>
                               </div>
                             </dl>
                           </details>
                         ))}
                       </div>
                     )}
-                  </section>
-                )}
-              </div>
 
-              <div className="osc-drawer-footer">
-                <p className="mb-2 text-center text-[11px] text-[var(--osc-text-faint)]">Reinstalls managed plugins and skills</p>
-                <Button type="button" className="w-full" disabled={repair.isPending || !csrfQuery.data} onClick={() => repair.mutate()}>
-                  {repair.isPending ? "Repairing…" : "Repair install"}
-                </Button>
-              </div>
+                    <div className="osc-repair">
+                      <div>
+                        <p>Repair installation</p>
+                        <span>Reinstall managed plugins, skills and MCP configuration.</span>
+                      </div>
+                      {csrfQuery.isError && (
+                        <p className="osc-settings-alert" data-tone="error" role="alert">
+                          Repair is unavailable in this session.
+                        </p>
+                      )}
+                      {repair.isSuccess && (
+                        <p className="osc-settings-alert" data-tone="warning" role="status">
+                          {studiosQuery.data?.restartRequiredHint ?? "Restart OpenCode to finish the repair."}
+                        </p>
+                      )}
+                      {repair.isError && (
+                        <p className="osc-settings-alert" data-tone="error" role="alert">
+                          {(repair.error as Error).message}
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        disabled={repair.isPending || !csrfQuery.data}
+                        onClick={() => repair.mutate()}
+                      >
+                        {repair.isPending ? "Repairing…" : "Repair installation"}
+                      </Button>
+                    </div>
+                  </div>
+                </details>
+              </section>
             </div>
           )}
         </div>
@@ -819,17 +865,10 @@ function SkipLink() {
 }
 
 function FilesFrame() {
-  const studiosQuery = useStudios()
   const chrome = useStudioChrome()
-  const nativeAvailable = studiosQuery.data?.nativeOpenCodeAvailable ?? false
-  const workspace = studiosQuery.data?.workspace ?? ""
 
   return (
-    <div
-      data-studio="files"
-      data-agent-open={chrome.agentOpen ? "true" : "false"}
-      className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]"
-    >
+    <div data-studio="files" className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={chrome.drawerOpen ? true : undefined}>
         <TopBar
           studioLabel="Files"
@@ -838,23 +877,8 @@ function FilesFrame() {
           onMenu={() => chrome.openDrawer("nav")}
           onSettings={() => chrome.openDrawer("settings")}
           edge="flush"
-          actions={
-            <AgentChromeActions
-              agentOpen={chrome.agentOpen}
-              agentStatusLabel={chrome.agentStatusLabel}
-              agentStatusDotClass={chrome.agentStatusDotClass}
-              onToggle={chrome.toggleAgent}
-            />
-          }
         />
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          <NativeAgentFrame
-            workspace={workspace}
-            available={nativeAvailable}
-            open={chrome.agentOpen}
-            onClose={chrome.closeAgent}
-            onStatusChange={chrome.setAgentStatus}
-          />
           <div id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
             <FilesExplorer />
           </div>

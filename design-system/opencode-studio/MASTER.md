@@ -108,20 +108,21 @@ Touch targets: interactive chrome ≥36px (prefer 36–40); icon-only ≥36×36.
 ### TopBar
 - Solid `--osc-bg-elevated` (no heavy frosted glass).
 - Left: menu ≥36px + brand or surface label + accent dot (studios/files).
-- Right: Agent toggle on Files/CAD/PCB only — outline chip. No leave-shell OpenCode link.
+- Right: Agent toggle on CAD/PCB only — outline chip. Files stays a focused read-only explorer.
 - `edge=flush` when content is full-bleed under chrome.
 
 ### SideDrawer
-- 19.5rem max; focus trap + Escape; nav + settings panels.
+- Full-width on phones, 22rem max from `sm`; focus trap + Escape; nav + settings panels.
 - Nav: OpenCode + Files + domain studios.
 - Active item: surface fill + 2px accent rail.
-- Settings: repair CTA sticky bottom; theme segmented control; mono meta footer; update banner when available.
+- Settings: Appearance → System health → collapsed Advanced. Paths, version and repair stay hidden until requested; update banner appears when available.
 
 ### Agent chrome
 - Header aligns with TopBar rhythm (h-12, same border language).
 - Status dot + label; Close chip only.
 - Resize handle: visible on hover/focus only.
 - Not shown on OpenCode home route (full-pane OpenCode instead).
+- Not mounted on Files (the surface is only a file explorer).
 
 ### OpenCode home pane
 - Same-origin iframe of parent UI; loading pulse + broken-frame detection shared with Agent.

@@ -18,20 +18,23 @@ Studio is the chrome; OpenCode is a first-class surface (not a leave-studio esca
 - Outline chips h-8, 11–12px.
 - Menu button: `aria-expanded` + `aria-haspopup="dialog"` when drawer open.
 - Settings gear opens drawer on Settings panel.
-- Agent toggle (Files/CAD/PCB only): status dot + “Agent”; `aria-pressed` + `aria-label` with status.
+- Agent toggle (CAD/PCB only): status dot + “Agent”; `aria-pressed` + `aria-label` with status.
 - **No** TopBar “OpenCode” / leave-shell link — use drawer Navigate → OpenCode.
 
 ## Drawer
-- Width 19.5rem; full-bleed on narrow phones.
+- Full-bleed on phones; 22rem max from `sm`.
 - Shared `.osc-segmented` for **Navigate | Settings** and theme.
 - Nav: Workspace (**OpenCode**, Files) + Studios groups; `.osc-nav-item` + accent rail/dot; `aria-current="page"`.
-- Settings order: Appearance → Studios (on + skill/engine/root health badges from `checks`, update banner if any) → Install (paths + per-studio details) → sticky Repair footer with helper line.
+- Settings order: Appearance → concise System health → collapsed Advanced.
+- System health shows one overall state and one status per studio; skill/engine details expand on demand.
+- Advanced contains version, paths, per-studio install details and the secondary Repair action.
 - OpenCode iframe error: banner + Retry (reload frame).
 
-## Agent chrome (side panel on Files/CAD/PCB)
+## Agent chrome (side panel on CAD/PCB)
 - `.osc-agent-header`: status + dual-line label; Close chip only (no pop-out Open).
 - Loading overlay (pulse dot) while iframe connects; error banner retained.
 - Unavailable copy kept; slightly larger type on mobile.
+- Files does not mount Agent chrome; it remains a focused read-only explorer.
 
 ## Do not
 - Add marketing hero imagery or extra CTAs.
