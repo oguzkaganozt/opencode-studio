@@ -273,23 +273,80 @@
 [data-studio="pcb"] .pcb-readiness {
   display: inline-flex;
   min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: stretch;
+  overflow: hidden;
   border: 1px solid var(--osc-border);
   border-radius: var(--osc-radius-md);
   background: var(--osc-bg-elevated);
-  padding: 0.35rem 0.45rem;
-  box-shadow: var(--osc-shadow);
 }
 
 [data-studio="pcb"] .pcb-readiness__label {
-  padding-inline: 0.2rem;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--osc-border);
+  padding: 0 0.65rem;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  color: var(--osc-text-faint);
+}
+
+[data-studio="pcb"] .pcb-readiness__items {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+[data-studio="pcb"] .pcb-readiness__items::-webkit-scrollbar {
+  display: none;
+}
+
+[data-studio="pcb"] .pcb-readiness__item {
+  display: inline-flex;
+  min-height: 2.25rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.65rem;
+  border-left: 1px solid var(--osc-border);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+[data-studio="pcb"] .pcb-readiness__item:first-child {
+  border-left: 0;
+}
+
+[data-studio="pcb"] .pcb-readiness__dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--osc-text-faint);
+}
+
+[data-studio="pcb"] .pcb-readiness__item[data-tone="success"] .pcb-readiness__dot {
+  background: var(--osc-success);
+}
+
+[data-studio="pcb"] .pcb-readiness__item[data-tone="warning"] .pcb-readiness__dot {
+  background: var(--osc-warning);
+}
+
+[data-studio="pcb"] .pcb-readiness__item[data-tone="error"] .pcb-readiness__dot {
+  background: var(--osc-error);
+}
+
+[data-studio="pcb"] .pcb-readiness__name {
   color: var(--osc-text-muted);
+}
+
+[data-studio="pcb"] .pcb-readiness__item strong {
+  font-weight: 500;
+  color: var(--osc-text);
 }
 
 [data-studio="pcb"] .pcb-project-tools {
@@ -929,9 +986,14 @@
 
   [data-studio="pcb"] .pcb-readiness {
     width: 100%;
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 0.5rem;
+  }
+
+  [data-studio="pcb"] .pcb-readiness__label {
+    display: none;
+  }
+
+  [data-studio="pcb"] .pcb-readiness__items {
+    flex: 1;
   }
 
   [data-studio="pcb"] .pcb-json-toolbar {

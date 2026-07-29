@@ -79,30 +79,44 @@ function projectHealthTone(project: ProjectSummary): "success" | "warning" | "er
 
 /** Detail page: health + fab/assembly only (artifacts via downloads). */
 function DetailHealth({ project }: { project: ProjectSummary }) {
-  if (!project.built) return <StatusBadge tone="warning" label="Not built" />
-  if (project.designValid === null) return <StatusBadge tone="warning" label="Health unknown" />
+  const items: Array<{ label: string; value: string; tone: "success" | "warning" | "error" }> = []
+  if (!project.built) {
+    items.push({ label: "Build", value: "Not built", tone: "warning" })
+  } else if (project.designValid === null) {
+    items.push({ label: "Design", value: "Unknown", tone: "warning" })
+  } else {
+    items.push({
+      label: "Design",
+      value: project.designValid ? "Valid" : `${project.errorCount} errors`,
+      tone: project.designValid ? "success" : "error",
+    })
+    if (project.fabricationReady !== null) {
+      items.push({
+        label: "Fabrication",
+        value: project.fabricationReady ? "Ready" : "Blocked",
+        tone: project.fabricationReady ? "success" : "error",
+      })
+    }
+    if (project.assemblyReady !== null) {
+      items.push({
+        label: "Assembly",
+        value: project.assemblyReady ? "Ready" : "Blocked",
+        tone: project.assemblyReady ? "success" : "warning",
+      })
+    }
+  }
+
   return (
     <div className="pcb-readiness" role="status" aria-label="Project readiness">
       <span className="pcb-readiness__label">Readiness</span>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {project.designValid ? (
-          <StatusBadge tone="success" label="Design valid" />
-        ) : (
-          <StatusBadge tone="error" label={`Design · ${project.errorCount} errors`} />
-        )}
-        {project.fabricationReady !== null && (
-          <StatusBadge
-            tone={project.fabricationReady ? "success" : "error"}
-            label={project.fabricationReady ? "Fabrication ready" : "Fabrication blocked"}
-          />
-        )}
-        {project.assemblyReady !== null && (
-          <StatusBadge
-            tone={project.assemblyReady ? "success" : "warning"}
-            label={project.assemblyReady ? "Assembly ready" : "Assembly blocked"}
-          />
-        )}
-        {(project.warningCount ?? 0) > 0 && <StatusBadge tone="warning" label={`${project.warningCount} warnings`} />}
+      <div className="pcb-readiness__items">
+        {items.map((item) => (
+          <span key={item.label} className="pcb-readiness__item" data-tone={item.tone}>
+            <span className="pcb-readiness__dot" aria-hidden />
+            <span className="pcb-readiness__name">{item.label}</span>
+            <strong>{item.value}</strong>
+          </span>
+        ))}
       </div>
     </div>
   )

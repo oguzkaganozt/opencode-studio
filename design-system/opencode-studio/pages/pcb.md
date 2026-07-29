@@ -16,11 +16,13 @@ Mobile: touch tab strip, compact chips, dashed empty wells.
 ## Chrome rules
 - Radius via `--osc-radius-*`; no pill CTAs
 - Status: success/warning/error tokens + mono compact badges
+- Detail readiness uses one neutral status strip; reserve status colors for dots rather than stacked badge fills.
 - Active tab: accent underline + semibold text
 - MPN / datasheet links: `--osc-accent` (PCB cyan)
 - Empty/error: dashed `EmptyState` / `ErrorState` with short recovery copy
 - Loading: `.pcb-skeleton` + label; honor reduced-motion
 - Diagnostics: chevron summary; “Send to agent” chip
+- Warning counts live only in Design diagnostics; do not repeat them in detail readiness.
 - Keep routes, SSE stale, agent diagnostics handoff, downloads
 
 ## Compact
