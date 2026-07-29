@@ -4,6 +4,7 @@ import {
   ensureCcw2d,
   fromPlane2d,
   nearStartScreen,
+  orderBoundaryRing,
   polygonArea2d,
   simplify2d,
   simplify3d,
@@ -65,5 +66,18 @@ describe("region-geometry", () => {
       { u: 0, v: 10 },
     ]
     expect(Math.abs(polygonArea2d(ring))).toBeCloseTo(100, 6)
+  })
+
+  test("orderBoundaryRing closes square from shuffled edges", () => {
+    const edges = [
+      { a: { x: 0, y: 0, z: 0 }, b: { x: 10, y: 0, z: 0 } },
+      { a: { x: 10, y: 10, z: 0 }, b: { x: 0, y: 10, z: 0 } },
+      { a: { x: 10, y: 0, z: 0 }, b: { x: 10, y: 10, z: 0 } },
+      { a: { x: 0, y: 10, z: 0 }, b: { x: 0, y: 0, z: 0 } },
+    ]
+    const ring = orderBoundaryRing(edges)
+    expect(ring).toHaveLength(4)
+    const keys = new Set(ring.map((p) => `${p.x},${p.y},${p.z}`))
+    expect(keys.size).toBe(4)
   })
 })

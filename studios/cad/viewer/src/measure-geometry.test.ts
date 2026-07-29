@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { polygonArea2d } from "./region-geometry"
 import {
   axisAlignedRect2d,
+  axisAlignedRectCentered,
   collectPinPairMeasures,
   distance3,
   formatMm,
@@ -9,6 +10,7 @@ import {
   nearestEdgeOffsets,
   pointToSegment,
   pointsNearPlane,
+  rectCenter2d,
   rectMeetsMinSize,
 } from "./measure-geometry"
 
@@ -63,6 +65,15 @@ describe("measure-geometry", () => {
     expect(r.height_mm).toBeCloseTo(5, 10)
     expect(r.boundary2d).toHaveLength(4)
     expect(polygonArea2d(r.boundary2d)).toBeGreaterThan(0)
+  })
+
+  test("axisAlignedRectCentered keeps center", () => {
+    const center = { u: 4, v: -2 }
+    const r = axisAlignedRectCentered(center, 10, 6)
+    expect(r.width_mm).toBeCloseTo(10, 10)
+    expect(r.height_mm).toBeCloseTo(6, 10)
+    expect(rectCenter2d(r.boundary2d).u).toBeCloseTo(4, 10)
+    expect(rectCenter2d(r.boundary2d).v).toBeCloseTo(-2, 10)
   })
 
   test("rectMeetsMinSize", () => {

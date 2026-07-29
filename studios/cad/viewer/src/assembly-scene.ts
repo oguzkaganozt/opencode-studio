@@ -29,6 +29,8 @@ import {
   MAX_LINKED_PAIRS,
   nearestEdgeOffsets,
   pointsNearPlane,
+  axisAlignedRectCentered,
+  rectCenter2d,
   rectMeetsMinSize,
   undirectedPairExists,
 } from "./measure-geometry"
@@ -39,6 +41,7 @@ import {
   ensureCcw2d,
   fromPlane2d,
   nearStartScreen,
+  orderBoundaryRing,
   polygonArea2d,
   roundVec2,
   roundVec3,
@@ -154,7 +157,7 @@ export class AssemblyScene {
   private readonly pinNormal = new THREE.Vector3()
   private readonly pinQuat = new THREE.Quaternion()
   private interactionMode: InteractionMode = "pick"
-  private regionTool: RegionTool = "rect"
+  private regionTool: RegionTool = "face"
   private regions: RegionInfo[] = []
   private regionLock: RegionLock | null = null
   private stroke: THREE.Vector3[] = []
@@ -368,6 +371,10 @@ export class AssemblyScene {
     if (this.regionTool === tool) return
     this.cancelRegionStroke(true)
     this.regionTool = tool
+    if (tool === "face" && this.snapPreview) {
+      this.snapPreview = null
+      this.paintDrawOverlay()
+    }
     this.emitDraft()
   }
 
@@ -407,6 +414,51 @@ export class AssemblyScene {
     const ok = this.tryCommitRegion()
     if (!ok) this.cancelRegionStroke(true)
     return ok
+  }
+
+  /** Center-fixed resize of a committed rect; typed size → construction quality. */
+  setRegionRectSize = (id: string, width_mm: number, height_mm: number): boolean => {
+    const idx = this.regions.findIndex((r) => r.id === id)
+    if (idx < 0) return false
+    const region = this.regions[idx]!
+    if (region.kind !== "rect" || !region.plane || !region.size) return false
+    if (!Number.isFinite(width_mm) || !Number.isFinite(height_mm)) return false
+    // Same size → no-op (do not flip quality on focus/blur alone).
+    if (Math.abs(width_mm - region.size.width_mm) < 1e-3 && Math.abs(height_mm - region.size.height_mm) < 1e-3) {
+      return true
+    }
+    if (!rectMeetsMinSize(width_mm, height_mm, MIN_REGION_AREA_MM2)) {
+      this.onMessage?.("Region too small")
+      return false
+    }
+    const center = rectCenter2d(region.plane.boundary2d)
+    const rect = axisAlignedRectCentered(center, width_mm, height_mm)
+    const frame = {
+      origin: region.plane.origin,
+      normal: region.normal,
+      xAxis: region.plane.xAxis,
+      yAxis: region.plane.yAxis,
+    }
+    const boundary2d = rect.boundary2d.map(roundVec2)
+    const boundary = boundary2d.map((p) => roundVec3(fromPlane2d(p, frame)))
+    this.regions[idx] = {
+      ...region,
+      boundary,
+      centroid: roundVec3(centroid3(boundary)),
+      size: {
+        width_mm: +width_mm.toFixed(3),
+        height_mm: +height_mm.toFixed(3),
+        quality: "construction",
+        frame: "viewer-plane",
+      },
+      plane: {
+        ...region.plane,
+        boundary2d,
+      },
+    }
+    this.rebuildRegionOverlays()
+    this.emitRegions()
+    return true
   }
 
   cancelRegionStroke = (emit = true) => {
@@ -893,6 +945,9 @@ export class AssemblyScene {
 
     if (this.interactionMode !== "region" || this.parts.length === 0) return
 
+    // Face: tap-to-commit on pointerup (same orbit-friendly path as pick).
+    if (this.regionTool === "face") return
+
     if (this.regionTool === "rect") {
       if (this.drawing) return
       this.beginRectGesture(event)
@@ -965,6 +1020,7 @@ export class AssemblyScene {
     } catch {
       /* ignore */
     }
+    this.updateSnapPreviewAt(event.clientX, event.clientY, event.pointerType)
     this.paintDrawOverlay()
     this.emitDraft()
   }
@@ -1046,9 +1102,10 @@ export class AssemblyScene {
   private handlePointerMove = (event: PointerEvent) => {
     if (this.multiTouchActive) return
 
-    // Mouse hover snap ghost (no button) in pick mode.
+    // Mouse hover snap ghost — Pick + Region (not Face: whole-face select, no point snap).
     if (
-      this.interactionMode === "pick" &&
+      (this.interactionMode === "pick" ||
+        (this.interactionMode === "region" && !this.drawing && this.regionTool !== "face")) &&
       event.pointerType === "mouse" &&
       event.buttons === 0 &&
       !this.pickGesture &&
@@ -1089,6 +1146,7 @@ export class AssemblyScene {
     if (this.regionTool === "rect") {
       const snapped = this.snapFacePoint(hit, event.clientX, event.clientY, event.pointerType)
       this.rectCorner1 = new THREE.Vector3(snapped.x, snapped.y, snapped.z)
+      this.updateSnapPreviewAt(event.clientX, event.clientY, event.pointerType)
       this.paintDrawOverlay()
       this.emitDraft()
       return
@@ -1175,6 +1233,74 @@ export class AssemblyScene {
     this.drawCtx.clearRect(0, 0, w, h)
   }
 
+  /** Screen-space pill label (same language as snap edge mm guides). */
+  private paintOverlayLabel(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    text: string,
+    color: string,
+  ) {
+    ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif"
+    const tw = ctx.measureText(text).width
+    ctx.globalAlpha = 1
+    ctx.fillStyle = "rgba(11, 18, 32, 0.88)"
+    ctx.fillRect(x - tw / 2 - 4, y - 9, tw + 8, 16)
+    ctx.fillStyle = color
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.fillText(text, x, y)
+  }
+
+  private worldToOverlay(
+    world: { x: number; y: number; z: number },
+    canvasRect: DOMRect,
+  ): { x: number; y: number } | null {
+    const screen = this.clientOfWorld(new THREE.Vector3(world.x, world.y, world.z))
+    if (!screen) return null
+    return { x: screen.x - canvasRect.left, y: screen.y - canvasRect.top }
+  }
+
+  /** W on min-v edge midpoint, H on max-u edge midpoint (viewer-plane UV). */
+  private paintRectSizeLabels(
+    ctx: CanvasRenderingContext2D,
+    canvasRect: DOMRect,
+    frame: { origin: Vec3; xAxis: Vec3; yAxis: Vec3; normal?: Vec3 },
+    boundary2d: ReadonlyArray<{ u: number; v: number }>,
+    width_mm: number,
+    height_mm: number,
+    color = "#22d3ee",
+  ) {
+    if (boundary2d.length < 4) return
+    let u0 = boundary2d[0]!.u
+    let u1 = u0
+    let v0 = boundary2d[0]!.v
+    let v1 = v0
+    for (const p of boundary2d) {
+      u0 = Math.min(u0, p.u)
+      u1 = Math.max(u1, p.u)
+      v0 = Math.min(v0, p.v)
+      v1 = Math.max(v1, p.v)
+    }
+    const plane = {
+      origin: frame.origin,
+      normal: frame.normal ?? { x: 0, y: 0, z: 1 },
+      xAxis: frame.xAxis,
+      yAxis: frame.yAxis,
+    }
+    const midW = this.worldToOverlay(fromPlane2d({ u: (u0 + u1) / 2, v: v0 }, plane), canvasRect)
+    const midH = this.worldToOverlay(fromPlane2d({ u: u1, v: (v0 + v1) / 2 }, plane), canvasRect)
+    if (midW) this.paintOverlayLabel(ctx, midW.x, midW.y, `W ${width_mm.toFixed(1)}`, color)
+    if (midH) this.paintOverlayLabel(ctx, midH.x, midH.y, `H ${height_mm.toFixed(1)}`, color)
+  }
+
+  private needsDrawOverlay(): boolean {
+    if (this.snapPreview) return true
+    if (this.stroke.length >= 2) return true
+    if (this.regionTool === "rect" && this.rectCorner0 && this.rectCorner1) return true
+    return this.regions.some((r) => r.kind === "rect" && r.size && r.plane)
+  }
+
   /** Project live stroke/rect/snap preview to screen pixels. */
   private paintDrawOverlay() {
     const w = this.container.clientWidth
@@ -1216,15 +1342,7 @@ export class AssemblyScene {
         ctx.fill()
         const mx = (sx + fx) * 0.5
         const my = (sy + fy) * 0.5
-        const label = `${g.distance_mm.toFixed(1)} mm`
-        ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif"
-        const tw = ctx.measureText(label).width
-        ctx.fillStyle = "rgba(11, 18, 32, 0.88)"
-        ctx.fillRect(mx - tw / 2 - 4, my - 9, tw + 8, 16)
-        ctx.fillStyle = "#22d3ee"
-        ctx.textAlign = "center"
-        ctx.textBaseline = "middle"
-        ctx.fillText(label, mx, my)
+        this.paintOverlayLabel(ctx, mx, my, `${g.distance_mm.toFixed(1)} mm`, "#22d3ee")
       }
 
       ctx.beginPath()
@@ -1256,68 +1374,83 @@ export class AssemblyScene {
       const frame = this.regionLock.frame
       const a = toPlane2d({ x: this.rectCorner0.x, y: this.rectCorner0.y, z: this.rectCorner0.z }, frame)
       const b = toPlane2d({ x: this.rectCorner1.x, y: this.rectCorner1.y, z: this.rectCorner1.z }, frame)
-      const ring = axisAlignedRect2d(a, b).boundary2d
+      const rect = axisAlignedRect2d(a, b)
       const pts: Array<{ x: number; y: number }> = []
-      for (const p2 of ring) {
+      for (const p2 of rect.boundary2d) {
         const world = fromPlane2d(p2, frame)
         const screen = this.clientOfWorld(new THREE.Vector3(world.x, world.y, world.z))
         if (!screen) continue
         pts.push({ x: screen.x - canvasRect.left, y: screen.y - canvasRect.top })
       }
-      if (pts.length < 4) return
-      ctx.beginPath()
-      ctx.moveTo(pts[0]!.x, pts[0]!.y)
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y)
-      ctx.closePath()
-      ctx.strokeStyle = "#22d3ee"
-      ctx.lineWidth = 3.5
-      ctx.globalAlpha = 1
-      ctx.stroke()
-      ctx.fillStyle = "rgba(34, 211, 238, 0.12)"
-      ctx.fill()
-      return
+      if (pts.length >= 4) {
+        ctx.beginPath()
+        ctx.moveTo(pts[0]!.x, pts[0]!.y)
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y)
+        ctx.closePath()
+        ctx.strokeStyle = "#22d3ee"
+        ctx.lineWidth = 3.5
+        ctx.globalAlpha = 1
+        ctx.stroke()
+        ctx.fillStyle = "rgba(34, 211, 238, 0.12)"
+        ctx.fill()
+        this.paintRectSizeLabels(ctx, canvasRect, frame, rect.boundary2d, rect.width_mm, rect.height_mm)
+      }
+    } else if (this.stroke.length >= 2) {
+      const pts: Array<{ x: number; y: number }> = []
+      for (const p of this.stroke) {
+        const screen = this.clientOfWorld(p)
+        if (!screen) continue
+        pts.push({ x: screen.x - canvasRect.left, y: screen.y - canvasRect.top })
+      }
+      if (pts.length >= 2) {
+        ctx.lineCap = "round"
+        ctx.lineJoin = "round"
+
+        ctx.beginPath()
+        ctx.moveTo(pts[0]!.x, pts[0]!.y)
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y)
+        ctx.strokeStyle = "#0b1220"
+        ctx.lineWidth = 8
+        ctx.globalAlpha = 0.85
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.moveTo(pts[0]!.x, pts[0]!.y)
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y)
+        ctx.strokeStyle = "#22d3ee"
+        ctx.lineWidth = 3.5
+        ctx.globalAlpha = 1
+        ctx.stroke()
+
+        const s = pts[0]!
+        ctx.beginPath()
+        ctx.arc(s.x, s.y, 7, 0, Math.PI * 2)
+        ctx.fillStyle = "#0b1220"
+        ctx.globalAlpha = 0.9
+        ctx.fill()
+        ctx.beginPath()
+        ctx.arc(s.x, s.y, 5, 0, Math.PI * 2)
+        ctx.fillStyle = "#22d3ee"
+        ctx.globalAlpha = 1
+        ctx.fill()
+      }
     }
 
-    if (this.stroke.length < 2) return
-
-    const pts: Array<{ x: number; y: number }> = []
-    for (const p of this.stroke) {
-      const screen = this.clientOfWorld(p)
-      if (!screen) continue
-      pts.push({ x: screen.x - canvasRect.left, y: screen.y - canvasRect.top })
+    // Committed rect sizes stay on-canvas (snap-style), including after typed W/H.
+    if (!(this.regionTool === "rect" && this.rectCorner0)) {
+      for (const region of this.regions) {
+        if (region.kind !== "rect" || !region.size || !region.plane) continue
+        this.paintRectSizeLabels(
+          ctx,
+          canvasRect,
+          { ...region.plane, normal: region.normal },
+          region.plane.boundary2d,
+          region.size.width_mm,
+          region.size.height_mm,
+          region.size.quality === "construction" ? "#fbbf24" : "#22d3ee",
+        )
+      }
     }
-    if (pts.length < 2) return
-    ctx.lineCap = "round"
-    ctx.lineJoin = "round"
-
-    ctx.beginPath()
-    ctx.moveTo(pts[0]!.x, pts[0]!.y)
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y)
-    ctx.strokeStyle = "#0b1220"
-    ctx.lineWidth = 8
-    ctx.globalAlpha = 0.85
-    ctx.stroke()
-
-    ctx.beginPath()
-    ctx.moveTo(pts[0]!.x, pts[0]!.y)
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y)
-    ctx.strokeStyle = "#22d3ee"
-    ctx.lineWidth = 3.5
-    ctx.globalAlpha = 1
-    ctx.stroke()
-
-    // Start marker — target to close against
-    const s = pts[0]!
-    ctx.beginPath()
-    ctx.arc(s.x, s.y, 7, 0, Math.PI * 2)
-    ctx.fillStyle = "#0b1220"
-    ctx.globalAlpha = 0.9
-    ctx.fill()
-    ctx.beginPath()
-    ctx.arc(s.x, s.y, 5, 0, Math.PI * 2)
-    ctx.fillStyle = "#22d3ee"
-    ctx.globalAlpha = 1
-    ctx.fill()
   }
 
   private handlePointerCancel = (event: PointerEvent) => {
@@ -1381,6 +1514,7 @@ export class AssemblyScene {
       }
 
       if (this.regionTool === "rect") {
+        this.snapPreview = null
         this.endDrawGesture()
         this.applyControlsForMode()
         if (!this.tryCommitRect()) this.cancelRegionStroke(true)
@@ -1412,6 +1546,11 @@ export class AssemblyScene {
     const dy = event.clientY - start.y
     if (dx * dx + dy * dy > TAP_MOVE_PX * TAP_MOVE_PX) return
 
+    if (this.interactionMode === "region" && this.regionTool === "face") {
+      this.tryCommitFaceAt(event.clientX, event.clientY)
+      return
+    }
+
     // Region freehand: empty tap cancels face lock with no stroke
     if (
       this.interactionMode === "region" &&
@@ -1422,6 +1561,85 @@ export class AssemblyScene {
       const hit = this.hitAt(event.clientX, event.clientY)
       if (!hit) this.cancelRegionStroke(true)
     }
+  }
+
+  /** Whole-face region from mesh boundary edges (tap). */
+  private tryCommitFaceAt(clientX: number, clientY: number): boolean {
+    const hit = this.hitAt(clientX, clientY)
+    if (!hit) return false
+    if (hit.faceId === null) {
+      this.onMessage?.("Region needs face-split mesh (built design)")
+      return false
+    }
+    if (this.regions.length >= MAX_REGIONS) {
+      this.onMessage?.(`Max ${MAX_REGIONS} regions`)
+      return false
+    }
+    if (this.regions.some((r) => r.partIndex === hit.partIndex && r.faceId === hit.faceId && r.kind === "face")) {
+      this.onMessage?.("Face already selected")
+      return false
+    }
+    const index = this.getFaceSnapIndex(hit.partIndex, hit.faceId)
+    let ring = orderBoundaryRing(index.edges)
+    if (ring.length < MIN_REGION_VERTS) {
+      this.onMessage?.("Could not outline face")
+      return false
+    }
+    ring = simplify3d(ring, MAX_REGION_VERTS)
+    if (ring.length < MIN_REGION_VERTS) {
+      this.onMessage?.("Could not outline face")
+      return false
+    }
+
+    const normal = roundVec3({ x: hit.normal.x, y: hit.normal.y, z: hit.normal.z })
+    const isPlane = hit.faceType === "plane" || pointsNearPlane(ring, { x: hit.point.x, y: hit.point.y, z: hit.point.z }, normal)
+    let boundary: Vec3[]
+    let plane: RegionInfo["plane"]
+    let approximation: RegionInfo["approximation"]
+
+    if (isPlane) {
+      const frame = buildPlaneFrame({ x: hit.point.x, y: hit.point.y, z: hit.point.z }, normal)
+      if (!frame) {
+        this.onMessage?.("Could not outline face")
+        return false
+      }
+      let ring2d = ring.map((p) => toPlane2d(p, frame))
+      ring2d = ensureCcw2d(ring2d)
+      boundary = ring2d.map((p) => roundVec3(fromPlane2d(p, frame)))
+      plane = {
+        origin: roundVec3(frame.origin),
+        xAxis: roundVec3(frame.xAxis),
+        yAxis: roundVec3(frame.yAxis),
+        boundary2d: ring2d.map(roundVec2),
+      }
+      approximation = "plane-projected"
+    } else {
+      boundary = ring.map(roundVec3)
+      plane = undefined
+      approximation = "mesh-samples"
+    }
+
+    const region: RegionInfo = {
+      id: `r${++this.regionIdSeq}`,
+      part: hit.part.name,
+      partIndex: hit.partIndex,
+      faceId: hit.faceId,
+      faceType: hit.faceType ?? (isPlane ? "plane" : null),
+      boundary,
+      normal,
+      centroid: roundVec3(index.center ?? centroid3(boundary)),
+      approximation,
+      kind: "face",
+      plane,
+    }
+    this.regions.push(region)
+    this.snapPreview = null
+    this.rebuildRegionOverlays()
+    this.applySelectionColors()
+    this.emitRegions()
+    this.emitDraft()
+    this.paintDrawOverlay()
+    return true
   }
 
   private beginPickGesture(event: PointerEvent) {
@@ -1926,6 +2144,7 @@ export class AssemblyScene {
     this.frame = requestAnimationFrame(this.animate)
     this.controls.update()
     this.updatePinScales()
+    if (this.needsDrawOverlay()) this.paintDrawOverlay()
     this.renderer.render(this.scene, this.camera)
   }
 }

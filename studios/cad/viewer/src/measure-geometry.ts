@@ -195,6 +195,30 @@ export function axisAlignedRect2d(corner0: Vec2, corner1: Vec2): AxisAlignedRect
   }
 }
 
+/** UV bbox center of an axis-aligned ring (min 1 point). */
+export function rectCenter2d(boundary2d: ReadonlyArray<Vec2>): Vec2 {
+  if (boundary2d.length === 0) return { u: 0, v: 0 }
+  let u0 = boundary2d[0]!.u
+  let u1 = u0
+  let v0 = boundary2d[0]!.v
+  let v1 = v0
+  for (let i = 1; i < boundary2d.length; i++) {
+    const p = boundary2d[i]!
+    u0 = Math.min(u0, p.u)
+    u1 = Math.max(u1, p.u)
+    v0 = Math.min(v0, p.v)
+    v1 = Math.max(v1, p.v)
+  }
+  return { u: (u0 + u1) / 2, v: (v0 + v1) / 2 }
+}
+
+/** Axis-aligned rect centered on `center` with given W×H (viewer-plane UV). */
+export function axisAlignedRectCentered(center: Vec2, width_mm: number, height_mm: number): AxisAlignedRect2d {
+  const hw = width_mm / 2
+  const hh = height_mm / 2
+  return axisAlignedRect2d({ u: center.u - hw, v: center.v - hh }, { u: center.u + hw, v: center.v + hh })
+}
+
 export function rectMeetsMinSize(width_mm: number, height_mm: number, minAreaMm2: number): boolean {
   if (width_mm < MIN_RECT_SIDE_MM || height_mm < MIN_RECT_SIDE_MM) return false
   return width_mm * height_mm >= minAreaMm2

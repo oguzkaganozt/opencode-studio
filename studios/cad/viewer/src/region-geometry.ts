@@ -212,3 +212,64 @@ export function roundVec3(v: Vec3): Vec3 {
 export function roundVec2(v: Vec2): Vec2 {
   return { u: round3(v.u), v: round3(v.v) }
 }
+
+function quantKey3(p: Vec3, quantizeMm: number): string {
+  return `${Math.round(p.x / quantizeMm)},${Math.round(p.y / quantizeMm)},${Math.round(p.z / quantizeMm)}`
+}
+
+/**
+ * Walk unordered boundary edge segments into the longest closed ring (outer loop).
+ * Returns open ring (no repeated close vertex). Empty if no closed loop ≥3 verts.
+ */
+export function orderBoundaryRing(
+  edges: ReadonlyArray<{ a: Vec3; b: Vec3 }>,
+  quantizeMm = 0.05,
+): Vec3[] {
+  if (edges.length === 0) return []
+  type Link = { toKey: string; to: Vec3; edge: number }
+  type Node = { p: Vec3; links: Link[] }
+  const nodes = new Map<string, Node>()
+  const ensure = (p: Vec3): { key: string; node: Node } => {
+    const key = quantKey3(p, quantizeMm)
+    let node = nodes.get(key)
+    if (!node) {
+      node = { p, links: [] }
+      nodes.set(key, node)
+    }
+    return { key, node }
+  }
+  edges.forEach((e, i) => {
+    const A = ensure(e.a)
+    const B = ensure(e.b)
+    if (A.key === B.key) return
+    A.node.links.push({ toKey: B.key, to: e.b, edge: i })
+    B.node.links.push({ toKey: A.key, to: e.a, edge: i })
+  })
+
+  let best: Vec3[] = []
+  for (const [startKey, startNode] of nodes) {
+    for (const first of startNode.links) {
+      const used = new Set<number>([first.edge])
+      const ring: Vec3[] = [startNode.p]
+      let prevKey = startKey
+      let curKey = first.toKey
+      let closed = false
+      for (let step = 0; step < edges.length + 2; step++) {
+        if (curKey === startKey) {
+          closed = ring.length >= 3
+          break
+        }
+        const cur = nodes.get(curKey)
+        if (!cur) break
+        ring.push(cur.p)
+        const next = cur.links.find((l) => !used.has(l.edge) && l.toKey !== prevKey) ?? cur.links.find((l) => !used.has(l.edge))
+        if (!next) break
+        used.add(next.edge)
+        prevKey = curKey
+        curKey = next.toKey
+      }
+      if (closed && ring.length > best.length) best = ring
+    }
+  }
+  return best
+}

@@ -52,7 +52,7 @@ export const MIN_REGION_VERTS = 3
 export const MIN_REGION_AREA_MM2 = 1
 
 export type InteractionMode = "pick" | "region"
-export type RegionTool = "freehand" | "rect"
+export type RegionTool = "face" | "rect" | "freehand"
 
 export type RegionInfo = {
   id: string
@@ -64,7 +64,7 @@ export type RegionInfo = {
   normal: Vec3
   centroid: Vec3
   approximation: "plane-projected" | "mesh-samples"
-  kind?: "freehand" | "rect"
+  kind?: "face" | "freehand" | "rect"
   size?: {
     width_mm: number
     height_mm: number
@@ -113,4 +113,6 @@ export type SceneHandle = {
   getLinkFromId: () => string | null
   commitRegion: () => boolean
   cancelRegionStroke: () => void
+  /** Resize a committed rect region (center fixed). Sets size.quality=construction. */
+  setRegionRectSize: (id: string, width_mm: number, height_mm: number) => boolean
 }

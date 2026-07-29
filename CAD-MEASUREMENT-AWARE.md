@@ -1,9 +1,9 @@
 # CAD Measurement-Aware Annotations — Spec
 
-Status: **Phase 0–1 shipped** · Phase 2 Ref **removed** (overlay edge guides instead) · Phase 3 gated  
-Shipped: Δ · snap (+ live edge mm guides on canvas) · Rect · Link
+Status: **Phase 0–1 shipped** · Phase 2 Ref **removed** (overlay edge guides instead) · Phase 3 gated · dogfood OK  
+Shipped: Δ · snap (+ live edge mm guides) · Face | Rect | Free · typed W×H · Link · **Prompt only** (no Copy chip)
 
-**Product one-liner:** Make Pick + Region a **measurement-aware workspace** — the user sees mm while placing, and Copy/Prompt carries dimensions the agent can use — without turning the viewer into a full CAD sketcher or loading a B-rep kernel in the browser.
+**Product one-liner:** Make Pick + Region a **measurement-aware workspace** — the user sees mm while placing, and Prompt carries dimensions the agent can use — without turning the viewer into a full CAD sketcher or loading a B-rep kernel in the browser.
 
 **Truth model (do not invert):**
 
@@ -32,7 +32,7 @@ Out of scope as *primary* solution: world/face **grid** as the measurement syste
 ### Goals
 
 1. **See mm while working** (HUD live readouts).
-2. **Emit mm in Copy/Prompt** (structured fields + honest `quality`).
+2. **Emit mm in Prompt** (structured fields + honest `quality`).
 3. **Prefer construction dimensions** (explicit pin pairs; rect W×H; optional typed size) over inferred magic.
 4. **Snap aids placement** before confident size labels — OSNAP-style, not grid-first.
 5. **Stay lean:** three.js + forge OCP only; no OCCT-in-browser; no new CAD framework.
@@ -58,7 +58,7 @@ Out of scope as *primary* solution: world/face **grid** as the measurement syste
 4. **Explicit measure pairs** — not only last↔previous when N&gt;2.
 5. **Edge distances for the user on canvas** (snap overlay guides) — not a Ref chip; **not** copied into the agent prompt.
 6. **BREP edge ids last** (Phase 3) — only if mesh path fails dogfood.
-7. **One annotation payload** — Copy/Prompt = full state; Clear = mode-scoped.
+7. **One annotation payload** — Prompt = full state; Clear = mode-scoped.
 8. **`quality` enum** — `construction | mesh-approx | brep` on every numeric claim that could mislead.
 
 ---
@@ -200,10 +200,10 @@ Extend `ClickInfo` with optional `snap` + `quality`.
 
 ### 7.1 Scope
 
-- **Planar faces only:** topo `faceType === "plane"`, or (topo type unknown) mesh verts within ~0.35 mm of the hit plane. Explicit curved topo types toast and refuse.
-- Freehand **kept** via compact **Free | Rect** under Region (Rect default for measurement path).
+- Region tools: **Face | Rect | Free** (Face default = whole-face tap).
+- **Planar faces only for Rect:** topo `faceType === "plane"`, or (topo type unknown) mesh verts within ~0.35 mm of the hit plane. Explicit curved topo types toast and refuse.
 - Caps unchanged: `MAX_REGIONS = 5`.
-- **Do not** run freehand close-gate (`CLOSE_START_PX`, etc.) on Rect path.
+- **Do not** run freehand close-gate (`CLOSE_START_PX`, etc.) on Rect/Face paths.
 
 ### 7.2 UV / size honesty (critical)
 
@@ -231,11 +231,12 @@ Idle (Region+Rect)
 
 - Separate from freehand `stroke[]` path.
 - Extend `RegionDraft` (or parallel draft): `{ kind:"rect", width_mm, height_mm, active, part, faceId }`.
+- Live W×H during drag: **on-canvas** dim labels (snap-style), not bottom HUD text.
 - Auto-commit on pointerup (no Done, no loop-close).
 
-### 7.4 Typed size (recommended in 0c if cheap)
+### 7.4 Typed size (shipped)
 
-After commit (or on lift): optional HUD **W / H number fields** to override drag size keeping center or corner0 fixed — sets `quality=construction` on `size`. If deferred, note as Phase 1 follow-up; drag-only ships with `quality=mesh-approx` unless both corners vertex-snapped then still `mesh-approx` (tessellation) unless typed.
+After commit: HUD **W / H** fields override drag size **center fixed** — sets `quality=construction` on `size`. Drag-only keeps `quality=mesh-approx`.
 
 **Policy for rect `size` quality:**
 
@@ -388,7 +389,7 @@ type PartTopoV2 = {
 
 ---
 
-## 12. Copy / Prompt contract (cumulative)
+## 12. Prompt contract (cumulative)
 
 Full annotation state always. Example after 0a–0c + snap:
 
@@ -436,16 +437,16 @@ Update `studios/cad/skill/SKILL.md` (and digest) to include:
 | Control | Where | Phase |
 | --- | --- | --- |
 | Pick \| Region | Toolbar | existing |
-| Free \| Rect | Under Region | 0c |
+| Face \| Rect \| Free | Under Region (Face default) | face + 0c |
 | Δ last / pair | Surface HUD | 0a / 1 |
-| Live W×H | HUD while rect drag | 0c |
-| Typed W/H | HUD after rect (if shipped) | 0c/1 |
+| Live W×H | Canvas dim labels while rect drag | 0c |
+| Typed W/H | HUD after rect | shipped |
 | Link | HUD chip in Pick | 1 |
-| snap glyph | Canvas | 0b |
-| Ref | HUD chip (not long-press) | 2 |
-| Grid | HUD | 4 |
+| snap glyph | Canvas (not Face tool) | 0b |
+| Ref | dropped — edge mm on snap overlay only | 2 cut |
+| Grid | HUD | 4 skip |
 | Clear | HUD mode-scoped | existing |
-| Copy / Prompt | HUD full state | existing |
+| Prompt agent | HUD full state (no Copy chip) | existing |
 
 Mobile: one compact measure strip; 44px targets; sheets outside canvas `inert`; never inline `position:relative` on viewport root.
 

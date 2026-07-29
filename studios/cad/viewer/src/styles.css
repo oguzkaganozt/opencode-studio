@@ -375,6 +375,62 @@ button.cad-design-id[aria-expanded="true"] {
   color: var(--cad-overlay-text);
 }
 
+[data-studio="cad"] .cad-hud__dims {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.5rem;
+}
+
+[data-studio="cad"] .cad-hud__dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cad-overlay-muted);
+}
+
+[data-studio="cad"] .cad-hud__dim-x {
+  font-size: 12px;
+  color: var(--cad-overlay-faint);
+}
+
+[data-studio="cad"] .cad-hud__dim-input {
+  width: 4.25rem;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  border-radius: var(--osc-radius-md);
+  border: 1px solid var(--cad-overlay-border);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0 0.45rem;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--cad-overlay-text);
+  text-align: center;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+[data-studio="cad"] .cad-hud__dim-input:focus {
+  border-color: color-mix(in srgb, var(--osc-warning) 70%, var(--cad-overlay-border));
+}
+
+@media (min-width: 768px) {
+  [data-studio="cad"] .cad-hud__dims {
+    min-height: 2rem;
+  }
+
+  [data-studio="cad"] .cad-hud__dim-input {
+    height: 2rem;
+    min-height: 2rem;
+    width: 3.75rem;
+    font-size: 12px;
+  }
+}
+
 [data-studio="cad"] .cad-empty {
   display: flex;
   max-width: 22rem;
