@@ -27,6 +27,7 @@ import {
   axisAlignedRect2d,
   MAX_LINKED_PAIRS,
   pointsNearPlane,
+  pointToSegment,
   rectMeetsMinSize,
   undirectedPairExists,
 } from "./measure-geometry"
@@ -144,6 +145,8 @@ export class AssemblyScene {
   private linkedPairs: LinkedPinPair[] = []
   private linkArmed = false
   private linkFromId: string | null = null
+  private refArmed = false
+  private refTargetId: string | null = null
   private readonly measureOverlay = new THREE.Group()
   private readonly pinUp = new THREE.Vector3(0, 1, 0)
   private readonly pinNormal = new THREE.Vector3()
@@ -175,6 +178,7 @@ export class AssemblyScene {
   onPicksChange: ((picks: ClickInfo[]) => void) | null = null
   onLinkedPairsChange: ((pairs: LinkedPinPair[], meta: { armed: boolean; fromId: string | null }) => void) | null =
     null
+  onRefChange: ((meta: { armed: boolean; targetId: string | null }) => void) | null = null
   onRegionsChange: ((regions: RegionInfo[]) => void) | null = null
   onRegionDraftChange: ((draft: RegionDraft | null) => void) | null = null
   onMessage: ((message: string) => void) | null = null
@@ -348,13 +352,18 @@ export class AssemblyScene {
   getLinkedPairs = () => this.linkedPairs.slice()
   getLinkArmed = () => this.linkArmed
   getLinkFromId = () => this.linkFromId
+  getRefArmed = () => this.refArmed
+  getRefTargetId = () => this.refTargetId
 
   setInteractionMode = (mode: InteractionMode) => {
     if (this.interactionMode === mode) return
     this.cancelRegionStroke(true)
     this.cancelPickGesture()
     this.interactionMode = mode
-    if (mode !== "pick") this.setLinkArmed(false)
+    if (mode !== "pick") {
+      this.setLinkArmed(false)
+      this.setRefArmed(false)
+    }
     this.applyControlsForMode()
     this.emitDraft()
   }
@@ -369,7 +378,21 @@ export class AssemblyScene {
   setLinkArmed = (armed: boolean) => {
     this.linkArmed = armed
     if (!armed) this.linkFromId = null
+    if (armed) this.setRefArmed(false)
     this.emitLinkedPairs()
+  }
+
+  setRefArmed = (armed: boolean) => {
+    this.refArmed = armed
+    if (!armed) this.refTargetId = null
+    if (armed) {
+      this.linkArmed = false
+      this.linkFromId = null
+      const last = this.picks[this.picks.length - 1]
+      this.refTargetId = last?.id ?? null
+      this.emitLinkedPairs()
+    }
+    this.emitRef()
   }
 
   clearPicks = (emit = true) => {
@@ -377,12 +400,15 @@ export class AssemblyScene {
     this.linkedPairs = []
     this.linkFromId = null
     this.linkArmed = false
+    this.refArmed = false
+    this.refTargetId = null
     this.syncPins()
     this.rebuildMeasureOverlays()
     this.applySelectionColors()
     if (emit) {
       this.onPicksChange?.([])
       this.emitLinkedPairs()
+      this.emitRef()
     }
   }
 
@@ -604,6 +630,10 @@ export class AssemblyScene {
       armed: this.linkArmed,
       fromId: this.linkFromId,
     })
+  }
+
+  private emitRef() {
+    this.onRefChange?.({ armed: this.refArmed, targetId: this.refTargetId })
   }
 
   private emitRegions() {
@@ -1386,6 +1416,21 @@ export class AssemblyScene {
 
   private beginPickGesture(event: PointerEvent) {
     this.cancelPickGesture()
+    // Link/Ref modes use tap only — don't steal hold for snap-drag.
+    if (this.linkArmed || this.refArmed) {
+      this.pickGesture = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        pointerType: event.pointerType,
+        armed: false,
+        cancelled: false,
+        holdTimer: null,
+      }
+      return
+    }
     // Do NOT preventDefault here — OrbitControls needs pointerdown for 1-finger rotate.
     // Snap-drag only steals the gesture after a still hold (armPickDrag).
     this.pickGesture = {
@@ -1770,6 +1815,89 @@ export class AssemblyScene {
       line.renderOrder = 12
       this.measureOverlay.add(line)
     }
+    for (const pick of this.picks) {
+      if (!pick.offset) continue
+      const foot = pointToSegment(pick.position, pick.offset.a_mm, pick.offset.b_mm).closest
+      const positions = [
+        pick.position.x,
+        pick.position.y,
+        pick.position.z,
+        foot.x,
+        foot.y,
+        foot.z,
+      ]
+      const line = this.makeRegionLine(positions, 1.8, 0x22d3ee)
+      line.renderOrder = 12
+      this.measureOverlay.add(line)
+    }
+  }
+
+  private applyRefOffsetAt(clientX: number, clientY: number, _pointerType: string) {
+    const hit = this.hitAt(clientX, clientY)
+    if (!hit) return
+
+    const hitPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z }
+    const nearPin = this.picks.find((p) => {
+      if (p.partIndex !== hit.partIndex) return false
+      const dx = p.position.x - hitPos.x
+      const dy = p.position.y - hitPos.y
+      const dz = p.position.z - hitPos.z
+      return dx * dx + dy * dy + dz * dz <= 0.35 * 0.35
+    })
+    if (nearPin?.id) {
+      this.refTargetId = nearPin.id
+      this.emitRef()
+      this.onMessage?.("Ref: tap a face edge")
+      return
+    }
+
+    const targetId = this.refTargetId ?? this.picks[this.picks.length - 1]?.id ?? null
+    if (!targetId) {
+      this.onMessage?.("Place a pin first")
+      return
+    }
+    const pinIndex = this.picks.findIndex((p) => p.id === targetId)
+    if (pinIndex < 0) {
+      this.onMessage?.("Ref target pin missing")
+      return
+    }
+    if (hit.faceId === null) {
+      this.onMessage?.("Ref needs face-split mesh")
+      return
+    }
+
+    const edges = this.getFaceSnapIndex(hit.partIndex, hit.faceId).edges
+    if (edges.length === 0) {
+      this.onMessage?.("No mesh edges on this face")
+      return
+    }
+
+    let best: { a: Vec3; b: Vec3 } | null = null
+    let bestD = Number.POSITIVE_INFINITY
+    for (const e of edges) {
+      const d3 = pointToSegment(hitPos, e.a, e.b).distance_mm
+      if (d3 < bestD) {
+        bestD = d3
+        best = e
+      }
+    }
+    if (!best) return
+
+    const pin = this.picks[pinIndex]!
+    const toPin = pointToSegment(pin.position, best.a, best.b)
+    this.picks[pinIndex] = {
+      ...pin,
+      offset: {
+        distance_mm: +toPin.distance_mm.toFixed(3),
+        quality: "mesh-approx",
+        ref: "mesh-edge",
+        a_mm: { x: +best.a.x.toFixed(3), y: +best.a.y.toFixed(3), z: +best.a.z.toFixed(3) },
+        b_mm: { x: +best.b.x.toFixed(3), y: +best.b.y.toFixed(3), z: +best.b.z.toFixed(3) },
+      },
+    }
+    this.rebuildMeasureOverlays()
+    this.emitPicks()
+    this.onMessage?.(`Offset ${toPin.distance_mm.toFixed(1)} mm`)
   }
 
   private projectClient(point: Vec3): { x: number; y: number } | null {
@@ -1784,6 +1912,11 @@ export class AssemblyScene {
   }
 
   private pickAt(clientX: number, clientY: number, pointerType = "mouse") {
+    if (this.refArmed) {
+      this.applyRefOffsetAt(clientX, clientY, pointerType)
+      return
+    }
+
     const hit = this.hitAt(clientX, clientY)
     if (!hit) return
 
@@ -1848,6 +1981,7 @@ export class AssemblyScene {
       if (removedId) {
         this.linkedPairs = this.linkedPairs.filter((p) => p.fromId !== removedId && p.toId !== removedId)
         if (this.linkFromId === removedId) this.linkFromId = null
+        if (this.refTargetId === removedId) this.refTargetId = null
       }
     } else if (this.picks.length >= MAX_PICKS) {
       const dropped = this.picks.shift()

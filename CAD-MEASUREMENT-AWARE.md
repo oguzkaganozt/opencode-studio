@@ -1,7 +1,7 @@
 # CAD Measurement-Aware Annotations — Spec
 
-Status: **Phase 0 + Phase 1 shipped** · next: dogfood / Phase 2 Ref offset (optional)  
-Shipped: Δ · vertex/edge/mid snap · plane Rect · **Link pairs** (max 4) + measure segments
+Status: **Phase 0–2 shipped** · next: dogfood / Phase 3 topo only if needed  
+Shipped: Δ · snap · Rect · Link · **Ref edge offset**
 
 **Product one-liner:** Make Pick + Region a **measurement-aware workspace** — the user sees mm while placing, and Copy/Prompt carries dimensions the agent can use — without turning the viewer into a full CAD sketcher or loading a B-rep kernel in the browser.
 
@@ -346,9 +346,9 @@ Distance = 3D point-to-segment.
 
 ### 9.3 Acceptance
 
-- [ ] Ref arm works on phone without steal-orbit.
-- [ ] Clear picks clears offsets.
-- [ ] Prompt shows offset line under point.
+- [x] Ref arm works on phone without steal-orbit. (HUD chip; no long-press)
+- [x] Clear picks clears offsets.
+- [x] Prompt shows offset line under point.
 
 ---
 
@@ -503,8 +503,8 @@ Mobile: one compact measure strip; 44px targets; sheets outside canvas `inert`; 
 2. [x] **0b** — vertex SnapIndex + pin `snap`/`quality`  
 3. [x] **0c** — plane Rect FSM + size + Free\|Rect + frame honesty in prompt  
 4. [x] **1** — linked pairs + edge/mid snap  
-5. [ ] Dogfood on live host  
-6. [ ] **2** — Ref offset (HUD chip)  
+5. [x] **2** — Ref offset (HUD chip)  
+6. [ ] Dogfood on live host  
 7. [ ] **3** only if gated need — dual schema load first, then forge wires  
 8. [ ] **4** grid only on request  
 

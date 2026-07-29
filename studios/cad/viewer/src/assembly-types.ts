@@ -20,6 +20,14 @@ export type Vec2 = { u: number; v: number }
 export type PickSnap = "vertex" | "edge" | "midpoint" | "free"
 export type PickQuality = "mesh-approx"
 
+export type PinOffset = {
+  distance_mm: number
+  quality: "mesh-approx"
+  ref: "mesh-edge"
+  a_mm: Vec3
+  b_mm: Vec3
+}
+
 export type ClickInfo = {
   id?: string
   position: Vec3
@@ -32,6 +40,7 @@ export type ClickInfo = {
   triangleIndex: number | null
   snap?: PickSnap
   quality?: PickQuality
+  offset?: PinOffset
 }
 
 export type LinkedPinPair = { fromId: string; toId: string }
@@ -104,6 +113,7 @@ export type SceneHandle = {
   setInteractionMode: (mode: InteractionMode) => void
   setRegionTool: (tool: RegionTool) => void
   setLinkArmed: (armed: boolean) => void
+  setRefArmed: (armed: boolean) => void
   clearPicks: () => void
   clearRegions: () => void
   getPicks: () => ClickInfo[]
@@ -111,6 +121,8 @@ export type SceneHandle = {
   getLinkedPairs: () => LinkedPinPair[]
   getLinkArmed: () => boolean
   getLinkFromId: () => string | null
+  getRefArmed: () => boolean
+  getRefTargetId: () => string | null
   commitRegion: () => boolean
   cancelRegionStroke: () => void
 }

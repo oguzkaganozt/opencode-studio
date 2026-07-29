@@ -6,6 +6,7 @@ import {
   distance3,
   formatMm,
   lastPinPairMeasure,
+  pointToSegment,
   pointsNearPlane,
   rectMeetsMinSize,
 } from "./measure-geometry"
@@ -67,6 +68,17 @@ describe("measure-geometry", () => {
     expect(rectMeetsMinSize(0.4, 10, 1)).toBe(false)
     expect(rectMeetsMinSize(2, 2, 1)).toBe(true)
     expect(rectMeetsMinSize(0.6, 0.6, 1)).toBe(false)
+  })
+
+  test("pointToSegment midpoint and endpoint", () => {
+    const a = { x: 0, y: 0, z: 0 }
+    const b = { x: 10, y: 0, z: 0 }
+    const mid = pointToSegment({ x: 5, y: 3, z: 0 }, a, b)
+    expect(mid.distance_mm).toBeCloseTo(3, 8)
+    expect(mid.t).toBeCloseTo(0.5, 8)
+    const end = pointToSegment({ x: -2, y: 0, z: 0 }, a, b)
+    expect(end.distance_mm).toBeCloseTo(2, 8)
+    expect(end.t).toBeCloseTo(0, 8)
   })
 
   test("pointsNearPlane accepts flat face samples", () => {

@@ -97,6 +97,29 @@ export function undirectedPairExists(linked: ReadonlyArray<LinkedPinPair>, a: st
   return linked.some((p) => pairKey(p.fromId, p.toId) === key)
 }
 
+/** Closest point on segment AB to P; distance in mm. */
+export function pointToSegment(
+  p: Vec3,
+  a: Vec3,
+  b: Vec3,
+): { distance_mm: number; closest: Vec3; t: number } {
+  const abx = b.x - a.x
+  const aby = b.y - a.y
+  const abz = b.z - a.z
+  const lenSq = abx * abx + aby * aby + abz * abz
+  let t = 0
+  if (lenSq > 1e-18) {
+    t = ((p.x - a.x) * abx + (p.y - a.y) * aby + (p.z - a.z) * abz) / lenSq
+    t = Math.max(0, Math.min(1, t))
+  }
+  const closest = { x: a.x + abx * t, y: a.y + aby * t, z: a.z + abz * t }
+  return {
+    distance_mm: distance3(p, closest),
+    closest,
+    t,
+  }
+}
+
 /** True if all sample points lie within tolMm of the plane (origin + unit normal). */
 export function pointsNearPlane(
   points: ReadonlyArray<Vec3>,
