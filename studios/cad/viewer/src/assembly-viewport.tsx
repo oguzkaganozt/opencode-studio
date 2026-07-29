@@ -1,4 +1,4 @@
-import { type MutableRefObject, useEffect, useRef } from "react"
+import { type MutableRefObject, useEffect, useRef, useState } from "react"
 import { AssemblyScene } from "./assembly-scene"
 import type {
   ClickInfo,
@@ -23,6 +23,7 @@ type AssemblyViewportProps = {
   onSelectedRegionChange: (id: string | null) => void
   onSelectedPinChange: (id: string | null) => void
   onMessage: (message: string) => void
+  onError: (message: string) => void
   onLoaded: (result: { loaded: number; failed: number }) => void
   sceneRef: MutableRefObject<SceneHandle | null>
 }
@@ -39,11 +40,13 @@ export function AssemblyViewport({
   onSelectedRegionChange,
   onSelectedPinChange,
   onMessage,
+  onError,
   onLoaded,
   sceneRef,
 }: AssemblyViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const internalRef = useRef<AssemblyScene | null>(null)
+  const [initError, setInitError] = useState<string | null>(null)
   const onPicksChangeRef = useRef(onPicksChange)
   const onLinkedPairsChangeRef = useRef(onLinkedPairsChange)
   const onRegionsChangeRef = useRef(onRegionsChange)
@@ -51,6 +54,7 @@ export function AssemblyViewport({
   const onSelectedRegionChangeRef = useRef(onSelectedRegionChange)
   const onSelectedPinChangeRef = useRef(onSelectedPinChange)
   const onMessageRef = useRef(onMessage)
+  const onErrorRef = useRef(onError)
   const onLoadedRef = useRef(onLoaded)
   onPicksChangeRef.current = onPicksChange
   onLinkedPairsChangeRef.current = onLinkedPairsChange
@@ -59,12 +63,22 @@ export function AssemblyViewport({
   onSelectedRegionChangeRef.current = onSelectedRegionChange
   onSelectedPinChangeRef.current = onSelectedPinChange
   onMessageRef.current = onMessage
+  onErrorRef.current = onError
   onLoadedRef.current = onLoaded
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const scene = new AssemblyScene(container)
+    let scene: AssemblyScene
+    try {
+      scene = new AssemblyScene(container)
+      setInitError(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "3D rendering is unavailable"
+      setInitError(message)
+      onErrorRef.current(message)
+      return
+    }
     scene.onPicksChange = (picks) => onPicksChangeRef.current(picks)
     scene.onLinkedPairsChange = (pairs, meta) => onLinkedPairsChangeRef.current(pairs, meta)
     scene.onRegionsChange = (regions) => onRegionsChangeRef.current(regions)
@@ -116,10 +130,25 @@ export function AssemblyViewport({
   }, [parts])
 
   return (
-    <div
-      ref={containerRef}
-      className="cad-viewport-surface absolute inset-0"
-      data-testid="assembly-viewport"
-    />
+    <>
+      <div
+        ref={containerRef}
+        className="cad-viewport-surface absolute inset-0"
+        data-testid="assembly-viewport"
+        role="region"
+        tabIndex={0}
+        aria-label="3D assembly viewport"
+        aria-describedby="cad-viewport-instructions"
+      />
+      <p id="cad-viewport-instructions" className="sr-only">
+        Drag to orbit, use the wheel or pinch to zoom, and use the active annotation tool on model surfaces.
+      </p>
+      {initError ? (
+        <div className="cad-viewport-error" role="alert">
+          <strong>3D viewport unavailable</strong>
+          <span>{initError}</span>
+        </div>
+      ) : null}
+    </>
   )
 }

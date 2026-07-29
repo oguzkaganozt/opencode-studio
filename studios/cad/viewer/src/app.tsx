@@ -32,8 +32,10 @@ function statusBadge(status: DesignSummary["buildStatus"]): { label: string; ton
   return { label: "unbuilt", tone: "neutral" }
 }
 
-const CAD_COMPACT_WIDTH = 960
+const CAD_COMPACT_WIDTH = 1120
 const CAD_PHONE_WIDTH = 640
+
+type Toast = { message: string; tone: "info" | "error" }
 
 function CloseIcon() {
   return (
@@ -203,8 +205,9 @@ function DesignsPanel({
 
 function PartsPanel({
   parts,
-  highlights,
+  highlightedPart,
   renders,
+  showRenders,
   designId,
   onClose,
   onTogglePart,
@@ -213,8 +216,9 @@ function PartsPanel({
   showClose,
 }: {
   parts: Array<{ name: string; visible: boolean; color: number }>
-  highlights: number
+  highlightedPart: number
   renders: string[]
+  showRenders: boolean
   designId?: string
   onClose?: () => void
   onTogglePart: (index: number, visible: boolean) => void
@@ -261,10 +265,10 @@ function PartsPanel({
               <button
                 type="button"
                 className={`cad-part-row hover:bg-[var(--osc-surface-hover)] ${
-                  highlights === index ? "bg-[var(--osc-surface)] text-[var(--osc-accent)]" : "text-[var(--osc-text)]"
+                  highlightedPart === index ? "bg-[var(--osc-surface)] text-[var(--osc-accent)]" : "text-[var(--osc-text)]"
                 }`}
                 aria-pressed={part.visible}
-                aria-label={`${part.visible ? "Hide" : "Show"} ${part.name}`}
+                aria-label={`${part.name} visibility`}
                 onClick={() => onTogglePart(index, !part.visible)}
               >
                 <span className={`cad-part-check${part.visible ? " is-on" : ""}`} aria-hidden />
@@ -279,26 +283,30 @@ function PartsPanel({
           ))
         )}
       </ul>
-      <div className="cad-section-label">
-        <span>Renders</span>
-        {renders.length > 0 ? <span className="cad-rail-meta normal-case tracking-normal">{renders.length}</span> : null}
-      </div>
-      <div className="cad-rail-scroll grid min-h-0 grid-cols-2 gap-2 overflow-auto overscroll-contain p-2 md:flex-1">
-        {designId && renders.length > 0 ? (
-          renders.map((file) => {
-            const label = file.replace(/\.png$/, "")
-            const url = renderUrl(designId, file)
-            return (
-              <button key={file} type="button" title={label} className="cad-render-tile" onClick={() => onOpenRender(url, label)}>
-                <img src={url} alt={label} loading="lazy" width={160} height={120} />
-                <span className="cad-render-tile__label">{label}</span>
-              </button>
-            )
-          })
-        ) : (
-          <p className="cad-rail-empty col-span-2">No renders yet</p>
-        )}
-      </div>
+      {showRenders ? (
+        <>
+          <div className="cad-section-label">
+            <span>Renders</span>
+            {renders.length > 0 ? <span className="cad-rail-meta normal-case tracking-normal">{renders.length}</span> : null}
+          </div>
+          {designId && renders.length > 0 ? (
+            <div className="cad-render-grid cad-rail-scroll">
+              {renders.map((file) => {
+                const label = file.replace(/\.png$/, "")
+                const url = renderUrl(designId, file)
+                return (
+                  <button key={file} type="button" title={label} className="cad-render-tile" onClick={() => onOpenRender(url, label)}>
+                    <img src={url} alt={label} loading="lazy" width={160} height={120} />
+                    <span className="cad-render-tile__label">{label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="cad-render-empty">No renders generated</p>
+          )}
+        </>
+      ) : null}
     </>
   )
 }
@@ -382,7 +390,8 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const [rectWInput, setRectWInput] = useState("")
   const [rectHInput, setRectHInput] = useState("")
   const [rectSizeDirty, setRectSizeDirty] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useState<Toast | null>(null)
+  const [rectSizeError, setRectSizeError] = useState<string | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const [partUi, setPartUi] = useState<Array<{ name: string; visible: boolean; color: number }>>([])
   const [renderModal, setRenderModal] = useState<{ url: string; label: string } | null>(null)
@@ -458,13 +467,13 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     }
   }, [designId, designQuery.isLoading, designQuery.isError, designQuery.data, localParts])
 
-  function showToast(message: string) {
-    setToast(message)
+  function showToast(message: string, tone: Toast["tone"] = "info") {
+    setToast({ message, tone })
   }
 
   useEffect(() => {
     if (!toast) return
-    const id = window.setTimeout(() => setToast(null), 1800)
+    const id = window.setTimeout(() => setToast(null), toast.tone === "error" ? 5000 : 3200)
     return () => window.clearTimeout(id)
   }, [toast])
 
@@ -482,7 +491,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const loadFiles = useCallback((files: FileList | File[]) => {
     const list = Array.from(files).filter((file) => file.name.toLowerCase().endsWith(".glb"))
     if (list.length === 0) {
-      setToast("Only .glb files are supported")
+      setToast({ message: "Only .glb files are supported", tone: "error" })
       return
     }
     setLocalParts((previous) => {
@@ -581,7 +590,8 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           ? "0 parts"
           : status
 
-  const canOpenParts = Boolean(serverParts) || partCount > 0
+  const renderCount = localParts ? 0 : (designQuery.data?.renders.length ?? 0)
+  const canOpenParts = Boolean(serverParts) || partCount > 0 || renderCount > 0
   const dockRails = !compact
   const sheetOpen = compact && (designsOpen || inspectorOpen)
   const designsPlacement: SheetPlacement = phone ? "bottom" : "side-left"
@@ -608,6 +618,14 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const showEmptyActions = !designQuery.isLoading && !localParts
 
   const openFilePicker = () => fileInputRef.current?.click()
+
+  const requestDesignBuild = () => {
+    const text = designId
+      ? `Build or rebuild the CAD design "${designId}", then verify its artifacts and refresh the Studio viewer.`
+      : "Create a new CAD design from my requirements, build it, and verify its artifacts for the Studio viewer."
+    requestAgentHandoff({ text, source: "cad", open: true, copyFallback: true })
+    showToast("Opened build request in agent")
+  }
 
   const reload = () => {
     if (localParts) {
@@ -702,6 +720,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           : interactionMode === "select"
             ? "Select or mark annotations first"
             : "Tap a surface first",
+        "error",
       )
       return
     }
@@ -744,7 +763,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const deleteSelected = () => {
     const ok = sceneRef.current?.deleteSelected()
     if (!ok) {
-      showToast("Nothing selected")
+      showToast("Nothing selected", "error")
       return
     }
     setPicks(sceneRef.current?.getPicks() ?? [])
@@ -793,12 +812,14 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       setRectWInput("")
       setRectHInput("")
       setRectSizeDirty(false)
+      setRectSizeError(null)
       return
     }
     const dp = activeRect.size.quality === "construction" ? 2 : 1
     setRectWInput(formatMm(activeRect.size.width_mm, dp))
     setRectHInput(formatMm(activeRect.size.height_mm, dp))
     setRectSizeDirty(false)
+    setRectSizeError(null)
   }, [activeRect?.id, activeRect?.size?.width_mm, activeRect?.size?.height_mm, activeRect?.size?.quality])
 
   const applyRectSize = () => {
@@ -806,14 +827,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     // Only apply after real keystrokes — focus/blur alone must not rewrite size or quality.
     // (Display rounds to 1–2 dp while storage is 3 dp; float compare would false-positive.)
     if (!rectSizeDirty) return
-    const w = Number.parseFloat(rectWInput)
-    const h = Number.parseFloat(rectHInput)
-    if (!Number.isFinite(w) || !Number.isFinite(h)) {
-      setToast("Enter valid W and H (mm)")
-      const dp = activeRect.size.quality === "construction" ? 2 : 1
-      setRectWInput(formatMm(activeRect.size.width_mm, dp))
-      setRectHInput(formatMm(activeRect.size.height_mm, dp))
-      setRectSizeDirty(false)
+    const validNumber = /^(?:\d+(?:\.\d*)?|\.\d+)$/
+    const w = Number(rectWInput.trim())
+    const h = Number(rectHInput.trim())
+    if (!validNumber.test(rectWInput.trim()) || !validNumber.test(rectHInput.trim()) || w <= 0 || h <= 0) {
+      setRectSizeError("Width and height must be positive numbers.")
       return
     }
     const ok = sceneRef.current?.setRegionRectSize(activeRect.id, w, h)
@@ -823,7 +841,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       setRectWInput(formatMm(size.width_mm, dp))
       setRectHInput(formatMm(size.height_mm, dp))
       setRectSizeDirty(false)
+      setRectSizeError("That size cannot be applied to this face.")
+      return
     }
+    setRectSizeDirty(false)
+    setRectSizeError(null)
   }
 
   const toggleDesigns = () => {
@@ -837,6 +859,13 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   }
 
   const designControlLabel = localParts ? "Local GLB" : (selectedDesign?.id ?? (designs.length ? "Designs" : "No designs"))
+  const staleBuild = !localParts && selectedDesign?.buildStatus === "stale"
+  const highlightedPart =
+    interactionMode === "select"
+      ? (selectedPin?.partIndex ?? selectedRegion?.partIndex ?? -1)
+      : interactionMode === "region"
+        ? (selectedRegion?.partIndex ?? partUi.findIndex((part) => part.name === regionDraft?.part))
+        : (lastPick?.partIndex ?? -1)
 
   const statusClass =
     statusTone === "ok" ? "cad-status-ok" : statusTone === "waiting" ? "cad-status-wait" : "cad-status-idle"
@@ -877,29 +906,32 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             if (event.dataTransfer?.files.length) loadFiles(event.dataTransfer.files)
           }}
         >
-          <div className="cad-toolbar absolute top-3 left-3 z-10" role="toolbar" aria-label="CAD viewer">
+          <div className="cad-toolbar absolute top-3 z-10" role="toolbar" aria-label="CAD viewer tools">
             {compact ? (
               <button
                 type="button"
-                className={`cad-design-id${localParts ? " cad-design-id--local" : ""}`}
+                className={`cad-design-id${localParts ? " cad-design-id--local" : ""}${staleBuild ? " cad-design-id--stale" : ""}`}
                 aria-pressed={designsOpen}
                 aria-expanded={designsOpen}
-                aria-label={localParts ? "Local files — clear or pick a design" : `Design ${designControlLabel}`}
-                title={localParts ? "Clear local · pick a design" : "Change design"}
-                onClick={() => {
-                  if (localParts) clearLocalParts()
-                  toggleDesigns()
-                }}
+                aria-label={
+                  localParts
+                    ? "Choose a design instead of local files"
+                    : `Choose design, current ${designControlLabel}${staleBuild ? ", stale build" : ""}`
+                }
+                title={localParts ? "Choose a design" : staleBuild ? "Change design · build is stale" : "Change design"}
+                onClick={toggleDesigns}
               >
-                {designControlLabel}
+                <span className="cad-design-name">{designControlLabel}</span>
+                {staleBuild ? <span className="cad-design-freshness">stale</span> : null}
               </button>
             ) : localParts ? (
-              <button type="button" className="cad-design-id cad-design-id--local" onClick={clearLocalParts} title="Clear local GLB">
+              <button type="button" className="cad-design-id cad-design-id--local" onClick={clearLocalParts} title="Close local files">
                 Local GLB
               </button>
             ) : selectedDesign ? (
-              <span className="cad-design-id" title={selectedDesign.id}>
-                {selectedDesign.id}
+              <span className={`cad-design-id${staleBuild ? " cad-design-id--stale" : ""}`} title={selectedDesign.id}>
+                <span className="cad-design-name">{selectedDesign.id}</span>
+                {staleBuild ? <span className="cad-design-freshness">stale</span> : null}
               </span>
             ) : null}
 
@@ -909,7 +941,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                 className={`cad-status-btn ${statusClass}`}
                 aria-pressed={inspectorOpen}
                 aria-expanded={inspectorOpen}
-                aria-label={canOpenParts ? `Parts, ${partsLabel}` : partsLabel}
+                aria-label={canOpenParts ? `Parts and renders, ${partsLabel}${renderCount ? `, ${renderCount} renders` : ""}` : partsLabel}
                 disabled={statusTone === "waiting" && !canOpenParts}
                 onClick={toggleParts}
               >
@@ -927,26 +959,29 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               <button
                 type="button"
                 className="cad-chip"
+                aria-pressed={interactionMode === "select"}
+                title="Select and edit annotations"
+                onClick={() => setMode("select")}
+              >
+                Select
+              </button>
+              <button
+                type="button"
+                className="cad-chip"
                 aria-pressed={interactionMode === "pick"}
+                title="Place precise pins on surfaces"
                 onClick={() => setMode("pick")}
               >
-                Pick
+                Pin
               </button>
               <button
                 type="button"
                 className="cad-chip"
                 aria-pressed={interactionMode === "region"}
+                title="Mark a face or surface area"
                 onClick={() => setMode("region")}
               >
                 Region
-              </button>
-              <button
-                type="button"
-                className="cad-chip"
-                aria-pressed={interactionMode === "select"}
-                onClick={() => setMode("select")}
-              >
-                Select
               </button>
             </span>
 
@@ -974,7 +1009,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                   aria-pressed={regionTool === "freehand"}
                   onClick={() => setTool("freehand")}
                 >
-                  Free
+                  Freehand
                 </button>
               </span>
             ) : null}
@@ -1007,9 +1042,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               <div className="cad-empty" role={designQuery.isError ? "alert" : "status"}>
                 <p className="cad-empty__title">{emptyTitle}</p>
                 <p className="cad-empty__body">{emptyBody}</p>
-                {!designQuery.isLoading && !designQuery.isError && !localParts ? (
-                  <p className="cad-empty__hint">orbit · zoom · pan</p>
-                ) : null}
                 {showEmptyActions ? (
                   <div className="cad-empty__actions">
                     {designQuery.isError ? (
@@ -1017,8 +1049,13 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         Retry
                       </button>
                     ) : null}
-                    <button type="button" className="cad-chip cad-chip--accent" onClick={openFilePicker}>
-                      Open .glb
+                    {!designQuery.isError ? (
+                      <button type="button" className="cad-chip cad-chip--accent" onClick={requestDesignBuild}>
+                        {designId ? "Build with agent" : "Create with agent"}
+                      </button>
+                    ) : null}
+                    <button type="button" className="cad-chip" onClick={openFilePicker}>
+                      Open local .glb
                     </button>
                     {compact && designs.length > 0 ? (
                       <button
@@ -1062,7 +1099,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               onRegionDraftChange={setRegionDraft}
               onSelectedRegionChange={setSelectedRegionId}
               onSelectedPinChange={setSelectedPinId}
-              onMessage={showToast}
+              onMessage={(message) => showToast(message, "error")}
+              onError={() => {
+                setStatus("viewport unavailable")
+                setStatusTone("waiting")
+              }}
               onLoaded={(result) => {
                 const scene = sceneRef.current
                 setPartUi(
@@ -1085,7 +1126,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
           {!sheetOpen && (hasAnnotations || drawingRegion || serverParts) ? (
             <div
-              className={`cad-hud absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-10 w-[calc(100%-1.25rem)] max-w-xl -translate-x-1/2 px-3 py-2.5 ${hasAnnotations || drawingRegion ? "" : "pointer-events-none"}`}
+              className={`cad-hud absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-10 w-[calc(100%-1.25rem)] max-w-xl -translate-x-1/2 px-3 py-2.5 ${hasAnnotations || drawingRegion ? "" : "cad-hud--hint pointer-events-none"}`}
             >
               {drawingRegion ? (
                 <>
@@ -1205,54 +1246,68 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                   </div>
                   <div className="cad-hud__actions">
                     {interactionMode === "select" && activeRect?.size ? (
-                      <div className="cad-hud__dims" role="group" aria-label="Rectangle size mm">
-                        <label className="cad-hud__dim">
-                          <span>W</span>
-                          <input
-                            className="cad-hud__dim-input"
-                            type="text"
-                            inputMode="decimal"
-                            enterKeyHint="done"
-                            value={rectWInput}
-                            onChange={(e) => {
-                              setRectWInput(e.target.value)
-                              setRectSizeDirty(true)
-                            }}
-                            onBlur={applyRectSize}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault()
-                                ;(e.target as HTMLInputElement).blur()
-                              }
-                            }}
-                            aria-label="Width mm"
-                          />
-                        </label>
-                        <span className="cad-hud__dim-x" aria-hidden="true">
-                          ×
-                        </span>
-                        <label className="cad-hud__dim">
-                          <span>H</span>
-                          <input
-                            className="cad-hud__dim-input"
-                            type="text"
-                            inputMode="decimal"
-                            enterKeyHint="done"
-                            value={rectHInput}
-                            onChange={(e) => {
-                              setRectHInput(e.target.value)
-                              setRectSizeDirty(true)
-                            }}
-                            onBlur={applyRectSize}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault()
-                                ;(e.target as HTMLInputElement).blur()
-                              }
-                            }}
-                            aria-label="Height mm"
-                          />
-                        </label>
+                      <div>
+                        <div className="cad-hud__dims" role="group" aria-label="Rectangle size mm">
+                          <label className="cad-hud__dim">
+                            <span>W</span>
+                            <input
+                              className="cad-hud__dim-input"
+                              type="text"
+                              inputMode="decimal"
+                              enterKeyHint="done"
+                              value={rectWInput}
+                              onChange={(e) => {
+                                setRectWInput(e.target.value)
+                                setRectSizeDirty(true)
+                                setRectSizeError(null)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault()
+                                  applyRectSize()
+                                }
+                              }}
+                              aria-label="Width mm"
+                              aria-invalid={Boolean(rectSizeError)}
+                              aria-describedby={rectSizeError ? "cad-rect-size-error" : undefined}
+                            />
+                          </label>
+                          <span className="cad-hud__dim-x" aria-hidden="true">
+                            ×
+                          </span>
+                          <label className="cad-hud__dim">
+                            <span>H</span>
+                            <input
+                              className="cad-hud__dim-input"
+                              type="text"
+                              inputMode="decimal"
+                              enterKeyHint="done"
+                              value={rectHInput}
+                              onChange={(e) => {
+                                setRectHInput(e.target.value)
+                                setRectSizeDirty(true)
+                                setRectSizeError(null)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault()
+                                  applyRectSize()
+                                }
+                              }}
+                              aria-label="Height mm"
+                              aria-invalid={Boolean(rectSizeError)}
+                              aria-describedby={rectSizeError ? "cad-rect-size-error" : undefined}
+                            />
+                          </label>
+                          <button type="button" className="cad-chip" disabled={!rectSizeDirty} onClick={applyRectSize}>
+                            Apply
+                          </button>
+                        </div>
+                        {rectSizeError ? (
+                          <p id="cad-rect-size-error" className="cad-hud__error" role="alert">
+                            {rectSizeError}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                     {interactionMode === "pick" && picks.length >= 2 ? (
@@ -1276,7 +1331,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                       </button>
                     ) : null}
                     <button type="button" className="cad-chip" onClick={clearModeAnnotations}>
-                      Clear
+                      {interactionMode === "pick"
+                        ? "Clear pins"
+                        : interactionMode === "region"
+                          ? "Clear regions"
+                          : "Clear all"}
                     </button>
                     <button type="button" className="cad-chip cad-chip--accent" onClick={promptClick}>
                       Prompt agent
@@ -1294,7 +1353,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                           : regionTool === "rect"
                             ? "Drag a rectangle on a planar face"
                             : "Tap a face, then draw a closed area"
-                        : "Tap surfaces to mark picks"}
+                        : "Tap surfaces to place pins"}
                   </div>
                   <div className="cad-hud__hint text-center">
                     {interactionMode === "select"
@@ -1313,9 +1372,17 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           ) : null}
 
           {dropActive && <div className="cad-drop">Drop .glb file(s)</div>}
+          <div className="sr-only" aria-live="polite">
+            {partsLabel}. {picks.length} pins. {regions.length} regions. {interactionMode} mode.
+          </div>
           {toast && (
-            <div className="cad-toast" role="status" aria-live="polite">
-              {toast}
+            <div
+              className="cad-toast"
+              data-tone={toast.tone}
+              role={toast.tone === "error" ? "alert" : "status"}
+              aria-live={toast.tone === "error" ? "assertive" : "polite"}
+            >
+              {toast.message}
             </div>
           )}
         </div>
@@ -1347,8 +1414,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         >
           <PartsPanel
             parts={partUi}
-            highlights={lastPick?.partIndex ?? -1}
+            highlightedPart={highlightedPart}
             renders={localParts ? [] : (designQuery.data?.renders ?? [])}
+            showRenders={!localParts}
             designId={localParts ? undefined : designId}
             onClose={() => setInspectorOpen(false)}
             showClose
@@ -1369,8 +1437,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         <aside className="cad-rail flex w-full min-h-0 shrink-0 border-t border-[var(--osc-border)] md:w-60 md:border-t-0 md:border-l">
           <PartsPanel
             parts={partUi}
-            highlights={lastPick?.partIndex ?? -1}
+            highlightedPart={highlightedPart}
             renders={localParts ? [] : (designQuery.data?.renders ?? [])}
+            showRenders={!localParts}
             designId={localParts ? undefined : designId}
             onTogglePart={(index, visible) => {
               sceneRef.current?.setPartVisible(index, visible)
@@ -1444,13 +1513,13 @@ export function App() {
       data-studio="cad"
     >
       <HashRedirect />
-      <div className="sr-only">CAD Studio</div>
+      <h1 className="sr-only">CAD Studio</h1>
       <Routes>
         <Route index element={<Home />} />
         <Route path="designs/:id" element={<DesignRoute />} />
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
-      <footer className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 text-[11px] text-[var(--osc-text-faint)] sm:px-4 pb-[env(safe-area-inset-bottom)]">
+      <footer className="flex min-h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-1 text-[11px] text-[var(--osc-text-muted)] sm:px-4 pb-[max(.25rem,env(safe-area-inset-bottom))]">
         <span className="cad-footer-meta">Read-only assembly inspection</span>
         <span className="cad-footer-note">Viewer does not mutate Data Root</span>
       </footer>

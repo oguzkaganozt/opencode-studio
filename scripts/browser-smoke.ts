@@ -180,6 +180,7 @@ async function browserSmoke(base: string) {
         extra: async (p) => {
           await p.waitForSelector("text=Designs")
           await p.waitForSelector("text=Parts")
+          await p.getByRole("region", { name: "3D assembly viewport" }).waitFor()
         },
       },
       pcb: {
@@ -224,6 +225,14 @@ async function browserSmoke(base: string) {
     await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
     await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
     await assertNoHorizontalScroll(page, "360 cad")
+    const compactToolbar = await page.locator(".cad-toolbar").evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }))
+    assert(
+      compactToolbar.scrollHeight <= compactToolbar.clientHeight + 1,
+      `360 cad: toolbar wrapped vertically (${compactToolbar.scrollHeight}px > ${compactToolbar.clientHeight}px)`,
+    )
     console.log("360 smoke ok")
 
     // Native agent iframe: closed by default; open once and confirm same-origin frame
