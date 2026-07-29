@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useEffect, useState } from "react"
-import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router"
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
@@ -193,28 +193,47 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
   )
 }
 
+function diagnosticLabel(type: string) {
+  const words = type.replace(/_(warning|error)$/, "").split("_")
+  const scope = words.shift()
+  const scopeLabel = scope === "pcb" ? "PCB" : scope ? scope[0].toUpperCase() + scope.slice(1) : "Design"
+  const message = words.join(" ")
+  return message ? `${scopeLabel}: ${message[0].toUpperCase()}${message.slice(1)}` : scopeLabel
+}
+
 function DiagnosticGroupList({ groups, tone }: { groups: DiagnosticGroup[]; tone: "warning" | "error" }) {
+  const count = groups.reduce((total, group) => total + group.count, 0)
   return (
-    <div className="space-y-2">
-      {groups.map((group) => (
-        <details
-          key={group.type}
-          open={tone === "error"}
-          className="rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-2"
-        >
-          <summary className="cursor-pointer font-mono text-xs text-[var(--osc-text)]">
-            {group.type} <span className={tone === "error" ? "text-[var(--osc-error)]" : "text-[var(--osc-warning)]"}>({group.count})</span>
-          </summary>
-          {group.messages.length > 0 && (
-            <ul className="mt-2 space-y-1 text-xs text-[var(--osc-text-muted)]">
-              {group.messages.map((message, index) => (
-                <li key={`${group.type}-${index}`}>{message}</li>
-              ))}
-            </ul>
-          )}
-        </details>
-      ))}
-    </div>
+    <section className="min-w-0 space-y-2" aria-label={tone === "error" ? "Errors" : "Warnings"}>
+      <div className="pcb-diag-section-heading" data-tone={tone}>
+        <span>{tone === "error" ? "Errors" : "Warnings"}</span>
+        <span>
+          {count} across {groups.length} group{groups.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {groups.map((group) => (
+          <details key={group.type} open={tone === "error"} className="pcb-diag-group">
+            <summary className="pcb-diag-group-summary">
+              <span className="min-w-0">{diagnosticLabel(group.type)}</span>
+              <span className="pcb-diag-group-count" data-tone={tone}>
+                {group.count}
+              </span>
+            </summary>
+            <div className="pcb-diag-group-content">
+              <code>{group.type}</code>
+              {group.messages.length > 0 && (
+                <ul>
+                  {group.messages.map((message, index) => (
+                    <li key={`${group.type}-${index}`}>{message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </details>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -301,7 +320,7 @@ function DiagnosticsPanel({
           </button>
           <span className="text-[11px] text-[var(--osc-text-muted)]">Review the draft before sending</span>
         </div>
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className={cn("grid gap-3", diagnostics.errors.length > 0 && diagnostics.warnings.length > 0 && "lg:grid-cols-2")}>
           {diagnostics.errors.length > 0 && <DiagnosticGroupList groups={diagnostics.errors} tone="error" />}
           {diagnostics.warnings.length > 0 && <DiagnosticGroupList groups={diagnostics.warnings} tone="warning" />}
         </div>
@@ -319,8 +338,45 @@ function DiagnosticsPanel({
   )
 }
 
+async function loadAllProjects() {
+  const projects: ProjectSummary[] = []
+  const limit = 200
+  let offset = 0
+
+  while (true) {
+    const page = await api.projects({ limit, offset })
+    projects.push(...page.projects)
+    if (!page.hasMore || page.projects.length === 0) {
+      return { projects, total: page.total, hasMore: false }
+    }
+    offset += page.projects.length
+  }
+}
+
 function ProjectsPage() {
-  const { data, isLoading, error } = useQuery({ queryKey: ["pcb", "projects"], queryFn: () => api.projects({ limit: 100 }) })
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { data, isLoading, error } = useQuery({ queryKey: ["pcb", "projects"], queryFn: loadAllProjects })
+  const search = searchParams.get("q") ?? ""
+  const filter = searchParams.get("status") ?? "all"
+  const normalizedSearch = search.trim().toLowerCase()
+  const filteredProjects =
+    data?.projects.filter((project) => {
+      const matchesSearch = !normalizedSearch || `${project.name} ${project.path}`.toLowerCase().includes(normalizedSearch)
+      if (!matchesSearch) return false
+      if (filter === "ready") return projectHealthTone(project) === "success"
+      if (filter === "attention") return project.built && projectHealthTone(project) !== "success"
+      if (filter === "unbuilt") return !project.built
+      return true
+    }) ?? []
+
+  const updateFilter = (key: "q" | "status", value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (!value || value === "all") next.delete(key)
+    else next.set(key, value)
+    setSearchParams(next, { replace: true })
+  }
+
+  const clearFilters = () => setSearchParams({}, { replace: true })
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8 sm:py-10">
@@ -331,7 +387,8 @@ function ProjectsPage() {
         </div>
         {data && (
           <span className="font-mono text-[12px] text-[var(--osc-text-muted)] tabular-nums">
-            {data.total} project{data.total !== 1 ? "s" : ""}
+            {filteredProjects.length === data.total ? data.total : `${filteredProjects.length} of ${data.total}`} project
+            {data.total !== 1 ? "s" : ""}
           </span>
         )}
       </div>
@@ -349,11 +406,61 @@ function ProjectsPage() {
         />
       )}
       {data && data.projects.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {data.projects.map((p) => (
-            <ProjectCard key={p.id} project={p} />
-          ))}
-        </div>
+        <>
+          <div className="pcb-project-tools" role="search" aria-label="Filter projects">
+            <label className="sr-only" htmlFor="pcb-project-search">
+              Filter projects by name or path
+            </label>
+            <input
+              id="pcb-project-search"
+              type="search"
+              name="project-filter"
+              value={search}
+              onChange={(event) => updateFilter("q", event.target.value)}
+              placeholder="Filter projects…"
+              autoComplete="off"
+              spellCheck={false}
+              className="pcb-input min-w-0 px-3"
+            />
+            <div className="pcb-project-filters" aria-label="Project status">
+              {[
+                ["all", "All"],
+                ["ready", "Ready"],
+                ["attention", "Needs attention"],
+                ["unbuilt", "Not built"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className="pcb-filter"
+                  aria-pressed={filter === value}
+                  onClick={() => updateFilter("status", value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredProjects.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {filteredProjects.map((project) => (
+                <ProjectCard key={project.id} project={project} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              className="border-dashed py-14"
+              title="No projects match"
+              description="Try another name, path, or readiness filter."
+              action={
+                <button type="button" className="pcb-chip" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              }
+            />
+          )}
+        </>
       )}
     </div>
   )
@@ -404,8 +511,9 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
   if (error) return <PageError message="circuit.json not available. Run pcb_circuit_build first." />
 
   const elements = Array.isArray(data) ? data : []
-  const types = [...new Set(elements.map((e: any) => e.type as string))].sort()
-  const filtered = search ? elements.filter((e: any) => JSON.stringify(e).toLowerCase().includes(search.toLowerCase())) : elements
+  const types = [...new Set(elements.map((element: any) => String(element.type ?? "unknown")))].sort()
+  const normalizedSearch = search.trim().toLowerCase()
+  const filtered = normalizedSearch ? elements.filter((e: any) => JSON.stringify(e).toLowerCase().includes(normalizedSearch)) : elements
 
   const byType: Record<string, any[]> = {}
   for (const el of filtered) {
@@ -413,6 +521,7 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
     if (!byType[t]) byType[t] = []
     byType[t].push(el)
   }
+  const visibleTypes = types.filter((type) => byType[type])
 
   return (
     <div className="pcb-json-viewer flex min-h-[min(560px,50dvh)] flex-1 flex-col">
@@ -426,29 +535,30 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
           name="circuit-json-filter"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter elements…"
+          placeholder="Filter by type, name, or ID…"
           autoComplete="off"
           spellCheck={false}
           className="pcb-input flex-1 px-3 py-1.5"
         />
-        <span className="text-xs text-[var(--osc-text-muted)] shrink-0">
-          {filtered.length} / {elements.length} elements
+        <span className="shrink-0 text-xs text-[var(--osc-text-muted)] tabular-nums" aria-live="polite">
+          {filtered.length === elements.length ? `${elements.length} elements` : `${filtered.length} of ${elements.length}`} · {visibleTypes.length}{" "}
+          {visibleTypes.length === 1 ? "type" : "types"}
         </span>
       </div>
       <div className="pcb-json-list">
-        {types.map((type) => {
+        {visibleTypes.map((type) => {
           const group = byType[type]
           if (!group) return null
           return (
             <details key={type} className="pcb-json-group">
               <summary className="pcb-json-summary">
-                <span className="text-[var(--osc-accent)]">{type}</span>
-                <span className="text-[var(--osc-text-faint)] ml-2">({group.length})</span>
+                <span className="min-w-0 text-[var(--osc-accent)]">{type}</span>
+                <span className="ml-auto shrink-0 pl-2 text-[var(--osc-text-faint)]">({group.length})</span>
               </summary>
               <div className="mt-1 space-y-1 pl-3 border-l border-[var(--osc-border)]">
                 {group.map((el: any, i: number) => (
                   <details key={i} className="group">
-                    <summary className="cursor-pointer text-[var(--osc-text-muted)] hover:text-[var(--osc-text)] py-0.5 select-none">
+                    <summary className="pcb-json-item-summary">
                       {el.name ?? el.source_component_id ?? el.source_net_id ?? `[${i}]`}
                     </summary>
                     <pre className="mt-1 bg-[var(--osc-bg)] rounded p-2 text-[var(--osc-text-muted)] overflow-auto text-xs leading-relaxed">
@@ -460,7 +570,15 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
             </details>
           )
         })}
-        {Object.keys(byType).length === 0 && <p className="text-[var(--osc-text-faint)]">No elements match the filter.</p>}
+        {visibleTypes.length === 0 && (
+          <div className="pcb-json-empty">
+            <p className="font-medium text-[var(--osc-text)]">No elements match</p>
+            <p>Try a type, component name, source ID, or net ID.</p>
+            <button type="button" className="pcb-chip" onClick={() => setSearch("")}>
+              Clear filter
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

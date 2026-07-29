@@ -85,11 +85,16 @@ describe("host server", () => {
     const uiDirectory = path.join(ctx.workspace, "ui")
     await mkdir(uiDirectory)
     await writeFile(path.join(uiDirectory, "index.html"), "<main>Studio shell</main>")
+    await writeFile(path.join(uiDirectory, "engine.wasm"), new Uint8Array([0, 97, 115, 109]))
     const { app, fake } = await hostApp(ctx, { uiDirectory })
 
     const studio = await app.request("http://127.0.0.1:4173/studio", { headers: { host: "127.0.0.1:4173" } })
     expect(studio.status).toBe(200)
     expect(await studio.text()).toContain("Studio shell")
+
+    const wasm = await app.request("http://127.0.0.1:4173/studio/engine.wasm", { headers: { host: "127.0.0.1:4173" } })
+    expect(wasm.status).toBe(200)
+    expect(wasm.headers.get("content-type")).toBe("application/wasm")
 
     const openCode = await app.request("http://127.0.0.1:4173/", { headers: { host: "127.0.0.1:4173" } })
     expect(openCode.status).toBe(200)

@@ -289,9 +289,11 @@ export async function createHostApp(input: HostInput) {
                     ? "text/css; charset=utf-8"
                     : ext === ".svg"
                       ? "image/svg+xml"
-                      : ext === ".woff2"
-                        ? "font/woff2"
-                        : "application/octet-stream"
+                      : ext === ".wasm"
+                        ? "application/wasm"
+                        : ext === ".woff2"
+                          ? "font/woff2"
+                          : "application/octet-stream"
             return new Response(content, {
               headers: {
                 "Content-Type": type,

@@ -13,6 +13,20 @@ function formatValue(value: unknown): string {
   return String(value)
 }
 
+function formatLabel(value: string) {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/^./, (character) => character.toUpperCase())
+}
+
+function FieldValue({ value }: { value: unknown }) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return <pre className="pcb-part-structured">{JSON.stringify(value, null, 2)}</pre>
+  }
+  return <span className="font-mono text-[12px] text-[var(--osc-text-muted)]">{formatValue(value)}</span>
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-0.5 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
@@ -51,8 +65,8 @@ export function PartDetailView({ part }: { part: CatalogPartDetail }) {
           <p className="mb-2 text-[11px] font-medium tracking-[0.08em] text-[var(--osc-text-faint)] uppercase">Additional fields</p>
           <dl className="space-y-3 rounded-lg border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-3">
             {extras.map(([key, value]) => (
-              <Field key={key} label={key}>
-                <span className="font-mono text-[12px] text-[var(--osc-text-muted)]">{formatValue(value)}</span>
+              <Field key={key} label={formatLabel(key)}>
+                <FieldValue value={value} />
               </Field>
             ))}
           </dl>
@@ -115,7 +129,7 @@ export function PartDetailModal({
   return (
     <Dialog open onClose={onClose} title={`Part detail: ${mpn}`}>
       <DialogHeader title={mpn} onClose={onClose} />
-      <div className="max-h-[min(70dvh,32rem)] overflow-auto p-5">
+      <div className="max-h-[min(70dvh,32rem)] overflow-auto overscroll-contain p-5">
         {isLoading && !part && <LoadingState />}
         {fromBomOnly && (
           <p className="mb-3 text-[12px] text-[var(--osc-text-muted)]">Not in workspace catalog — showing BOM line fields only.</p>

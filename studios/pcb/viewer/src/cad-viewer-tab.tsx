@@ -69,7 +69,7 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
     return (
       <ErrorState
         className="m-4 border-0 py-16"
-        title="Failed to load Manifold"
+        title="Failed to load 3D engine"
         description={manifoldError}
         action={
           <button
@@ -89,9 +89,9 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
   }
   if (!manifoldReady || isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-16" role="status" aria-busy="true">
-        <span className="sr-only">Loading 3D view…</span>
+      <div className="pcb-viewer-empty" role="status" aria-busy="true">
         <div className="pcb-skeleton h-48 w-72 max-w-[80%]" aria-hidden />
+        <p className="text-[12px] text-[var(--osc-text-faint)]">Preparing 3D engine and models…</p>
       </div>
     )
   }
@@ -118,26 +118,36 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
   )
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex shrink-0 flex-col gap-1 rounded-md border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-2 text-xs sm:flex-row sm:items-start sm:gap-2">
-        <span className="shrink-0 font-medium text-[var(--osc-text)]">3D assets</span>
+      <div className="pcb-asset-bar" role="status" aria-live="polite">
+        <span className="pcb-asset-bar__label">Model coverage</span>
         {isCheckingAssets && <span className="text-[var(--osc-text-muted)]">Checking model availability…</span>}
-        {assetHealth?.status === "complete" && (
+        {assetHealth?.status === "complete" && assetHealth.total === 0 && (
+          <span className="text-[var(--osc-text-muted)]">No external component models required</span>
+        )}
+        {assetHealth?.status === "complete" && assetHealth.total > 0 && (
           <span className="text-[var(--osc-success)]">
-            Complete · {assetHealth.available}/{assetHealth.total} models available
+            {assetHealth.available} of {assetHealth.total} model files available
           </span>
         )}
         {assetHealth?.status === "partial" && (
-          <details>
-            <summary className="cursor-pointer text-[var(--osc-warning)]">
-              Partial · {assetHealth.available}/{assetHealth.total} models available · {assetHealth.missing} missing
+          <details className="pcb-asset-details">
+            <summary className="pcb-asset-summary">
+              <span>
+                {assetHealth.available} of {assetHealth.total} model files available
+              </span>
+              <span className="pcb-asset-count">{assetHealth.missing} unavailable</span>
             </summary>
-            <ul className="mt-2 space-y-1 text-[var(--osc-text-muted)]">
-              {assetHealth.issues.map((issue, index) => (
-                <li key={`${issue.component}-${index}`} title={issue.url}>
-                  {issue.component}: {issue.reason === "no-model" ? "no CAD model defined" : "model URL unavailable"}
-                </li>
-              ))}
-            </ul>
+            <div className="pcb-asset-issues">
+              <p>The board remains interactive without these models.</p>
+              <ul>
+                {assetHealth.issues.map((issue, index) => (
+                  <li key={`${issue.component}-${index}`} title={issue.url}>
+                    <code>{issue.component}</code>
+                    <span>{issue.reason === "no-model" ? "No CAD model defined" : "Model URL unavailable"}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </details>
         )}
       </div>

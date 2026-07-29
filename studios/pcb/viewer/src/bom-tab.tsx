@@ -149,27 +149,36 @@ export default function BomTab({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-[var(--osc-text-muted)]">
-        <span>
-          {data.totalComponents} component{data.totalComponents !== 1 ? "s" : ""}
-        </span>
-        <span className="text-[var(--osc-border-strong)]">·</span>
-        <span>
-          {data.listedCount} listed{data.unlistedCount > 0 ? `, ${data.unlistedCount} unlisted` : ""}
-        </span>
-        <span className={data.bomComplete ? "text-[var(--osc-success)]" : "text-[var(--osc-warning)]"}>
-          {data.bomComplete ? "Assembly identities complete" : "Assembly blocked: missing part identities"}
-        </span>
-        {!data.bomComplete ? (
-          <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestIdentityFix}>
-            Fix identities with agent
-          </button>
-        ) : null}
-        <span className="sm:ml-auto">
-          <a href={api.bomCsvUrl(projectId)} download className="pcb-chip">
-            CSV ↓
-          </a>
-        </span>
+      <div className="pcb-bom-overview">
+        <div className="pcb-bom-metrics" aria-label="BOM summary">
+          <span>
+            <strong>{data.totalComponents}</strong>
+            <small>Components</small>
+          </span>
+          <span>
+            <strong>{data.entries.length}</strong>
+            <small>Part groups</small>
+          </span>
+          <span data-tone={data.unlistedCount > 0 ? "warning" : "success"}>
+            <strong>{data.unlistedCount}</strong>
+            <small>Missing IDs</small>
+          </span>
+        </div>
+        <div className="pcb-bom-status">
+          <span className={data.bomComplete ? "text-[var(--osc-success)]" : "text-[var(--osc-warning)]"}>
+            {data.bomComplete ? "Assembly identities complete" : "Assembly blocked by missing identities"}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {!data.bomComplete ? (
+              <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestIdentityFix}>
+                Fix identities with agent
+              </button>
+            ) : null}
+            <a href={api.bomCsvUrl(projectId)} download className="pcb-chip">
+              Download CSV
+            </a>
+          </div>
+        </div>
       </div>
       <div className="pcb-table-wrap pcb-desktop-table overflow-x-auto">
         <table>
