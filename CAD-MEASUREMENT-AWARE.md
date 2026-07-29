@@ -1,7 +1,7 @@
 # CAD Measurement-Aware Annotations — Spec
 
-Status: **Phase 0–2 shipped** · next: dogfood / Phase 3 topo only if needed  
-Shipped: Δ · snap · Rect · Link · **Ref edge offset**
+Status: **Phase 0–1 shipped** · Phase 2 Ref **removed** (overlay edge guides instead) · Phase 3 gated  
+Shipped: Δ · snap (+ live edge mm guides on canvas) · Rect · Link
 
 **Product one-liner:** Make Pick + Region a **measurement-aware workspace** — the user sees mm while placing, and Copy/Prompt carries dimensions the agent can use — without turning the viewer into a full CAD sketcher or loading a B-rep kernel in the browser.
 
@@ -56,7 +56,7 @@ Out of scope as *primary* solution: world/face **grid** as the measurement syste
 2. **Honesty over false precision** — free mesh hits are approximate; do not cosplay BREP.
 3. **Snap before confident rect sizes** — unsnapped drag may show live W×H, but prompt `quality` must not read as manufacturing truth.
 4. **Explicit measure pairs** — not only last↔previous when N&gt;2.
-5. **User-chosen edge ref** for offsets (Phase 2) — not silent nearest-only.
+5. **Edge distances for the user on canvas** (snap overlay guides) — not a Ref chip; **not** copied into the agent prompt.
 6. **BREP edge ids last** (Phase 3) — only if mesh path fails dogfood.
 7. **One annotation payload** — Copy/Prompt = full state; Clear = mode-scoped.
 8. **`quality` enum** — `construction | mesh-approx | brep` on every numeric claim that could mislead.
@@ -68,7 +68,7 @@ Out of scope as *primary* solution: world/face **grid** as the measurement syste
 | Source | HUD display | Prompt decimals | `quality` |
 | --- | --- | --- | --- |
 | Free face hit (no snap) | **1 dp** mm | 1 dp + `quality=mesh-approx` | `mesh-approx` |
-| Mesh vertex/edge snap | 1–2 dp | 2 dp + `snap=…` | `mesh-approx` |
+| Mesh vertex/edge/mid/center snap | 1–2 dp | 2 dp + `snap=…` | `mesh-approx` |
 | Typed W/H or typed distance | as entered | 3 dp | `construction` |
 | Pin–pin Euclidean (any snap state) | 1 dp live; 2 dp if both snapped | 2 dp | `construction` (user-chosen pair) but points still carry their own snap/quality |
 | BREP snap / edge id (Phase 3) | 2–3 dp | 3 dp | `brep` |
@@ -76,7 +76,7 @@ Out of scope as *primary* solution: world/face **grid** as the measurement syste
 **Rules**
 
 - Never imply viewer mm replace STEP `measure()`.
-- Skill **must** say: treat `measures` / `size_mm` / `offset_mm` as **targets to verify** on STEP (`import` / `measure` / `compare`), not as already-true manufacturing dims.
+- Skill **must** say: treat `measures` / `size_mm` as **targets to verify** on STEP (`import` / `measure` / `compare`), not as already-true manufacturing dims.
 - Prefer `boundary2d` + plane frame for geometric intent; `size_mm` is a convenience label for rects.
 
 ---
@@ -318,43 +318,21 @@ Prefer **stable pin ids** (`id: string` on each pick) when implementing multi-pa
 
 ---
 
-## 9. Phase 2 — Reference offset
+## 9. Phase 2 — dropped (was Ref chip)
 
-### 9.1 UX (no long-press primary)
+**Product cut:** HUD **Ref** + prompt `offset_mm` removed as too heavy for users. Nearest-edge mm is shown only on the **snap overlay** (viewer-only). Agent still gets `point_mm` / `face` / pin–pin `measures` / rect `size_mm` and verifies on STEP.
 
-Long-press fights mobile orbit/remove. Use:
+**Shipped instead**
 
-1. Place/select pin.
-2. HUD **Ref** chip (44px) arms reference mode.
-3. Tap boundary edge (mesh segment).
-4. Store one offset per pin (overwrite).
-
-### 9.2 Data
-
-```ts
-offset?: {
-  distance_mm: number
-  quality: "mesh-approx" | "brep"
-  ref: "mesh-edge" | "brep-edge"
-  a_mm?: Vec3
-  b_mm?: Vec3
-  edgeId?: number // Phase 3
-}
-```
-
-Distance = 3D point-to-segment.
-
-### 9.3 Acceptance
-
-- [x] Ref arm works on phone without steal-orbit. (HUD chip; no long-press)
-- [x] Clear picks clears offsets.
-- [x] Prompt shows offset line under point.
+- [x] Snap overlay: dashed guides + mm to up to 2 nearest face boundary edges  
+- [x] No Ref chip, no pin `offset` field, no prompt offset lines  
+- [x] Face **center** snap (`snap=center`, vertex-mean centroid, mesh-approx)
 
 ---
 
 ## 10. Phase 3 — Forge topo v2 (gated)
 
-**Gate:** ship only if Phase 2 mesh edge refs are too weak for agent mapping in dogfood.
+**Gate:** ship only if mesh snap + canvas edge guides are too weak for agent mapping in dogfood.
 
 ### 10.1 Viewer compatibility (mandatory before forge ship)
 
@@ -503,7 +481,7 @@ Mobile: one compact measure strip; 44px targets; sheets outside canvas `inert`; 
 2. [x] **0b** — vertex SnapIndex + pin `snap`/`quality`  
 3. [x] **0c** — plane Rect FSM + size + Free\|Rect + frame honesty in prompt  
 4. [x] **1** — linked pairs + edge/mid snap  
-5. [x] **2** — Ref offset (HUD chip)  
+5. [x] **2** — Ref chip **dropped**; nearest-edge mm shown on snap overlay only (not in prompt)  
 6. [ ] Dogfood on live host  
 7. [ ] **3** only if gated need — dual schema load first, then forge wires  
 8. [ ] **4** grid only on request  

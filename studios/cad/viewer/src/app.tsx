@@ -378,8 +378,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const [linkedPairs, setLinkedPairs] = useState<LinkedPinPair[]>([])
   const [linkArmed, setLinkArmed] = useState(false)
   const [linkFromId, setLinkFromId] = useState<string | null>(null)
-  const [refArmed, setRefArmed] = useState(false)
-  const [refTargetId, setRefTargetId] = useState<string | null>(null)
   const [regions, setRegions] = useState<RegionInfo[]>([])
   const [interactionMode, setInteractionMode] = useState<InteractionMode>("pick")
   const [regionTool, setRegionTool] = useState<RegionTool>("rect")
@@ -642,10 +640,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       const normal = `normal=(${pick.normal.x}, ${pick.normal.y}, ${pick.normal.z})`
       const snap = pick.snap ?? "free"
       const quality = pick.quality ?? "mesh-approx"
-      const head = `  ${index + 1}) part=${pick.part} ${face} ${point} ${normal} direction=${pick.direction} snap=${snap} quality=${quality}`
-      if (!pick.offset) return head
-      const o = pick.offset
-      return `${head}\n     offset_mm=${formatMm(o.distance_mm, 2)} ref=${o.ref} quality=${o.quality} edge=(${o.a_mm.x},${o.a_mm.y},${o.a_mm.z})-(${o.b_mm.x},${o.b_mm.y},${o.b_mm.z})`
+      return `  ${index + 1}) part=${pick.part} ${face} ${point} ${normal} direction=${pick.direction} snap=${snap} quality=${quality}`
     })
     const regionLines = regions.map((region, index) => {
       const kind = region.kind ?? "freehand"
@@ -719,8 +714,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       setLinkedPairs([])
       setLinkArmed(false)
       setLinkFromId(null)
-      setRefArmed(false)
-      setRefTargetId(null)
     } else {
       sceneRef.current?.clearRegions()
       sceneRef.current?.cancelRegionStroke()
@@ -735,8 +728,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     if (mode !== "pick") {
       setLinkArmed(false)
       setLinkFromId(null)
-      setRefArmed(false)
-      setRefTargetId(null)
     }
   }
 
@@ -744,24 +735,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     const next = !linkArmed
     setLinkArmed(next)
     if (!next) setLinkFromId(null)
-    if (next) {
-      setRefArmed(false)
-      setRefTargetId(null)
-      sceneRef.current?.setRefArmed(false)
-    }
     sceneRef.current?.setLinkArmed(next)
-  }
-
-  const toggleRef = () => {
-    const next = !refArmed
-    setRefArmed(next)
-    if (!next) setRefTargetId(null)
-    if (next) {
-      setLinkArmed(false)
-      setLinkFromId(null)
-      sceneRef.current?.setLinkArmed(false)
-    }
-    sceneRef.current?.setRefArmed(next)
   }
 
   const setTool = (tool: RegionTool) => {
@@ -987,17 +961,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
               interactionMode={interactionMode}
               regionTool={regionTool}
               linkArmed={linkArmed}
-              refArmed={refArmed}
               sceneRef={sceneRef}
               onPicksChange={setPicks}
               onLinkedPairsChange={(pairs, meta) => {
                 setLinkedPairs(pairs)
                 setLinkArmed(meta.armed)
                 setLinkFromId(meta.fromId)
-              }}
-              onRefChange={(meta) => {
-                setRefArmed(meta.armed)
-                setRefTargetId(meta.targetId)
               }}
               onRegionsChange={setRegions}
               onRegionDraftChange={setRegionDraft}
@@ -1113,46 +1082,18 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         </span>
                       </>
                     ) : null}
-                    {refArmed ? (
-                      <>
-                        <span className="text-[var(--cad-overlay-muted)]"> · </span>
-                        <span className="font-medium text-[var(--osc-warning)]">
-                          {refTargetId ? "ref: tap edge" : "ref: tap pin"}
-                        </span>
-                      </>
-                    ) : null}
-                    {lastPick?.offset && interactionMode === "pick" && !refArmed ? (
-                      <>
-                        <span className="text-[var(--cad-overlay-muted)]"> · </span>
-                        <span className="font-medium text-[var(--osc-warning)]">
-                          off={formatMm(lastPick.offset.distance_mm, 1)} mm
-                        </span>
-                      </>
-                    ) : null}
                   </div>
                   <div className="cad-hud__hint text-center">
                     {interactionMode === "pick"
-                      ? refArmed
-                        ? "Ref mode · tap pin (optional) · tap face near edge"
-                        : linkArmed
-                          ? "Link mode · tap two pins · empty face still places pins"
-                          : `Multi-point OK · tap pin to remove · max ${MAX_PICKS}${picks.length >= MAX_PICKS ? " (full)" : ""}${primaryPair ? " · Δ shown" : ""}`
+                      ? linkArmed
+                        ? "Link mode · tap two pins · empty face still places pins"
+                        : `Multi-point OK · tap pin to remove · max ${MAX_PICKS}${picks.length >= MAX_PICKS ? " (full)" : ""}${primaryPair ? " · Δ shown" : ""}`
                       : regionTool === "rect"
                         ? `Rect on planar face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`
                         : `Freehand on face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`}
                     {hasAnnotations ? " · Copy sends all annotations" : ""}
                   </div>
                   <div className="cad-hud__actions">
-                    {interactionMode === "pick" && picks.length >= 1 ? (
-                      <button
-                        type="button"
-                        className={`cad-chip${refArmed ? " cad-chip--accent" : ""}`}
-                        aria-pressed={refArmed}
-                        onClick={toggleRef}
-                      >
-                        Ref
-                      </button>
-                    ) : null}
                     {interactionMode === "pick" && picks.length >= 2 ? (
                       <button
                         type="button"

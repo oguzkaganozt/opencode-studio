@@ -3,6 +3,7 @@ import {
   boundaryEdgesFromTriangles,
   closestOnEdgeScreen,
   dedupeVertices,
+  faceCentroid,
   resolveMeshSnap,
   resolveVertexSnap,
   VERTEX_SNAP_PX,
@@ -62,7 +63,15 @@ describe("snap-geometry", () => {
     const a = { x: 0, y: 0, z: 0 }
     const b = { x: 10, y: 0, z: 0 }
     const project = (p: { x: number; y: number; z: number }) => ({ x: p.x * 10, y: 50 })
-    const r = resolveMeshSnap({ x: 5, y: 1, z: 0 }, 50, 52, { vertices: [], edges: [{ a, b }] }, project, 5, 20)
+    const r = resolveMeshSnap(
+      { x: 5, y: 1, z: 0 },
+      50,
+      52,
+      { vertices: [], edges: [{ a, b }], center: null },
+      project,
+      5,
+      20,
+    )
     expect(r.snap === "edge" || r.snap === "midpoint").toBe(true)
     expect(r.position.y).toBeCloseTo(0, 5)
   })
@@ -74,5 +83,21 @@ describe("snap-geometry", () => {
     const c = closestOnEdgeScreen(5, 0, a, b, project)
     expect(c).not.toBeNull()
     expect(c!.t).toBeCloseTo(0.5, 5)
+  })
+
+  test("resolveMeshSnap face center", () => {
+    const verts = [
+      { x: 0, y: 0, z: 0 },
+      { x: 10, y: 0, z: 0 },
+      { x: 10, y: 10, z: 0 },
+      { x: 0, y: 10, z: 0 },
+    ]
+    const center = faceCentroid(verts)!
+    const project = (p: { x: number; y: number; z: number }) => ({ x: p.x * 10, y: p.y * 10 })
+    // Cursor near face center in screen space, away from verts/edges
+    const r = resolveMeshSnap({ x: 5, y: 5, z: 0 }, 50, 50, { vertices: verts, edges: [], center }, project, 5, 5, 20)
+    expect(r.snap).toBe("center")
+    expect(r.position.x).toBeCloseTo(5, 5)
+    expect(r.position.y).toBeCloseTo(5, 5)
   })
 })

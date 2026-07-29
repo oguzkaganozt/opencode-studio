@@ -6,6 +6,7 @@ import {
   distance3,
   formatMm,
   lastPinPairMeasure,
+  nearestEdgeOffsets,
   pointToSegment,
   pointsNearPlane,
   rectMeetsMinSize,
@@ -79,6 +80,20 @@ describe("measure-geometry", () => {
     const end = pointToSegment({ x: -2, y: 0, z: 0 }, a, b)
     expect(end.distance_mm).toBeCloseTo(2, 8)
     expect(end.t).toBeCloseTo(0, 8)
+  })
+
+  test("nearestEdgeOffsets returns two closest distinct", () => {
+    const p = { x: 3, y: 4, z: 0 }
+    const edges = [
+      { a: { x: 0, y: 0, z: 0 }, b: { x: 10, y: 0, z: 0 } },
+      { a: { x: 0, y: 0, z: 0 }, b: { x: 0, y: 10, z: 0 } },
+      { a: { x: 10, y: 0, z: 0 }, b: { x: 10, y: 10, z: 0 } },
+    ]
+    const g = nearestEdgeOffsets(p, edges, 2)
+    expect(g).toHaveLength(2)
+    expect(g[0]!.distance_mm).toBeLessThanOrEqual(g[1]!.distance_mm)
+    expect(g[0]!.distance_mm).toBeCloseTo(3, 5)
+    expect(g[1]!.distance_mm).toBeCloseTo(4, 5)
   })
 
   test("pointsNearPlane accepts flat face samples", () => {

@@ -25,8 +25,8 @@ Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. C
 - No ⋯ overflow menu — all primary actions are direct toolbar controls
 - **Copy / Prompt only on surface HUD** when any annotation exists — never permanent toolbar chrome
 - Empty: dashed well + Retry / Open .glb / Designs
-- HUD: pin + region counts · **Δ** · optional **off=** · last detail + **Ref** / **Link** / **Clear / Copy / Prompt**; while drawing: loop/W×H hint only
-- **Pick**: multi-select (cap 8); mesh snap; **touch hold+drag** snap reticle; **Ref** → edge offset; **Link** A→B (max 4); Clear = picks + links + offsets
+- HUD: pin + region counts · **Δ** · last detail + **Link** / **Clear / Copy / Prompt**; while drawing: loop/W×H hint only
+- **Pick**: multi-select (cap 8); mesh snap (`vertex|edge|midpoint|center`) + canvas edge-distance guides (viewer-only); **touch hold+drag** snap reticle; **Link** A→B (max 4); Clear = picks + links
 - **Region**: **Rect** (default, planar face, live W×H, 4 corners) | **Free** (loop-close freehand); cap 5; face-split GLB; 1-finger draw / 2-finger orbit; Clear = regions only
 - Copy/Prompt = **full** annotation state (pins + regions + last-pair `measures`; rect includes `kind`/`size_mm`/`frame=viewer-plane`)
 - Pins + region overlays stay visible together; faces amber; plane regions get fill+outline

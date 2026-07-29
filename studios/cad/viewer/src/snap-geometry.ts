@@ -2,10 +2,11 @@ import type { Vec3 } from "./assembly-types"
 
 export const VERTEX_SNAP_PX = 14
 export const EDGE_SNAP_PX = 12
+export const CENTER_SNAP_PX = 16
 export const VERTEX_QUANTIZE_MM = 0.05
 export const MIN_MIDPOINT_EDGE_MM = 2
 
-export type SnapKind = "vertex" | "edge" | "midpoint" | "free"
+export type SnapKind = "vertex" | "edge" | "midpoint" | "center" | "free"
 export type SnapQuality = "mesh-approx"
 
 export type SnapEdge = { a: Vec3; b: Vec3 }
@@ -13,6 +14,8 @@ export type SnapEdge = { a: Vec3; b: Vec3 }
 export type SnapIndex = {
   vertices: Vec3[]
   edges: SnapEdge[]
+  /** Face centroid (mean of unique verts) — face center snap. */
+  center: Vec3 | null
 }
 
 export function dedupeVertices(points: ReadonlyArray<Vec3>, quantizeMm = VERTEX_QUANTIZE_MM): Vec3[] {
@@ -30,12 +33,29 @@ export function dedupeVertices(points: ReadonlyArray<Vec3>, quantizeMm = VERTEX_
   return out
 }
 
+export function faceCentroid(points: ReadonlyArray<Vec3>): Vec3 | null {
+  if (points.length === 0) return null
+  let x = 0
+  let y = 0
+  let z = 0
+  for (const p of points) {
+    x += p.x
+    y += p.y
+    z += p.z
+  }
+  const n = points.length
+  return { x: x / n, y: y / n, z: z / n }
+}
+
 function quantKey(p: Vec3, quantizeMm = VERTEX_QUANTIZE_MM): string {
   return `${Math.round(p.x / quantizeMm)},${Math.round(p.y / quantizeMm)},${Math.round(p.z / quantizeMm)}`
 }
 
 /** Boundary edges = mesh edges with a single incident triangle (open shell / face rim). */
-export function boundaryEdgesFromTriangles(positions: ReadonlyArray<Vec3>, triangles: ReadonlyArray<readonly [number, number, number]>): SnapEdge[] {
+export function boundaryEdgesFromTriangles(
+  positions: ReadonlyArray<Vec3>,
+  triangles: ReadonlyArray<readonly [number, number, number]>,
+): SnapEdge[] {
   const counts = new Map<string, { a: number; b: number; n: number }>()
   const add = (i: number, j: number) => {
     const ka = quantKey(positions[i]!)
@@ -103,6 +123,7 @@ export function resolveMeshSnap(
   project: (p: Vec3) => { x: number; y: number } | null,
   vertexPx = VERTEX_SNAP_PX,
   edgePx = EDGE_SNAP_PX,
+  centerPx = CENTER_SNAP_PX,
 ): { position: Vec3; snap: SnapKind; quality: SnapQuality } {
   let bestVertex: Vec3 | null = null
   let bestVertexD = vertexPx * vertexPx
@@ -134,6 +155,17 @@ export function resolveMeshSnap(
   }
   if (bestEdge) return { position: bestEdge.position, snap: bestEdge.snap, quality: "mesh-approx" }
 
+  if (index.center) {
+    const s = project(index.center)
+    if (s) {
+      const dx = s.x - clientX
+      const dy = s.y - clientY
+      if (dx * dx + dy * dy <= centerPx * centerPx) {
+        return { position: index.center, snap: "center", quality: "mesh-approx" }
+      }
+    }
+  }
+
   return { position: hit, snap: "free", quality: "mesh-approx" }
 }
 
@@ -146,5 +178,13 @@ export function resolveVertexSnap(
   project: (p: Vec3) => { x: number; y: number } | null,
   thresholdPx = VERTEX_SNAP_PX,
 ): { position: Vec3; snap: SnapKind; quality: SnapQuality } {
-  return resolveMeshSnap(hit, clientX, clientY, { vertices: [...vertices], edges: [] }, project, thresholdPx, EDGE_SNAP_PX)
+  return resolveMeshSnap(
+    hit,
+    clientX,
+    clientY,
+    { vertices: [...vertices], edges: [], center: faceCentroid(vertices) },
+    project,
+    thresholdPx,
+    EDGE_SNAP_PX,
+  )
 }

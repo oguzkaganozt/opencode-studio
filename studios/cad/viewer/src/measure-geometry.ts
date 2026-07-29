@@ -97,6 +97,13 @@ export function undirectedPairExists(linked: ReadonlyArray<LinkedPinPair>, a: st
   return linked.some((p) => pairKey(p.fromId, p.toId) === key)
 }
 
+export type EdgeOffsetGuide = {
+  foot: Vec3
+  distance_mm: number
+  a: Vec3
+  b: Vec3
+}
+
 /** Closest point on segment AB to P; distance in mm. */
 export function pointToSegment(
   p: Vec3,
@@ -118,6 +125,35 @@ export function pointToSegment(
     closest,
     t,
   }
+}
+
+/** Nearest distinct boundary-edge offsets from point (for snap overlay guides). */
+export function nearestEdgeOffsets(
+  p: Vec3,
+  edges: ReadonlyArray<{ a: Vec3; b: Vec3 }>,
+  maxCount = 2,
+): EdgeOffsetGuide[] {
+  if (edges.length === 0 || maxCount <= 0) return []
+  const scored = edges
+    .map((e) => {
+      const r = pointToSegment(p, e.a, e.b)
+      return { a: e.a, b: e.b, foot: r.closest, distance_mm: r.distance_mm }
+    })
+    .sort((x, y) => x.distance_mm - y.distance_mm)
+
+  const out: EdgeOffsetGuide[] = []
+  for (const s of scored) {
+    if (s.distance_mm < 1e-4) continue // on the edge already
+    const dup = out.some(
+      (o) =>
+        Math.abs(o.distance_mm - s.distance_mm) < 0.2 &&
+        distance3(o.foot, s.foot) < 0.75,
+    )
+    if (dup) continue
+    out.push(s)
+    if (out.length >= maxCount) break
+  }
+  return out
 }
 
 /** True if all sample points lie within tolMm of the plane (origin + unit normal). */

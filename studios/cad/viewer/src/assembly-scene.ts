@@ -25,9 +25,10 @@ import {
 } from "./assembly-types"
 import {
   axisAlignedRect2d,
+  type EdgeOffsetGuide,
   MAX_LINKED_PAIRS,
+  nearestEdgeOffsets,
   pointsNearPlane,
-  pointToSegment,
   rectMeetsMinSize,
   undirectedPairExists,
 } from "./measure-geometry"
@@ -48,8 +49,10 @@ import {
 } from "./region-geometry"
 import {
   boundaryEdgesFromTriangles,
+  CENTER_SNAP_PX,
   dedupeVertices,
   EDGE_SNAP_PX,
+  faceCentroid,
   resolveMeshSnap,
   VERTEX_SNAP_PX,
   type SnapIndex,
@@ -138,6 +141,7 @@ export class AssemblyScene {
     clientY: number
     world: Vec3
     snap: string
+    edgeGuides: EdgeOffsetGuide[]
   } | null = null
   private picks: ClickInfo[] = []
   private pins: THREE.Group[] = []
@@ -145,8 +149,6 @@ export class AssemblyScene {
   private linkedPairs: LinkedPinPair[] = []
   private linkArmed = false
   private linkFromId: string | null = null
-  private refArmed = false
-  private refTargetId: string | null = null
   private readonly measureOverlay = new THREE.Group()
   private readonly pinUp = new THREE.Vector3(0, 1, 0)
   private readonly pinNormal = new THREE.Vector3()
@@ -178,7 +180,6 @@ export class AssemblyScene {
   onPicksChange: ((picks: ClickInfo[]) => void) | null = null
   onLinkedPairsChange: ((pairs: LinkedPinPair[], meta: { armed: boolean; fromId: string | null }) => void) | null =
     null
-  onRefChange: ((meta: { armed: boolean; targetId: string | null }) => void) | null = null
   onRegionsChange: ((regions: RegionInfo[]) => void) | null = null
   onRegionDraftChange: ((draft: RegionDraft | null) => void) | null = null
   onMessage: ((message: string) => void) | null = null
@@ -352,18 +353,13 @@ export class AssemblyScene {
   getLinkedPairs = () => this.linkedPairs.slice()
   getLinkArmed = () => this.linkArmed
   getLinkFromId = () => this.linkFromId
-  getRefArmed = () => this.refArmed
-  getRefTargetId = () => this.refTargetId
 
   setInteractionMode = (mode: InteractionMode) => {
     if (this.interactionMode === mode) return
     this.cancelRegionStroke(true)
     this.cancelPickGesture()
     this.interactionMode = mode
-    if (mode !== "pick") {
-      this.setLinkArmed(false)
-      this.setRefArmed(false)
-    }
+    if (mode !== "pick") this.setLinkArmed(false)
     this.applyControlsForMode()
     this.emitDraft()
   }
@@ -378,21 +374,7 @@ export class AssemblyScene {
   setLinkArmed = (armed: boolean) => {
     this.linkArmed = armed
     if (!armed) this.linkFromId = null
-    if (armed) this.setRefArmed(false)
     this.emitLinkedPairs()
-  }
-
-  setRefArmed = (armed: boolean) => {
-    this.refArmed = armed
-    if (!armed) this.refTargetId = null
-    if (armed) {
-      this.linkArmed = false
-      this.linkFromId = null
-      const last = this.picks[this.picks.length - 1]
-      this.refTargetId = last?.id ?? null
-      this.emitLinkedPairs()
-    }
-    this.emitRef()
   }
 
   clearPicks = (emit = true) => {
@@ -400,15 +382,12 @@ export class AssemblyScene {
     this.linkedPairs = []
     this.linkFromId = null
     this.linkArmed = false
-    this.refArmed = false
-    this.refTargetId = null
     this.syncPins()
     this.rebuildMeasureOverlays()
     this.applySelectionColors()
     if (emit) {
       this.onPicksChange?.([])
       this.emitLinkedPairs()
-      this.emitRef()
     }
   }
 
@@ -630,10 +609,6 @@ export class AssemblyScene {
       armed: this.linkArmed,
       fromId: this.linkFromId,
     })
-  }
-
-  private emitRef() {
-    this.onRefChange?.({ armed: this.refArmed, targetId: this.refTargetId })
   }
 
   private emitRegions() {
@@ -1006,6 +981,7 @@ export class AssemblyScene {
       (p) => this.projectClient(p),
       th.vertex,
       th.edge,
+      th.center,
     )
     return snapped.position
   }
@@ -1217,6 +1193,40 @@ export class AssemblyScene {
       const snapped = this.snapPreview.snap !== "free"
       const color = snapped ? "#fbbf24" : "#22d3ee"
       const r = snapped ? 14 : 10
+
+      // Edge distance guides (nearest boundary edges on this face).
+      for (const g of this.snapPreview.edgeGuides) {
+        const footScreen = this.clientOfWorld(new THREE.Vector3(g.foot.x, g.foot.y, g.foot.z))
+        if (!footScreen) continue
+        const fx = footScreen.x - canvasRect.left
+        const fy = footScreen.y - canvasRect.top
+        ctx.beginPath()
+        ctx.setLineDash([5, 4])
+        ctx.moveTo(sx, sy)
+        ctx.lineTo(fx, fy)
+        ctx.strokeStyle = "#22d3ee"
+        ctx.lineWidth = 1.75
+        ctx.globalAlpha = 0.9
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.beginPath()
+        ctx.arc(fx, fy, 3.5, 0, Math.PI * 2)
+        ctx.fillStyle = "#22d3ee"
+        ctx.globalAlpha = 1
+        ctx.fill()
+        const mx = (sx + fx) * 0.5
+        const my = (sy + fy) * 0.5
+        const label = `${g.distance_mm.toFixed(1)} mm`
+        ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif"
+        const tw = ctx.measureText(label).width
+        ctx.fillStyle = "rgba(11, 18, 32, 0.88)"
+        ctx.fillRect(mx - tw / 2 - 4, my - 9, tw + 8, 16)
+        ctx.fillStyle = "#22d3ee"
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        ctx.fillText(label, mx, my)
+      }
+
       ctx.beginPath()
       ctx.arc(sx, sy, r + 3, 0, Math.PI * 2)
       ctx.fillStyle = "#0b1220"
@@ -1234,12 +1244,12 @@ export class AssemblyScene {
       ctx.moveTo(sx, sy - r - 4)
       ctx.lineTo(sx, sy + r + 4)
       ctx.stroke()
-      if (snapped) {
-        ctx.font = "600 12px ui-sans-serif, system-ui, sans-serif"
-        ctx.fillStyle = color
-        ctx.textAlign = "center"
-        ctx.fillText(this.snapPreview.snap, sx, sy - r - 10)
-      }
+      ctx.font = "600 12px ui-sans-serif, system-ui, sans-serif"
+      ctx.fillStyle = color
+      ctx.textAlign = "center"
+      ctx.textBaseline = "alphabetic"
+      const tag = snapped ? this.snapPreview.snap : "free"
+      ctx.fillText(tag, sx, sy - r - 10)
     }
 
     if (this.regionTool === "rect" && this.rectCorner0 && this.rectCorner1 && this.regionLock?.frame) {
@@ -1416,8 +1426,8 @@ export class AssemblyScene {
 
   private beginPickGesture(event: PointerEvent) {
     this.cancelPickGesture()
-    // Link/Ref modes use tap only — don't steal hold for snap-drag.
-    if (this.linkArmed || this.refArmed) {
+    // Link mode uses tap only — don't steal hold for snap-drag.
+    if (this.linkArmed) {
       this.pickGesture = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -1498,10 +1508,14 @@ export class AssemblyScene {
     this.paintDrawOverlay()
   }
 
-  private snapThresholds(pointerType: string): { vertex: number; edge: number } {
+  private snapThresholds(pointerType: string): { vertex: number; edge: number; center: number } {
     const touch = pointerType === "touch" || pointerType === "pen"
     const scale = touch ? TOUCH_SNAP_SCALE : 1
-    return { vertex: VERTEX_SNAP_PX * scale, edge: EDGE_SNAP_PX * scale }
+    return {
+      vertex: VERTEX_SNAP_PX * scale,
+      edge: EDGE_SNAP_PX * scale,
+      center: CENTER_SNAP_PX * scale,
+    }
   }
 
   private updateSnapPreviewAt(clientX: number, clientY: number, pointerType: string) {
@@ -1512,23 +1526,17 @@ export class AssemblyScene {
     }
     const hitPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z }
     const th = this.snapThresholds(pointerType)
-    const snapped =
-      hit.faceId !== null
-        ? resolveMeshSnap(
-            hitPos,
-            clientX,
-            clientY,
-            this.getFaceSnapIndex(hit.partIndex, hit.faceId),
-            (p) => this.projectClient(p),
-            th.vertex,
-            th.edge,
-          )
-        : { position: hitPos, snap: "free" as const, quality: "mesh-approx" as const }
+    const index = hit.faceId !== null ? this.getFaceSnapIndex(hit.partIndex, hit.faceId) : null
+    const snapped = index
+      ? resolveMeshSnap(hitPos, clientX, clientY, index, (p) => this.projectClient(p), th.vertex, th.edge, th.center)
+      : { position: hitPos, snap: "free" as const, quality: "mesh-approx" as const }
+    const edgeGuides = index ? nearestEdgeOffsets(snapped.position, index.edges, 2) : []
     this.snapPreview = {
       clientX,
       clientY,
       world: snapped.position,
       snap: snapped.snap,
+      edgeGuides,
     }
   }
 
@@ -1787,7 +1795,7 @@ export class AssemblyScene {
     }
     const vertices = dedupeVertices(raw)
     const edges = boundaryEdgesFromTriangles(raw, triangles)
-    const snap: SnapIndex = { vertices, edges }
+    const snap: SnapIndex = { vertices, edges, center: faceCentroid(vertices) }
     this.faceSnapCache.set(key, snap)
     return snap
   }
@@ -1815,89 +1823,6 @@ export class AssemblyScene {
       line.renderOrder = 12
       this.measureOverlay.add(line)
     }
-    for (const pick of this.picks) {
-      if (!pick.offset) continue
-      const foot = pointToSegment(pick.position, pick.offset.a_mm, pick.offset.b_mm).closest
-      const positions = [
-        pick.position.x,
-        pick.position.y,
-        pick.position.z,
-        foot.x,
-        foot.y,
-        foot.z,
-      ]
-      const line = this.makeRegionLine(positions, 1.8, 0x22d3ee)
-      line.renderOrder = 12
-      this.measureOverlay.add(line)
-    }
-  }
-
-  private applyRefOffsetAt(clientX: number, clientY: number, _pointerType: string) {
-    const hit = this.hitAt(clientX, clientY)
-    if (!hit) return
-
-    const hitPos = { x: hit.point.x, y: hit.point.y, z: hit.point.z }
-    const nearPin = this.picks.find((p) => {
-      if (p.partIndex !== hit.partIndex) return false
-      const dx = p.position.x - hitPos.x
-      const dy = p.position.y - hitPos.y
-      const dz = p.position.z - hitPos.z
-      return dx * dx + dy * dy + dz * dz <= 0.35 * 0.35
-    })
-    if (nearPin?.id) {
-      this.refTargetId = nearPin.id
-      this.emitRef()
-      this.onMessage?.("Ref: tap a face edge")
-      return
-    }
-
-    const targetId = this.refTargetId ?? this.picks[this.picks.length - 1]?.id ?? null
-    if (!targetId) {
-      this.onMessage?.("Place a pin first")
-      return
-    }
-    const pinIndex = this.picks.findIndex((p) => p.id === targetId)
-    if (pinIndex < 0) {
-      this.onMessage?.("Ref target pin missing")
-      return
-    }
-    if (hit.faceId === null) {
-      this.onMessage?.("Ref needs face-split mesh")
-      return
-    }
-
-    const edges = this.getFaceSnapIndex(hit.partIndex, hit.faceId).edges
-    if (edges.length === 0) {
-      this.onMessage?.("No mesh edges on this face")
-      return
-    }
-
-    let best: { a: Vec3; b: Vec3 } | null = null
-    let bestD = Number.POSITIVE_INFINITY
-    for (const e of edges) {
-      const d3 = pointToSegment(hitPos, e.a, e.b).distance_mm
-      if (d3 < bestD) {
-        bestD = d3
-        best = e
-      }
-    }
-    if (!best) return
-
-    const pin = this.picks[pinIndex]!
-    const toPin = pointToSegment(pin.position, best.a, best.b)
-    this.picks[pinIndex] = {
-      ...pin,
-      offset: {
-        distance_mm: +toPin.distance_mm.toFixed(3),
-        quality: "mesh-approx",
-        ref: "mesh-edge",
-        a_mm: { x: +best.a.x.toFixed(3), y: +best.a.y.toFixed(3), z: +best.a.z.toFixed(3) },
-        b_mm: { x: +best.b.x.toFixed(3), y: +best.b.y.toFixed(3), z: +best.b.z.toFixed(3) },
-      },
-    }
-    this.rebuildMeasureOverlays()
-    this.emitPicks()
-    this.onMessage?.(`Offset ${toPin.distance_mm.toFixed(1)} mm`)
   }
 
   private projectClient(point: Vec3): { x: number; y: number } | null {
@@ -1912,11 +1837,6 @@ export class AssemblyScene {
   }
 
   private pickAt(clientX: number, clientY: number, pointerType = "mouse") {
-    if (this.refArmed) {
-      this.applyRefOffsetAt(clientX, clientY, pointerType)
-      return
-    }
-
     const hit = this.hitAt(clientX, clientY)
     if (!hit) return
 
@@ -1932,6 +1852,7 @@ export class AssemblyScene {
             (p) => this.projectClient(p),
             th.vertex,
             th.edge,
+            th.center,
           )
         : { position: hitPos, snap: "free" as const, quality: "mesh-approx" as const }
 
@@ -1981,7 +1902,6 @@ export class AssemblyScene {
       if (removedId) {
         this.linkedPairs = this.linkedPairs.filter((p) => p.fromId !== removedId && p.toId !== removedId)
         if (this.linkFromId === removedId) this.linkFromId = null
-        if (this.refTargetId === removedId) this.refTargetId = null
       }
     } else if (this.picks.length >= MAX_PICKS) {
       const dropped = this.picks.shift()

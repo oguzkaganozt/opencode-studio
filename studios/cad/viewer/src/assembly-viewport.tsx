@@ -16,10 +16,8 @@ type AssemblyViewportProps = {
   interactionMode: InteractionMode
   regionTool: RegionTool
   linkArmed: boolean
-  refArmed: boolean
   onPicksChange: (picks: ClickInfo[]) => void
   onLinkedPairsChange: (pairs: LinkedPinPair[], meta: { armed: boolean; fromId: string | null }) => void
-  onRefChange: (meta: { armed: boolean; targetId: string | null }) => void
   onRegionsChange: (regions: RegionInfo[]) => void
   onRegionDraftChange: (draft: RegionDraft | null) => void
   onMessage: (message: string) => void
@@ -32,10 +30,8 @@ export function AssemblyViewport({
   interactionMode,
   regionTool,
   linkArmed,
-  refArmed,
   onPicksChange,
   onLinkedPairsChange,
-  onRefChange,
   onRegionsChange,
   onRegionDraftChange,
   onMessage,
@@ -46,14 +42,12 @@ export function AssemblyViewport({
   const internalRef = useRef<AssemblyScene | null>(null)
   const onPicksChangeRef = useRef(onPicksChange)
   const onLinkedPairsChangeRef = useRef(onLinkedPairsChange)
-  const onRefChangeRef = useRef(onRefChange)
   const onRegionsChangeRef = useRef(onRegionsChange)
   const onRegionDraftChangeRef = useRef(onRegionDraftChange)
   const onMessageRef = useRef(onMessage)
   const onLoadedRef = useRef(onLoaded)
   onPicksChangeRef.current = onPicksChange
   onLinkedPairsChangeRef.current = onLinkedPairsChange
-  onRefChangeRef.current = onRefChange
   onRegionsChangeRef.current = onRegionsChange
   onRegionDraftChangeRef.current = onRegionDraftChange
   onMessageRef.current = onMessage
@@ -65,7 +59,6 @@ export function AssemblyViewport({
     const scene = new AssemblyScene(container)
     scene.onPicksChange = (picks) => onPicksChangeRef.current(picks)
     scene.onLinkedPairsChange = (pairs, meta) => onLinkedPairsChangeRef.current(pairs, meta)
-    scene.onRefChange = (meta) => onRefChangeRef.current(meta)
     scene.onRegionsChange = (regions) => onRegionsChangeRef.current(regions)
     scene.onRegionDraftChange = (draft) => onRegionDraftChangeRef.current(draft)
     scene.onMessage = (message) => onMessageRef.current(message)
@@ -92,10 +85,6 @@ export function AssemblyViewport({
   useEffect(() => {
     internalRef.current?.setLinkArmed(linkArmed)
   }, [linkArmed])
-
-  useEffect(() => {
-    internalRef.current?.setRefArmed(refArmed)
-  }, [refArmed])
 
   useEffect(() => {
     const scene = internalRef.current
