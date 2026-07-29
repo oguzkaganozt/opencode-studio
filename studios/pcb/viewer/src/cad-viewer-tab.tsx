@@ -40,7 +40,8 @@ async function ensureManifold() {
 export default function CadViewerTab({ projectId }: { projectId: string }) {
   const [manifoldReady, setManifoldReady] = useState(false)
   const [manifoldError, setManifoldError] = useState<string | null>(null)
-  const { data, dataUpdatedAt, isLoading, error } = useCircuitJson(projectId)
+  const [manifoldAttempt, setManifoldAttempt] = useState(0)
+  const { data, dataUpdatedAt, isLoading, error, refetch } = useCircuitJson(projectId)
   const { data: assetHealth, isLoading: isCheckingAssets } = useQuery({
     queryKey: ["pcb", "cadAssetHealth", projectId, dataUpdatedAt],
     queryFn: () => checkCadAssetHealth(data),
@@ -62,10 +63,29 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [manifoldAttempt])
 
   if (manifoldError) {
-    return <ErrorState className="m-4 border-0 py-16" title="Failed to load Manifold" description={manifoldError} />
+    return (
+      <ErrorState
+        className="m-4 border-0 py-16"
+        title="Failed to load Manifold"
+        description={manifoldError}
+        action={
+          <button
+            type="button"
+            className="pcb-chip"
+            onClick={() => {
+              setManifoldError(null)
+              setManifoldReady(false)
+              setManifoldAttempt((attempt) => attempt + 1)
+            }}
+          >
+            Retry 3D engine
+          </button>
+        }
+      />
+    )
   }
   if (!manifoldReady || isLoading) {
     return (
@@ -84,7 +104,18 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
       />
     )
   }
-  const fallback = <ErrorState className="m-4 border-0 py-16" title="3D viewer could not render this circuit" />
+  const fallback = (
+    <ErrorState
+      className="m-4 border-0 py-16"
+      title="3D viewer could not render this circuit"
+      description="Retry after the circuit or model assets have been updated."
+      action={
+        <button type="button" className="pcb-chip" onClick={() => void refetch()}>
+          Retry 3D view
+        </button>
+      }
+    />
+  )
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex shrink-0 flex-col gap-1 rounded-md border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-2 text-xs sm:flex-row sm:items-start sm:gap-2">

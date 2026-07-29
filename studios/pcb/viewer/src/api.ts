@@ -76,6 +76,7 @@ export type CatalogResponse = {
 
 export type BomEntry = {
   mpn: string | null
+  supplierPartNumbers: Record<string, string[]>
   refdes: string[]
   quantity: number
   manufacturer: string | null

@@ -70,31 +70,41 @@ function CardHealth({ project }: { project: ProjectSummary }) {
   return <StatusBadge tone="success" label="Ready" />
 }
 
+function projectHealthTone(project: ProjectSummary): "success" | "warning" | "error" {
+  if (!project.built || project.designValid === null) return "warning"
+  if (!project.designValid || project.fabricationReady === false) return "error"
+  if (project.assemblyReady === false || (project.warningCount ?? 0) > 0) return "warning"
+  return "success"
+}
+
 /** Detail page: health + fab/assembly only (artifacts via downloads). */
 function DetailHealth({ project }: { project: ProjectSummary }) {
   if (!project.built) return <StatusBadge tone="warning" label="Not built" />
   if (project.designValid === null) return <StatusBadge tone="warning" label="Health unknown" />
   return (
-    <>
-      {project.designValid ? (
-        <StatusBadge tone="success" label="Design valid" />
-      ) : (
-        <StatusBadge tone="error" label={`Design · ${project.errorCount} errors`} />
-      )}
-      {project.fabricationReady !== null && (
-        <StatusBadge
-          tone={project.fabricationReady ? "success" : "error"}
-          label={project.fabricationReady ? "Fabrication ready" : "Fabrication blocked"}
-        />
-      )}
-      {project.assemblyReady !== null && (
-        <StatusBadge
-          tone={project.assemblyReady ? "success" : "warning"}
-          label={project.assemblyReady ? "Assembly ready" : "Assembly blocked"}
-        />
-      )}
-      {(project.warningCount ?? 0) > 0 && <StatusBadge tone="warning" label={`${project.warningCount} warnings`} />}
-    </>
+    <div className="pcb-readiness" role="status" aria-label="Project readiness">
+      <span className="pcb-readiness__label">Readiness</span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {project.designValid ? (
+          <StatusBadge tone="success" label="Design valid" />
+        ) : (
+          <StatusBadge tone="error" label={`Design · ${project.errorCount} errors`} />
+        )}
+        {project.fabricationReady !== null && (
+          <StatusBadge
+            tone={project.fabricationReady ? "success" : "error"}
+            label={project.fabricationReady ? "Fabrication ready" : "Fabrication blocked"}
+          />
+        )}
+        {project.assemblyReady !== null && (
+          <StatusBadge
+            tone={project.assemblyReady ? "success" : "warning"}
+            label={project.assemblyReady ? "Assembly ready" : "Assembly blocked"}
+          />
+        )}
+        {(project.warningCount ?? 0) > 0 && <StatusBadge tone="warning" label={`${project.warningCount} warnings`} />}
+      </div>
+    </div>
   )
 }
 
@@ -135,15 +145,19 @@ function PageError({ message, description }: { message: string; description?: st
   return <ErrorState className="m-4 border-dashed py-16 sm:m-6 sm:py-20" title={message} description={description} />
 }
 
-function PageEmpty({ label, description }: { label: string; description?: string }) {
-  return <EmptyState className="m-4 border-dashed py-16 sm:m-6 sm:py-20" title={label} description={description} />
+function PageEmpty({ label, description, action }: { label: string; description?: string; action?: React.ReactNode }) {
+  return <EmptyState className="m-4 border-dashed py-16 sm:m-6 sm:py-20" title={label} description={description} action={action} />
 }
 
 // ── Projects Page ─────────────────────────────────────────────────────────────
 
 function ProjectCard({ project }: { project: ProjectSummary }) {
   return (
-    <Link to={studioHref(`projects/${encodeURIComponent(project.id)}/schematic`)} className="pcb-card group">
+    <Link
+      to={studioHref(`projects/${encodeURIComponent(project.id)}/schematic`)}
+      className="pcb-card group"
+      data-tone={projectHealthTone(project)}
+    >
       <span className="pcb-card__rail" aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -164,7 +178,17 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
           </svg>
         </div>
       </div>
-      {project.hasGerbersZip && <p className="mt-3 text-[11px] text-[var(--osc-text-faint)]">Gerbers available</p>}
+      <div className="pcb-card__artifacts" aria-label="Available artifacts">
+        <span data-ready={project.hasSchematicSvg ? "true" : undefined} aria-label={`Schematic ${project.hasSchematicSvg ? "available" : "unavailable"}`}>
+          Schematic
+        </span>
+        <span data-ready={project.hasPcbSvg ? "true" : undefined} aria-label={`PCB ${project.hasPcbSvg ? "available" : "unavailable"}`}>
+          PCB
+        </span>
+        <span data-ready={project.hasGerbersZip ? "true" : undefined} aria-label={`Gerbers ${project.hasGerbersZip ? "available" : "unavailable"}`}>
+          Gerbers
+        </span>
+      </div>
     </Link>
   )
 }
@@ -391,8 +415,8 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex min-h-[min(560px,50dvh)] flex-1 flex-col">
-      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--osc-border)] p-3">
+    <div className="pcb-json-viewer flex min-h-[min(560px,50dvh)] flex-1 flex-col">
+      <div className="pcb-json-toolbar">
         <label className="sr-only" htmlFor="pcb-circuit-json-filter">
           Filter elements
         </label>
@@ -411,13 +435,13 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
           {filtered.length} / {elements.length} elements
         </span>
       </div>
-      <div className="flex-1 overflow-auto p-3 space-y-4 text-xs font-mono">
+      <div className="pcb-json-list">
         {types.map((type) => {
           const group = byType[type]
           if (!group) return null
           return (
-            <details key={type} open={group.length <= 10}>
-              <summary className="cursor-pointer text-[var(--osc-text-muted)] hover:text-[var(--osc-text)] py-1 select-none">
+            <details key={type} className="pcb-json-group">
+              <summary className="pcb-json-summary">
                 <span className="text-[var(--osc-accent)]">{type}</span>
                 <span className="text-[var(--osc-text-faint)] ml-2">({group.length})</span>
               </summary>
@@ -586,22 +610,15 @@ function ProjectPage() {
 
 // ── Catalog Page ──────────────────────────────────────────────────────────────
 
-function PartRow({ part, onClick }: { part: PartSummary; onClick: () => void }) {
+function PartRow({ part, onSelect }: { part: PartSummary; onSelect: () => void }) {
   const datasheetHref = part.datasheet ? safeHref(part.datasheet) : null
   return (
-    <tr
-      className="cursor-pointer border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)] focus-visible:bg-[var(--osc-surface-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--osc-text)]"
-      tabIndex={0}
-      aria-label={`Part ${part.mpn}`}
-      onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault()
-          onClick()
-        }
-      }}
-    >
-      <td className="whitespace-nowrap px-4 py-2.5 font-mono text-sm text-[var(--osc-accent)]">{part.mpn}</td>
+    <tr className="border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)]">
+      <td className="whitespace-nowrap px-4 py-2.5 font-mono text-sm">
+        <button type="button" className="pcb-table-link" onClick={onSelect}>
+          {part.mpn}
+        </button>
+      </td>
       <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[var(--osc-text)]">{part.manufacturer ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.description ?? "—"}</td>
       <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.category ?? "—"}</td>
@@ -612,8 +629,6 @@ function PartRow({ part, onClick }: { part: PartSummary; onClick: () => void }) 
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-[var(--osc-accent)] hover:opacity-80"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
           >
             Datasheet ↗
           </a>
@@ -623,10 +638,40 @@ function PartRow({ part, onClick }: { part: PartSummary; onClick: () => void }) 
   )
 }
 
+function PartCard({ part, onSelect }: { part: PartSummary; onSelect: () => void }) {
+  const datasheetHref = part.datasheet ? safeHref(part.datasheet) : null
+  return (
+    <article className="pcb-data-card">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <button type="button" className="pcb-table-link min-w-0 truncate text-left font-mono" onClick={onSelect}>
+          {part.mpn}
+        </button>
+        {part.category ? <span className="pcb-data-card__tag">{part.category}</span> : null}
+      </div>
+      <p className="mt-2 text-[13px] text-[var(--osc-text)]">{part.manufacturer ?? "Manufacturer unknown"}</p>
+      {part.description ? <p className="mt-1 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">{part.description}</p> : null}
+      {datasheetHref ? (
+        <a href={datasheetHref} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-xs text-[var(--osc-accent)]">
+          Datasheet ↗
+        </a>
+      ) : null}
+    </article>
+  )
+}
+
 function CatalogPage() {
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<string | null>(null)
   const debouncedSearch = useDebounce(search, 200)
+
+  const requestCatalogHelp = () => {
+    requestAgentHandoff({
+      text: "Help populate the workspace PCB component catalog with verified manufacturer part numbers, metadata, datasheets, and usable footprint identities.",
+      source: "pcb",
+      open: true,
+      copyFallback: true,
+    })
+  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["pcb", "catalog", debouncedSearch],
@@ -675,30 +720,44 @@ function CatalogPage() {
                 ? "Try a shorter MPN or manufacturer token."
                 : "Add parts under the workspace catalog directory, or search after parts exist."
             }
+            action={
+              !search ? (
+                <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestCatalogHelp}>
+                  Add parts with agent
+                </button>
+              ) : undefined
+            }
           />
         )}
 
         {data && data.parts.length > 0 && (
-          <div className="pcb-table-wrap overflow-x-auto">
-            <table>
-              <thead>
-                <tr>
-                  <th>MPN</th>
-                  <th>Manufacturer</th>
-                  <th>Description</th>
-                  <th>Category</th>
-                  <th>
-                    <span className="sr-only">Datasheet</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.parts.map((p) => (
-                  <PartRow key={p.mpn} part={p} onClick={() => setSelected(p.mpn)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="pcb-table-wrap pcb-desktop-table overflow-x-auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>MPN</th>
+                    <th>Manufacturer</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>
+                      <span className="sr-only">Datasheet</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.parts.map((p) => (
+                    <PartRow key={p.mpn} part={p} onSelect={() => setSelected(p.mpn)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="pcb-mobile-list">
+              {data.parts.map((part) => (
+                <PartCard key={part.mpn} part={part} onSelect={() => setSelected(part.mpn)} />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
