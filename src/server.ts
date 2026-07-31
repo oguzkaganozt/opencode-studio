@@ -47,6 +47,9 @@ export type HostHandle = {
   url: string
   studioUrl: string
   parentOpenCodeUrl: string
+  /** Active domain/Agent workspace (rebindable; not pinned for process life). */
+  getWorkspace: () => string
+  rebindWorkspace: (workspace: string) => Promise<void>
   stop: () => void
 }
 
@@ -119,7 +122,7 @@ export async function createHostApp(input: HostInput) {
   const resolvedParentUrl = parentOpenCodeUrl
   const nativeOpenCodeAvailable = Boolean(resolvedParentUrl || input.openCodeBridge)
   const userPaths = pickUserPaths(input)
-  const domain = { workspace: input.workspace, packageRoot, userPaths }
+  const domain = { workspace: path.resolve(input.workspace), packageRoot, userPaths }
 
   const initial = await buildStudioMounts(domain)
   if (initial.mountErrors.length > 0) {
@@ -135,7 +138,18 @@ export async function createHostApp(input: HostInput) {
   }
 
   const { createFilesApi } = await import("./platform/media/files-api")
-  const filesApi = await createFilesApi(input.workspace)
+  const filesMount = { current: await createFilesApi(domain.workspace) }
+
+  const rebindWorkspace = async (nextWorkspace: string) => {
+    const resolved = path.resolve(nextWorkspace)
+    if (resolved === domain.workspace) return
+    domain.workspace = resolved
+    if ("setWorkspace" in openCode && typeof openCode.setWorkspace === "function") {
+      openCode.setWorkspace(resolved)
+    }
+    filesMount.current = await createFilesApi(resolved)
+    await reloadStudios()
+  }
 
   const app = new Hono()
 
@@ -166,11 +180,12 @@ export async function createHostApp(input: HostInput) {
     ctx.header("X-Content-Type-Options", "nosniff")
   })
 
-  app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok", parentOpenCodeUrl: resolvedParentUrl }))
+  app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok", parentOpenCodeUrl: resolvedParentUrl, workspace: domain.workspace }))
   app.get("/api/csrf", (ctx) => ctx.json({ token: csrfToken }))
+  app.get("/api/workspace", (ctx) => ctx.json({ workspace: domain.workspace }))
 
   app.get("/api/studios", async (ctx) => {
-    const status = await statusStudios({ workspace: input.workspace, packageRoot, ...userPaths })
+    const status = await statusStudios({ workspace: domain.workspace, packageRoot, ...userPaths })
     const update = await checkNpmUpdate({ packageName: meta.name, current: packageVersion })
     return ctx.json({
       workspace: status.workspace,
@@ -229,7 +244,7 @@ export async function createHostApp(input: HostInput) {
     }
     try {
       const result = await configureStudios({
-        workspace: input.workspace,
+        workspace: domain.workspace,
         packageRoot,
         ...userPaths,
       })
@@ -252,7 +267,13 @@ export async function createHostApp(input: HostInput) {
     }
   })
 
-  app.route("/api/files", filesApi)
+  const dispatchFiles = async (ctx: { req: { url: string; raw: Request } }) => {
+    const url = new URL(ctx.req.url)
+    const suffix = url.pathname.replace(/^\/api\/files/, "") || "/"
+    return filesMount.current.request(suffix + url.search, ctx.req.raw)
+  }
+  app.all("/api/files", dispatchFiles)
+  app.all("/api/files/*", dispatchFiles)
 
   // Dispatch to the hot-swappable studio mount table.
   app.all("/api/studios/*", async (ctx) => {
@@ -351,6 +372,8 @@ export async function createHostApp(input: HostInput) {
     packageVersion,
     config,
     reloadStudios,
+    rebindWorkspace,
+    getWorkspace: () => domain.workspace,
     closeOpenCode: () => openCode.close(),
     openCodeAuthorized: (authorization: string | undefined) =>
       !needBasic || Boolean(password && basicAuthMatches(authorization, username, password)),
@@ -382,6 +405,8 @@ export async function startHost(input: HostInput): Promise<HostHandle> {
     openCodeAuthorized,
     openCodeAuthResponse,
     openCodeWebSocketTarget,
+    rebindWorkspace,
+    getWorkspace,
   } = await createHostApp(input)
   scheduleUpdateLog({ packageName, current: input.packageVersion ?? packageVersion })
   const updateTimer = setInterval(
@@ -456,5 +481,13 @@ export async function startHost(input: HostInput): Promise<HostHandle> {
   }
   const url = `http://${hostname}:${server.port}`
   const parentOpenCodeUrl = input.parentOpenCodeUrl?.trim() ? normalizeParentOpenCodeUrl(input.parentOpenCodeUrl) : "injected-bridge"
-  return { server, url, studioUrl: `${url}/studio`, parentOpenCodeUrl, stop }
+  return {
+    server,
+    url,
+    studioUrl: `${url}/studio`,
+    parentOpenCodeUrl,
+    getWorkspace,
+    rebindWorkspace,
+    stop,
+  }
 }

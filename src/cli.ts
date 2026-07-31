@@ -52,7 +52,8 @@ Examples:
   opencode serve          # then open project dir → http://127.0.0.1:4173/studio
 
 Notes:
-  Studio host lifecycle is owned by opencode serve (plugin ensure-host).
+  Studio host starts with opencode serve once a directory Instance loads;
+  workspace rebinds when the active OpenCode project changes (no pin).
   Greenfield: always repair (postinstall is soft).
   Skip postinstall setup: OPENCODE_STUDIO_SKIP_POSTINSTALL=1
 `)
@@ -243,7 +244,7 @@ async function main(argv: string[]) {
 
   if (command === "serve" || command === "service") {
     console.error(`'${command}' was removed. Studio host starts with opencode serve (plugin ensure-host).`)
-    console.error("Open http://127.0.0.1:4173/studio after a directory Instance loads.")
+    console.error("Open http://127.0.0.1:4173/studio after opencode serve + a project directory loads.")
     return 2
   }
 

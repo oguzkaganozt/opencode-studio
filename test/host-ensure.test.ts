@@ -78,21 +78,26 @@ describe("host ensure", () => {
     }
     expect(first.hostUrl).toBe(`http://127.0.0.1:${freePort}`)
 
+    const other = path.join(root, "other")
+    await mkdir(other, { recursive: true })
     const second = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
-      workspace: path.join(root, "other"),
+      workspace: other,
       packageRoot,
       uiDirectory: path.join(packageRoot, "dist", "ui"),
       env,
     })
     expect(second.ok).toBe(true)
     if (!second.ok) return
-    // Same process: reuse only via owned handle state.
+    // Same process: reuse owned handle and rebind workspace (no first-directory pin).
     expect(second.reused).toBe(true)
     expect(second.hostUrl).toBe(first.hostUrl)
+    expect(second.workspace).toBe(other)
 
     const health = await fetch(`${first.hostUrl}/studio-api/health`)
     expect(health.ok).toBe(true)
+    const healthBody = (await health.json()) as { workspace?: string }
+    expect(healthBody.workspace).toBe(other)
   }, 30_000)
 
   test("foreign Studio health on port is not reused", async () => {

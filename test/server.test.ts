@@ -26,14 +26,19 @@ async function isolatedHost() {
   }
 }
 
-function fakeOpenCodeBridge() {
+function fakeOpenCodeBridge(workspace = "/tmp") {
   const proxyRequests: string[] = []
+  let active = workspace
   const bridge: OpenCodeBridge = {
     proxy: async (request) => {
       proxyRequests.push(request.url)
       return new Response("OpenCode proxy")
     },
     webSocketTarget: async () => "ws://127.0.0.1:4096",
+    getWorkspace: () => active,
+    setWorkspace: (next) => {
+      active = next
+    },
     close: () => {},
   }
   return { bridge, proxyRequests }

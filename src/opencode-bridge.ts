@@ -1,12 +1,17 @@
+import path from "node:path"
+
 export type OpenCodeBridge = {
   proxy(request: Request): Promise<Response>
   webSocketTarget(requestUrl: string): Promise<string>
+  getWorkspace(): string
+  setWorkspace(workspace: string): void
   close(): void
 }
 
 export type OpenCodeBridgeInput = {
   /** Parent OpenCode HTTP base (already normalized to a fetchable host). */
   baseUrl: string
+  /** Fallback directory when the client does not send one. */
   workspace: string
   env?: NodeJS.ProcessEnv
 }
@@ -32,16 +37,45 @@ function authHeaders(env: NodeJS.ProcessEnv) {
   return openCodeBasicAuthHeaders(env)
 }
 
+function absoluteDirectory(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null
+  let value = raw.trim()
+  if (!value) return null
+  try {
+    value = decodeURIComponent(value)
+  } catch {
+    // keep raw
+  }
+  if (!path.isAbsolute(value)) return null
+  return path.resolve(value)
+}
+
+/** Prefer client directory (OpenCode multi-project UI); else active Studio workspace. */
+export function resolveBridgeDirectory(request: Request, fallbackWorkspace: string): string {
+  const url = new URL(request.url)
+  const fromQuery = absoluteDirectory(url.searchParams.get("directory")) ?? absoluteDirectory(url.searchParams.get("location[directory]"))
+  if (fromQuery) return fromQuery
+  const header = request.headers.get("x-opencode-directory")
+  const fromHeader = absoluteDirectory(header)
+  if (fromHeader) return fromHeader
+  return path.resolve(fallbackWorkspace)
+}
+
 /**
  * Attach-only reverse proxy to a parent OpenCode server.
  * Studio never spawns OpenCode.
+ * Directory follows the client when present so Agent UI stays multi-project; otherwise uses active workspace.
  */
 export function createOpenCodeBridge(input: OpenCodeBridgeInput): OpenCodeBridge {
   const baseUrl = normalizeParentOpenCodeUrl(input.baseUrl)
-  const workspace = input.workspace
+  let workspace = path.resolve(input.workspace)
   const env = input.env ?? process.env
 
   return {
+    getWorkspace: () => workspace,
+    setWorkspace(next: string) {
+      workspace = path.resolve(next)
+    },
     async proxy(request) {
       const incoming = new URL(request.url)
       const upstream = new URL(`${incoming.pathname}${incoming.search}`, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`)
@@ -59,10 +93,11 @@ export function createOpenCodeBridge(input: OpenCodeBridgeInput): OpenCodeBridge
         upstream.pathname === "/" ||
         upstream.pathname.startsWith("/assets/") ||
         /\.(?:png|svg|ico|webmanifest|woff2?|ttf)$/i.test(upstream.pathname)
+      const directory = isStatic ? workspace : resolveBridgeDirectory(request, workspace)
       if (!isStatic) {
-        upstream.searchParams.set("directory", workspace)
-        upstream.searchParams.set("location[directory]", workspace)
-        headers.set("x-opencode-directory", encodeURIComponent(workspace))
+        upstream.searchParams.set("directory", directory)
+        upstream.searchParams.set("location[directory]", directory)
+        headers.set("x-opencode-directory", encodeURIComponent(directory))
       }
       let body: BodyInit | null | undefined = request.method === "GET" || request.method === "HEAD" ? undefined : request.body
       if (body && headers.get("content-type")?.toLowerCase().includes("application/json")) {
@@ -72,7 +107,12 @@ export function createOpenCodeBridge(input: OpenCodeBridgeInput): OpenCodeBridge
           const value = JSON.parse(text) as Record<string, unknown>
           if (value && typeof value === "object" && !Array.isArray(value)) {
             if (value.location && typeof value.location === "object" && !Array.isArray(value.location)) {
-              const location: Record<string, unknown> = { ...(value.location as Record<string, unknown>), directory: workspace }
+              const loc = value.location as Record<string, unknown>
+              const bodyDir = absoluteDirectory(typeof loc.directory === "string" ? loc.directory : undefined)
+              const location: Record<string, unknown> = {
+                ...loc,
+                directory: bodyDir ?? directory,
+              }
               delete location.workspace
               value.location = location
             }
@@ -99,8 +139,12 @@ export function createOpenCodeBridge(input: OpenCodeBridgeInput): OpenCodeBridge
       const incoming = new URL(requestUrl)
       const target = new URL(`${incoming.pathname}${incoming.search}`, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`)
       for (const key of ["directory", "workspace", "location[directory]", "location[workspace]"]) target.searchParams.delete(key)
-      target.searchParams.set("directory", workspace)
-      target.searchParams.set("location[directory]", workspace)
+      const directory =
+        absoluteDirectory(incoming.searchParams.get("directory")) ??
+        absoluteDirectory(incoming.searchParams.get("location[directory]")) ??
+        workspace
+      target.searchParams.set("directory", directory)
+      target.searchParams.set("location[directory]", directory)
       target.protocol = target.protocol === "https:" ? "wss:" : "ws:"
       const password = env.OPENCODE_SERVER_PASSWORD
       if (password) {

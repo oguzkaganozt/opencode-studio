@@ -24,9 +24,11 @@ export type EnsureStudioHostInput = {
   autostart?: string
 }
 
-export type EnsureStudioHostResult = { ok: true; hostUrl: string; studioUrl: string; reused: boolean } | { ok: false; reason: string }
+export type EnsureStudioHostResult =
+  | { ok: true; hostUrl: string; studioUrl: string; reused: boolean; workspace: string }
+  | { ok: false; reason: string }
 
-let state: { bind: StudioBind; handle: HostHandle } | undefined
+let state: { bind: StudioBind; handle: HostHandle; workspace: string } | undefined
 let starting: Promise<EnsureStudioHostResult> | undefined
 
 function autostartDisabled(value: string | undefined) {
@@ -70,6 +72,7 @@ function portBusyReason(port: number, message: string) {
 
 async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.ProcessEnv): Promise<EnsureStudioHostResult> {
   const parentUrl = normalizeParentOpenCodeUrl(input.parentOpenCodeUrl)
+  const workspace = path.resolve(input.workspace)
   let bind: StudioBind
   try {
     bind = resolveStudioBind(input.parentOpenCodeUrl, env)
@@ -78,9 +81,25 @@ async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }
 
-  // Reuse only when this process owns the host handle.
+  // Reuse owned host; rebind domain root when the active OpenCode directory changes.
   if (state && state.bind.port === bind.port && state.bind.hostname === bind.hostname && (await studioHealthOk(state.bind.localUrl))) {
-    return { ok: true, hostUrl: state.bind.localUrl, studioUrl: `${state.bind.localUrl}/studio`, reused: true }
+    if (state.workspace !== workspace) {
+      try {
+        await state.handle.rebindWorkspace(workspace)
+        state.workspace = workspace
+        console.error(`[opencode-studio] Studio workspace → ${workspace}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[opencode-studio] workspace rebind failed: ${message}`)
+      }
+    }
+    return {
+      ok: true,
+      hostUrl: state.bind.localUrl,
+      studioUrl: `${state.bind.localUrl}/studio`,
+      reused: true,
+      workspace: state.workspace,
+    }
   }
   if (state) {
     try {
@@ -105,7 +124,7 @@ async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
   try {
     const handle = await startHost({
-      workspace: input.workspace,
+      workspace,
       parentOpenCodeUrl: parentUrl,
       hostname: bind.hostname,
       port: bind.port,
@@ -115,12 +134,30 @@ async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.
       handleSignals: false,
     })
     const localUrl = `http://127.0.0.1:${handle.server.port}`
-    state = { bind: { ...bind, port: handle.server.port ?? bind.port, localUrl }, handle }
-    return { ok: true, hostUrl: localUrl, studioUrl: `${localUrl}/studio`, reused: false }
+    state = {
+      bind: { ...bind, port: handle.server.port ?? bind.port, localUrl },
+      handle,
+      workspace,
+    }
+    return { ok: true, hostUrl: localUrl, studioUrl: `${localUrl}/studio`, reused: false, workspace }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return { ok: false, reason: portBusyReason(bind.port, message) }
   }
+}
+
+/** Rebind the running host workspace (no-op if host not started). */
+export async function rebindStudioHostWorkspace(workspace: string): Promise<boolean> {
+  if (!state) return false
+  const resolved = path.resolve(workspace)
+  if (state.workspace === resolved) return true
+  await state.handle.rebindWorkspace(resolved)
+  state.workspace = resolved
+  return true
+}
+
+export function getStudioHostWorkspace(): string | undefined {
+  return state?.workspace
 }
 
 export function resetStudioHostEnsureForTests() {

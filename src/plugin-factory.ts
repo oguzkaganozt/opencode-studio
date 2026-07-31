@@ -1,3 +1,4 @@
+import path from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { allStudioIds, maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } from "./config"
 import { ensureForgeRuntimeDir, loadPackageMeta } from "./core/package-meta"
@@ -6,7 +7,7 @@ import { composeStudioPlugins, type StudioPluginContribution } from "./core/plug
 import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
-import { ensureStudioHost } from "./host-ensure"
+import { ensureStudioHost, rebindStudioHostWorkspace } from "./host-ensure"
 import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
 
 export type StudioPluginOptions = UserPathOptions & {
@@ -50,25 +51,31 @@ function parentServerUrl(context: { serverUrl?: URL }): string | undefined {
   }
 }
 
+function pickString(...candidates: unknown[]): string | undefined {
+  for (const value of candidates) {
+    if (typeof value === "string" && value.length > 0) return value
+  }
+  return undefined
+}
+
+function sessionDirectoryFromEvent(event: { type: string; properties?: unknown }): string | undefined {
+  if (event.type !== "session.created" && event.type !== "session.updated") return undefined
+  const props = event.properties as { info?: { directory?: unknown } } | undefined
+  const directory = props?.info?.directory
+  return typeof directory === "string" && path.isAbsolute(directory) ? path.resolve(directory) : undefined
+}
+
 export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): Plugin {
   return async (context, rawOptions) => {
     assertNotRoot("initialize the OpenCode Studio plugin")
     const packageRoot = defaults.packageRoot ?? packageRootFrom(import.meta.dir)
     const meta = await loadPackageMeta(packageRoot)
     const userPaths = pickUserPaths(defaults)
-    const workspace =
-      typeof rawOptions?.workspace === "string" && rawOptions.workspace.length > 0
-        ? rawOptions.workspace
-        : typeof defaults.workspace === "string"
-          ? defaults.workspace
-          : context.directory
+    const workspace = path.resolve(
+      pickString(rawOptions?.workspace, defaults.workspace, context.directory) ?? process.env.HOME ?? process.cwd(),
+    )
 
-    let hostUrl =
-      typeof rawOptions?.hostUrl === "string" && rawOptions.hostUrl.length > 0
-        ? rawOptions.hostUrl.replace(/\/$/, "")
-        : typeof defaults.hostUrl === "string"
-          ? defaults.hostUrl.replace(/\/$/, "")
-          : undefined
+    let hostUrl = pickString(rawOptions?.hostUrl, defaults.hostUrl)?.replace(/\/$/, "")
 
     const shouldEnsure = defaults.ensureHost !== false && rawOptions?.ensureHost !== false
     if (!hostUrl && shouldEnsure) {
@@ -83,7 +90,7 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
         if (ensured.ok) {
           hostUrl = ensured.hostUrl
           if (!ensured.reused) {
-            console.error(`[opencode-studio] Studio host ready: ${ensured.studioUrl}`)
+            console.error(`[opencode-studio] Studio host ready: ${ensured.studioUrl} (workspace ${ensured.workspace})`)
           }
         } else {
           console.error(`[opencode-studio] Studio host not started: ${ensured.reason}`)
@@ -138,6 +145,20 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
     )
     contributions.push(...studioHooks)
 
-    return composeStudioPlugins(contributions)
+    const composed = composeStudioPlugins(contributions)
+    const previousEvent = composed.event
+    composed.event = async (input) => {
+      await previousEvent?.(input)
+      const directory = sessionDirectoryFromEvent(input.event as { type: string; properties?: unknown })
+      if (!directory) return
+      try {
+        const ok = await rebindStudioHostWorkspace(directory)
+        if (ok) console.error(`[opencode-studio] active workspace → ${directory}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[opencode-studio] session workspace rebind failed: ${message}`)
+      }
+    }
+    return composed
   }
 }
