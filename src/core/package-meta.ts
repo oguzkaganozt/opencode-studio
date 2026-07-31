@@ -71,6 +71,54 @@ export function forgeRuntimeDir() {
   return path.join(paths.cache, "forge")
 }
 
+/** Cold `uv sync` budget (separate from design_build's 120s forge build timer). */
+export const FORGE_SYNC_TIMEOUT_MS = 600_000
+
+/**
+ * Run `uv sync --locked` for a forge project dir. Call before timed `forge build`
+ * so dependency install is not killed by the build timeout.
+ */
+export async function syncForgeUvProject(
+  uvPath: string,
+  forgeProjectDir: string,
+  options?: { signal?: AbortSignal; timeoutMs?: number },
+): Promise<void> {
+  const timeoutMs = options?.timeoutMs ?? FORGE_SYNC_TIMEOUT_MS
+  const signal = options?.signal
+  if (signal?.aborted) throw new Error("Forge uv sync aborted")
+
+  const child = Bun.spawn([uvPath, "sync", "--locked", "--project", forgeProjectDir], {
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "ignore",
+  })
+  const timer = setTimeout(() => {
+    try {
+      child.kill()
+    } catch {
+      /* ignore */
+    }
+  }, timeoutMs)
+  const onAbort = () => {
+    try {
+      child.kill()
+    } catch {
+      /* ignore */
+    }
+  }
+  signal?.addEventListener("abort", onAbort, { once: true })
+  try {
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    if (signal?.aborted) throw new Error("Forge uv sync aborted")
+    if (code !== 0) {
+      throw new Error(`Forge uv sync failed (exit ${code ?? 1}): ${stderr.trim() || "no stderr"}`)
+    }
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener("abort", onAbort)
+  }
+}
+
 /**
  * Sync essential forge project files into the XDG cache and return that path.
  * Keeps uv's venv/writable state out of the installed package tree.

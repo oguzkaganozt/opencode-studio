@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto"
 import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { ensureUv } from "../../src/core/engines"
+import { syncForgeUvProject } from "../../src/core/package-meta"
 import { isInside } from "../../src/core/paths"
 import { resolveDesignDirectory, type StudioLayout } from "./library"
 import { readArtifactManifest, readDesignManifest, scaffoldDesignManifest } from "./manifest"
 
-const FORGE_TIMEOUT_MS = 120_000
+/** Timed budget for the forge *build* only (deps are synced separately). */
+const FORGE_BUILD_TIMEOUT_MS = 120_000
 const FORGE_KILL_GRACE_MS = 2_000
 const MAX_PROCESS_OUTPUT_BYTES = 64 * 1024
 
@@ -24,7 +26,23 @@ export type ForgeRunner = (input: { forgeProjectDir: string; designDir: string; 
 
 export const defaultForgeRunner: ForgeRunner = async ({ forgeProjectDir, designDir, signal }) => {
   const uv = await ensureUv()
-  const child = spawn(uv.path, ["--project", forgeProjectDir, "run", "forge", "build", designDir], {
+  // Dep install outside the build timer — cold OCP/uv must not compete with 120s build kill.
+  try {
+    await syncForgeUvProject(uv.path, forgeProjectDir, { signal })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      exitCode: signal?.aborted ? 130 : 1,
+      stdout: "",
+      stderr: message,
+      manifestPath: null,
+      designDir,
+    }
+  }
+
+  // --no-sync: environment already prepared; timer covers geometry build only.
+  const child = spawn(uv.path, ["--project", forgeProjectDir, "run", "--no-sync", "forge", "build", designDir], {
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   })
@@ -53,7 +71,7 @@ export const defaultForgeRunner: ForgeRunner = async ({ forgeProjectDir, designD
   }
   const timer = setTimeout(() => {
     terminate("timeout")
-  }, FORGE_TIMEOUT_MS)
+  }, FORGE_BUILD_TIMEOUT_MS)
   const abort = () => terminate("abort")
   signal?.addEventListener("abort", abort, { once: true })
   if (signal?.aborted) abort()

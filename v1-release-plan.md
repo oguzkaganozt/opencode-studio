@@ -1,7 +1,7 @@
 # Internal server readiness
 
 **Audience:** our team, one (or few) Linux servers — **not** a public product release.  
-**Package pin:** `@oguzkaganozt/opencode-studio@1.0.0` (bump this line when we pin a new build).  
+**Package pin:** `@oguzkaganozt/opencode-studio@1.0.1` (bump this line when we pin a new build).  
 **Done means:** someone on the team can bring up Studio on the box, open CAD/PCB/Files, and run real agent work without tribal knowledge.
 
 Does not replace `AGENTS.md` security rules.
@@ -16,9 +16,9 @@ Does not replace `AGENTS.md` security rules.
 | One `opencode serve` + one project directory at a time | Multi-directory long-lived serve without restart |
 | CAD + PCB + media-core + Files + loadable media-go registration | Flaky optional stubs |
 | Loopback or LAN + Basic + SSH tunnel / our reverse-proxy | In-app TLS, IAM, rate limits |
-| Pin + **repair** + **warm** + restart + open project | Clean-machine CI matrix, arm64 first-class, air-gap seed kit |
+| Pin + **repair** + restart + open project | Clean-machine CI matrix, arm64 first-class, air-gap seed kit |
 
-**Internal v1 exit:** §5 checklist green on the **real** team server (or a clone of it). Package version **1.0.0** = this readiness bar.
+**Internal v1 exit:** §5 checklist green on the **real** team server (or a clone of it). Package version **1.0.1** = this readiness bar.
 
 ---
 
@@ -81,16 +81,16 @@ Export the same password in the shell you use for `curl -u` checks (service `Env
 
 ```bash
 # Prereqs already on PATH: bun, opencode, node, npm
-bun add -g @oguzkaganozt/opencode-studio@1.0.0
+bun add -g @oguzkaganozt/opencode-studio@1.0.1
 hash -r
 command -v opencode-studio
 
 # Postinstall is soft — always repair on a new box
 opencode-studio repair
-opencode-studio warm          # forge venv + build123d-mcp (can take several minutes first time)
+
 opencode-studio status --workspace /abs/project
 # exit 0; plugin-registration + mcp-build123d + skills must be pass (not merely "no fail")
-# cad-forge should be pass after warm; engine:pcb:npm must pass
+# cad-forge may warn until first design_build; engine:pcb:npm should pass
 ```
 
 ### 4.2 Spot-check after repair
@@ -100,7 +100,7 @@ opencode-studio status --workspace /abs/project
 - [ ] MCP `build123d`: absolute `uv` + `build123d-mcp@0.3.80` (matches package-meta / skill)
 - [ ] Skills: `studio-cad`, `studio-pcb`, `studio-media` + managed markers
 - [ ] Engines: ffmpeg, ffprobe, uv, tsci, **npm** — no `fail`
-- [ ] `cad-forge` pass (after `warm`)
+- [ ] `cad-forge` pass (after first design_build)
 
 ### 4.3 Supervise OpenCode
 
@@ -166,14 +166,14 @@ Browser: `http://127.0.0.1:4173/studio` (or SSH tunnel). Open CAD, PCB, Files on
 ```bash
 opencode-studio upgrade   # or bun add -g @…@<new>
 opencode-studio repair
-opencode-studio warm      # if forge/MCP pins or cache wiped
+
 opencode-studio status --workspace /abs/project
 # restart OpenCode
 
 # Rollback
 opencode-studio remove
 bun add -g @oguzkaganozt/opencode-studio@<previous>
-opencode-studio repair && opencode-studio warm
+opencode-studio repair && 
 # restart OpenCode
 ```
 
@@ -185,7 +185,7 @@ When bumping the pin, update the version line at the top of **this file**.
 | --- | --- |
 | status fail after bun add | `repair`; check postinstall skip |
 | plugin/MCP/skill `fail` | `repair`, restart OpenCode |
-| `cad-forge` warn | `opencode-studio warm` |
+| `cad-forge` warn | `
 | `engine:pcb:npm` fail | Install Node/npm on PATH |
 | Unmarked / edited managed skill | Backup, delete skill dir, `repair` |
 | Port busy / foreign health | Free port or `OPENCODE_STUDIO_PORT` |
@@ -204,7 +204,7 @@ Run on the **actual** host we will use.
 
 - [ ] Prereqs: Bun, OpenCode, Node/npm
 - [ ] Pinned package; `opencode-studio` on PATH
-- [ ] `repair` + `warm` + `status --workspace /abs/project` → exit 0  
+- [ ] `repair` + `status --workspace /abs/project` → exit 0  
   - [ ] `plugin-registration` **pass**  
   - [ ] `mcp-build123d` **pass**  
   - [ ] domain + media skills **pass**  
@@ -245,7 +245,7 @@ Run on the **actual** host we will use.
 | --- | --- |
 | G4 skill MCP pin `@0.3.80` | shipped |
 | G2 status fail-closed (plugin/MCP/skills) | shipped |
-| G3 `warm` + `cad-forge` | shipped |
+| G3 forge auto-sync + `cad-forge` | shipped |
 | G5 npm status + ENOENT/tsci fallback | shipped |
 | G1 media-go via package `dist/` + loadable status | shipped |
 | G7 Gerber GET/UI fab-ready gate | shipped |
@@ -272,4 +272,5 @@ Run on the **actual** host we will use.
 | 2026-07-31 | Rewrite: internal server readiness |
 | 2026-07-31 | Polish: warm CLI, status fail-closed, npm/forge checks, G4 pin, runbook greenfield fixes (0.5.18) |
 | 2026-07-31 | **1.0.0:** media-go dist load, Gerber GET/UI gate, CPL MPN, npm→tsci fallback |
+| 2026-07-31 | **1.0.1:** forge uv sync outside build timer; remove `warm` CLI |
 | 2026-07-31 | Pre-release polish: fileURLToPath, MCP pin enforce, Gerber/npm tests, README pin/install |

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { type ParseArgsConfig, parseArgs } from "node:util"
 import { loadPackageMeta } from "./core/package-meta"
-import { configureStudios, getPackageRoot, removeStudios, statusStudios, warmCadRuntimes } from "./lifecycle"
+import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { checkPackageUpgrade, upgradePackage } from "./package-upgrade"
 
 type ParseFail = { ok: false; code: 2 }
@@ -37,7 +37,6 @@ opencode serve and a directory Instance loads.
 Commands:
   status     Health, roots, skills (exit 1 if broken)
   repair     Reinstall plugins, skills, MCP
-  warm       Pre-sync CAD forge venv + build123d-mcp (first CAD session)
   remove     Uninstall managed OpenCode state (package stays)
   upgrade    bun add -g @latest
 
@@ -48,13 +47,13 @@ Flags:
   -v, --version
 
 Examples:
-  opencode-studio repair && opencode-studio warm
+  opencode-studio repair
   opencode-studio status --workspace /abs/project
   opencode serve          # then open project dir → http://127.0.0.1:4173/studio
 
 Notes:
   Studio host lifecycle is owned by opencode serve (plugin ensure-host).
-  Greenfield: always repair (postinstall is soft), then warm for CAD.
+  Greenfield: always repair (postinstall is soft).
   Skip postinstall setup: OPENCODE_STUDIO_SKIP_POSTINSTALL=1
 `)
 }
@@ -89,16 +88,6 @@ Does not uninstall the global package (bun remove -g @oguzkaganozt/opencode-stud
 
 Options:
   --workspace <path>   Optional domain root for local scrub
-  --json
-  -h, --help
-`,
-    warm: `opencode-studio warm [options]
-
-Seed CAD forge into XDG cache, run uv sync --locked, and warm build123d-mcp.
-Run once on a new server (or after wiping ~/.cache/opencode-studio) before the
-first agent CAD session. Cold design_build can hit a 120s timeout without this.
-
-Options:
   --json
   -h, --help
 `,
@@ -210,22 +199,6 @@ async function main(argv: string[]) {
       if (!values["dry-run"]) console.log("Restart OpenCode to load plugins and skills.")
     }
     return 0
-  }
-
-  if (command === "warm") {
-    const parsed = parseCmd(command, rest, {
-      json: { type: "boolean", default: false },
-    })
-    if (!parsed.ok) return parsed.code
-    try {
-      const result = await warmCadRuntimes({ packageRoot })
-      if (parsed.values.json) console.log(JSON.stringify(result, null, 2))
-      else console.log(result.message)
-      return 0
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error))
-      return 1
-    }
   }
 
   if (command === "remove") {

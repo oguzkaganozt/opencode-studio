@@ -2,7 +2,7 @@
 
 OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
 
-**Package:** [`@oguzkaganozt/opencode-studio@1.0.0`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
+**Package:** [`@oguzkaganozt/opencode-studio@1.0.1`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
 **CAD and PCB are always on.** Install wires OpenCode once (plugins, skills, CAD MCP). Media tools and the Files explorer are always on too.
 
@@ -16,15 +16,14 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 ## Install (pinned)
 
 ```bash
-bun add -g @oguzkaganozt/opencode-studio@1.0.0
+bun add -g @oguzkaganozt/opencode-studio@1.0.1
 hash -r
 command -v opencode-studio
 
-# Greenfield: postinstall is soft — always repair, then warm CAD once
+# Greenfield: postinstall is soft — always repair
 opencode-studio repair
-opencode-studio warm
 opencode-studio status --workspace /path/to/your/project
-# exit 0; plugin + media-go + MCP@0.3.80 + skills must pass; cad-forge pass after warm
+# exit 0; plugin + media-go + MCP@0.3.80 + skills must pass
 ```
 
 From a git checkout (before/without registry publish):
@@ -32,7 +31,7 @@ From a git checkout (before/without registry publish):
 ```bash
 bun install && bun run build
 bun link   # or: bun add -g "$(pwd)"
-opencode-studio repair && opencode-studio warm
+opencode-studio repair
 ```
 
 Domain engines ship in the package:
@@ -41,12 +40,12 @@ Domain engines ship in the package:
 | --- | --- |
 | `ffmpeg` / `ffprobe` | `ffmpeg-static` / `ffprobe-static` (arm64: system **ffprobe** on PATH) |
 | `tsci` | bundled `tscircuit` CLI |
-| `uv` | downloaded once into XDG cache on first CAD/status/warm |
+| `uv` | downloaded once into XDG cache on first CAD/status use |
 
 ## Quick start
 
 ```bash
-# after repair + warm + OpenCode restart
+# after repair + OpenCode restart
 cd /path/to/your/project
 opencode serve
 # Open this project directory in OpenCode (UI or API) — required before :4173 listens
@@ -64,7 +63,7 @@ Then open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — O
 
 **Critical:** `:4173` stays down until a project directory Instance loads. Systemd `WorkingDirectory` alone is not enough.
 
-Health: `opencode-studio status` (exit 1 if unwired). CAD cold path: `opencode-studio warm`. Prefer **`OPENCODE_SERVER_PASSWORD`** on the OpenCode process (Studio-only password breaks Agent proxy).
+Health: `opencode-studio status` (exit 1 if unwired). CAD: `design_build` runs forge `uv sync` outside the 120s build timer (no separate warm step). Prefer **`OPENCODE_SERVER_PASSWORD`** on the OpenCode process (Studio-only password breaks Agent proxy).
 
 Studio does **not** spawn OpenCode and has no separate `serve` / systemd host daemon. Lifecycle follows `opencode serve`. Opt out of auto host: `OPENCODE_STUDIO_AUTOSTART=0`.
 
@@ -110,7 +109,6 @@ Missing `studio.json` is fine. Media paths are workspace-scoped. Keep **one** of
 ```bash
 opencode-studio status [--workspace <path>]     # health + version (exit 1 if broken)
 opencode-studio repair [--workspace <path>]     # reinstall plugins/skills/MCP
-opencode-studio warm                            # CAD forge venv + build123d-mcp pre-sync
 opencode-studio remove                          # uninstall managed OpenCode state
 opencode-studio upgrade [--check]               # bun add -g @latest (prefer pin for servers)
 opencode-studio --help | -v
@@ -122,15 +120,15 @@ Shell completion installs on global `bun add -g`. Skip: `OPENCODE_STUDIO_SKIP_PO
 
 ```bash
 # Prefer an explicit pin over unattended @latest
-bun add -g @oguzkaganozt/opencode-studio@1.0.0
-opencode-studio repair && opencode-studio warm
+bun add -g @oguzkaganozt/opencode-studio@1.0.1
+opencode-studio repair
 opencode-studio status --workspace /abs/project
 # restart OpenCode
 
 # Rollback
 opencode-studio remove
 bun add -g @oguzkaganozt/opencode-studio@<previous>
-opencode-studio repair && opencode-studio warm
+opencode-studio repair
 ```
 
 ## Package exports

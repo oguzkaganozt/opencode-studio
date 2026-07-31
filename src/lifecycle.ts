@@ -25,9 +25,7 @@ import {
 } from "./core/opencode-config"
 import {
   BUILD123D_MCP_PACKAGE,
-  BUILD123D_MCP_PYTHON,
   build123dMcpEntry,
-  ensureForgeRuntimeDir,
   forgeRuntimeDir,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
@@ -1009,14 +1007,14 @@ export async function statusStudios(input: LifecyclePaths = {}) {
           id: "cad-forge",
           status: "warn",
           message: `Forge runtime not seeded at ${forgeDir}`,
-          repair: "Run opencode-studio warm (or first design_build)",
+          repair: "Run design_build once (syncs forge deps automatically)",
         })
       } else if (!hasVenv) {
         checks.push({
           id: "cad-forge",
           status: "warn",
           message: `Forge sources present but venv not synced (${forgeDir})`,
-          repair: "Run opencode-studio warm",
+          repair: "Run design_build once (syncs forge deps automatically)",
         })
       } else {
         checks.push({
@@ -1051,62 +1049,6 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     checks,
     ok: !failed,
     restartRequiredHint: "After repair, restart OpenCode so plugins and skills load.",
-  }
-}
-
-const WARM_TIMEOUT_MS = 600_000
-
-async function runCaptured(command: string[], timeoutMs: number): Promise<{ ok: boolean; code: number; stderr: string }> {
-  const child = Bun.spawn(command, { stdout: "pipe", stderr: "pipe", stdin: "ignore" })
-  const timer = setTimeout(() => {
-    try {
-      child.kill()
-    } catch {
-      /* ignore */
-    }
-  }, timeoutMs)
-  try {
-    const [code, stderrBuf] = await Promise.all([child.exited, new Response(child.stderr).text()])
-    return { ok: code === 0, code: code ?? 1, stderr: stderrBuf.trim() }
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-export type WarmCadResult = {
-  forgeDir: string
-  forgeSynced: boolean
-  mcpWarmed: boolean
-  uvPath: string
-  mcpPackage: string
-  message: string
-}
-
-/** Seed forge XDG cache, `uv sync --locked`, and warm build123d-mcp tool env. */
-export async function warmCadRuntimes(input: LifecyclePaths = {}): Promise<WarmCadResult> {
-  assertNotRoot("warm CAD runtimes")
-  const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
-  const uv = await ensureUv()
-  const forgeDir = await ensureForgeRuntimeDir(packageRoot)
-
-  const [sync, mcp] = await Promise.all([
-    runCaptured([uv.path, "sync", "--locked", "--project", forgeDir], WARM_TIMEOUT_MS),
-    runCaptured([uv.path, "tool", "run", "--python", BUILD123D_MCP_PYTHON, BUILD123D_MCP_PACKAGE, "--help"], WARM_TIMEOUT_MS),
-  ])
-  if (!sync.ok) {
-    throw new Error(`Forge uv sync failed (exit ${sync.code}): ${sync.stderr || "no stderr"}`)
-  }
-  if (!mcp.ok) {
-    throw new Error(`build123d-mcp warm failed (exit ${mcp.code}): ${mcp.stderr || "no stderr"}`)
-  }
-
-  return {
-    forgeDir,
-    forgeSynced: true,
-    mcpWarmed: true,
-    uvPath: uv.path,
-    mcpPackage: BUILD123D_MCP_PACKAGE,
-    message: `CAD runtimes warm: forge venv at ${forgeDir}; ${BUILD123D_MCP_PACKAGE} ready`,
   }
 }
 

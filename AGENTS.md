@@ -19,7 +19,7 @@ bun run test:pcb-fixture                          # regenerate PCB authoring fix
 bun run test:package                              # pack + verify shipped files
 bun run test:browser                              # HTTP + Chromium layout/CSS smoke (needs dist/ui)
 bun run dev:ui                                    # Vite :5173 (UI only)
-# CLI (after build/global): status | repair | warm | remove | upgrade
+# CLI (after build/global): status | repair | remove | upgrade
 # Studio host: started in-process by the OpenCode plugin when `opencode serve` loads a directory
 # Internal server bring-up: v1-release-plan.md
 ```
