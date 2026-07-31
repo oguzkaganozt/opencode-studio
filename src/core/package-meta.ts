@@ -120,5 +120,5 @@ export const BUILD123D_MCP = build123dMcpEntry("uv")
 
 export const MANAGED_MCP_KEY = "build123d"
 export const MANAGED_MARKER_NAME = ".opencode-studio-managed.json"
-/** Short managed path under OpenCode home for the media-go auxiliary plugin. */
+/** Legacy filename under OpenCode plugins/ (repair now prefers package dist/media-go.js). */
 export const MANAGED_MEDIA_GO_PLUGIN_NAME = "media-go.js"

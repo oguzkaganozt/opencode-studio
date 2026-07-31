@@ -156,6 +156,21 @@ export function createPcbApi(workspaceRoot: string) {
     const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
     if (!project) return ctx.json({ error: "Project not found" }, 404)
     if (!project.gerbersZipPath) return ctx.json({ error: "Gerbers not exported yet. Run pcb_circuit_export with format 'gerber'." }, 404)
+    if (!project.circuitJsonPath) {
+      return ctx.json({ error: "Circuit JSON missing; rebuild before downloading Gerbers." }, 404)
+    }
+    const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
+    const blockers = manufacturingBlockers(json)
+    if (blockers.length > 0) {
+      return ctx.json(
+        {
+          error: "Gerber download blocked — design is not fabrication-ready",
+          fabricationReady: false,
+          manufacturingBlockers: blockers,
+        },
+        409,
+      )
+    }
     return serveWorkspaceFile(workspaceRoot, project.gerbersZipPath, "application/zip", `${project.name}-gerbers.zip`)
   })
 

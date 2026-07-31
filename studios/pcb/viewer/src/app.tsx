@@ -215,7 +215,10 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
         <span data-ready={project.hasPcbSvg ? "true" : undefined} aria-label={`PCB ${project.hasPcbSvg ? "available" : "unavailable"}`}>
           PCB
         </span>
-        <span data-ready={project.hasGerbersZip ? "true" : undefined} aria-label={`Gerbers ${project.hasGerbersZip ? "available" : "unavailable"}`}>
+        <span
+          data-ready={project.hasGerbersZip && project.fabricationReady ? "true" : undefined}
+          aria-label={`Gerbers ${project.hasGerbersZip && project.fabricationReady ? "fab-ready" : "unavailable"}`}
+        >
           Gerbers
         </span>
       </div>
@@ -729,7 +732,7 @@ function ProjectPage() {
               {project.built ? "Draft rebuild request" : "Draft build request"}
             </button>
           )}
-          {project.hasGerbersZip && id && (
+          {project.hasGerbersZip && project.fabricationReady && id && (
             <a href={api.gerbersZipUrl(id)} download className="pcb-chip">
               Gerbers ↓
             </a>

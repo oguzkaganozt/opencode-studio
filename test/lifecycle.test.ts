@@ -37,6 +37,16 @@ describe("configureStudios", () => {
     expect(status.studios.every((s) => s.enabled)).toBe(true)
   })
 
+  test("status fails closed when plugins/MCP/skills are unwired", async () => {
+    const ctx = await isolated()
+    const status = await statusStudios(ctx)
+    expect(status.ok).toBe(false)
+    expect(status.checks.some((c) => c.id === "plugin-registration" && c.status === "fail")).toBe(true)
+    expect(status.checks.some((c) => c.id === "mcp-build123d" && c.status === "fail")).toBe(true)
+    expect(status.checks.some((c) => c.id === "skill:cad" && c.status === "fail")).toBe(true)
+    expect(status.checks.some((c) => c.id === "skill:media" && c.status === "fail")).toBe(true)
+  })
+
   test("installs all domain skills and plugins globally", async () => {
     const ctx = await isolated()
     const result = await configureStudios({
@@ -106,13 +116,23 @@ describe("configureStudios", () => {
       validateOpenCode: false,
     })
     const result = await statusStudios(ctx)
-    expect(result.ok).toBe(true)
     expect(result.packageVersion).toBeTruthy()
     expect(result.checks.some((c) => c.id === "skill:pcb" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "skill:cad" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "skill:media" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "mcp-build123d" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "plugin-registration" && c.status === "pass")).toBe(true)
+    expect(result.checks.some((c) => c.id === "cad-forge")).toBe(true)
+    expect(result.checks.some((c) => c.id === "engine:pcb:npm")).toBe(true)
+    const hasDistMediaGo = await Bun.file(path.join(packageRoot, "dist/media-go.js")).exists()
+    const mediaGo = result.checks.find((c) => c.id === "plugin-media-go")
+    if (hasDistMediaGo) {
+      expect(mediaGo?.status).toBe("pass")
+      expect(result.ok).toBe(true)
+    } else {
+      expect(mediaGo?.status).toBe("fail")
+      expect(result.ok).toBe(false)
+    }
   })
 
   test("configure scrubs legacy project-local managed files", async () => {

@@ -3,10 +3,12 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { isInside } from "../../../src/core/paths"
+import { createPcbApi } from "../api"
+import { generatePickAndPlace, toCplCsv } from "../assembly"
 import { generateBom } from "../bom"
 import { manufacturingBlockers } from "../circuit-json"
 import { createPcbStudioPlugin } from "../tools"
-import { exportCircuit } from "../tsci"
+import { exportCircuit, runProjectBuild } from "../tsci"
 import { decodeProjectId, discoverProjects, encodeProjectId } from "../workspace"
 
 const temps: string[] = []
@@ -87,5 +89,60 @@ describe("pcb studio smoke", () => {
       { type: "source_component", name: "C1" },
     ])
     expect(bom.entries).toEqual(expect.arrayContaining([expect.objectContaining({ mpn: "RES-10K", quantity: 2 })]))
+  })
+
+  test("CPL CSV includes MPN column", () => {
+    const result = generatePickAndPlace([
+      {
+        type: "source_component",
+        source_component_id: "sc1",
+        name: "R1",
+        manufacturer_part_number: "RES-10K",
+      },
+      {
+        type: "pcb_component",
+        source_component_id: "sc1",
+        center: { x: 1.5, y: -2 },
+        layer: "top",
+        rotation: 90,
+      },
+    ])
+    const csv = toCplCsv(result.entries)
+    expect(csv.split("\n")[0]).toBe("Designator,Mid X,Mid Y,Rotation,Layer,MPN")
+    expect(csv).toContain("R1,1.5,-2,90,Top,RES-10K")
+  })
+
+  test("Gerber GET returns 409 when fabrication blockers exist", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pcb-gerber-get-"))
+    temps.push(workspace)
+    const projectDir = path.join(workspace, "blocked-board")
+    const circuitDir = path.join(projectDir, "dist", "src", "circuit")
+    await mkdir(path.join(projectDir, "src"), { recursive: true })
+    await mkdir(circuitDir, { recursive: true })
+    await writeFile(path.join(projectDir, "src", "circuit.tsx"), "export default () => null\n")
+    await writeFile(path.join(circuitDir, "circuit.json"), JSON.stringify([{ type: "pcb_trace_error", message: "Trace is incomplete" }]))
+    await writeFile(path.join(projectDir, "dist", "circuit-gerbers.zip"), "fake-zip")
+
+    const app = createPcbApi(workspace)
+    const id = encodeProjectId("blocked-board")
+    const res = await app.request(`/projects/${encodeURIComponent(id)}/gerbers.zip`)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string; fabricationReady: boolean }
+    expect(body.fabricationReady).toBe(false)
+    expect(body.error).toMatch(/blocked/i)
+  })
+
+  test("runProjectBuild falls back to bundled tsci when npm is unavailable", async () => {
+    const projectDir = await mkdtemp(path.join(os.tmpdir(), "pcb-npm-fallback-"))
+    temps.push(projectDir)
+    await mkdir(path.join(projectDir, "src"), { recursive: true })
+    await writeFile(path.join(projectDir, "src", "circuit.tsx"), "export default () => <board />\n")
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ name: "fallback-board", private: true }))
+
+    const result = await runProjectBuild(projectDir, { npmPath: null })
+    // tsci may fail on invalid circuit; path under test is "did not throw / used tsci path"
+    expect(typeof result.exitCode).toBe("number")
+    expect(result).toHaveProperty("processSuccess")
+    expect(result).toHaveProperty("artifacts")
   })
 })

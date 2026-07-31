@@ -64,7 +64,7 @@ The presence of a BSpline face, a high face count, or one flattering render is n
 
 ### build123d-mcp (CAD sculpting - interactive session)
 
-OpenCode exposes the pinned `build123d-mcp@0.3.77` server under the `build123d_` prefix. Use the exact tool names and arguments below. Call `build123d_workflow_hints()` when unsure; do not invent a standalone MCP tool from an in-session Python helper.
+OpenCode exposes the pinned `build123d-mcp@0.3.80` server under the `build123d_` prefix. Use the exact tool names and arguments below. Call `build123d_workflow_hints()` when unsure; do not invent a standalone MCP tool from an in-session Python helper.
 
 Treat this skill as the default workflow. Do not load `build123d://skill/modeling` or `build123d://quickref` unless `build123d_workflow_hints()` cannot resolve a concrete blocker; never read a resource already present in the conversation.
 

@@ -19,7 +19,9 @@ bun run test:pcb-fixture                          # regenerate PCB authoring fix
 bun run test:package                              # pack + verify shipped files
 bun run test:browser                              # HTTP + Chromium layout/CSS smoke (needs dist/ui)
 bun run dev:ui                                    # Vite :5173 (UI only)
+# CLI (after build/global): status | repair | warm | remove | upgrade
 # Studio host: started in-process by the OpenCode plugin when `opencode serve` loads a directory
+# Internal server bring-up: v1-release-plan.md
 ```
 
 CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` → `bun install --frozen-lockfile` → `bun run release:check`. Bun ≥ 1.3, Python 3.12 + uv for forge/MCP.
@@ -48,7 +50,7 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 - `opencode-studio repair` and UI **Repair install** / `PUT /api/config` re-run the same install (loopback + CSRF). Restart **OpenCode** after install so plugins/skills load.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
 - Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` **uninstalls** managed plugins/skills/MCP from OpenCode home (not the npm package).
-- **OpenCode-first host:** lifecycle is owned by `opencode serve`. Plugin ensure-hosts Viewer in-process (first `context.directory` pinned for the host lifetime; later OpenCode directories are unsupported — tools may disagree with the viewer), attaches to `context.serverUrl`, reverse-proxies parent at `/` for Agent. Studio **never** spawns OpenCode; no user-facing `serve`/host systemd. Bind follows parent / `OPENCODE_STUDIO_*`; port `OPENCODE_STUDIO_PORT` (default 4173; busy fails, no ephemeral). Ensure reuses only when **this process** owns the host. Opt out: `OPENCODE_STUDIO_AUTOSTART=0`. See `ROADMAP-OPENCODE-FIRST.md`.
+- **OpenCode-first host:** lifecycle is owned by `opencode serve`. Plugin ensure-hosts Viewer in-process (first `context.directory` pinned for the host lifetime; later OpenCode directories are unsupported — tools may disagree with the viewer), attaches to `context.serverUrl`, reverse-proxies parent at `/` for Agent. Studio **never** spawns OpenCode; no user-facing `serve`/host systemd. Bind follows parent / `OPENCODE_STUDIO_*`; port `OPENCODE_STUDIO_PORT` (default 4173; busy fails, no ephemeral). Ensure reuses only when **this process** owns the host. Opt out: `OPENCODE_STUDIO_AUTOSTART=0`.
 
 ## Hard rules
 

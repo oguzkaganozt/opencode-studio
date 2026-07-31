@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
-import { copyFile, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises"
+import { access, mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import {
   allStudioIds,
   legacyStudioConfigPath,
@@ -25,7 +25,10 @@ import {
 } from "./core/opencode-config"
 import {
   BUILD123D_MCP_PACKAGE,
+  BUILD123D_MCP_PYTHON,
   build123dMcpEntry,
+  ensureForgeRuntimeDir,
+  forgeRuntimeDir,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
   MANAGED_MCP_KEY,
@@ -232,20 +235,64 @@ function isManagedMediaGoPluginEntry(entry: unknown) {
   return base === MANAGED_MEDIA_GO_PLUGIN_NAME || base?.endsWith("/media-go") === true || base?.endsWith("media-go.js") === true
 }
 
-/** Copy bundled media-go into OpenCode plugins/ for a short, stable file:// entry. */
-async function installManagedMediaGoPlugin(packageRoot: string, userPaths: UserPathOptions) {
-  const source = path.join(packageRoot, "dist", "media-go.js")
+/**
+ * Register media-go from the package dist/ so node_modules resolve and packageRootFrom(dist) works.
+ * Legacy plugins/media-go.js copies are removed (they broke load when packages were external).
+ * Without dist/ (dev/test), write a stub under plugins/ so configure still succeeds; status fails the stub.
+ */
+async function resolveMediaGoPluginEntry(packageRoot: string, userPaths: UserPathOptions, dryRun: boolean) {
+  const distPath = path.join(packageRoot, "dist", "media-go.js")
   const pluginsHome = resolveOpenCodePluginsHome(userPaths)
-  await mkdir(pluginsHome, { recursive: true, mode: 0o755 })
-  const target = path.join(pluginsHome, MANAGED_MEDIA_GO_PLUGIN_NAME)
-  if (await Bun.file(source).exists()) {
-    await copyFile(source, target)
-  } else {
-    // Source checkout / unit tests may lack dist/; shipped package always includes it.
-    // Still write a loadable stub so configure + OpenCode config stay valid offline.
-    await writeFile(target, "export default async function mediaGoStub() {\n  return {}\n}\n", "utf8")
+  const legacyTarget = path.join(pluginsHome, MANAGED_MEDIA_GO_PLUGIN_NAME)
+  if (!dryRun) {
+    await rm(legacyTarget, { force: true }).catch(() => {})
   }
-  return pathToFileURL(target).href
+  if (await Bun.file(distPath).exists()) {
+    return pathToFileURL(distPath).href
+  }
+  await mkdir(pluginsHome, { recursive: true, mode: 0o755 })
+  if (!dryRun) {
+    await writeFile(legacyTarget, "export default async function mediaGoStub() {\n  return {}\n}\n", "utf8")
+  }
+  return pathToFileURL(legacyTarget).href
+}
+
+function mediaGoEntryFilePath(entry: unknown): string | null {
+  const s = String(entry)
+  if (s.startsWith("file://")) {
+    try {
+      return path.normalize(fileURLToPath(s))
+    } catch {
+      return null
+    }
+  }
+  if (s.endsWith("media-go.js") || s.includes("/media-go")) return path.normalize(s)
+  return null
+}
+
+function build123dMcpPackagePin(entry: unknown): string | null {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null
+  const command = (entry as { command?: unknown }).command
+  if (!Array.isArray(command)) return null
+  for (const part of command.map(String)) {
+    if (part.startsWith("build123d-mcp@") || part === "build123d-mcp") return part.includes("@") ? part : "build123d-mcp"
+  }
+  return null
+}
+
+async function mediaGoLoadable(entry: unknown): Promise<{ ok: boolean; detail: string }> {
+  const filePath = mediaGoEntryFilePath(entry)
+  if (!filePath) return { ok: false, detail: "media-go entry is not a file:// path" }
+  if (!(await Bun.file(filePath).exists())) return { ok: false, detail: `media-go missing at ${filePath}` }
+  try {
+    const body = await readFile(filePath, "utf8")
+    if (body.includes("mediaGoStub")) {
+      return { ok: false, detail: "media-go is a stub (build package dist/ first)" }
+    }
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : String(error) }
+  }
+  return { ok: true, detail: filePath }
 }
 
 async function removeManagedMediaGoPluginFile(userPaths: UserPathOptions) {
@@ -402,10 +449,8 @@ export async function configureStudios(
   const openCode = await readOpenCodeConfig(configPath)
   let plugins = [...pluginEntries(openCode)]
 
-  // Short stable path under OpenCode home (avoids long global node_modules file:// URLs in UI).
-  const mediaGoFile = input.dryRun
-    ? pathToFileURL(path.join(resolveOpenCodePluginsHome(userPaths), MANAGED_MEDIA_GO_PLUGIN_NAME)).href
-    : await installManagedMediaGoPlugin(packageRoot, userPaths)
+  // OpenCode 1.18: npm subpath is not a server entry — file:// into package dist/media-go.js.
+  const mediaGoFile = await resolveMediaGoPluginEntry(packageRoot, userPaths, Boolean(input.dryRun))
   plugins = plugins.filter((entry) => {
     if (isManagedMediaGoPluginEntry(entry)) return false
     const s = String(entry)
@@ -416,7 +461,6 @@ export async function configureStudios(
     return base !== meta.name && !base.startsWith(`${meta.name}/`)
   })
   plugins.push(meta.pluginSpecifier)
-  // OpenCode 1.18: npm subpath is not a server entry — auxiliary media-go via managed file://.
   plugins.push(mediaGoFile)
 
   let nextText = configWithPlugins(openCode, plugins)
@@ -742,37 +786,75 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     const openCode = await readOpenCodeConfig(openCodePath)
     const entries = pluginEntries(openCode)
     const registered = entries.some((entry) => pluginEntryMatches(entry, meta.name) || pluginEntryMatches(entry, meta.pluginSpecifier))
-    const mediaGo = entries.some((entry) => isManagedMediaGoPluginEntry(entry))
+    const mediaGoEntry = entries.find((entry) => isManagedMediaGoPluginEntry(entry))
     checks.push({
       id: "plugin-registration",
-      status: registered ? "pass" : "warn",
+      status: registered ? "pass" : "fail",
       message: registered ? `Plugin registered in ${openCodePath}` : `Plugin not registered in ${openCodePath}`,
       repair: registered ? undefined : "Run opencode-studio repair",
     })
-    checks.push({
-      id: "plugin-media-go",
-      status: mediaGo ? "pass" : "warn",
-      message: mediaGo ? "media-go auxiliary plugin registered (OpenCode plugins/)" : "media-go not registered",
-      repair: mediaGo ? undefined : "Run opencode-studio repair",
-    })
+    if (!mediaGoEntry) {
+      checks.push({
+        id: "plugin-media-go",
+        status: "fail",
+        message: "media-go not registered",
+        repair: "Run opencode-studio repair",
+      })
+    } else {
+      const loadable = await mediaGoLoadable(mediaGoEntry)
+      checks.push({
+        id: "plugin-media-go",
+        status: loadable.ok ? "pass" : "fail",
+        message: loadable.ok ? `media-go loadable (${loadable.detail})` : loadable.detail,
+        repair: loadable.ok ? undefined : "Run bun run build && opencode-studio repair (needs dist/media-go.js)",
+      })
+    }
     const mcpEntry = mcpEntries(openCode)[MANAGED_MCP_KEY]
     const hasMcp = isManagedBuild123dEntry(mcpEntry)
     const mcpCommand = hasMcp && mcpEntry && typeof mcpEntry === "object" ? (mcpEntry as { command?: unknown }).command : null
     const mcpUv = Array.isArray(mcpCommand) ? String(mcpCommand[0] ?? "") : ""
     const mcpUvOk = mcpUv.length > 0 && (mcpUv.includes("/") || mcpUv === "uv")
-    checks.push({
-      id: "mcp-build123d",
-      status: hasMcp ? "pass" : "warn",
-      message: hasMcp
-        ? `build123d MCP registered (${mcpUvOk && mcpUv.includes("/") ? "absolute uv" : "uv"}) in ${openCodePath}`
-        : `build123d MCP not registered in ${openCodePath}`,
-      repair: hasMcp ? undefined : "Run opencode-studio repair",
-    })
+    const mcpPin = hasMcp ? build123dMcpPackagePin(mcpEntry) : null
+    const mcpPinOk = mcpPin === BUILD123D_MCP_PACKAGE
+    if (!hasMcp) {
+      checks.push({
+        id: "mcp-build123d",
+        status: "fail",
+        message: `build123d MCP not registered in ${openCodePath}`,
+        repair: "Run opencode-studio repair",
+      })
+    } else if (!mcpPinOk) {
+      checks.push({
+        id: "mcp-build123d",
+        status: "fail",
+        message: `build123d MCP pin mismatch (have ${mcpPin ?? "unknown"}, want ${BUILD123D_MCP_PACKAGE})`,
+        repair: "Run opencode-studio repair",
+      })
+    } else {
+      checks.push({
+        id: "mcp-build123d",
+        status: "pass",
+        message: `build123d MCP ${BUILD123D_MCP_PACKAGE} (${mcpUvOk && mcpUv.includes("/") ? "absolute uv" : "uv"}) in ${openCodePath}`,
+      })
+    }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     checks.push({
       id: "plugin-registration",
       status: "fail",
-      message: error instanceof Error ? error.message : String(error),
+      message,
+    })
+    checks.push({
+      id: "plugin-media-go",
+      status: "fail",
+      message: `Could not verify media-go: ${message}`,
+      repair: "Run opencode-studio repair",
+    })
+    checks.push({
+      id: "mcp-build123d",
+      status: "fail",
+      message: `Could not verify build123d MCP: ${message}`,
+      repair: "Run opencode-studio repair",
     })
   }
 
@@ -783,7 +865,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     const marker = await readMarker(paths.markerFile)
     const sourceDigest = await skillDigest(paths.sourceSkillFile)
     if (!existingDigest) {
-      checks.push({ id: "skill:media", status: "warn", message: `Missing skill ${paths.skillFile}`, repair: "Run opencode-studio repair" })
+      checks.push({ id: "skill:media", status: "fail", message: `Missing skill ${paths.skillFile}`, repair: "Run opencode-studio repair" })
     } else if (!marker) {
       checks.push({ id: "skill:media", status: "fail", message: `Unmarked skill at ${paths.skillDirectory}` })
     } else if (marker.digest !== existingDigest) {
@@ -797,11 +879,18 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       try {
         const resolved = resolveEngine(engine)
         if (!resolved) {
+          const armFfprobe =
+            engine === "ffprobe" && process.platform === "linux" && process.arch === "arm64"
+              ? " — linux/arm64 has no bundled ffprobe-static; install system ffprobe on PATH"
+              : ""
           checks.push({
             id: `engine:platform:${engine}`,
             status: "fail",
-            message: `${engine} missing (expected bundled with the package)`,
-            repair: "Reinstall @oguzkaganozt/opencode-studio",
+            message: `${engine} missing (expected bundled with the package)${armFfprobe}`,
+            repair:
+              engine === "ffprobe" && process.platform === "linux" && process.arch === "arm64"
+                ? "Install ffprobe on PATH (e.g. ffmpeg package) or reinstall on amd64"
+                : "Reinstall @oguzkaganozt/opencode-studio",
           })
         } else {
           checks.push({
@@ -886,6 +975,58 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         })
       }
     }
+
+    if (studioId === "pcb") {
+      const npmPath = Bun.which("npm")
+      checks.push({
+        id: "engine:pcb:npm",
+        status: npmPath ? "pass" : "warn",
+        message: npmPath
+          ? `npm available (${npmPath})`
+          : "npm missing on PATH — PCB build falls back to bundled tsci (install Node/npm for full project scripts)",
+        repair: npmPath ? undefined : "Install Node.js (includes npm) for preferred PCB authoring",
+      })
+    }
+
+    if (studioId === "cad") {
+      const forgeDir = forgeRuntimeDir()
+      const pyproject = path.join(forgeDir, "pyproject.toml")
+      const venvDir = path.join(forgeDir, ".venv")
+      let hasProject = false
+      let hasVenv = false
+      try {
+        await access(pyproject)
+        hasProject = true
+      } catch {
+        hasProject = false
+      }
+      try {
+        hasVenv = (await stat(venvDir)).isDirectory()
+      } catch {
+        hasVenv = false
+      }
+      if (!hasProject) {
+        checks.push({
+          id: "cad-forge",
+          status: "warn",
+          message: `Forge runtime not seeded at ${forgeDir}`,
+          repair: "Run opencode-studio warm (or first design_build)",
+        })
+      } else if (!hasVenv) {
+        checks.push({
+          id: "cad-forge",
+          status: "warn",
+          message: `Forge sources present but venv not synced (${forgeDir})`,
+          repair: "Run opencode-studio warm",
+        })
+      } else {
+        checks.push({
+          id: "cad-forge",
+          status: "pass",
+          message: `Forge venv ready (${forgeDir})`,
+        })
+      }
+    }
   }
 
   const host = await probeLocalStudioHost()
@@ -911,6 +1052,64 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     checks,
     ok: !failed,
     restartRequiredHint: "After repair, restart OpenCode so plugins and skills load.",
+  }
+}
+
+const WARM_TIMEOUT_MS = 600_000
+
+async function runCaptured(command: string[], timeoutMs: number): Promise<{ ok: boolean; code: number; stderr: string }> {
+  const child = Bun.spawn(command, { stdout: "pipe", stderr: "pipe", stdin: "ignore" })
+  const timer = setTimeout(() => {
+    try {
+      child.kill()
+    } catch {
+      /* ignore */
+    }
+  }, timeoutMs)
+  try {
+    const [code, stderrBuf] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    return { ok: code === 0, code: code ?? 1, stderr: stderrBuf.trim() }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export type WarmCadResult = {
+  forgeDir: string
+  forgeSynced: boolean
+  mcpWarmed: boolean
+  uvPath: string
+  mcpPackage: string
+  message: string
+}
+
+/** Seed forge XDG cache, `uv sync --locked`, and warm build123d-mcp tool env. */
+export async function warmCadRuntimes(input: LifecyclePaths = {}): Promise<WarmCadResult> {
+  assertNotRoot("warm CAD runtimes")
+  const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
+  const uv = await ensureUv()
+  const forgeDir = await ensureForgeRuntimeDir(packageRoot)
+
+  const sync = await runCaptured([uv.path, "sync", "--locked", "--project", forgeDir], WARM_TIMEOUT_MS)
+  if (!sync.ok) {
+    throw new Error(`Forge uv sync failed (exit ${sync.code}): ${sync.stderr || "no stderr"}`)
+  }
+
+  const mcp = await runCaptured(
+    [uv.path, "tool", "run", "--python", BUILD123D_MCP_PYTHON, BUILD123D_MCP_PACKAGE, "--help"],
+    WARM_TIMEOUT_MS,
+  )
+  if (!mcp.ok) {
+    throw new Error(`build123d-mcp warm failed (exit ${mcp.code}): ${mcp.stderr || "no stderr"}`)
+  }
+
+  return {
+    forgeDir,
+    forgeSynced: true,
+    mcpWarmed: true,
+    uvPath: uv.path,
+    mcpPackage: BUILD123D_MCP_PACKAGE,
+    message: `CAD runtimes warm: forge venv at ${forgeDir}; ${BUILD123D_MCP_PACKAGE} ready`,
   }
 }
 

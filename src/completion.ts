@@ -1,4 +1,4 @@
-const COMMANDS = ["status", "repair", "remove", "upgrade"] as const
+const COMMANDS = ["status", "repair", "warm", "remove", "upgrade"] as const
 
 function shellIdent(binName: string) {
   return binName.replaceAll("-", "_")
@@ -25,6 +25,7 @@ export function bashCompletionScript(binName = "opencode-studio") {
     `  case "$cmd" in`,
     `    status|remove) COMPREPLY=($(compgen -W "$common" -- "$cur")) ;;`,
     `    repair) COMPREPLY=($(compgen -W "$common --dry-run" -- "$cur")) ;;`,
+    `    warm) COMPREPLY=($(compgen -W "--json --help -h" -- "$cur")) ;;`,
     `    upgrade) COMPREPLY=($(compgen -W "--check --json --help -h" -- "$cur")) ;;`,
     `  esac`,
     `}`,
@@ -49,6 +50,8 @@ export function zshCompletionScript(binName = "opencode-studio") {
     `      _arguments '--workspace[Domain data root]:path:_files -/' '--json' '(-h --help)'{-h,--help} ;;`,
     `    repair)`,
     `      _arguments '--workspace[Domain data root]:path:_files -/' '--dry-run' '--json' '(-h --help)'{-h,--help} ;;`,
+    `    warm)`,
+    `      _arguments '--json' '(-h --help)'{-h,--help} ;;`,
     `    upgrade)`,
     `      _arguments '--check' '--json' '(-h --help)'{-h,--help} ;;`,
     `  esac`,

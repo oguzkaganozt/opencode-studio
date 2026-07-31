@@ -533,31 +533,54 @@ export async function exportCircuit(
   }
 }
 
+export type RunProjectBuildOptions = {
+  signal?: AbortSignal
+  /** Override npm resolution (tests). `null` forces bundled tsci fallback. */
+  npmPath?: string | null
+}
+
 /**
  * Run the project's `npm run build:source` script (which wraps tsci build + verify).
- * Falls back to a direct tsci build if the script is not defined.
+ * Falls back to bundled tsci when npm is missing, spawn fails with ENOENT, or the script is undefined.
  */
-export async function runProjectBuild(projectDir: string, signal?: AbortSignal): Promise<CircuitBuildResult> {
+export async function runProjectBuild(
+  projectDir: string,
+  signalOrOptions?: AbortSignal | RunProjectBuildOptions,
+): Promise<CircuitBuildResult> {
+  const options: RunProjectBuildOptions =
+    signalOrOptions instanceof AbortSignal || signalOrOptions === undefined ? { signal: signalOrOptions } : signalOrOptions
+  const signal = options.signal
   await clearGeneratedArtifacts(projectDir)
-  // Try the npm script first (preferred — runs verify too)
-  const npmProc = Bun.spawn(["npm", "run", "--silent", "build:source"], {
-    cwd: projectDir,
-    env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
-    stdout: "pipe",
-    stderr: "pipe",
-    signal,
-  })
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(npmProc.stdout).text(),
-    new Response(npmProc.stderr).text(),
-    npmProc.exited,
-  ])
-
-  // npm exits 1 when the script is missing; fall back to tsci directly
-  if (exitCode !== 0 && stderr.includes("Missing script")) {
+  const npmPath = options.npmPath !== undefined ? options.npmPath : Bun.which("npm")
+  if (!npmPath) {
     return buildCircuit(projectDir, signal)
   }
 
-  return finalizeBuild({ success: exitCode === 0, stdout, stderr, exitCode }, projectDir)
+  try {
+    const npmProc = Bun.spawn([npmPath, "run", "--silent", "build:source"], {
+      cwd: projectDir,
+      env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+      signal,
+    })
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(npmProc.stdout).text(),
+      new Response(npmProc.stderr).text(),
+      npmProc.exited,
+    ])
+
+    if (exitCode !== 0 && (stderr.includes("Missing script") || /ENOENT|not found|No such file/i.test(`${stderr}\n${stdout}`))) {
+      return buildCircuit(projectDir, signal)
+    }
+
+    return finalizeBuild({ success: exitCode === 0, stdout, stderr, exitCode }, projectDir)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/ENOENT|not found|No such file/i.test(message)) {
+      return buildCircuit(projectDir, signal)
+    }
+    throw error
+  }
 }

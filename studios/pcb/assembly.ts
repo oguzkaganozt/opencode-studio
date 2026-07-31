@@ -72,8 +72,15 @@ export function generatePickAndPlace(circuitJson: unknown): AssemblyResult {
   return { entries, totalComponents: entries.length, skipped }
 }
 
+function csvCell(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return ""
+  const s = String(value)
+  if (/[",\n\r]/.test(s)) return `"${s.replaceAll('"', '""')}"`
+  return s
+}
+
 export function toCplCsv(entries: AssemblyEntry[]): string {
-  const header = "Designator,Mid X,Mid Y,Rotation,Layer"
-  const rows = entries.map((e) => `${e.designator},${e.midX},${e.midY},${e.rotation},${e.layer}`)
+  const header = "Designator,Mid X,Mid Y,Rotation,Layer,MPN"
+  const rows = entries.map((e) => `${csvCell(e.designator)},${e.midX},${e.midY},${e.rotation},${csvCell(e.layer)},${csvCell(e.mpn)}`)
   return `${[header, ...rows].join("\n")}\n`
 }
