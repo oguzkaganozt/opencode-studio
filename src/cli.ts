@@ -1,8 +1,31 @@
 #!/usr/bin/env bun
-import { parseArgs } from "node:util"
+import { type ParseArgsConfig, parseArgs } from "node:util"
 import { loadPackageMeta } from "./core/package-meta"
 import { configureStudios, getPackageRoot, removeStudios, statusStudios, warmCadRuntimes } from "./lifecycle"
 import { checkPackageUpgrade, upgradePackage } from "./package-upgrade"
+
+type ParseFail = { ok: false; code: 2 }
+type ParseOk<T> = { ok: true; values: T }
+
+function parseCmd<T extends ParseArgsConfig["options"]>(
+  command: string,
+  rest: string[],
+  options: T,
+): ParseOk<ReturnType<typeof parseArgs<{ options: T }>>["values"]> | ParseFail {
+  try {
+    const parsed = parseArgs({
+      args: rest,
+      options,
+      allowPositionals: false,
+      strict: true,
+    })
+    return { ok: true, values: parsed.values }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    printCommandHelp(command)
+    return { ok: false, code: 2 }
+  }
+}
 
 function printHelp() {
   console.log(`opencode-studio
@@ -106,12 +129,6 @@ function wantsVersion(args: string[]) {
   return args.length === 1 && (args[0] === "-v" || args[0] === "--version")
 }
 
-function failParse(command: string, error: unknown) {
-  console.error(error instanceof Error ? error.message : String(error))
-  printCommandHelp(command)
-  return 2
-}
-
 async function main(argv: string[]) {
   if (argv.length === 0 || (argv.length === 1 && wantsHelp(argv))) {
     printHelp()
@@ -132,21 +149,12 @@ async function main(argv: string[]) {
   const packageRoot = getPackageRoot()
 
   if (command === "status") {
-    let values: { workspace?: string; json?: boolean }
-    try {
-      const parsed = parseArgs({
-        args: rest,
-        options: {
-          workspace: { type: "string" },
-          json: { type: "boolean", default: false },
-        },
-        allowPositionals: false,
-        strict: true,
-      })
-      values = parsed.values
-    } catch (error) {
-      return failParse("status", error)
-    }
+    const parsed = parseCmd(command, rest, {
+      workspace: { type: "string" },
+      json: { type: "boolean", default: false },
+    })
+    if (!parsed.ok) return parsed.code
+    const values = parsed.values
     const result = await statusStudios({ workspace: values.workspace, packageRoot })
     if (values.json) {
       console.log(JSON.stringify(result, null, 2))
@@ -181,22 +189,13 @@ async function main(argv: string[]) {
   }
 
   if (command === "repair") {
-    let values: { workspace?: string; "dry-run"?: boolean; json?: boolean }
-    try {
-      const parsed = parseArgs({
-        args: rest,
-        options: {
-          workspace: { type: "string" },
-          "dry-run": { type: "boolean", default: false },
-          json: { type: "boolean", default: false },
-        },
-        allowPositionals: false,
-        strict: true,
-      })
-      values = parsed.values
-    } catch (error) {
-      return failParse("repair", error)
-    }
+    const parsed = parseCmd(command, rest, {
+      workspace: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+    })
+    if (!parsed.ok) return parsed.code
+    const values = parsed.values
     const result = await configureStudios({
       workspace: values.workspace,
       packageRoot,
@@ -214,23 +213,13 @@ async function main(argv: string[]) {
   }
 
   if (command === "warm") {
-    let values: { json?: boolean }
-    try {
-      const parsed = parseArgs({
-        args: rest,
-        options: {
-          json: { type: "boolean", default: false },
-        },
-        allowPositionals: false,
-        strict: true,
-      })
-      values = parsed.values
-    } catch (error) {
-      return failParse("warm", error)
-    }
+    const parsed = parseCmd(command, rest, {
+      json: { type: "boolean", default: false },
+    })
+    if (!parsed.ok) return parsed.code
     try {
       const result = await warmCadRuntimes({ packageRoot })
-      if (values.json) console.log(JSON.stringify(result, null, 2))
+      if (parsed.values.json) console.log(JSON.stringify(result, null, 2))
       else console.log(result.message)
       return 0
     } catch (error) {
@@ -240,21 +229,12 @@ async function main(argv: string[]) {
   }
 
   if (command === "remove") {
-    let values: { workspace?: string; json?: boolean }
-    try {
-      const parsed = parseArgs({
-        args: rest,
-        options: {
-          workspace: { type: "string" },
-          json: { type: "boolean", default: false },
-        },
-        allowPositionals: false,
-        strict: true,
-      })
-      values = parsed.values
-    } catch (error) {
-      return failParse("remove", error)
-    }
+    const parsed = parseCmd(command, rest, {
+      workspace: { type: "string" },
+      json: { type: "boolean", default: false },
+    })
+    if (!parsed.ok) return parsed.code
+    const values = parsed.values
     const result = await removeStudios({ workspace: values.workspace, packageRoot })
     if (values.json) console.log(JSON.stringify(result, null, 2))
     else console.log("Removed managed plugins/skills/MCP. Restart OpenCode. Run repair to reinstall.")
@@ -262,21 +242,12 @@ async function main(argv: string[]) {
   }
 
   if (command === "upgrade") {
-    let values: { check?: boolean; json?: boolean }
-    try {
-      const parsed = parseArgs({
-        args: rest,
-        options: {
-          check: { type: "boolean", default: false },
-          json: { type: "boolean", default: false },
-        },
-        allowPositionals: false,
-        strict: true,
-      })
-      values = parsed.values
-    } catch (error) {
-      return failParse("upgrade", error)
-    }
+    const parsed = parseCmd(command, rest, {
+      check: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+    })
+    if (!parsed.ok) return parsed.code
+    const values = parsed.values
 
     if (values.check) {
       const result = await checkPackageUpgrade({ packageRoot })

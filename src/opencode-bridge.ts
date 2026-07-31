@@ -20,11 +20,16 @@ export function normalizeParentOpenCodeUrl(raw: string | URL): string {
   return url.href.replace(/\/$/, "")
 }
 
-function authHeaders(env: NodeJS.ProcessEnv) {
+/** Basic auth headers for parent OpenCode when OPENCODE_SERVER_PASSWORD is set. */
+export function openCodeBasicAuthHeaders(env: NodeJS.ProcessEnv = process.env): Record<string, string> | undefined {
   const password = env.OPENCODE_SERVER_PASSWORD
   if (!password) return undefined
   const username = env.OPENCODE_SERVER_USERNAME || "opencode"
   return { Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` }
+}
+
+function authHeaders(env: NodeJS.ProcessEnv) {
+  return openCodeBasicAuthHeaders(env)
 }
 
 /**

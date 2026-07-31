@@ -1,6 +1,7 @@
 import { mkdir, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { engineCommand, resolveTsci } from "../../src/core/engines"
 import {
   type CircuitInspection,
   inspectCircuitJson,
@@ -132,7 +133,6 @@ async function runCommand(command: string[], cwd: string, signal?: AbortSignal):
 }
 
 async function run(args: string[], cwd: string, signal?: AbortSignal): Promise<TsciResult> {
-  const { engineCommand, resolveTsci } = await import("../../src/core/engines")
   const engine = resolveTsci()
   if (engine) return runCommand([...engineCommand(engine), ...args], cwd, signal)
   // Last resort: npx (offline installs should hit the bundled tscircuit dependency).
@@ -494,20 +494,23 @@ export async function exportCircuit(
   const formatsToGenerate = formats.filter((format) => !blockedFormats.includes(format as "gerber"))
   const generatedFormats: Array<"schematic" | "pcb" | "gerber"> = []
 
-  for (const format of formatsToGenerate) {
-    const args =
-      format === "gerber"
-        ? ["export", circuitJsonPath, "--format", "gerbers", "--output", "../../circuit-gerbers.zip"]
-        : ["export", circuitJsonPath, "--format", `${format}-svg`, "--output", `../../${format}.svg`]
-
-    const result = await run(args, projectDir, signal)
+  const exportResults = await Promise.all(
+    formatsToGenerate.map(async (format) => {
+      const args =
+        format === "gerber"
+          ? ["export", circuitJsonPath, "--format", "gerbers", "--output", "../../circuit-gerbers.zip"]
+          : ["export", circuitJsonPath, "--format", `${format}-svg`, "--output", `../../${format}.svg`]
+      const result = await run(args, projectDir, signal)
+      return { format, result }
+    }),
+  )
+  for (const { format, result } of exportResults) {
     lastResult = {
       success: lastResult.success && result.success,
       stdout: [lastResult.stdout, result.stdout].filter(Boolean).join("\n"),
       stderr: [lastResult.stderr, result.stderr].filter(Boolean).join("\n"),
       exitCode: result.exitCode !== 0 ? result.exitCode : lastResult.exitCode,
     }
-
     if (result.success) {
       generatedFormats.push(format)
       if (format === "schematic") artifacts.schematicSvgPath = path.join(projectDir, "dist", "schematic.svg")

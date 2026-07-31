@@ -12,19 +12,26 @@ export type PackageMeta = {
   mediaProviderSpecifier: string
 }
 
+const packageMetaCache = new Map<string, PackageMeta>()
+
 export async function loadPackageMeta(packageRoot: string): Promise<PackageMeta> {
-  const manifestPath = path.join(packageRoot, "package.json")
+  const key = path.resolve(packageRoot)
+  const cached = packageMetaCache.get(key)
+  if (cached) return cached
+  const manifestPath = path.join(key, "package.json")
   const raw = JSON.parse(await readFile(manifestPath, "utf8")) as { name?: string; version?: string }
   if (!raw.name || !raw.version) throw new Error(`Invalid package.json at ${manifestPath}`)
-  return {
+  const meta: PackageMeta = {
     name: raw.name,
     version: raw.version,
-    packageRoot,
+    packageRoot: key,
     // OpenCode resolves unversioned plugin entries to the current package.
     // Keep versions in status/markers only; pinning here makes `upgrade` stale.
     pluginSpecifier: raw.name,
     mediaProviderSpecifier: `${raw.name}/media-provider`,
   }
+  packageMetaCache.set(key, meta)
+  return meta
 }
 
 export async function skillDigest(skillFile: string) {

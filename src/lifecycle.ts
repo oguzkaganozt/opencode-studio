@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { access, mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -134,37 +134,46 @@ function skillPaths(studioId: StudioId, packageRoot: string, userPaths: UserPath
   return skillPathsFor(studioSkillTarget(studioId, packageRoot), userPaths)
 }
 
-async function preflightSkill(target: SkillTarget, userPaths: UserPathOptions = {}) {
-  const paths = skillPathsFor(target, userPaths)
-  const existingDigest = await currentSkillDigest(paths.skillFile)
-  const marker = await readMarker(paths.markerFile)
+function assertSkillConflict(
+  paths: ReturnType<typeof skillPathsFor>,
+  existingDigest: string | null,
+  marker: ManagedMarker | null,
+  ownerId: string,
+  opts: { requirePresent?: boolean } = {},
+) {
+  if (opts.requirePresent && !existingDigest) return
   if (existingDigest && !marker) {
     throw new Error(`Conflict: unmarked skill already exists at ${paths.skillDirectory}`)
   }
   if (marker && existingDigest && marker.digest !== existingDigest) {
     throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
   }
-  if (marker && marker.studioId !== target.id) {
+  if (marker && marker.studioId !== ownerId) {
     throw new Error(`Conflict: skill owned by studio '${marker.studioId}' at ${paths.skillDirectory}`)
   }
 }
 
-async function writeManagedSkill(input: { target: SkillTarget; packageRoot: string; packageVersion: string; userPaths?: UserPathOptions }) {
-  const paths = skillPathsFor(input.target, input.userPaths)
-  const digest = await skillDigest(paths.sourceSkillFile)
+async function preflightSkill(target: SkillTarget, userPaths: UserPathOptions = {}) {
+  const paths = skillPathsFor(target, userPaths)
   const existingDigest = await currentSkillDigest(paths.skillFile)
   const marker = await readMarker(paths.markerFile)
-  if (existingDigest && !marker) throw new Error(`Conflict: unmarked skill already exists at ${paths.skillDirectory}`)
-  if (marker && existingDigest && marker.digest !== existingDigest) {
-    throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
-  }
-  if (marker && marker.studioId !== input.target.id) {
-    throw new Error(`Conflict: skill owned by studio '${marker.studioId}' at ${paths.skillDirectory}`)
+  assertSkillConflict(paths, existingDigest, marker, target.id)
+}
+
+async function writeManagedSkill(input: { target: SkillTarget; packageRoot: string; packageVersion: string; userPaths?: UserPathOptions }) {
+  const paths = skillPathsFor(input.target, input.userPaths)
+  const skillContent = await readFile(paths.sourceSkillFile)
+  const digest = createHash("sha256").update(skillContent).digest("hex")
+  const existingDigest = await currentSkillDigest(paths.skillFile)
+  const marker = await readMarker(paths.markerFile)
+  assertSkillConflict(paths, existingDigest, marker, input.target.id)
+
+  if (existingDigest === digest && marker?.digest === digest && marker.packageVersion === input.packageVersion) {
+    return { paths, previousSkill: null, previousMarker: null }
   }
 
   const previousSkill = existingDigest ? await readFile(paths.skillFile) : null
   const previousMarker = marker ? await readFile(paths.markerFile) : null
-  const skillContent = await readFile(paths.sourceSkillFile)
   await mkdir(paths.skillDirectory, { recursive: true })
   const skillTmp = `${paths.skillFile}.${process.pid}.${randomUUID()}.tmp`
   const markerTmp = `${paths.markerFile}.${process.pid}.${randomUUID()}.tmp`
@@ -197,9 +206,7 @@ async function removeManagedSkill(target: SkillTarget, userPaths: UserPathOption
     return
   }
   const marker = await readMarker(paths.markerFile)
-  if (!marker) throw new Error(`Conflict: unmarked skill already exists at ${paths.skillDirectory}`)
-  if (marker.digest !== existingDigest) throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
-  if (marker.studioId !== target.id) throw new Error(`Conflict: skill owned by studio '${marker.studioId}' at ${paths.skillDirectory}`)
+  assertSkillConflict(paths, existingDigest, marker, target.id)
 
   const skillBackup = `${paths.skillFile}.${process.pid}.bak`
   const markerBackup = `${paths.markerFile}.${process.pid}.bak`
@@ -226,6 +233,42 @@ function isManagedBuild123dEntry(value: unknown) {
   if (!Array.isArray(entry.command)) return false
   const command = entry.command.map(String)
   return command.some((part) => part.includes("build123d-mcp") || part.includes(BUILD123D_MCP_PACKAGE.split("@")[0]!))
+}
+
+function stripManagedPlugins(entries: unknown[], meta: PackageMeta): unknown[] {
+  return entries.filter((entry) => {
+    if (isManagedMediaGoPluginEntry(entry)) return false
+    const s = String(entry)
+    if (s.includes("opencode-studio")) return false
+    const base = pluginBaseName(entry)
+    if (!base) return true
+    if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
+    return base !== meta.name && !base.startsWith(`${meta.name}/`)
+  })
+}
+
+async function skillDoctorCheck(input: {
+  id: string
+  paths: ReturnType<typeof skillPathsFor>
+  passLabel: string
+  driftLabel: string
+}): Promise<StudioDoctorCheck> {
+  const existingDigest = await currentSkillDigest(input.paths.skillFile)
+  const marker = await readMarker(input.paths.markerFile)
+  const sourceDigest = await skillDigest(input.paths.sourceSkillFile)
+  if (!existingDigest) {
+    return { id: input.id, status: "fail", message: `Missing skill ${input.paths.skillFile}`, repair: "Run opencode-studio repair" }
+  }
+  if (!marker) {
+    return { id: input.id, status: "fail", message: `Unmarked skill at ${input.paths.skillDirectory}` }
+  }
+  if (marker.digest !== existingDigest) {
+    return { id: input.id, status: "fail", message: `User-modified skill at ${input.paths.skillFile}` }
+  }
+  if (marker.digest !== sourceDigest) {
+    return { id: input.id, status: "warn", message: input.driftLabel, repair: "Run opencode-studio repair" }
+  }
+  return { id: input.id, status: "pass", message: input.passLabel }
 }
 
 function isManagedMediaGoPluginEntry(entry: unknown) {
@@ -451,15 +494,7 @@ export async function configureStudios(
 
   // OpenCode 1.18: npm subpath is not a server entry — file:// into package dist/media-go.js.
   const mediaGoFile = await resolveMediaGoPluginEntry(packageRoot, userPaths, Boolean(input.dryRun))
-  plugins = plugins.filter((entry) => {
-    if (isManagedMediaGoPluginEntry(entry)) return false
-    const s = String(entry)
-    if (s.includes("opencode-studio")) return false
-    const base = pluginBaseName(entry)
-    if (!base) return true
-    if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
-    return base !== meta.name && !base.startsWith(`${meta.name}/`)
-  })
+  plugins = stripManagedPlugins(plugins, meta)
   plugins.push(meta.pluginSpecifier)
   plugins.push(mediaGoFile)
 
@@ -593,24 +628,12 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     const paths = skillPathsFor(target, userPaths)
     const existingDigest = await currentSkillDigest(paths.skillFile)
     const marker = await readMarker(paths.markerFile)
-    if (existingDigest && !marker) throw new Error(`Conflict: unmarked skill already exists at ${paths.skillDirectory}`)
-    if (marker && existingDigest && marker.digest !== existingDigest) {
-      throw new Error(`Conflict: skill was modified by the user at ${paths.skillFile}`)
-    }
+    assertSkillConflict(paths, existingDigest, marker, target.id)
   }
 
   const configPath = await resolveOpenCodeConfigPath(userPaths)
   const openCode = await readOpenCodeConfig(configPath)
-  let plugins = [...pluginEntries(openCode)]
-  plugins = plugins.filter((entry) => {
-    if (isManagedMediaGoPluginEntry(entry)) return false
-    const s = String(entry)
-    if (s.includes("opencode-studio")) return false
-    const base = pluginBaseName(entry)
-    if (!base) return true
-    if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
-    return base !== meta.name && !base.startsWith(`${meta.name}/`)
-  })
+  const plugins = stripManagedPlugins([...pluginEntries(openCode)], meta)
 
   let nextText = configWithPlugins(openCode, plugins)
   const workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
@@ -860,21 +883,14 @@ export async function statusStudios(input: LifecyclePaths = {}) {
 
   {
     const target = platformMediaSkillTarget(packageRoot)
-    const paths = skillPathsFor(target, userPaths)
-    const existingDigest = await currentSkillDigest(paths.skillFile)
-    const marker = await readMarker(paths.markerFile)
-    const sourceDigest = await skillDigest(paths.sourceSkillFile)
-    if (!existingDigest) {
-      checks.push({ id: "skill:media", status: "fail", message: `Missing skill ${paths.skillFile}`, repair: "Run opencode-studio repair" })
-    } else if (!marker) {
-      checks.push({ id: "skill:media", status: "fail", message: `Unmarked skill at ${paths.skillDirectory}` })
-    } else if (marker.digest !== existingDigest) {
-      checks.push({ id: "skill:media", status: "fail", message: `User-modified skill at ${paths.skillFile}` })
-    } else if (marker.digest !== sourceDigest) {
-      checks.push({ id: "skill:media", status: "warn", message: "Skill version drift for media", repair: "Run opencode-studio repair" })
-    } else {
-      checks.push({ id: "skill:media", status: "pass", message: "media skill installed" })
-    }
+    checks.push(
+      await skillDoctorCheck({
+        id: "skill:media",
+        paths: skillPathsFor(target, userPaths),
+        passLabel: "media skill installed",
+        driftLabel: "Skill version drift for media",
+      }),
+    )
     for (const engine of ["ffmpeg", "ffprobe"] as const) {
       try {
         const resolved = resolveEngine(engine)
@@ -909,43 +925,26 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     }
   }
 
-  for (const studioId of STUDIO_IDS) {
+  for (const studio of studios) {
+    const studioId = studio.id as StudioId
     const def = getStudioDefinition(studioId)
     const target = studioSkillTarget(studioId, packageRoot)
-    const paths = skillPathsFor(target, userPaths)
-    const existingDigest = await currentSkillDigest(paths.skillFile)
-    const marker = await readMarker(paths.markerFile)
-    const sourceDigest = await skillDigest(paths.sourceSkillFile)
-    if (!existingDigest) {
-      checks.push({
+    checks.push(
+      await skillDoctorCheck({
         id: `skill:${studioId}`,
-        status: "fail",
-        message: `Missing skill ${paths.skillFile}`,
-        repair: "Run opencode-studio repair",
-      })
-    } else if (!marker) {
-      checks.push({ id: `skill:${studioId}`, status: "fail", message: `Unmarked skill at ${paths.skillDirectory}` })
-    } else if (marker.digest !== existingDigest) {
-      checks.push({ id: `skill:${studioId}`, status: "fail", message: `User-modified skill at ${paths.skillFile}` })
-    } else if (marker.digest !== sourceDigest) {
-      checks.push({
-        id: `skill:${studioId}`,
-        status: "warn",
-        message: `Skill version drift for ${studioId}`,
-        repair: "Run opencode-studio repair",
-      })
-    } else {
-      checks.push({ id: `skill:${studioId}`, status: "pass", message: `${def.skill} installed` })
-    }
+        paths: skillPathsFor(target, userPaths),
+        passLabel: `${def.skill} installed`,
+        driftLabel: `Skill version drift for ${studioId}`,
+      }),
+    )
 
-    try {
-      const root = await resolveStudioRoot({ studioId, workspace: domainRoot, roots: config.roots })
-      checks.push({ id: `root:${studioId}`, status: "pass", message: root })
-    } catch (error) {
+    if (studio.root) {
+      checks.push({ id: `root:${studioId}`, status: "pass", message: studio.root })
+    } else {
       checks.push({
         id: `root:${studioId}`,
         status: "fail",
-        message: error instanceof Error ? error.message : String(error),
+        message: studio.rootError ?? "root unavailable",
       })
     }
 
@@ -1090,15 +1089,13 @@ export async function warmCadRuntimes(input: LifecyclePaths = {}): Promise<WarmC
   const uv = await ensureUv()
   const forgeDir = await ensureForgeRuntimeDir(packageRoot)
 
-  const sync = await runCaptured([uv.path, "sync", "--locked", "--project", forgeDir], WARM_TIMEOUT_MS)
+  const [sync, mcp] = await Promise.all([
+    runCaptured([uv.path, "sync", "--locked", "--project", forgeDir], WARM_TIMEOUT_MS),
+    runCaptured([uv.path, "tool", "run", "--python", BUILD123D_MCP_PYTHON, BUILD123D_MCP_PACKAGE, "--help"], WARM_TIMEOUT_MS),
+  ])
   if (!sync.ok) {
     throw new Error(`Forge uv sync failed (exit ${sync.code}): ${sync.stderr || "no stderr"}`)
   }
-
-  const mcp = await runCaptured(
-    [uv.path, "tool", "run", "--python", BUILD123D_MCP_PYTHON, BUILD123D_MCP_PACKAGE, "--help"],
-    WARM_TIMEOUT_MS,
-  )
   if (!mcp.ok) {
     throw new Error(`build123d-mcp warm failed (exit ${mcp.code}): ${mcp.stderr || "no stderr"}`)
   }

@@ -1,7 +1,7 @@
 import path from "node:path"
 import { packageRootFrom } from "./core/paths"
 import { assertNonLoopbackPassword } from "./core/security"
-import { normalizeParentOpenCodeUrl } from "./opencode-bridge"
+import { normalizeParentOpenCodeUrl, openCodeBasicAuthHeaders } from "./opencode-bridge"
 import { type HostHandle, startHost } from "./server"
 import {
   DEFAULT_STUDIO_HOST_URL,
@@ -37,12 +37,7 @@ function autostartDisabled(value: string | undefined) {
 
 export async function probeParentOpenCode(baseUrl: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
   const url = normalizeParentOpenCodeUrl(baseUrl)
-  const headers = new Headers()
-  const password = env.OPENCODE_SERVER_PASSWORD
-  if (password) {
-    const username = env.OPENCODE_SERVER_USERNAME || "opencode"
-    headers.set("Authorization", `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`)
-  }
+  const headers = new Headers(openCodeBasicAuthHeaders(env))
   try {
     const response = await fetch(new URL("/global/health", `${url}/`), {
       headers,
