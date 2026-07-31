@@ -166,16 +166,7 @@ export const BUILD123D_MCP_WITH = "mcp>=1.2,<2"
 export function build123dMcpEntry(uvPath: string) {
   return {
     type: "local" as const,
-    command: [
-      uvPath,
-      "tool",
-      "run",
-      "--python",
-      BUILD123D_MCP_PYTHON,
-      "--with",
-      BUILD123D_MCP_WITH,
-      BUILD123D_MCP_PACKAGE,
-    ],
+    command: [uvPath, "tool", "run", "--python", BUILD123D_MCP_PYTHON, "--with", BUILD123D_MCP_WITH, BUILD123D_MCP_PACKAGE],
     timeout: BUILD123D_MCP_TIMEOUT_MS,
     enabled: true as const,
   }
