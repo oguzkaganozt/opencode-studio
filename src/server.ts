@@ -265,6 +265,7 @@ export async function createHostApp(input: HostInput) {
       const result = await configureStudios({
         workspace: domain.workspace,
         packageRoot,
+        validateOpenCode: false,
         ...userPaths,
       })
       const reloaded = await reloadStudios()

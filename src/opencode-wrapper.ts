@@ -17,16 +17,16 @@ else
   IFS=':' read -ra __PATH_PARTS <<< "\${PATH}"
   for __d in "\${__PATH_PARTS[@]}"; do
     __cand="\${__d}/opencode"
-    [[ -x "\$__cand" && "\$__cand" != "\$0" ]] || continue
-    if grep -q "opencode-studio ensure-host wrapper" "\$__cand" 2>/dev/null; then
+    [[ -x "$__cand" && "$__cand" != "$0" ]] || continue
+    if grep -q "opencode-studio ensure-host wrapper" "$__cand" 2>/dev/null; then
       continue
     fi
-    REAL="\$__cand"
+    REAL="$__cand"
     break
   done
 fi
 
-if [[ -z "\$REAL" ]]; then
+if [[ -z "$REAL" ]]; then
   echo "opencode-studio wrapper: could not find real opencode binary" >&2
   exit 127
 fi
@@ -41,11 +41,11 @@ cleanup() {
 
 if [[ "\${1:-}" == "serve" ]] && command -v opencode-studio >/dev/null 2>&1; then
   nohup opencode-studio ensure-host >>"\${TMPDIR:-/tmp}/opencode-studio-ensure-host.log" 2>&1 &
-  ENSURE_PID=\$!
+  ENSURE_PID=$!
   trap cleanup EXIT INT TERM
 fi
 
-exec "\$REAL" "\$@"
+exec "$REAL" "$@"
 `
 }
 
