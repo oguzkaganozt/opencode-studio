@@ -580,6 +580,15 @@ export async function configureStudios(
       // Non-fatal: global config already applied; status will surface leftovers.
     }
 
+    let serveWrapper: string | undefined
+    try {
+      const { installOpencodeServeWrapper } = await import("./opencode-wrapper")
+      const wrapped = await installOpencodeServeWrapper()
+      if (wrapped.wrote) serveWrapper = wrapped.path
+    } catch {
+      // optional PATH hook
+    }
+
     return {
       action: "configure" as const,
       dryRun: false,
@@ -592,10 +601,13 @@ export async function configureStudios(
       openCodeConfigPath: configPath,
       skillsHome: resolveOpenCodeSkillsHome(userPaths),
       projectScrubbed,
+      serveWrapper,
       restartRequired: true,
       restartOpenCode: true,
       restartHost: false,
-      message: "Installed plugins, CAD/PCB skills, media skill, and build123d MCP (user-global). Restart OpenCode to load tools.",
+      message: serveWrapper
+        ? `Installed plugins/skills/MCP. Serve hook: ${serveWrapper} (keep ~/.local/bin early on PATH). Restart OpenCode.`
+        : "Installed plugins, CAD/PCB skills, media skill, and build123d MCP (user-global). Restart OpenCode to load tools.",
     }
   } catch (error) {
     for (const rollback of rollbacks.reverse()) {

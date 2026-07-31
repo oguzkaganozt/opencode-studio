@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 import { type ParseArgsConfig, parseArgs } from "node:util"
 import { loadPackageMeta } from "./core/package-meta"
+import { resetStudioHostEnsureForTests } from "./host-ensure"
 import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { checkPackageUpgrade, upgradePackage } from "./package-upgrade"
+import { runEnsureHostLoop } from "./serve-bootstrap"
 
 type ParseFail = { ok: false; code: 2 }
 type ParseOk<T> = { ok: true; values: T }
@@ -37,6 +39,7 @@ opencode serve and a directory Instance loads.
 Commands:
   status     Health, roots, skills (exit 1 if broken)
   repair     Reinstall plugins, skills, MCP
+  ensure-host  Start Studio host for a running opencode serve (HOME, then rebind)
   remove     Uninstall managed OpenCode state (package stays)
   upgrade    bun add -g @latest
 
@@ -52,8 +55,8 @@ Examples:
   opencode serve          # then open project dir → http://127.0.0.1:4173/studio
 
 Notes:
-  Studio host starts with opencode serve once a directory Instance loads;
-  workspace rebinds when the active OpenCode project changes (no pin).
+  Studio host starts with opencode serve (ensure-host companion / plugin bootstrap);
+  default workspace is HOME, then rebinds to the active OpenCode project.
   Greenfield: always repair (postinstall is soft).
   Skip postinstall setup: OPENCODE_STUDIO_SKIP_POSTINSTALL=1
 `)
@@ -100,6 +103,16 @@ Restart OpenCode after so plugins reload.
 Options:
   --check              Report only (exit 1 if update available, 2 on error)
   --json
+  -h, --help
+`,
+    "ensure-host": `opencode-studio ensure-host
+
+Attach Studio host to a running opencode serve (default workspace $HOME).
+Rebinds when OpenCode sessions change. Used by the opencode PATH wrapper
+installed on repair so \`opencode serve\` brings up :4173 automatically.
+Exits when parent OpenCode goes away.
+
+Options:
   -h, --help
 `,
   }
@@ -202,6 +215,24 @@ async function main(argv: string[]) {
     return 0
   }
 
+  if (command === "ensure-host") {
+    const stop = () => {
+      resetStudioHostEnsureForTests()
+      process.exit(0)
+    }
+    process.on("SIGINT", stop)
+    process.on("SIGTERM", stop)
+    try {
+      await runEnsureHostLoop({ packageRoot })
+      resetStudioHostEnsureForTests()
+      return 0
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      resetStudioHostEnsureForTests()
+      return 1
+    }
+  }
+
   if (command === "remove") {
     const parsed = parseCmd(command, rest, {
       workspace: { type: "string" },
@@ -243,8 +274,8 @@ async function main(argv: string[]) {
   }
 
   if (command === "serve" || command === "service") {
-    console.error(`'${command}' was removed. Studio host starts with opencode serve (plugin ensure-host).`)
-    console.error("Open http://127.0.0.1:4173/studio after opencode serve + a project directory loads.")
+    console.error(`'${command}' was removed. Run: opencode serve`)
+    console.error("Studio host starts via ensure-host (PATH wrapper on repair) or plugin bootstrap.")
     return 2
   }
 

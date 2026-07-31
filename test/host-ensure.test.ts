@@ -100,12 +100,19 @@ describe("host ensure", () => {
     expect(healthBody.workspace).toBe(other)
   }, 30_000)
 
-  test("foreign Studio health on port is not reused", async () => {
+  test("healthy Studio on port is adopted when not owned by this process", async () => {
+    let putWorkspace: string | undefined
     const foreign = Bun.serve({
       port: 0,
-      fetch(req) {
-        if (new URL(req.url).pathname === "/studio-api/health") {
+      async fetch(req) {
+        const url = new URL(req.url)
+        if (url.pathname === "/studio-api/health") {
           return Response.json({ status: "ok" })
+        }
+        if (url.pathname === "/api/workspace" && req.method === "PUT") {
+          const body = (await req.json()) as { workspace?: string }
+          putWorkspace = body.workspace
+          return Response.json({ workspace: body.workspace })
         }
         return new Response("no", { status: 404 })
       },
@@ -121,16 +128,18 @@ describe("host ensure", () => {
     servers.push(parent)
     const result = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
-      workspace: "/tmp",
+      workspace: "/tmp/adopt-ws",
       env: {
         ...process.env,
         OPENCODE_STUDIO_AUTOSTART: "1",
         OPENCODE_STUDIO_PORT: String(foreign.port),
       },
     })
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.reason).toMatch(/not owned by this process/)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.reused).toBe(true)
+    expect(result.hostUrl).toBe(`http://127.0.0.1:${foreign.port}`)
+    expect(putWorkspace).toBe("/tmp/adopt-ws")
   })
 
   test("owned host stays up across ensure; stop only via test reset", async () => {

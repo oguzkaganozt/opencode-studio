@@ -1,4 +1,4 @@
-const COMMANDS = ["status", "repair", "remove", "upgrade"] as const
+const COMMANDS = ["status", "repair", "ensure-host", "remove", "upgrade"] as const
 
 function shellIdent(binName: string) {
   return binName.replaceAll("-", "_")

@@ -2,7 +2,7 @@
 
 OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
 
-**Package:** [`@oguzkaganozt/opencode-studio@1.0.3`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
+**Package:** [`@oguzkaganozt/opencode-studio@1.0.4`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
 **CAD and PCB are always on.** Install wires OpenCode once (plugins, skills, CAD MCP). Media tools and the Files explorer are always on too.
 
@@ -16,7 +16,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 ## Install (pinned)
 
 ```bash
-bun add -g @oguzkaganozt/opencode-studio@1.0.3
+bun add -g @oguzkaganozt/opencode-studio@1.0.4
 hash -r
 command -v opencode-studio
 
@@ -61,7 +61,7 @@ Then open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — O
 | `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
 | `http://127.0.0.1:4173/` | Proxied native OpenCode (iframe source) |
 
-**Critical:** `:4173` starts when OpenCode loads a project directory (plugin ensure). Switching the active OpenCode project **rebinds** Studio workspace (not pinned to the first folder). Bare `opencode serve` without any project open leaves `:4173` down — OpenCode does not load directory plugins until then.
+**Critical:** `repair` installs `~/.local/bin/opencode` wrapper so **`opencode serve` auto-starts Studio** (`ensure-host`, default workspace `$HOME`). Keep `~/.local/bin` early on `PATH`. Active OpenCode project **rebinds** Studio (no first-folder pin). Opt out: `OPENCODE_STUDIO_AUTOSTART=0`.
 
 Health: `opencode-studio status` (exit 1 if unwired). CAD: `design_build` runs forge `uv sync` outside the 120s build timer (no separate warm step). Prefer **`OPENCODE_SERVER_PASSWORD`** on the OpenCode process (Studio-only password breaks Agent proxy).
 
@@ -120,7 +120,7 @@ Shell completion installs on global `bun add -g`. Skip: `OPENCODE_STUDIO_SKIP_PO
 
 ```bash
 # Prefer an explicit pin over unattended @latest
-bun add -g @oguzkaganozt/opencode-studio@1.0.3
+bun add -g @oguzkaganozt/opencode-studio@1.0.4
 opencode-studio repair
 opencode-studio status --workspace /abs/project
 # restart OpenCode

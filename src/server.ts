@@ -184,6 +184,25 @@ export async function createHostApp(input: HostInput) {
   app.get("/api/csrf", (ctx) => ctx.json({ token: csrfToken }))
   app.get("/api/workspace", (ctx) => ctx.json({ workspace: domain.workspace }))
 
+  /** Loopback rebind for ensure-host companion / plugin (no CSRF — not exposed off-loopback). */
+  app.put("/api/workspace", async (ctx) => {
+    const remote = ctx.req.header("x-forwarded-for") || ctx.req.header("x-real-ip") || ""
+    if (remote && !isLoopbackHost(remote.split(",")[0]?.trim() ?? "")) {
+      return ctx.json(errorBody("forbidden", "workspace rebind is loopback-only"), 403)
+    }
+    const body = (await ctx.req.json().catch(() => null)) as { workspace?: unknown } | null
+    const next = typeof body?.workspace === "string" ? body.workspace.trim() : ""
+    if (!next || !path.isAbsolute(next)) {
+      return ctx.json(errorBody("invalid_body", "workspace must be an absolute path"), 400)
+    }
+    try {
+      await rebindWorkspace(next)
+      return ctx.json({ workspace: domain.workspace })
+    } catch (error) {
+      return ctx.json(errorBody("rebind_failed", error instanceof Error ? error.message : String(error)), 400)
+    }
+  })
+
   app.get("/api/studios", async (ctx) => {
     const status = await statusStudios({ workspace: domain.workspace, packageRoot, ...userPaths })
     const update = await checkNpmUpdate({ packageName: meta.name, current: packageVersion })

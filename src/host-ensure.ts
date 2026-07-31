@@ -111,9 +111,23 @@ async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.
   }
 
   if (await studioHealthOk(bind.localUrl)) {
+    // Another process (ensure-host companion) already owns :4173 — adopt and rebind via HTTP.
+    try {
+      await fetch(new URL("/api/workspace", `${bind.localUrl}/`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ workspace }),
+        signal: AbortSignal.timeout(5_000),
+      })
+    } catch {
+      // host may reject; still usable at default workspace
+    }
     return {
-      ok: false,
-      reason: `port ${bind.port} already has a Studio health endpoint not owned by this process; set OPENCODE_STUDIO_PORT or stop the other process`,
+      ok: true,
+      hostUrl: bind.localUrl,
+      studioUrl: `${bind.localUrl}/studio`,
+      reused: true,
+      workspace,
     }
   }
 
