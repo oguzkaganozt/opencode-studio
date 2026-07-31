@@ -30,6 +30,7 @@ describe("CAD MCP management", () => {
     const config = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     expect(config.mcp.build123d.type).toBe("local")
     expect(config.mcp.build123d.command.join(" ")).toContain("build123d-mcp@0.3.80")
+    expect(config.mcp.build123d.command.join(" ")).toContain("mcp>=1.2,<2")
     expect(config.mcp.build123d.command[0]).toMatch(/uv/)
 
     await removeStudios({ ...ctx, validateOpenCode: false })
