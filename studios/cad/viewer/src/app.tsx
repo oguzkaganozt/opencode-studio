@@ -65,26 +65,6 @@ function ReloadIcon() {
   )
 }
 
-function OpenIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M2.5 5.5V3.75A1.25 1.25 0 0 1 3.75 2.5h2.4L7.5 4h4.75A1.25 1.25 0 0 1 13.5 5.25V6"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M2.75 6.5h10.5l-.85 5.1a1.25 1.25 0 0 1-1.23 1.05H4.83a1.25 1.25 0 0 1-1.23-1.05L2.75 6.5Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
 function useCadSpace() {
   const rootRef = useRef<HTMLDivElement>(null)
   const [agentOpen, setAgentOpen] = useState(false)
@@ -128,7 +108,6 @@ function DesignsPanel({
   onRetry,
   onClose,
   onSelect,
-  onCloseLocal,
   showClose,
 }: {
   designs: DesignSummary[]
@@ -138,14 +117,13 @@ function DesignsPanel({
   onRetry?: () => void
   onClose?: () => void
   onSelect: (id: string) => void
-  onCloseLocal?: () => void
   showClose?: boolean
 }) {
   return (
     <>
       <div className="cad-rail-header">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="cad-rail-label">Designs</span>
+          <span className="cad-rail-label">Server designs</span>
           {listStatus === "ready" && designs.length > 0 ? (
             <span className="cad-rail-meta" aria-hidden>
               {designs.length}
@@ -158,14 +136,7 @@ function DesignsPanel({
           </button>
         ) : null}
       </div>
-      {onCloseLocal ? (
-        <div className="border-b border-[var(--osc-border)] p-2">
-          <button type="button" className="cad-rail-action w-full" onClick={onCloseLocal}>
-            Close local files
-          </button>
-        </div>
-      ) : null}
-      <nav className="cad-rail-scroll min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Designs">
+      <nav className="cad-rail-scroll min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Server designs">
         {listStatus === "loading" ? (
           <p className="cad-rail-empty" role="status">
             Loading designs…
@@ -182,7 +153,7 @@ function DesignsPanel({
           </div>
         ) : designs.length === 0 ? (
           <p className="cad-rail-empty">
-            No designs yet.
+            No server designs yet.
             <span className="mt-1.5 block text-[12px] text-[var(--osc-text-muted)]">Build with the agent — finished designs show up here.</span>
           </p>
         ) : (
@@ -389,9 +360,7 @@ function useCadDesignEvents() {
 function DesignWorkspace({ designId }: { designId?: string }) {
   const navigate = useNavigate()
   const sceneRef = useRef<SceneHandle | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const { rootRef, compact, phone } = useCadSpace()
-  const [localParts, setLocalParts] = useState<LoadPart[] | null>(null)
   const [status, setStatus] = useState("no model")
   const [statusTone, setStatusTone] = useState<"ok" | "waiting" | "idle">("idle")
   const [picks, setPicks] = useState<ClickInfo[]>([])
@@ -409,7 +378,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const [rectSizeDirty, setRectSizeDirty] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const [rectSizeError, setRectSizeError] = useState<string | null>(null)
-  const [dropActive, setDropActive] = useState(false)
   const [partUi, setPartUi] = useState<Array<{ name: string; visible: boolean; color: number }>>([])
   const [renderModal, setRenderModal] = useState<{ url: string; label: string } | null>(null)
   const [designsOpen, setDesignsOpen] = useState(false)
@@ -431,24 +399,23 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const designQuery = useQuery({
     queryKey: ["cad", "design", designId],
-    enabled: Boolean(designId) && !localParts,
+    enabled: Boolean(designId),
     queryFn: () => readDesign(designId!),
   })
 
   const designs = designsQuery.data ?? []
-  const selectedDesign = !localParts && designId ? designs.find((d) => d.id === designId) : undefined
+  const selectedDesign = designId ? designs.find((d) => d.id === designId) : undefined
   const selectedDesignDirectory = designQuery.data?.absoluteDirectory ?? selectedDesign?.absoluteDirectory
 
   useEffect(() => {
-    if (!designId && designs.length > 0 && !localParts) {
+    if (!designId && designs.length > 0) {
       navigate(studioHref(`designs/${designs[0]!.id}`), { replace: true })
     }
-  }, [designId, designs, localParts, navigate])
+  }, [designId, designs, navigate])
 
   const designRevision = designQuery.data?.revision ?? null
 
   const serverParts = useMemo<LoadPart[] | null>(() => {
-    if (localParts) return localParts
     const artifact = designQuery.data?.artifact
     if (!designId || !artifact) return null
     const withGlb = artifact.parts.filter((part) => part.files?.glb)
@@ -459,10 +426,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       color: PART_COLORS[index % PART_COLORS.length]!,
       topoUrl: part.files.topo ? artifactUrl(designId, part.files.topo) : undefined,
     }))
-  }, [designId, designQuery.data, localParts])
+  }, [designId, designQuery.data])
 
   useEffect(() => {
-    if (localParts) return
     if (!designId) {
       setStatus("no model")
       setStatusTone("idle")
@@ -483,7 +449,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       setStatusTone("waiting")
       setPartUi([])
     }
-  }, [designId, designQuery.isLoading, designQuery.isError, designQuery.data, localParts])
+  }, [designId, designQuery.isLoading, designQuery.isError, designQuery.data])
 
   function showToast(message: string, tone: Toast["tone"] = "info") {
     setToast({ message, tone })
@@ -494,61 +460,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     const id = window.setTimeout(() => setToast(null), toast.tone === "error" ? 5000 : 3200)
     return () => window.clearTimeout(id)
   }, [toast])
-
-  useEffect(() => {
-    return () => {
-      setLocalParts((previous) => {
-        for (const part of previous ?? []) {
-          if (part.url.startsWith("blob:")) URL.revokeObjectURL(part.url)
-        }
-        return null
-      })
-    }
-  }, [])
-
-  const loadFiles = useCallback((files: FileList | File[]) => {
-    const allFiles = Array.from(files)
-    const list = allFiles.filter((file) => file.name.toLowerCase().endsWith(".glb"))
-    if (list.length === 0) {
-      setToast({ message: "Only .glb files are supported", tone: "error" })
-      return
-    }
-    setLocalParts((previous) => {
-      for (const part of previous ?? []) {
-        if (part.url.startsWith("blob:")) URL.revokeObjectURL(part.url)
-      }
-      return list.map((file, index) => ({
-        name: file.name,
-        url: URL.createObjectURL(file),
-        color: PART_COLORS[index % PART_COLORS.length]!,
-      }))
-    })
-    setPicks([])
-    setRegions([])
-    setSelectedRegionId(null)
-    setSelectedPinId(null)
-    setRegionDraft(null)
-    setStatus("loading…")
-    setStatusTone("waiting")
-    if (list.length < allFiles.length) {
-      setToast({ message: `Loaded ${list.length} GLB${list.length === 1 ? "" : "s"}; skipped ${allFiles.length - list.length}`, tone: "info" })
-    }
-  }, [])
-
-  const clearLocalParts = useCallback(() => {
-    setLocalParts((previous) => {
-      for (const part of previous ?? []) {
-        if (part.url.startsWith("blob:")) URL.revokeObjectURL(part.url)
-      }
-      return null
-    })
-    setPicks([])
-    setRegions([])
-    setSelectedRegionId(null)
-    setSelectedPinId(null)
-    setRegionDraft(null)
-    setPartUi([])
-  }, [])
 
   const setAllPartsVisible = useCallback((visible: boolean) => {
     const scene = sceneRef.current
@@ -566,11 +477,22 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const selectDesign = useCallback(
     (id: string) => {
-      clearLocalParts()
+      sceneRef.current?.clearPicks()
+      sceneRef.current?.clearRegions()
+      sceneRef.current?.cancelRegionStroke()
+      setPicks([])
+      setLinkedPairs([])
+      setLinkArmed(false)
+      setLinkFromId(null)
+      setRegions([])
+      setSelectedRegionId(null)
+      setSelectedPinId(null)
+      setRegionDraft(null)
+      setPartUi([])
       closeSheets()
       navigate(studioHref(`designs/${id}`))
     },
-    [clearLocalParts, closeSheets, navigate],
+    [closeSheets, navigate],
   )
 
   useEffect(() => {
@@ -612,7 +534,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           ? "0 parts"
           : status
 
-  const renderCount = localParts ? 0 : (designQuery.data?.renders.length ?? 0)
+  const renderCount = designQuery.data?.renders.length ?? 0
   const canOpenParts = Boolean(serverParts) || partCount > 0 || renderCount > 0
   const visiblePartCount = partUi.filter((part) => part.visible).length
   const allPartsHidden = partUi.length > 0 && visiblePartCount === 0
@@ -626,23 +548,19 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     ? "Could not load design"
     : designId && designQuery.isLoading
       ? "Loading design…"
-      : localParts
-        ? "Loading files…"
-        : designId
-          ? "No build yet"
-          : "Load a design or .glb"
+      : designId
+        ? "No build yet"
+        : "No server design selected"
 
   const emptyBody = designQuery.isError
-    ? ((designQuery.error as Error)?.message ?? "Reload the design, or open a .glb.")
+    ? ((designQuery.error as Error)?.message ?? "Reload the design, or choose another server design.")
     : designId && designQuery.isLoading
       ? "Fetching assembly artifacts…"
       : designId
-        ? "Build this design with the agent, then reload. You can also open a .glb anytime."
-        : "Open a .glb, or pick a design from Designs."
+        ? "Build this design with the agent, then reload."
+        : "Choose a design from the server list, or create one with the agent."
 
-  const showEmptyActions = !designQuery.isLoading && !localParts
-
-  const openFilePicker = () => fileInputRef.current?.click()
+  const showEmptyActions = !designQuery.isLoading
 
   const requestDesignBuild = () => {
     const text = designId
@@ -653,10 +571,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   }
 
   const reload = () => {
-    if (localParts) {
-      setLocalParts([...localParts])
-      return
-    }
     void designQuery.refetch()
   }
 
@@ -883,8 +797,8 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     setDesignsOpen(false)
   }
 
-  const designControlLabel = localParts ? "Local GLB" : (selectedDesign?.id ?? (designs.length ? "Designs" : "No designs"))
-  const staleBuild = !localParts && selectedDesign?.buildStatus === "stale"
+  const designControlLabel = selectedDesign?.id ?? (designs.length ? "Server designs" : "No designs")
+  const staleBuild = selectedDesign?.buildStatus === "stale"
   const highlightedPart =
     interactionMode === "select"
       ? (selectedPin?.partIndex ?? selectedRegion?.partIndex ?? -1)
@@ -906,7 +820,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         <aside className="cad-rail hidden w-56 shrink-0 border-r border-[var(--osc-border)] md:flex">
           <DesignsPanel
             designs={designs}
-            selectedId={localParts ? undefined : designId}
+            selectedId={designId}
             listStatus={designsListStatus}
             listError={designsListError}
             onRetry={() => void designsQuery.refetch()}
@@ -920,39 +834,26 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         <div
           className="absolute inset-0"
           inert={sheetOpen ? true : undefined}
-          onDragOver={(event) => {
-            event.preventDefault()
-            setDropActive(true)
-          }}
-          onDragLeave={() => setDropActive(false)}
+          onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => {
             event.preventDefault()
-            setDropActive(false)
-            if (event.dataTransfer?.files.length) loadFiles(event.dataTransfer.files)
+            showToast("Choose a server design from the Designs list")
           }}
         >
           <div className="cad-toolbar absolute top-3 z-10" role="toolbar" aria-label="CAD viewer tools">
             {compact ? (
               <button
                 type="button"
-                className={`cad-design-id${localParts ? " cad-design-id--local" : ""}${staleBuild ? " cad-design-id--stale" : ""}`}
+                className={`cad-design-id${staleBuild ? " cad-design-id--stale" : ""}`}
                 aria-expanded={designsOpen}
                 aria-controls="cad-designs-sheet"
                 aria-haspopup="dialog"
-                aria-label={
-                  localParts
-                    ? "Choose a design instead of local files"
-                    : `Choose design, current ${designControlLabel}${staleBuild ? ", stale build" : ""}`
-                }
-                title={localParts ? "Choose a design" : staleBuild ? "Change design · build is stale" : "Change design"}
+                aria-label={`Choose server design, current ${designControlLabel}${staleBuild ? ", stale build" : ""}`}
+                title={staleBuild ? "Change server design · build is stale" : "Change server design"}
                 onClick={toggleDesigns}
               >
                 <span className="cad-design-name">{designControlLabel}</span>
                 {staleBuild ? <span className="cad-design-freshness">stale</span> : null}
-              </button>
-            ) : localParts ? (
-              <button type="button" className="cad-design-id cad-design-id--local" onClick={clearLocalParts} title="Close local files">
-                Local GLB
               </button>
             ) : selectedDesign ? (
               <span className={`cad-design-id${staleBuild ? " cad-design-id--stale" : ""}`} title={selectedDesign.id}>
@@ -1044,24 +945,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             <button type="button" className="cad-chip" disabled={partCount === 0} onClick={fitView} aria-label="Fit view">
               Fit
             </button>
-            <button type="button" className="cad-chip cad-chip--icon" disabled={!designId && !localParts} onClick={reload} aria-label="Reload">
+            <button type="button" className="cad-chip cad-chip--icon" disabled={!designId} onClick={reload} aria-label="Reload">
               <ReloadIcon />
             </button>
-            <button type="button" className="cad-chip cad-chip--icon" onClick={openFilePicker} aria-label="Open GLB file">
-              <OpenIcon />
-            </button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".glb"
-              multiple
-              className="hidden"
-              onChange={(event) => {
-                if (event.target.files) loadFiles(event.target.files)
-                event.target.value = ""
-              }}
-            />
           </div>
 
           {!serverParts && (
@@ -1081,9 +967,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                         {designId ? "Build with agent" : "Create with agent"}
                       </button>
                     ) : null}
-                    <button type="button" className="cad-chip" onClick={openFilePicker}>
-                      Open local .glb
-                    </button>
                     {compact && designs.length > 0 ? (
                       <button
                         type="button"
@@ -1093,7 +976,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                           setInspectorOpen(false)
                         }}
                       >
-                        Designs
+                        Choose server design
                       </button>
                     ) : null}
                   </div>
@@ -1160,7 +1043,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                   setStatus(`${result.loaded} loaded, ${result.failed} failed`)
                   setStatusTone("waiting")
                 } else {
-                  setStatus(localParts ? `${result.loaded} file(s)` : `${result.loaded} part(s)`)
+                  setStatus(`${result.loaded} part(s)`)
                   setStatusTone("ok")
                 }
               }}
@@ -1414,7 +1297,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             </div>
           ) : null}
 
-          {dropActive && <div className="cad-drop">Drop .glb file(s)</div>}
           <div className="sr-only" aria-live="polite">
             {partsLabel}. {picks.length} pins. {regions.length} regions. {interactionMode} mode.
           </div>
@@ -1440,13 +1322,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
         >
           <DesignsPanel
             designs={designs}
-            selectedId={localParts ? undefined : designId}
+            selectedId={designId}
             listStatus={designsListStatus}
             listError={designsListError}
             onRetry={() => void designsQuery.refetch()}
             onClose={() => setDesignsOpen(false)}
             onSelect={selectDesign}
-            onCloseLocal={localParts ? clearLocalParts : undefined}
             showClose
           />
         </SheetShell>
@@ -1461,9 +1342,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           <PartsPanel
             parts={partUi}
             highlightedPart={highlightedPart}
-            renders={localParts ? [] : (designQuery.data?.renders ?? [])}
-            showRenders={!localParts}
-            designId={localParts ? undefined : designId}
+            renders={designQuery.data?.renders ?? []}
+            showRenders
+            designId={designId}
             onClose={() => setInspectorOpen(false)}
             showClose
             onTogglePart={(index, visible) => {
@@ -1484,9 +1365,9 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           <PartsPanel
             parts={partUi}
             highlightedPart={highlightedPart}
-            renders={localParts ? [] : (designQuery.data?.renders ?? [])}
-            showRenders={!localParts}
-            designId={localParts ? undefined : designId}
+            renders={designQuery.data?.renders ?? []}
+            showRenders
+            designId={designId}
             onTogglePart={(index, visible) => {
               sceneRef.current?.setPartVisible(index, visible)
               setPartUi((current) => current.map((part, i) => (i === index ? { ...part, visible } : part)))

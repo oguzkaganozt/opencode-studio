@@ -20,11 +20,11 @@ Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. C
 
 ## Canvas chrome
 - Solid dark toolbar panel (`.cad-toolbar`) — no backdrop-blur
-- Compact: **design name** · **`N parts`** · **Pick | Region | Select** · (**Face | Rect | Free** when Region) · **Fit** · reload · open
-- Wide docked: design id · status · Pick|Region|Select · Face|Rect|Free · Fit · reload/open (Parts via right rail)
+- Compact: **server design name** · **`N parts`** · **Pick | Region | Select** · (**Face | Rect | Free** when Region) · **Fit** · reload
+- Wide docked: server design id · status · Pick|Region|Select · Face|Rect|Free · Fit · reload (Parts via right rail)
 - No ⋯ overflow menu — all primary actions are direct toolbar controls
 - **Prompt only on surface HUD** when any annotation exists — never permanent toolbar chrome
-- Empty: dashed well + Retry / Open .glb / Designs
+- Empty: dashed well + Retry / Build with agent / Designs
 - HUD: pin + region counts · **Δ** · last detail + **Link** / **Clear / Prompt**; while drawing: loop/W×H hint only
 - **Pick**: multi-select (cap 8); mesh snap (`vertex|edge|midpoint|center`) + canvas edge-distance guides (viewer-only); **touch hold+drag** snap reticle; **Link** A→B (max 4); Clear = picks + links
 - Toolbar order is **Pin | Region | Select**; phone overflow keeps a visible thin scroll cue and coarse-pointer targets are 44px
@@ -45,5 +45,5 @@ Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. C
 - Focus trap: safe restore (skip inert/disconnected); Escape + scrim dismiss
 
 ## Keep
-- Routes, EventSource, agent handoff, GLB drop/open, fit/reload/copy/prompt
+- Routes, EventSource, agent handoff, server-design selection, fit/reload/copy/prompt
 - PART_COLORS for 3D mesh identity

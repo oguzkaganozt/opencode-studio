@@ -1,7 +1,7 @@
 # Internal server readiness
 
 **Audience:** our team, one (or few) Linux servers — **not** a public product release.  
-**Package pin:** `@oguzkaganozt/opencode-studio@1.0.5` (bump this line when we pin a new build).
+**Package pin:** `@oguzkaganozt/opencode-studio@1.0.6` (bump this line when we pin a new build).
 **Done means:** someone on the team can bring up Studio on the box, open CAD/PCB/Files, and run real agent work without tribal knowledge.
 
 Does not replace `AGENTS.md` security rules.
@@ -81,7 +81,7 @@ Export the same password in the shell you use for `curl -u` checks (service `Env
 
 ```bash
 # Prereqs already on PATH: bun, opencode, node, npm
-bun add -g @oguzkaganozt/opencode-studio@1.0.5
+bun add -g @oguzkaganozt/opencode-studio@1.0.6
 hash -r
 command -v opencode-studio
 

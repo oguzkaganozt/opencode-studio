@@ -180,9 +180,11 @@ async function browserSmoke(base: string) {
       cad: {
         wait: "CAD Studio",
         extra: async (p) => {
-          await p.waitForSelector("text=Designs")
+          await p.waitForSelector("text=Server designs")
           await p.waitForSelector("text=Parts")
           await p.getByRole("region", { name: "3D assembly viewport" }).waitFor()
+          assert((await p.getByLabel("Open GLB file").count()) === 0, "cad: local GLB import must not be available")
+          assert((await p.locator('input[type="file"]').count()) === 0, "cad: local file input must not be available")
         },
       },
       pcb: {
