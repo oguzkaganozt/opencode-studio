@@ -4,7 +4,7 @@ import { loadPackageMeta } from "./core/package-meta"
 import { resetStudioHostEnsureForTests } from "./host-ensure"
 import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { checkPackageUpgrade, upgradePackage } from "./package-upgrade"
-import { runEnsureHostLoop } from "./serve-bootstrap"
+import { defaultStudioRoot, runEnsureHostLoop } from "./serve-bootstrap"
 
 type ParseFail = { ok: false; code: 2 }
 type ParseOk<T> = { ok: true; values: T }
@@ -39,12 +39,12 @@ opencode serve and a directory Instance loads.
 Commands:
   status     Health, roots, skills (exit 1 if broken)
   repair     Reinstall plugins, skills, MCP
-  ensure-host  Start Studio host for a running opencode serve (HOME, then rebind)
+  ensure-host  Start fixed-root Studio host for a running opencode serve
   remove     Uninstall managed OpenCode state (package stays)
   upgrade    bun add -g @latest
 
 Flags:
-  --workspace <path>   Domain data root (default: cwd)
+  --workspace <path>   Studio Home override for status/repair (default: $HOME)
   --json               Machine-readable output (where supported)
   -h, --help
   -v, --version
@@ -52,11 +52,11 @@ Flags:
 Examples:
   opencode-studio repair
   opencode-studio status --workspace /abs/project
-  opencode serve          # then open project dir → http://127.0.0.1:4173/studio
+  opencode serve          # → http://127.0.0.1:4173/studio
 
 Notes:
   Studio host starts with opencode serve (ensure-host companion / plugin bootstrap);
-  default workspace is HOME, then rebinds to the active OpenCode project.
+  Studio Home is fixed to $HOME for the serve lifetime; OpenCode projects are request-scoped.
   Greenfield: always repair (postinstall is soft).
   Skip postinstall setup: OPENCODE_STUDIO_SKIP_POSTINSTALL=1
 `)
@@ -80,7 +80,7 @@ Reinstall OpenCode plugins, CAD/PCB + media skills, and build123d MCP.
 Also runs on global bun install. Use after remove, drift, or skipped postinstall.
 
 Options:
-  --workspace <path>   Domain data root (default: cwd)
+  --workspace <path>   Studio Home override (default: $HOME)
   --dry-run
   --json
   -h, --help
@@ -107,8 +107,8 @@ Options:
 `,
     "ensure-host": `opencode-studio ensure-host
 
-Attach Studio host to a running opencode serve (default workspace $HOME).
-Rebinds when OpenCode sessions change. Used by the opencode PATH wrapper
+Attach a fixed-root Studio host to a running opencode serve (default Studio Home $HOME).
+Used by the opencode PATH wrapper
 installed on repair so \`opencode serve\` brings up :4173 automatically.
 Exits when parent OpenCode goes away.
 
@@ -158,14 +158,14 @@ async function main(argv: string[]) {
     })
     if (!parsed.ok) return parsed.code
     const values = parsed.values
-    const result = await statusStudios({ workspace: values.workspace, packageRoot })
+    const result = await statusStudios({ workspace: values.workspace ?? defaultStudioRoot(), packageRoot })
     if (values.json) {
       console.log(JSON.stringify(result, null, 2))
     } else {
       console.log(`Package: ${result.packageName}@${result.packageVersion}`)
       console.log(`Config: ${result.configPath}`)
       if (result.configError) console.log(`Config error: ${result.configError}`)
-      console.log(`Domain root: ${result.workspace}`)
+      console.log(`Studio Home: ${result.workspace}`)
       console.log(`Studios (always on): ${result.enabled.join(", ")}`)
       for (const studio of result.studios) {
         const skill = studio.skillInstalled ? "skill ok" : "skill missing"
@@ -200,7 +200,7 @@ async function main(argv: string[]) {
     if (!parsed.ok) return parsed.code
     const values = parsed.values
     const result = await configureStudios({
-      workspace: values.workspace,
+      workspace: values.workspace ?? defaultStudioRoot(),
       packageRoot,
       dryRun: values["dry-run"],
     })

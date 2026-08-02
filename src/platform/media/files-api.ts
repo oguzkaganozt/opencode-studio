@@ -89,7 +89,7 @@ export async function resolveWorkspaceRoot(workspaceRoot: string) {
 export async function resolveInside(root: string, relative: string) {
   const clean = relative.replace(/^\/+/, "")
   const candidate = clean ? path.resolve(root, clean) : root
-  if (!isInside(root, candidate) && candidate !== root) throw new FilesError(400, "Path escapes workspace")
+  if (!isInside(root, candidate) && candidate !== root) throw new FilesError(400, "Path escapes Studio Home")
   let info: Awaited<ReturnType<typeof lstat>>
   try {
     info = await lstat(candidate)
@@ -98,7 +98,7 @@ export async function resolveInside(root: string, relative: string) {
   }
   if (info.isSymbolicLink()) throw new FilesError(400, "Symlinks are not allowed")
   const canonical = await realpath(candidate)
-  if (!isInside(root, canonical) && canonical !== root) throw new FilesError(400, "Path escapes workspace")
+  if (!isInside(root, canonical) && canonical !== root) throw new FilesError(400, "Path escapes Studio Home")
   return { absolute: canonical, relative: path.relative(root, canonical).split(path.sep).join("/"), info }
 }
 

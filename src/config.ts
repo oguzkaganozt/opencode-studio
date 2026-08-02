@@ -191,11 +191,11 @@ export async function writeStudioConfigFile(config: StudioConfig, options: Studi
 /**
  * Resolve a studio's domain data root.
  * - override in global config.roots.<id> (absolute)
- * - default: domain workspace (OpenCode project / serve --workspace)
+ * - default: fixed Studio Home
  */
 export async function resolveStudioRoot(input: {
   studioId: StudioId
-  workspace: string
+  studioRoot: string
   roots?: Partial<Record<StudioId, string>>
   create?: boolean
   env?: NodeJS.ProcessEnv
@@ -209,7 +209,7 @@ export async function resolveStudioRoot(input: {
     return canonicalExistingDirectory(override, `${input.studioId} root`)
   }
 
-  return input.workspace
+  return input.studioRoot
 }
 
 /** Domain workspace (data root) + global studio config. */

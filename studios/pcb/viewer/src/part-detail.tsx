@@ -132,7 +132,7 @@ export function PartDetailModal({
       <div className="max-h-[min(70dvh,32rem)] overflow-auto overscroll-contain p-5">
         {isLoading && !part && <LoadingState />}
         {fromBomOnly && (
-          <p className="mb-3 text-[12px] text-[var(--osc-text-muted)]">Not in workspace catalog — showing BOM line fields only.</p>
+          <p className="mb-3 text-[12px] text-[var(--osc-text-muted)]">Not in Studio Home catalog — showing BOM line fields only.</p>
         )}
         {part && <PartDetailView part={part} />}
         {!isLoading && !part && <ErrorState className="border-0 py-12" title="Failed to load part details" />}

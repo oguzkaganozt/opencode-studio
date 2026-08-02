@@ -7,20 +7,24 @@ import { composeStudioPlugins, type StudioPluginContribution } from "./core/plug
 import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
-import { ensureStudioHost, rebindStudioHostWorkspace } from "./host-ensure"
+import { ensureStudioHost } from "./host-ensure"
+import { defaultStudioRoot } from "./serve-bootstrap"
 import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
 
 export type StudioPluginOptions = UserPathOptions & {
+  /** Fixed Studio Home override for embedding and tests. */
+  studioRoot?: string
+  /** OpenCode project fallback for project-scoped media tools. */
   workspace?: string
   hostUrl?: string
   packageRoot?: string
   ensureHost?: boolean
 }
 
-async function resolveRoots(userPaths: UserPathOptions = {}, domainRoot?: string) {
-  if (domainRoot) {
+async function resolveRoots(userPaths: UserPathOptions = {}, legacyProjectRoot?: string) {
+  if (legacyProjectRoot) {
     try {
-      const migrated = await maybeMigrateLegacyConfig(domainRoot, userPaths)
+      const migrated = await maybeMigrateLegacyConfig(legacyProjectRoot, userPaths)
       if (migrated.migrated) {
         console.error(
           `[opencode-studio] migrated roots from ${migrated.legacyPath} → ${migrated.config.configPath}. Run opencode-studio repair to finish cleanup.`,
@@ -58,22 +62,18 @@ function pickString(...candidates: unknown[]): string | undefined {
   return undefined
 }
 
-function sessionDirectoryFromEvent(event: { type: string; properties?: unknown }): string | undefined {
-  if (event.type !== "session.created" && event.type !== "session.updated") return undefined
-  const props = event.properties as { info?: { directory?: unknown } } | undefined
-  const directory = props?.info?.directory
-  return typeof directory === "string" && path.isAbsolute(directory) ? path.resolve(directory) : undefined
-}
-
 export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): Plugin {
   return async (context, rawOptions) => {
     assertNotRoot("initialize the OpenCode Studio plugin")
     const packageRoot = defaults.packageRoot ?? packageRootFrom(import.meta.dir)
     const meta = await loadPackageMeta(packageRoot)
     const userPaths = pickUserPaths(defaults)
-    const workspace = path.resolve(
+    const agentWorkspace = path.resolve(
       pickString(rawOptions?.workspace, defaults.workspace, context.directory) ?? process.env.HOME ?? process.cwd(),
     )
+    const studioRoot = path.resolve(pickString(rawOptions?.studioRoot, defaults.studioRoot) ?? defaultStudioRoot())
+    // Legacy project config is migration input only; it never becomes the Studio Home.
+    const { roots } = await resolveRoots(userPaths, agentWorkspace)
 
     let hostUrl = pickString(rawOptions?.hostUrl, defaults.hostUrl)?.replace(/\/$/, "")
 
@@ -83,14 +83,14 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       if (parent) {
         const ensured = await ensureStudioHost({
           parentOpenCodeUrl: parent,
-          workspace,
+          studioRoot,
           packageRoot,
           env: process.env,
         })
         if (ensured.ok) {
           hostUrl = ensured.hostUrl
           if (!ensured.reused) {
-            console.error(`[opencode-studio] Studio host ready: ${ensured.studioUrl} (workspace ${ensured.workspace})`)
+            console.error(`[opencode-studio] Studio host ready: ${ensured.studioUrl} (Studio Home ${ensured.studioRoot})`)
           }
         } else {
           console.error(`[opencode-studio] Studio host not started: ${ensured.reason}`)
@@ -106,11 +106,9 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       if (fromEnv) hostUrl = fromEnv
     }
 
-    const { roots } = await resolveRoots(userPaths, workspace)
-
     const contributions: StudioPluginContribution[] = []
     const loadCtx = {
-      workspace,
+      studioRoot,
       roots,
       hostUrl,
       packageRoot,
@@ -121,7 +119,7 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
 
     try {
       const platformPlugin = await loadPlatformMediaPlugin({
-        workspace,
+        workspace: agentWorkspace,
         mediaProviderPackage: meta.mediaProviderSpecifier,
       })
       contributions.push({ studioId: PLATFORM_OWNER, hooks: await platformPlugin(context, {}) })
@@ -145,20 +143,6 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
     )
     contributions.push(...studioHooks)
 
-    const composed = composeStudioPlugins(contributions)
-    const previousEvent = composed.event
-    composed.event = async (input) => {
-      await previousEvent?.(input)
-      const directory = sessionDirectoryFromEvent(input.event as { type: string; properties?: unknown })
-      if (!directory) return
-      try {
-        const ok = await rebindStudioHostWorkspace(directory)
-        if (ok) console.error(`[opencode-studio] active workspace → ${directory}`)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        console.error(`[opencode-studio] session workspace rebind failed: ${message}`)
-      }
-    }
-    return composed
+    return composeStudioPlugins(contributions)
   }
 }

@@ -4,7 +4,7 @@ import type { resolveStudioRoot } from "./config"
 import { CATALOG_ORDER, STUDIO_IDS, type StudioId } from "./core/registry"
 
 export type PluginLoadContext = {
-  workspace: string
+  studioRoot: string
   roots: Parameters<typeof resolveStudioRoot>[0]["roots"]
   /** Set only when ensure succeeded or hostUrl/OPENCODE_STUDIO_URL was explicit. */
   hostUrl?: string
@@ -15,7 +15,7 @@ export type PluginLoadContext = {
 }
 
 export type ApiLoadContext = {
-  workspace: string
+  studioRoot: string
   roots: Parameters<typeof resolveStudioRoot>[0]["roots"]
   resolveStudioRoot: typeof resolveStudioRoot
 }
@@ -26,7 +26,7 @@ export type ApiLoader = (ctx: ApiLoadContext) => Promise<Hono>
 export const pluginLoaders: Record<StudioId, PluginLoader> = {
   cad: async (ctx) => {
     const { loadCadPlugin } = await import("../studios/cad/plugin")
-    const root = await ctx.resolveStudioRoot({ studioId: "cad", workspace: ctx.workspace, roots: ctx.roots })
+    const root = await ctx.resolveStudioRoot({ studioId: "cad", studioRoot: ctx.studioRoot, roots: ctx.roots })
     return loadCadPlugin({
       root,
       companionUrl: ctx.hostUrl ? `${ctx.hostUrl}/studio/studios/cad` : undefined,
@@ -35,7 +35,7 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
   },
   pcb: async (ctx) => {
     const { loadPcbPlugin } = await import("../studios/pcb/plugin")
-    const root = await ctx.resolveStudioRoot({ studioId: "pcb", workspace: ctx.workspace, roots: ctx.roots })
+    const root = await ctx.resolveStudioRoot({ studioId: "pcb", studioRoot: ctx.studioRoot, roots: ctx.roots })
     return loadPcbPlugin({ root })
   },
 }
@@ -43,13 +43,13 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
 export const apiLoaders: Record<StudioId, ApiLoader> = {
   cad: async (ctx) => {
     const [{ createCadApi }, { initializeStudio }] = await Promise.all([import("../studios/cad/api"), import("../studios/cad/library")])
-    const root = await ctx.resolveStudioRoot({ studioId: "cad", workspace: ctx.workspace, roots: ctx.roots })
+    const root = await ctx.resolveStudioRoot({ studioId: "cad", studioRoot: ctx.studioRoot, roots: ctx.roots })
     const layout = await initializeStudio(root)
     return createCadApi(layout)
   },
   pcb: async (ctx) => {
     const { createPcbApi } = await import("../studios/pcb/api")
-    const root = await ctx.resolveStudioRoot({ studioId: "pcb", workspace: ctx.workspace, roots: ctx.roots })
+    const root = await ctx.resolveStudioRoot({ studioId: "pcb", studioRoot: ctx.studioRoot, roots: ctx.roots })
     return createPcbApi(root)
   },
 }

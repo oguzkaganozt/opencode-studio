@@ -209,10 +209,10 @@ Do not hand-author generated measurements as canonical source - always read them
 
 ## Viewer
 
-Call `design_view(id)` to get the design URL and companion reachability. The Studio host starts in-process when `opencode serve` loads a directory (plugin ensure-host). If `reachable` is false:
+Call `design_view(id)` to get the design URL and companion reachability. The Studio host starts alongside `opencode serve` through `ensure-host` and uses a fixed Studio Home. If `reachable` is false:
 
-1. Confirm `opencode serve` is running for this directory.
-2. Open **http://127.0.0.1:4173/studio** after the plugin has logged the Studio URL.
+1. Confirm `opencode serve` is running and `~/.local/bin` is early on `PATH` so the wrapper can run.
+2. Open **http://127.0.0.1:4173/studio** after the host has logged the Studio URL.
 3. Call `design_view(id)` again.
 
 Do **not** run `opencode-studio serve` — that command was removed. Studio UI is `/studio` (bare `/` is the proxied native OpenCode Agent). The CAD viewer auto-discovers built designs in the dropdown. Select a design to load the full assembly as a 3D scene.

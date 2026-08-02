@@ -144,5 +144,5 @@ describe("pcb studio smoke", () => {
     expect(typeof result.exitCode).toBe("number")
     expect(result).toHaveProperty("processSuccess")
     expect(result).toHaveProperty("artifacts")
-  })
+  }, 15_000)
 })

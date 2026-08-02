@@ -26,19 +26,14 @@ async function isolatedHost() {
   }
 }
 
-function fakeOpenCodeBridge(workspace = "/tmp") {
+function fakeOpenCodeBridge() {
   const proxyRequests: string[] = []
-  let active = workspace
   const bridge: OpenCodeBridge = {
     proxy: async (request) => {
       proxyRequests.push(request.url)
       return new Response("OpenCode proxy")
     },
     webSocketTarget: async () => "ws://127.0.0.1:4096",
-    getWorkspace: () => active,
-    setWorkspace: (next) => {
-      active = next
-    },
     close: () => {},
   }
   return { bridge, proxyRequests }
@@ -50,6 +45,7 @@ async function hostApp(ctx: Awaited<ReturnType<typeof isolatedHost>>, extra: Rec
     fake,
     ...(await createHostApp({
       ...ctx,
+      studioRoot: ctx.workspace,
       hostname: "127.0.0.1",
       port: 4173,
       openCodeBridge: fake.bridge,
@@ -64,6 +60,7 @@ describe("host server", () => {
     const { app } = await hostApp(ctx)
     const health = await app.request("http://127.0.0.1:4173/studio-api/health", { headers: { host: "127.0.0.1:4173" } })
     expect(health.status).toBe(200)
+    expect((await health.json()).studioRoot).toBe(ctx.workspace)
     const studios = await app.request("http://127.0.0.1:4173/api/studios", { headers: { host: "127.0.0.1:4173" } })
     const body = await studios.json()
     expect(body.enabled).toEqual([...STUDIO_IDS])
@@ -82,7 +79,9 @@ describe("host server", () => {
 
   test("requires parent OpenCode URL or injected bridge", async () => {
     const ctx = await isolatedHost()
-    await expect(createHostApp({ ...ctx, hostname: "127.0.0.1", port: 4173 })).rejects.toThrow("parentOpenCodeUrl")
+    await expect(createHostApp({ ...ctx, studioRoot: ctx.workspace, hostname: "127.0.0.1", port: 4173 })).rejects.toThrow(
+      "parentOpenCodeUrl",
+    )
   })
 
   test("serves Studio under /studio and proxies OpenCode at root", async () => {
@@ -276,7 +275,7 @@ describe("host server", () => {
     })
     const fake = fakeOpenCodeBridge()
     fake.bridge.webSocketTarget = async () => `ws://127.0.0.1:${upstream.port}/echo`
-    const host = await startHost({ ...ctx, hostname: "127.0.0.1", port: 0, openCodeBridge: fake.bridge })
+    const host = await startHost({ ...ctx, studioRoot: ctx.workspace, hostname: "127.0.0.1", port: 0, openCodeBridge: fake.bridge })
     try {
       const socket = new WebSocket(`${host.url.replace("http:", "ws:")}/api/pty/test`)
       const echoed = await new Promise<string>((resolve, reject) => {

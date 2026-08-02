@@ -7,7 +7,7 @@ export const cadStudio: StudioDefinition = {
   skill: "studio-cad",
   requiredEngines: ["uv"],
   root: {
-    default: "workspace",
+    default: "studio_home",
     create: false,
   },
 }

@@ -1,7 +1,7 @@
 # Internal server readiness
 
 **Audience:** our team, one (or few) Linux servers — **not** a public product release.  
-**Package pin:** `@oguzkaganozt/opencode-studio@1.0.4` (bump this line when we pin a new build).  
+**Package pin:** `@oguzkaganozt/opencode-studio@1.0.5` (bump this line when we pin a new build).
 **Done means:** someone on the team can bring up Studio on the box, open CAD/PCB/Files, and run real agent work without tribal knowledge.
 
 Does not replace `AGENTS.md` security rules.
@@ -13,10 +13,10 @@ Does not replace `AGENTS.md` security rules.
 | In | Out |
 | --- | --- |
 | Sole-operator / small team on our VPS or desktop | Multi-tenant SaaS, public npm “1.0” marketing |
-| One `opencode serve` + one project directory at a time | Multi-directory long-lived serve without restart |
+| One `opencode serve` + one fixed Studio Home | Multi-user Studio Home selection in the browser |
 | CAD + PCB + media-core + Files + loadable media-go registration | Flaky optional stubs |
 | Loopback or LAN + Basic + SSH tunnel / our reverse-proxy | In-app TLS, IAM, rate limits |
-| Pin + **repair** + restart + open project | Clean-machine CI matrix, arm64 first-class, air-gap seed kit |
+| Pin + **repair** + restart + open Studio | Clean-machine CI matrix, arm64 first-class, air-gap seed kit |
 
 **Internal v1 exit:** §5 checklist green on the **real** team server (or a clone of it). Package version **1.0.1** = this readiness bar.
 
@@ -45,16 +45,15 @@ Install these **before** Studio (greenfield):
 
 ```
 opencode serve          ← you supervise this (systemd user unit, etc.)
-  └── directory Instance   ← must OPEN the project (WorkingDirectory alone is not enough)
-        └── plugin ensure-host → :4173
-              /studio  Viewer
-              /api/*   domain APIs
-              /*       proxy → parent OpenCode (Agent iframe)
+  └── ensure-host companion → :4173
+        /studio  Viewer
+        /api/*   domain APIs
+        /*       proxy → parent OpenCode (Agent iframe)
 ```
 
 - **No** `opencode-studio serve`. Host dies when OpenCode process dies.
-- **:4173 is down** until a project directory is loaded and the plugin runs. Expected.
-- **First directory pins** the host workspace for the process life. Switch project → restart serve.
+- **:4173 starts** with `opencode serve` when the PATH wrapper is installed and autostart is enabled.
+- **Studio Home is fixed** to `$HOME` for the serve lifetime. OpenCode project selection is request-scoped and never changes Studio Home.
 - Default Studio port **4173**; busy → hard fail (set `OPENCODE_STUDIO_PORT`).
 
 ### Env we actually use
@@ -66,6 +65,7 @@ opencode serve          ← you supervise this (systemd user unit, etc.)
 | `OPENCODE_STUDIO_PORT` | If 4173 taken |
 | `OPENCODE_STUDIO_HOSTNAME` / `OPENCODE_STUDIO_BIND=web` | Non-loopback Studio (needs password) |
 | `OPENCODE_STUDIO_ALLOWED_ORIGINS` | Browser Origin ≠ Host (reverse-proxy / WS) |
+| `OPENCODE_STUDIO_WORKSPACE` | Explicit fixed Studio Home override (default `$HOME`) |
 | `OPENCODE_STUDIO_AUTOSTART=0` | Tools only, no host (rare) |
 | `OPENCODE_CONFIG_HOME` / `OPENCODE_STUDIO_CONFIG_HOME` | Isolation (absolute paths) |
 
@@ -81,7 +81,7 @@ Export the same password in the shell you use for `curl -u` checks (service `Env
 
 ```bash
 # Prereqs already on PATH: bun, opencode, node, npm
-bun add -g @oguzkaganozt/opencode-studio@1.0.4
+bun add -g @oguzkaganozt/opencode-studio@1.0.5
 hash -r
 command -v opencode-studio
 
@@ -131,23 +131,16 @@ systemctl --user daemon-reload
 systemctl --user enable --now opencode-serve
 ```
 
-Confirm OpenCode listens (e.g. `:4096`). **Expect :4173 still down.**
+Confirm OpenCode and Studio listen (e.g. `:4096` and `:4173`).
 
-### 4.4 Load the project directory (required)
-
-`WorkingDirectory=` does **not** start the Studio plugin by itself.
-
-1. Open OpenCode UI and open/select `/abs/project`, **or**
-2. Call the OpenCode API with that directory (same as a normal project open).
-
-Then:
+### 4.4 Verify Studio
 
 ```bash
 # journalctl --user -u opencode-serve -f
 # expect: [opencode-studio] Studio host ready: http://127.0.0.1:4173/studio
 
 curl -fsS http://127.0.0.1:4173/studio-api/health
-# → {"status":"ok","parentOpenCodeUrl":"..."}
+# → {"status":"ok","parentOpenCodeUrl":"...","studioRoot":"/home/<user>"}
 
 # Basic only required when Studio is non-loopback; harmless on loopback
 export OPENCODE_SERVER_PASSWORD=change-me-long-random   # same value as the unit
@@ -167,7 +160,7 @@ Browser: `http://127.0.0.1:4173/studio` (or SSH tunnel). Open CAD, PCB, Files on
 opencode-studio upgrade   # or bun add -g @…@<new>
 opencode-studio repair
 
-opencode-studio status --workspace /abs/project
+opencode-studio status
 # restart OpenCode
 
 # Rollback
@@ -189,7 +182,7 @@ When bumping the pin, update the version line at the top of **this file**.
 | `engine:pcb:npm` fail | Install Node/npm on PATH |
 | Unmarked / edited managed skill | Backup, delete skill dir, `repair` |
 | Port busy / foreign health | Free port or `OPENCODE_STUDIO_PORT` |
-| Tools ≠ Viewer paths | Restart serve; open only intended dir first |
+| Tools ≠ Viewer paths | Check persistent CAD/PCB roots in `studio.json`; restart serve |
 | Agent / parent broken | `OPENCODE_SERVER_PASSWORD` on OpenCode process |
 | Dual json + jsonc | Keep one, `repair` |
 | Proxy WS / Origin issues | `OPENCODE_STUDIO_ALLOWED_ORIGINS`; enable WS upgrade |
@@ -204,14 +197,14 @@ Run on the **actual** host we will use.
 
 - [ ] Prereqs: Bun, OpenCode, Node/npm
 - [ ] Pinned package; `opencode-studio` on PATH
-- [ ] `repair` + `status --workspace /abs/project` → exit 0  
+- [ ] `repair` + `status` → exit 0
   - [ ] `plugin-registration` **pass**  
   - [ ] `mcp-build123d` **pass**  
   - [ ] domain + media skills **pass**  
   - [ ] `engine:pcb:npm` **pass**  
   - [ ] `cad-forge` **pass**
 - [ ] OpenCode restarted after repair
-- [ ] User unit (or equivalent) running; **project directory opened** in OpenCode
+- [ ] User unit (or equivalent) running; Studio Home is the intended `$HOME` or explicit override
 - [ ] Host ready log; `/studio-api/health` 200; `/studio` 200
 - [ ] CAD + PCB + Files UI load
 - [ ] Agent iframe reaches parent (one trivial chat/tool round-trip)

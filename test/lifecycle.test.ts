@@ -90,6 +90,43 @@ describe("configureStudios", () => {
     ).rejects.toThrow(/modified by the user/)
   })
 
+  test("configure migrates legacy roots before scrubbing the project config", async () => {
+    const ctx = await isolated()
+    const cadRoot = path.join(ctx.workspace, "cad-library")
+    const pcbRoot = path.join(ctx.workspace, "pcb-library")
+    await mkdir(cadRoot)
+    await mkdir(pcbRoot)
+    await mkdir(path.join(ctx.workspace, ".opencode"), { recursive: true })
+    await writeFile(path.join(ctx.workspace, ".opencode", "studio.json"), JSON.stringify({ roots: { cad: cadRoot, pcb: pcbRoot } }))
+
+    await configureStudios({
+      ...ctx,
+      validateOpenCode: false,
+    })
+
+    const config = await readStudioConfigFile(ctx)
+    expect(config.roots).toEqual({ cad: cadRoot, pcb: pcbRoot })
+    expect(await Bun.file(path.join(ctx.workspace, ".opencode", "studio.json")).exists()).toBe(false)
+  })
+
+  test("dry-run preserves legacy project roots", async () => {
+    const ctx = await isolated()
+    const cadRoot = path.join(ctx.workspace, "cad-library")
+    await mkdir(cadRoot)
+    await mkdir(path.join(ctx.workspace, ".opencode"), { recursive: true })
+    const legacyPath = path.join(ctx.workspace, ".opencode", "studio.json")
+    await writeFile(legacyPath, JSON.stringify({ roots: { cad: cadRoot } }))
+
+    await configureStudios({
+      ...ctx,
+      dryRun: true,
+      validateOpenCode: false,
+    })
+
+    expect(await Bun.file(legacyPath).exists()).toBe(true)
+    expect(await Bun.file(path.join(ctx.studioConfigHome, "studio.json")).exists()).toBe(false)
+  })
+
   test("remove uninstalls managed skills and plugins", async () => {
     const ctx = await isolated()
     await configureStudios({

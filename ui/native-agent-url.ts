@@ -7,18 +7,23 @@ export function encodeBase64Url(value: string): string {
   return encoded.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
 }
 
-/** Native OpenCode home (workspace root UI). */
+/** Native OpenCode home. */
 export function nativeOpenCodeHomeUrl(): string {
   return "/"
+}
+
+/** A domain handoff can target one project without changing the fixed Studio Home. */
+export function resolveAgentDirectory(directory: string | undefined, studioRoot: string): string {
+  return directory?.trim() || studioRoot
 }
 
 /**
  * Prefill a new-session composer without auto-submit.
  * OpenCode consumes `?prompt=` on the legacy directory session route and redirects to a draft.
  */
-export function nativePromptDraftUrl(workspace: string, prompt: string): string {
+export function nativePromptDraftUrl(directory: string, prompt: string): string {
   const text = prompt.trim()
   if (!text) return nativeOpenCodeHomeUrl()
-  const dir = encodeBase64Url(workspace)
+  const dir = encodeBase64Url(directory)
   return `/${dir}/session?prompt=${encodeURIComponent(text)}`
 }

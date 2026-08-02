@@ -2,7 +2,7 @@
 
 OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
 
-**Package:** [`@oguzkaganozt/opencode-studio@1.0.4`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
+**Package:** [`@oguzkaganozt/opencode-studio@1.0.5`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
 **CAD and PCB are always on.** Install wires OpenCode once (plugins, skills, CAD MCP). Media tools and the Files explorer are always on too.
 
@@ -16,7 +16,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 ## Install (pinned)
 
 ```bash
-bun add -g @oguzkaganozt/opencode-studio@1.0.4
+bun add -g @oguzkaganozt/opencode-studio@1.0.5
 hash -r
 command -v opencode-studio
 
@@ -46,12 +46,11 @@ Domain engines ship in the package:
 
 ```bash
 # after repair + OpenCode restart
-cd /path/to/your/project
 opencode serve
-# Open this project directory in OpenCode (UI or API) — required before :4173 listens
+# Studio starts immediately with $HOME as its fixed Studio Home
 ```
 
-OpenCode loads the studio plugin for that directory. The plugin starts the Studio host in-process and attaches to this serve.
+The serve wrapper starts the Studio host and attaches it to this OpenCode server.
 
 Then open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — OpenCode home, CAD / PCB / Files. Parent OpenCode UI is proxied at `/` (full-pane home + Agent side panel on domain pages).
 
@@ -61,7 +60,7 @@ Then open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — O
 | `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
 | `http://127.0.0.1:4173/` | Proxied native OpenCode (iframe source) |
 
-**Critical:** `repair` installs `~/.local/bin/opencode` wrapper so **`opencode serve` auto-starts Studio** (`ensure-host`, default workspace `$HOME`). Keep `~/.local/bin` early on `PATH`. Active OpenCode project **rebinds** Studio (no first-folder pin). Opt out: `OPENCODE_STUDIO_AUTOSTART=0`.
+**Critical:** `repair` installs `~/.local/bin/opencode` wrapper so **`opencode serve` auto-starts Studio** (`ensure-host`, fixed Studio Home `$HOME`). Keep `~/.local/bin` early on `PATH`. OpenCode projects affect only their own Agent requests; they never change Studio Home. Opt out: `OPENCODE_STUDIO_AUTOSTART=0`.
 
 Health: `opencode-studio status` (exit 1 if unwired). CAD: `design_build` runs forge `uv sync` outside the 120s build timer (no separate warm step). Prefer **`OPENCODE_SERVER_PASSWORD`** on the OpenCode process (Studio-only password breaks Agent proxy).
 
@@ -82,6 +81,7 @@ opencode serve --hostname 0.0.0.0 --port 4096
 | --- | --- |
 | `OPENCODE_STUDIO_HOSTNAME` / `OPENCODE_STUDIO_BIND=0.0.0.0\|web` | Force Studio bind (default: inherit parent `0.0.0.0`, else loopback) |
 | `OPENCODE_STUDIO_PORT` | Studio port (default `4173`; multi-user: one port per Linux user) |
+| `OPENCODE_STUDIO_WORKSPACE` | Explicit fixed Studio Home override (default `$HOME`; restart serve to change) |
 | `OPENCODE_SERVER_PASSWORD` or `OPENCODE_STUDIO_PASSWORD` | Required for non-loopback — Basic on **all** Studio routes except `/studio-api/health` |
 | `OPENCODE_SERVER_USERNAME` / `OPENCODE_STUDIO_USERNAME` | Basic user (default `opencode` if only server password is set) |
 | `OPENCODE_STUDIO_ALLOWED_ORIGINS` | Extra origins when browser Origin ≠ Host (reverse-proxy) |
@@ -100,7 +100,7 @@ Prefer SSH tunnel to loopback. If public: TLS at your reverse-proxy; enable WebS
 { "roots": { "cad": "/absolute/path" } }
 ```
 
-Missing `studio.json` is fine. Media paths are workspace-scoped. Keep **one** of `opencode.json` / `opencode.jsonc`.
+Missing `studio.json` is fine. CAD/PCB roots default to fixed Studio Home; configured roots are persistent overrides. Media paths remain OpenCode-project-scoped. Keep **one** of `opencode.json` / `opencode.jsonc`.
 
 **Upgrade from project-local config:** if global config is missing and the domain still has `.opencode/studio.json` with roots, roots are migrated on plugin load. Run `opencode-studio repair` once to finish.
 
@@ -120,7 +120,7 @@ Shell completion installs on global `bun add -g`. Skip: `OPENCODE_STUDIO_SKIP_PO
 
 ```bash
 # Prefer an explicit pin over unattended @latest
-bun add -g @oguzkaganozt/opencode-studio@1.0.4
+bun add -g @oguzkaganozt/opencode-studio@1.0.5
 opencode-studio repair
 opencode-studio status --workspace /abs/project
 # restart OpenCode

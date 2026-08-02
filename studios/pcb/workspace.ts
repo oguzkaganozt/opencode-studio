@@ -166,6 +166,7 @@ export function projectSummary(p: CircuitProject) {
     id: p.id,
     name: p.name,
     path: p.relativePath,
+    directory: p.absolutePath,
     built: p.hasCircuitJson,
     hasSchematicSvg: p.hasSchematicSvg,
     hasPcbSvg: p.hasPcbSvg,

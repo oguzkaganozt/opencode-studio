@@ -214,7 +214,7 @@ async function browserSmoke(base: string) {
     }
 
     await page.goto(`${base}/studio/files`, { waitUntil: "networkidle" })
-    await page.waitForSelector("text=workspace", { timeout: 15_000 })
+    await page.waitForSelector("text=Home", { timeout: 15_000 })
     const filesFilter = page.getByRole("searchbox", { name: "Filter files" })
     await filesFilter.focus()
     await filesFilter.fill("README")
@@ -356,7 +356,7 @@ try {
       }),
   })
   const { url, stop } = await startHost({
-    workspace: domain,
+    studioRoot: domain,
     studioConfigHome,
     openCodeHome,
     packageRoot: root,

@@ -3,6 +3,8 @@ export type AgentHandoffSource = "cad" | "pcb" | "files" | "shell"
 export type AgentHandoffRequest = {
   text: string
   source?: AgentHandoffSource
+  /** Optional project directory for this one Agent draft. Does not change Studio Home. */
+  directory?: string
   /** Open the agent panel if closed. Default true. */
   open?: boolean
   /** Also copy text to clipboard (secondary). Default false. */

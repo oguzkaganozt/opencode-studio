@@ -437,6 +437,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const designs = designsQuery.data ?? []
   const selectedDesign = !localParts && designId ? designs.find((d) => d.id === designId) : undefined
+  const selectedDesignDirectory = designQuery.data?.absoluteDirectory ?? selectedDesign?.absoluteDirectory
 
   useEffect(() => {
     if (!designId && designs.length > 0 && !localParts) {
@@ -647,7 +648,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     const text = designId
       ? `Build or rebuild the CAD design "${designId}", then verify its artifacts and refresh the Studio viewer.`
       : "Create a new CAD design from my requirements, build it, and verify its artifacts for the Studio viewer."
-    requestAgentHandoff({ text, source: "cad", open: true, copyFallback: true })
+    requestAgentHandoff({ text, source: "cad", directory: selectedDesignDirectory, open: true, copyFallback: true })
     showToast("Opened build request in agent")
   }
 
@@ -748,7 +749,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
       )
       return
     }
-    requestAgentHandoff({ text: formatAnnotationText(), source: "cad", open: true, copyFallback: true })
+    requestAgentHandoff({ text: formatAnnotationText(), source: "cad", directory: selectedDesignDirectory, open: true, copyFallback: true })
     showToast("Opened in agent")
   }
 

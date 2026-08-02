@@ -398,7 +398,7 @@ export function FilesExplorer() {
         <nav
           className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-contain whitespace-nowrap text-[12px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           aria-label="Breadcrumb"
-          title={dirPath || "workspace"}
+          title={dirPath || "Studio Home"}
         >
           <button
             type="button"
@@ -408,7 +408,7 @@ export function FilesExplorer() {
             onClick={() => navigateDir("")}
             aria-current={crumbs.length === 0 ? "location" : undefined}
           >
-            workspace
+            Home
           </button>
           {crumbs.map((part, index) => {
             const target = crumbs.slice(0, index + 1).join("/")
@@ -496,7 +496,7 @@ export function FilesExplorer() {
               <ErrorState
                 className="m-3 border-0 py-8"
                 title="Could not load files"
-                description={`${(treeQuery.error as Error).message}. Check the workspace and retry.`}
+                description={`${(treeQuery.error as Error).message}. Check Studio Home and retry.`}
                 action={
                   <button type="button" className="osc-chip" onClick={() => void treeQuery.refetch()}>
                     Retry

@@ -293,10 +293,12 @@ function DiagnosticsPanel({
   diagnostics,
   projectId,
   projectName,
+  directory,
 }: {
   diagnostics: CircuitDiagnostics
   projectId: string
   projectName: string
+  directory: string
 }) {
   const [toast, setToast] = useState<string | null>(null)
   const [open, setOpen] = useState(diagnostics.errorCount > 0)
@@ -343,6 +345,7 @@ function DiagnosticsPanel({
               requestAgentHandoff({
                 text: formatDiagnosticsHandoff(projectId, projectName, diagnostics),
                 source: "pcb",
+                directory,
                 open: true,
                 copyFallback: true,
               })
@@ -389,6 +392,7 @@ async function loadAllProjects() {
 function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data, isLoading, error, refetch } = useQuery({ queryKey: ["pcb", "projects"], queryFn: loadAllProjects })
+  const { data: rootInfo } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: api.workspace })
   const search = searchParams.get("q") ?? ""
   const filter = searchParams.get("status") ?? "all"
   const normalizedSearch = search.trim().toLowerCase()
@@ -415,7 +419,7 @@ function ProjectsPage() {
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8 sm:py-10">
       <div className="mb-6 flex items-end justify-between gap-4 sm:mb-8">
         <div>
-          <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Workspace</p>
+          <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Studio Home</p>
           <h1 className="text-pretty text-xl font-semibold tracking-tight text-[var(--osc-text)] sm:text-2xl">Projects</h1>
         </div>
         {data && (
@@ -429,22 +433,23 @@ function ProjectsPage() {
       {error && (
         <PageError
           message="Failed to load projects"
-          description={`${String(error)}. Check the workspace and retry.`}
+            description={`${String(error)}. Check Studio Home and retry.`}
           onRetry={() => void refetch()}
         />
       )}
       {data && data.projects.length === 0 && (
         <PageEmpty
           label="No circuit projects yet"
-          description="Create a project with src/circuit.tsx in the workspace (pcb_project_create), then build with the agent."
+          description="Create a project with src/circuit.tsx in Studio Home, then build with the agent."
           action={
             <button
               type="button"
               className="pcb-chip pcb-chip--primary"
               onClick={() =>
                 requestAgentHandoff({
-                  text: "Create a new PCB project in this workspace, ask me for the circuit requirements, then build and validate it.",
+                  text: "Create a new PCB project in Studio Home, ask me for the circuit requirements, then build and validate it.",
                   source: "pcb",
+                  directory: rootInfo?.root,
                   open: true,
                   copyFallback: true,
                 })
@@ -685,7 +690,7 @@ function ProjectPage() {
   if (!project)
     return (
       <Shell fill>
-        <PageError message="Project not found" description="It may have been removed from the workspace." />
+        <PageError message="Project not found" description="It may have been removed from Studio Home." />
       </Shell>
     )
 
@@ -693,6 +698,7 @@ function ProjectPage() {
     requestAgentHandoff({
       text: `Build the PCB project "${project.name}" (${project.id}), inspect all diagnostics, and verify designValid, fabricationReady, and assemblyReady.`,
       source: "pcb",
+      directory: project.directory,
       open: true,
       copyFallback: true,
     })
@@ -745,7 +751,7 @@ function ProjectPage() {
         </div>
 
         {project.diagnostics && id && (
-          <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} />
+          <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} directory={project.directory} />
         )}
 
         <nav ref={tablistRef} className="pcb-tablist" aria-label="Project views. Scroll horizontally for more views.">
@@ -789,7 +795,7 @@ function ProjectPage() {
             )}
             {tab === "bom" && id && (
               <Suspense fallback={<LoadingState label="Loading BOM…" />}>
-                <BomTab projectId={id} />
+                <BomTab projectId={id} directory={project.directory} />
               </Suspense>
             )}
             {tab === "json" && id && <CircuitJsonViewer projectId={id} />}
@@ -858,6 +864,7 @@ function CatalogPage() {
   const search = searchParams.get("q") ?? ""
   const selected = searchParams.get("part")
   const debouncedSearch = useDebounce(search, 200)
+  const { data: rootInfo } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: api.workspace })
 
   const updateCatalogSearch = (value: string) => {
     const next = new URLSearchParams(searchParams)
@@ -884,8 +891,9 @@ function CatalogPage() {
 
   const requestCatalogHelp = () => {
     requestAgentHandoff({
-      text: "Help populate the workspace PCB component catalog with verified manufacturer part numbers, metadata, datasheets, and usable footprint identities.",
+      text: "Help populate the Studio Home PCB component catalog with verified manufacturer part numbers, metadata, datasheets, and usable footprint identities.",
       source: "pcb",
+      directory: rootInfo?.root,
       open: true,
       copyFallback: true,
     })
@@ -943,7 +951,7 @@ function CatalogPage() {
             description={
               search
                 ? "Try a shorter MPN or manufacturer token."
-                : "Add parts under the workspace catalog directory, or search after parts exist."
+                : "Add parts under the Studio Home catalog directory, or search after parts exist."
             }
             action={
               !search ? (

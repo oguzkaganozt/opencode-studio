@@ -464,19 +464,24 @@ export async function configureStudios(
   const enabled = allStudioIds()
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
   const meta = await loadPackageMeta(packageRoot)
+  const domainRoot = await resolveWorkspace(input.workspace)
   const previous = await readStudioConfigFile(userPaths)
+  // Preserve roots before legacy project state is scrubbed below. Defer the global write
+  // until configure has passed its preflight so dry runs and failed installs stay non-mutating.
+  const legacy =
+    !previous.error && !(await Bun.file(previous.configPath).exists()) && Object.keys(previous.roots).length === 0
+      ? await readLegacyStudioConfig(domainRoot)
+      : null
   const desiredRoots: Partial<Record<StudioId, string>> = {}
-  const rootSource = input.roots ?? previous.roots
+  const rootSource = input.roots ?? legacy?.roots ?? previous.roots
   for (const id of STUDIO_IDS) {
     if (rootSource[id]) desiredRoots[id] = rootSource[id]!
   }
 
-  const domainRoot = await resolveWorkspace(input.workspace)
-
   if (!input.dryRun) {
     for (const studioId of enabled) {
       const def = getStudioDefinition(studioId)
-      await resolveStudioRoot({ studioId, workspace: domainRoot, roots: desiredRoots, create: def.root.create })
+      await resolveStudioRoot({ studioId, studioRoot: domainRoot, roots: desiredRoots, create: def.root.create })
     }
   }
 
@@ -722,7 +727,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     try {
       root = await resolveStudioRoot({
         studioId,
-        workspace: domainRoot,
+        studioRoot: domainRoot,
         roots: config.roots,
       })
     } catch (error) {
@@ -1042,9 +1047,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
   checks.push({
     id: "studio-host",
     status: host.ok ? "pass" : "warn",
-    message: host.ok
-      ? `Studio host up at ${host.url}`
-      : `Studio host not reachable at ${host.url} (start opencode serve with a project directory)`,
+    message: host.ok ? `Studio host up at ${host.url}` : `Studio host not reachable at ${host.url} (start opencode serve)`,
   })
 
   const failed = checks.some((check) => check.status === "fail")

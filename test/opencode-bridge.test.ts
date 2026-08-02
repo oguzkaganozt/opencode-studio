@@ -23,7 +23,7 @@ describe("OpenCode bridge", () => {
     expect(resolveBridgeDirectory(new Request("http://studio.test/session"), "/fallback")).toBe("/fallback")
   })
 
-  test("uses client directory when present; falls back to active workspace", async () => {
+  test("uses client directory when present; falls back to fixed Studio Home", async () => {
     const upstream = Bun.serve({
       port: 0,
       async fetch(request) {
@@ -41,7 +41,7 @@ describe("OpenCode bridge", () => {
     servers.push(upstream)
     const bridge = createOpenCodeBridge({
       baseUrl: `http://127.0.0.1:${upstream.port}`,
-      workspace: "/srv/project",
+      studioRoot: "/srv/studio-home",
       env: { OPENCODE_SERVER_PASSWORD: "parent-secret" },
     })
 
@@ -57,11 +57,7 @@ describe("OpenCode bridge", () => {
 
     const fallback = await bridge.proxy(new Request("http://studio.test/session"))
     const fallbackBody = await fallback.json()
-    expect(fallbackBody.directory).toBe("/srv/project")
-
-    bridge.setWorkspace("/srv/rebound")
-    const afterRebind = await bridge.proxy(new Request("http://studio.test/session"))
-    expect((await afterRebind.json()).directory).toBe("/srv/rebound")
+    expect(fallbackBody.directory).toBe("/srv/studio-home")
 
     const post = await bridge.proxy(
       new Request("http://studio.test/api/session", {
@@ -83,7 +79,7 @@ describe("OpenCode bridge", () => {
       },
     })
     servers.push(upstream)
-    const bridge = createOpenCodeBridge({ baseUrl: `http://127.0.0.1:${upstream.port}`, workspace: "/srv/project" })
+    const bridge = createOpenCodeBridge({ baseUrl: `http://127.0.0.1:${upstream.port}`, studioRoot: "/srv/studio-home" })
     const response = await bridge.proxy(new Request("http://studio.test/assets/index.js"))
     expect((await response.json()).search).toBe("")
     bridge.close()

@@ -3,16 +3,14 @@ import path from "node:path"
 export type OpenCodeBridge = {
   proxy(request: Request): Promise<Response>
   webSocketTarget(requestUrl: string): Promise<string>
-  getWorkspace(): string
-  setWorkspace(workspace: string): void
   close(): void
 }
 
 export type OpenCodeBridgeInput = {
   /** Parent OpenCode HTTP base (already normalized to a fetchable host). */
   baseUrl: string
-  /** Fallback directory when the client does not send one. */
-  workspace: string
+  /** Fixed fallback directory when the client does not choose a project. */
+  studioRoot: string
   env?: NodeJS.ProcessEnv
 }
 
@@ -50,32 +48,28 @@ function absoluteDirectory(raw: string | null | undefined): string | null {
   return path.resolve(value)
 }
 
-/** Prefer client directory (OpenCode multi-project UI); else active Studio workspace. */
-export function resolveBridgeDirectory(request: Request, fallbackWorkspace: string): string {
+/** Prefer client directory (OpenCode multi-project UI); else the fixed Studio Home. */
+export function resolveBridgeDirectory(request: Request, fallbackDirectory: string): string {
   const url = new URL(request.url)
   const fromQuery = absoluteDirectory(url.searchParams.get("directory")) ?? absoluteDirectory(url.searchParams.get("location[directory]"))
   if (fromQuery) return fromQuery
   const header = request.headers.get("x-opencode-directory")
   const fromHeader = absoluteDirectory(header)
   if (fromHeader) return fromHeader
-  return path.resolve(fallbackWorkspace)
+  return path.resolve(fallbackDirectory)
 }
 
 /**
  * Attach-only reverse proxy to a parent OpenCode server.
  * Studio never spawns OpenCode.
- * Directory follows the client when present so Agent UI stays multi-project; otherwise uses active workspace.
+ * Directory follows the client when present so Agent UI stays multi-project; otherwise uses Studio Home.
  */
 export function createOpenCodeBridge(input: OpenCodeBridgeInput): OpenCodeBridge {
   const baseUrl = normalizeParentOpenCodeUrl(input.baseUrl)
-  let workspace = path.resolve(input.workspace)
+  const studioRoot = path.resolve(input.studioRoot)
   const env = input.env ?? process.env
 
   return {
-    getWorkspace: () => workspace,
-    setWorkspace(next: string) {
-      workspace = path.resolve(next)
-    },
     async proxy(request) {
       const incoming = new URL(request.url)
       const upstream = new URL(`${incoming.pathname}${incoming.search}`, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`)
@@ -93,7 +87,7 @@ export function createOpenCodeBridge(input: OpenCodeBridgeInput): OpenCodeBridge
         upstream.pathname === "/" ||
         upstream.pathname.startsWith("/assets/") ||
         /\.(?:png|svg|ico|webmanifest|woff2?|ttf)$/i.test(upstream.pathname)
-      const directory = isStatic ? workspace : resolveBridgeDirectory(request, workspace)
+      const directory = isStatic ? studioRoot : resolveBridgeDirectory(request, studioRoot)
       if (!isStatic) {
         upstream.searchParams.set("directory", directory)
         upstream.searchParams.set("location[directory]", directory)
@@ -142,7 +136,7 @@ export function createOpenCodeBridge(input: OpenCodeBridgeInput): OpenCodeBridge
       const directory =
         absoluteDirectory(incoming.searchParams.get("directory")) ??
         absoluteDirectory(incoming.searchParams.get("location[directory]")) ??
-        workspace
+        studioRoot
       target.searchParams.set("directory", directory)
       target.searchParams.set("location[directory]", directory)
       target.protocol = target.protocol === "https:" ? "wss:" : "ws:"

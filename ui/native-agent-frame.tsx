@@ -3,7 +3,7 @@ import { subscribeAgentHandoff } from "./agent-handoff"
 import { type AgentStatus, agentStatusDotClass, deriveAgentStatus } from "./agent-status"
 import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, clampAgentWidth, readAgentWidth, viewportAgentWidthMax, writeAgentWidth } from "./agent-width"
 import { useFocusTrap } from "./lib/focus-trap"
-import { nativeOpenCodeHomeUrl, nativePromptDraftUrl } from "./native-agent-url"
+import { nativeOpenCodeHomeUrl, nativePromptDraftUrl, resolveAgentDirectory } from "./native-agent-url"
 
 function sameOriginPath(href: string): string | null {
   try {
@@ -56,13 +56,13 @@ function useMdUp() {
 }
 
 export function NativeAgentFrame({
-  workspace,
+  studioRoot,
   available,
   open,
   onClose,
   onStatusChange,
 }: {
-  workspace: string
+  studioRoot: string
   available: boolean
   open: boolean
   onClose: () => void
@@ -113,14 +113,14 @@ export function NativeAgentFrame({
     return subscribeAgentHandoff((request) => {
       if (request.open === false) return
 
-      if (!available || !workspace) {
+      if (!available || !studioRoot) {
         if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
           void navigator.clipboard.writeText(request.text).catch(() => {})
         }
         return
       }
 
-      const next = nativePromptDraftUrl(workspace, request.text)
+      const next = nativePromptDraftUrl(resolveAgentDirectory(request.directory, studioRoot), request.text)
       setMounted(true)
       setLoading(true)
       setError(false)
@@ -135,7 +135,7 @@ export function NativeAgentFrame({
         }
       }
     })
-  }, [available, workspace])
+  }, [available, studioRoot])
 
   useEffect(() => {
     if (!open) return

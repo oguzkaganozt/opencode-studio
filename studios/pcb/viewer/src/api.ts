@@ -13,6 +13,7 @@ export type ProjectSummary = {
   id: string
   name: string
   path: string
+  directory: string
   built: boolean
   hasSchematicSvg: boolean
   hasPcbSvg: boolean

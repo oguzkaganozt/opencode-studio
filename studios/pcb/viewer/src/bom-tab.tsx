@@ -100,7 +100,7 @@ function BomCard({ entry, onSelect }: { entry: BomEntry; onSelect: (entry: BomEn
   )
 }
 
-export default function BomTab({ projectId }: { projectId: string }) {
+export default function BomTab({ projectId, directory }: { projectId: string; directory: string }) {
   const [selected, setSelected] = useState<BomEntry | null>(null)
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["pcb", "bom", projectId],
@@ -147,6 +147,7 @@ export default function BomTab({ projectId }: { projectId: string }) {
     requestAgentHandoff({
       text: `PCB project ${projectId} has ${data.unlistedCount} components without assembly identities. Identify verified manufacturer part numbers for these references, update the circuit source, rebuild, and regenerate the BOM: ${missing.join(", ")}`,
       source: "pcb",
+      directory,
       open: true,
       copyFallback: true,
     })

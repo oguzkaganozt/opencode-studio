@@ -4,7 +4,7 @@ export type StudioId = (typeof STUDIO_IDS)[number]
 /** Legacy studio ids stripped from config with a warning. */
 export const LEGACY_STUDIO_IDS = ["media", "startup"] as const
 
-export type StudioRootDefault = "workspace"
+export type StudioRootDefault = "studio_home"
 
 export type StudioDoctorCheck = {
   id: string

@@ -26,7 +26,8 @@ import { apiLoaders } from "./studio-loaders"
 import { listStudioDefinitions } from "./studios"
 
 export type HostInput = UserPathOptions & {
-  workspace: string
+  /** Immutable Studio filesystem root for this host process. */
+  studioRoot: string
   hostname?: string
   port?: number
   uiDirectory?: string
@@ -47,9 +48,6 @@ export type HostHandle = {
   url: string
   studioUrl: string
   parentOpenCodeUrl: string
-  /** Active domain/Agent workspace (rebindable; not pinned for process life). */
-  getWorkspace: () => string
-  rebindWorkspace: (workspace: string) => Promise<void>
   stop: () => void
 }
 
@@ -59,13 +57,13 @@ type StudioMountState = {
 }
 
 async function buildStudioMounts(input: {
-  workspace: string
+  studioRoot: string
   packageRoot: string
   userPaths: UserPathOptions
 }): Promise<{ state: StudioMountState; mountErrors: string[] }> {
-  // Enablement is user-global; workspace is domain data root only.
+  // Enablement is user-global; Studio Home is the fixed domain data root.
   try {
-    await maybeMigrateLegacyConfig(input.workspace, input.userPaths)
+    await maybeMigrateLegacyConfig(input.studioRoot, input.userPaths)
   } catch {
     // fail-closed read below still applies
   }
@@ -74,7 +72,7 @@ async function buildStudioMounts(input: {
   const mountErrors: string[] = []
 
   const loadCtx = {
-    workspace: input.workspace,
+    studioRoot: input.studioRoot,
     roots: config.roots,
     resolveStudioRoot,
   }
@@ -116,13 +114,13 @@ export async function createHostApp(input: HostInput) {
     input.openCodeBridge ??
     createOpenCodeBridge({
       baseUrl: parentOpenCodeUrl!,
-      workspace: input.workspace,
+      studioRoot: input.studioRoot,
       env,
     })
   const resolvedParentUrl = parentOpenCodeUrl
   const nativeOpenCodeAvailable = Boolean(resolvedParentUrl || input.openCodeBridge)
   const userPaths = pickUserPaths(input)
-  const domain = { workspace: path.resolve(input.workspace), packageRoot, userPaths }
+  const domain = { studioRoot: path.resolve(input.studioRoot), packageRoot, userPaths }
 
   const initial = await buildStudioMounts(domain)
   if (initial.mountErrors.length > 0) {
@@ -138,18 +136,7 @@ export async function createHostApp(input: HostInput) {
   }
 
   const { createFilesApi } = await import("./platform/media/files-api")
-  const filesMount = { current: await createFilesApi(domain.workspace) }
-
-  const rebindWorkspace = async (nextWorkspace: string) => {
-    const resolved = path.resolve(nextWorkspace)
-    if (resolved === domain.workspace) return
-    domain.workspace = resolved
-    if ("setWorkspace" in openCode && typeof openCode.setWorkspace === "function") {
-      openCode.setWorkspace(resolved)
-    }
-    filesMount.current = await createFilesApi(resolved)
-    await reloadStudios()
-  }
+  const filesMount = { current: await createFilesApi(domain.studioRoot) }
 
   const app = new Hono()
 
@@ -180,34 +167,14 @@ export async function createHostApp(input: HostInput) {
     ctx.header("X-Content-Type-Options", "nosniff")
   })
 
-  app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok", parentOpenCodeUrl: resolvedParentUrl, workspace: domain.workspace }))
+  app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok", parentOpenCodeUrl: resolvedParentUrl, studioRoot: domain.studioRoot }))
   app.get("/api/csrf", (ctx) => ctx.json({ token: csrfToken }))
-  app.get("/api/workspace", (ctx) => ctx.json({ workspace: domain.workspace }))
-
-  /** Loopback rebind for ensure-host companion / plugin (no CSRF — not exposed off-loopback). */
-  app.put("/api/workspace", async (ctx) => {
-    const remote = ctx.req.header("x-forwarded-for") || ctx.req.header("x-real-ip") || ""
-    if (remote && !isLoopbackHost(remote.split(",")[0]?.trim() ?? "")) {
-      return ctx.json(errorBody("forbidden", "workspace rebind is loopback-only"), 403)
-    }
-    const body = (await ctx.req.json().catch(() => null)) as { workspace?: unknown } | null
-    const next = typeof body?.workspace === "string" ? body.workspace.trim() : ""
-    if (!next || !path.isAbsolute(next)) {
-      return ctx.json(errorBody("invalid_body", "workspace must be an absolute path"), 400)
-    }
-    try {
-      await rebindWorkspace(next)
-      return ctx.json({ workspace: domain.workspace })
-    } catch (error) {
-      return ctx.json(errorBody("rebind_failed", error instanceof Error ? error.message : String(error)), 400)
-    }
-  })
 
   app.get("/api/studios", async (ctx) => {
-    const status = await statusStudios({ workspace: domain.workspace, packageRoot, ...userPaths })
+    const status = await statusStudios({ workspace: domain.studioRoot, packageRoot, ...userPaths })
     const update = await checkNpmUpdate({ packageName: meta.name, current: packageVersion })
     return ctx.json({
-      workspace: status.workspace,
+      studioRoot: status.workspace,
       configPath: status.configPath,
       enabled: status.enabled,
       configError: status.configError,
@@ -263,7 +230,7 @@ export async function createHostApp(input: HostInput) {
     }
     try {
       const result = await configureStudios({
-        workspace: domain.workspace,
+        workspace: domain.studioRoot,
         packageRoot,
         validateOpenCode: false,
         ...userPaths,
@@ -392,8 +359,6 @@ export async function createHostApp(input: HostInput) {
     packageVersion,
     config,
     reloadStudios,
-    rebindWorkspace,
-    getWorkspace: () => domain.workspace,
     closeOpenCode: () => openCode.close(),
     openCodeAuthorized: (authorization: string | undefined) =>
       !needBasic || Boolean(password && basicAuthMatches(authorization, username, password)),
@@ -425,8 +390,6 @@ export async function startHost(input: HostInput): Promise<HostHandle> {
     openCodeAuthorized,
     openCodeAuthResponse,
     openCodeWebSocketTarget,
-    rebindWorkspace,
-    getWorkspace,
   } = await createHostApp(input)
   scheduleUpdateLog({ packageName, current: input.packageVersion ?? packageVersion })
   const updateTimer = setInterval(
@@ -506,8 +469,6 @@ export async function startHost(input: HostInput): Promise<HostHandle> {
     url,
     studioUrl: `${url}/studio`,
     parentOpenCodeUrl,
-    getWorkspace,
-    rebindWorkspace,
     stop,
   }
 }

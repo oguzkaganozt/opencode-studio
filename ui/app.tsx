@@ -41,7 +41,7 @@ type UpdateInfo = {
 }
 
 type StudiosResponse = {
-  workspace: string
+  studioRoot: string
   configPath?: string
   enabled: string[]
   configError?: string
@@ -358,14 +358,14 @@ function SideDrawer({
               aria-label="Studios"
             >
               <div className="flex flex-col gap-0.5">
-                <p className="osc-drawer-label px-2.5 pt-1.5 pb-1">Workspace</p>
+                <p className="osc-drawer-label px-2.5 pt-1.5 pb-1">Home</p>
                 <DrawerNavLink to="/" active={!studioId} onNavigate={onClose} title="OpenCode" blurb="Agent & sessions" />
                 <DrawerNavLink
                   to="/files"
                   active={studioId === "files"}
                   onNavigate={onClose}
                   title="Files"
-                  blurb="Workspace browser"
+                  blurb="Home browser"
                   accent="files"
                 />
               </div>
@@ -436,7 +436,7 @@ function SideDrawer({
                               ? "Review the configuration error below."
                               : studiosQuery.data?.ok === false
                                 ? "Open a studio status row or Advanced for details."
-                                : "CAD and PCB are available in this workspace."}
+                                : "CAD and PCB are available from Studio Home."}
                         </span>
                       </div>
                     </div>
@@ -528,8 +528,8 @@ function SideDrawer({
                           <dd>v{studiosQuery.data.packageVersion}</dd>
                         </div>
                         <div>
-                          <dt>Workspace</dt>
-                          <dd title={studiosQuery.data.workspace}>{studiosQuery.data.workspace}</dd>
+                          <dt>Studio Home</dt>
+                          <dd title={studiosQuery.data.studioRoot}>{studiosQuery.data.studioRoot}</dd>
                         </div>
                         {studiosQuery.data.configPath && (
                           <div>
@@ -858,7 +858,7 @@ function StudioFrame() {
   const page = Viewer ? <Viewer key={studioId} /> : <p className="p-8 text-sm">Unknown studio</p>
   const label = card?.label ?? studioId
   const nativeAvailable = studiosQuery.data.nativeOpenCodeAvailable
-  const workspace = studiosQuery.data.workspace
+  const studioRoot = studiosQuery.data.studioRoot
 
   return (
     <div
@@ -885,7 +885,7 @@ function StudioFrame() {
         />
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <NativeAgentFrame
-            workspace={workspace}
+            studioRoot={studioRoot}
             available={nativeAvailable}
             open={chrome.agentOpen}
             onClose={chrome.closeAgent}

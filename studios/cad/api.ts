@@ -48,6 +48,7 @@ function designEntryDto(root: string, entry: DesignEntry) {
   return {
     id: entry.id,
     directory: path.relative(root, entry.directory).split(path.sep).join("/"),
+    absoluteDirectory: entry.directory,
     buildStatus: entry.buildStatus,
     partCount: entry.partCount,
     revision: entry.revision,

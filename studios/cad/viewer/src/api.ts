@@ -12,6 +12,7 @@ export function studioHref(path = "") {
 export type DesignSummary = {
   id: string
   directory: string
+  absoluteDirectory: string
   buildStatus: "built" | "unbuilt" | "stale"
   partCount: number
   revision: string | null

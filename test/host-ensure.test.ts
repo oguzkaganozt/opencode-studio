@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { ensureStudioHost, probeParentOpenCode, resetStudioHostEnsureForTests, resolveStudioBind } from "../src/host-ensure"
 import { normalizeParentOpenCodeUrl } from "../src/opencode-bridge"
+import { defaultStudioRoot } from "../src/serve-bootstrap"
 
 const temps: string[] = []
 const servers: Array<ReturnType<typeof Bun.serve>> = []
@@ -26,6 +27,11 @@ describe("host ensure", () => {
     expect(resolveStudioBind("http://127.0.0.1:4096", { OPENCODE_STUDIO_PORT: "4199" }).port).toBe(4199)
   })
 
+  test("default Studio Home uses an explicit root or HOME", () => {
+    expect(defaultStudioRoot({ OPENCODE_STUDIO_WORKSPACE: "/srv/studio", HOME: "/home/ignored" })).toBe("/srv/studio")
+    expect(defaultStudioRoot({ HOME: "/home/studio" })).toBe("/home/studio")
+  })
+
   test("probeParentOpenCode requires reachable parent", async () => {
     const up = Bun.serve({
       port: 0,
@@ -40,7 +46,7 @@ describe("host ensure", () => {
     expect(await probeParentOpenCode("http://127.0.0.1:1")).toBe(false)
   })
 
-  test("ensure starts host once and reuses", async () => {
+  test("ensure starts host once and keeps Studio Home fixed", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "osc-ensure-"))
     temps.push(root)
     const workspace = path.join(root, "ws")
@@ -67,7 +73,7 @@ describe("host ensure", () => {
     }
     const first = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
-      workspace,
+      studioRoot: workspace,
       packageRoot,
       uiDirectory: path.join(packageRoot, "dist", "ui"),
       env,
@@ -77,42 +83,37 @@ describe("host ensure", () => {
       throw new Error(`ensure failed: ${first.reason}`)
     }
     expect(first.hostUrl).toBe(`http://127.0.0.1:${freePort}`)
+    expect(first.studioRoot).toBe(workspace)
 
     const other = path.join(root, "other")
     await mkdir(other, { recursive: true })
     const second = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
-      workspace: other,
+      studioRoot: other,
       packageRoot,
       uiDirectory: path.join(packageRoot, "dist", "ui"),
       env,
     })
-    expect(second.ok).toBe(true)
-    if (!second.ok) return
-    // Same process: reuse owned handle and rebind workspace (no first-directory pin).
-    expect(second.reused).toBe(true)
-    expect(second.hostUrl).toBe(first.hostUrl)
-    expect(second.workspace).toBe(other)
+    expect(second.ok).toBe(false)
+    if (second.ok) return
+    expect(second.reason).toContain(workspace)
+    expect(second.reason).toContain(other)
 
     const health = await fetch(`${first.hostUrl}/studio-api/health`)
     expect(health.ok).toBe(true)
-    const healthBody = (await health.json()) as { workspace?: string }
-    expect(healthBody.workspace).toBe(other)
+    const healthBody = (await health.json()) as { studioRoot?: string }
+    expect(healthBody.studioRoot).toBe(workspace)
   }, 30_000)
 
-  test("healthy Studio on port is adopted when not owned by this process", async () => {
-    let putWorkspace: string | undefined
+  test("matching Studio Home on a foreign host is adopted without mutation", async () => {
+    const requests: string[] = []
     const foreign = Bun.serve({
       port: 0,
-      async fetch(req) {
+      fetch(req) {
         const url = new URL(req.url)
+        requests.push(`${req.method} ${url.pathname}`)
         if (url.pathname === "/studio-api/health") {
-          return Response.json({ status: "ok" })
-        }
-        if (url.pathname === "/api/workspace" && req.method === "PUT") {
-          const body = (await req.json()) as { workspace?: string }
-          putWorkspace = body.workspace
-          return Response.json({ workspace: body.workspace })
+          return Response.json({ status: "ok", studioRoot: "/tmp/adopt-root" })
         }
         return new Response("no", { status: 404 })
       },
@@ -128,7 +129,7 @@ describe("host ensure", () => {
     servers.push(parent)
     const result = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
-      workspace: "/tmp/adopt-ws",
+      studioRoot: "/tmp/adopt-root",
       env: {
         ...process.env,
         OPENCODE_STUDIO_AUTOSTART: "1",
@@ -139,7 +140,8 @@ describe("host ensure", () => {
     if (!result.ok) return
     expect(result.reused).toBe(true)
     expect(result.hostUrl).toBe(`http://127.0.0.1:${foreign.port}`)
-    expect(putWorkspace).toBe("/tmp/adopt-ws")
+    expect(result.studioRoot).toBe("/tmp/adopt-root")
+    expect(requests).toEqual(["GET /studio-api/health"])
   })
 
   test("owned host stays up across ensure; stop only via test reset", async () => {
@@ -166,7 +168,7 @@ describe("host ensure", () => {
     }
     const first = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
-      workspace,
+      studioRoot: workspace,
       packageRoot,
       uiDirectory: path.join(packageRoot, "dist", "ui"),
       env,
@@ -178,7 +180,7 @@ describe("host ensure", () => {
     expect(mid.ok).toBe(true)
     const again = await ensureStudioHost({
       parentOpenCodeUrl: `http://127.0.0.1:${parent.port}`,
-      workspace,
+      studioRoot: workspace,
       packageRoot,
       uiDirectory: path.join(packageRoot, "dist", "ui"),
       env,
@@ -194,7 +196,7 @@ describe("host ensure", () => {
   test("AUTOSTART=0 skips ensure", async () => {
     const result = await ensureStudioHost({
       parentOpenCodeUrl: "http://127.0.0.1:4096",
-      workspace: "/tmp",
+      studioRoot: "/tmp",
       autostart: "0",
     })
     expect(result.ok).toBe(false)
@@ -205,7 +207,7 @@ describe("host ensure", () => {
   test("web bind without password fails ensure", async () => {
     const result = await ensureStudioHost({
       parentOpenCodeUrl: "http://0.0.0.0:4096",
-      workspace: "/tmp",
+      studioRoot: "/tmp",
       env: { OPENCODE_STUDIO_AUTOSTART: "1" },
     })
     expect(result.ok).toBe(false)

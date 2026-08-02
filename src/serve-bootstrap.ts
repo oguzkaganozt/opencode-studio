@@ -1,7 +1,6 @@
 import path from "node:path"
 import { packageRootFrom } from "./core/paths"
-import { ensureStudioHost, probeParentOpenCode, rebindStudioHostWorkspace } from "./host-ensure"
-import { openCodeBasicAuthHeaders } from "./opencode-bridge"
+import { ensureStudioHost, probeParentOpenCode } from "./host-ensure"
 
 const g = globalThis as typeof globalThis & { __opencodeStudioBootstrap?: boolean }
 
@@ -9,7 +8,8 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export function defaultWorkspace(env: NodeJS.ProcessEnv = process.env): string {
+/** Fixed filesystem root for one Studio host process. */
+export function defaultStudioRoot(env: NodeJS.ProcessEnv = process.env): string {
   const explicit = env.OPENCODE_STUDIO_WORKSPACE?.trim()
   if (explicit) return path.resolve(explicit)
   if (env.HOME) return path.resolve(env.HOME)
@@ -26,29 +26,9 @@ export function defaultParentOpenCodeUrl(env: NodeJS.ProcessEnv = process.env): 
   return `http://${host}:${port}`
 }
 
-async function fetchLatestSessionDirectory(parentUrl: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
-  try {
-    const headers = new Headers(openCodeBasicAuthHeaders(env))
-    const response = await fetch(new URL("/session", `${parentUrl.replace(/\/$/, "")}/`), {
-      headers,
-      signal: AbortSignal.timeout(3_000),
-    })
-    if (!response.ok) return undefined
-    const sessions = (await response.json()) as Array<{ directory?: string; time?: { updated?: number } }>
-    if (!Array.isArray(sessions) || sessions.length === 0) return undefined
-    const ranked = sessions
-      .filter((s) => typeof s.directory === "string" && path.isAbsolute(s.directory))
-      .sort((a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0))
-    const dir = ranked[0]?.directory
-    return dir ? path.resolve(dir) : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /**
- * Start Studio host as soon as parent OpenCode is reachable — default workspace HOME.
- * Optionally poll sessions and rebind to the latest active project directory.
+ * Start a fixed-root Studio host as soon as parent OpenCode is reachable.
+ * OpenCode sessions choose their own request directory; they never change Studio Home.
  */
 export async function runEnsureHostLoop(options?: {
   packageRoot?: string
@@ -67,7 +47,7 @@ export async function runEnsureHostLoop(options?: {
   const pollMs = options?.pollMs ?? 2_000
   const exitWhenParentDown = options?.exitWhenParentDown !== false
   const parent = defaultParentOpenCodeUrl(env)
-  const workspace = defaultWorkspace(env)
+  const studioRoot = defaultStudioRoot(env)
 
   // Wait for parent
   for (let i = 0; i < 100; i++) {
@@ -81,7 +61,7 @@ export async function runEnsureHostLoop(options?: {
 
   const ensured = await ensureStudioHost({
     parentOpenCodeUrl: parent,
-    workspace,
+    studioRoot,
     packageRoot,
     env,
   })
@@ -89,24 +69,15 @@ export async function runEnsureHostLoop(options?: {
     console.error(`[opencode-studio] ensure-host failed: ${ensured.reason}`)
     return
   }
-  console.error(`[opencode-studio] Studio host ready: ${ensured.studioUrl} workspace=${ensured.workspace}`)
+  console.error(`[opencode-studio] Studio host ready: ${ensured.studioUrl} studioRoot=${ensured.studioRoot}`)
 
-  // Keep process alive; rebind when OpenCode sessions change.
+  // Keep the companion alive only while its parent serve remains reachable.
   while (true) {
     await sleep(pollMs)
     if (!(await probeParentOpenCode(parent, env))) {
       if (exitWhenParentDown) {
         console.error("[opencode-studio] parent OpenCode gone; ensure-host exiting")
         return
-      }
-      continue
-    }
-    const latest = await fetchLatestSessionDirectory(parent, env)
-    if (latest) {
-      try {
-        await rebindStudioHostWorkspace(latest)
-      } catch {
-        // ignore transient
       }
     }
   }
@@ -135,20 +106,20 @@ export function scheduleServeBootstrap(options?: { packageRoot?: string; env?: N
           await sleep(300)
           continue
         }
-        const workspace = defaultWorkspace(env)
+        const studioRoot = defaultStudioRoot(env)
         const ensured = await ensureStudioHost({
           parentOpenCodeUrl: parent,
-          workspace,
+          studioRoot,
           packageRoot,
           env,
         })
         if (ensured.ok) {
           if (!ensured.reused) {
-            console.error(`[opencode-studio] Studio host ready (bootstrap): ${ensured.studioUrl} workspace=${ensured.workspace}`)
+            console.error(`[opencode-studio] Studio host ready (bootstrap): ${ensured.studioUrl} studioRoot=${ensured.studioRoot}`)
           }
           return
         }
-        if (/not owned|PASSWORD|AUTOSTART/i.test(ensured.reason)) {
+        if (/already uses|PASSWORD|AUTOSTART/i.test(ensured.reason)) {
           console.error(`[opencode-studio] bootstrap stopped: ${ensured.reason}`)
           return
         }

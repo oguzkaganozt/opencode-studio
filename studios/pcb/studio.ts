@@ -7,7 +7,7 @@ export const pcbStudio: StudioDefinition = {
   skill: "studio-pcb",
   requiredEngines: ["tsci"],
   root: {
-    default: "workspace",
+    default: "studio_home",
     create: false,
   },
 }
