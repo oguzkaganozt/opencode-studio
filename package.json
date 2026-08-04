@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@oguzkaganozt/opencode-studio",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "OpenCode Studios for CAD and PCB, plus always-on workspace media tools",
   "type": "module",
   "license": "MIT",
