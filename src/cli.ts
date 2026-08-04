@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
+import { createInterface } from "node:readline"
 import { type ParseArgsConfig, parseArgs } from "node:util"
 import { loadPackageMeta } from "./core/package-meta"
 import { resetStudioHostEnsureForTests } from "./host-ensure"
 import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
-import { checkPackageUpgrade, upgradePackage } from "./package-upgrade"
+import { checkPackageUpgrade, upgradeAndRestart } from "./package-upgrade"
 import { defaultStudioRoot, runEnsureHostLoop } from "./serve-bootstrap"
 
 type ParseFail = { ok: false; code: 2 }
@@ -41,17 +42,19 @@ Commands:
   repair     Reinstall plugins, skills, MCP
   ensure-host  Start fixed-root Studio host for a running opencode serve
   remove     Uninstall managed OpenCode state (package stays)
-  upgrade    bun add -g @latest
+  upgrade    Check npm, confirm, install @latest, restart serve+host
 
 Flags:
   --workspace <path>   Studio Home override for status/repair (default: $HOME)
   --json               Machine-readable output (where supported)
+  -y, --yes            Confirm upgrade without a prompt
   -h, --help
   -v, --version
 
 Examples:
   opencode-studio repair
   opencode-studio status --workspace /abs/project
+  opencode-studio upgrade
   opencode serve          # → http://127.0.0.1:4173/studio
 
 Notes:
@@ -97,11 +100,12 @@ Options:
 `,
     upgrade: `opencode-studio upgrade [options]
 
-Install @oguzkaganozt/opencode-studio@latest via bun add -g.
-Restart OpenCode after so plugins reload.
+If a newer version is on npm: ask, then stop serve+host, install @latest,
+repair plugins/skills/MCP, and start serve + Studio host fresh.
 
 Options:
   --check              Report only (exit 1 if update available, 2 on error)
+  -y, --yes            Skip the confirmation prompt
   --json
   -h, --help
 `,
@@ -130,6 +134,16 @@ function wantsHelp(args: string[]) {
 
 function wantsVersion(args: string[]) {
   return args.length === 1 && (args[0] === "-v" || args[0] === "--version")
+}
+
+function askYesNo(prompt: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr })
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close()
+      resolve(/^y(es)?$/i.test(answer.trim()))
+    })
+  })
 }
 
 async function main(argv: string[]) {
@@ -249,6 +263,7 @@ async function main(argv: string[]) {
   if (command === "upgrade") {
     const parsed = parseCmd(command, rest, {
       check: { type: "boolean", default: false },
+      yes: { type: "boolean", short: "y", default: false },
       json: { type: "boolean", default: false },
     })
     if (!parsed.ok) return parsed.code
@@ -263,7 +278,29 @@ async function main(argv: string[]) {
     }
 
     try {
-      const result = await upgradePackage({ packageRoot })
+      const check = await checkPackageUpgrade({ packageRoot })
+      if (!check.updateAvailable || !check.latest) {
+        if (values.json) console.log(JSON.stringify(check, null, 2))
+        else console.log(check.message)
+        return check.error && !check.latest ? 2 : 0
+      }
+
+      if (!values.yes) {
+        console.error(`Update available: ${check.current} → ${check.latest}`)
+        console.error("This will stop opencode serve and the Studio host, install the new package,")
+        console.error("repair plugins/skills/MCP, then start serve + Studio host fresh.")
+        if (!process.stdin.isTTY) {
+          console.error("Non-interactive shell: re-run with --yes to confirm.")
+          return 2
+        }
+        const ok = await askYesNo("Install and restart? [y/N] ")
+        if (!ok) {
+          console.error("Cancelled.")
+          return 0
+        }
+      }
+
+      const result = await upgradeAndRestart({ packageRoot })
       if (values.json) console.log(JSON.stringify(result, null, 2))
       else console.log(result.message)
       return 0
