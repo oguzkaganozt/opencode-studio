@@ -1,6 +1,6 @@
 # Page override — Host shell
 
-Overrides MASTER for TopBar, SideDrawer, OpenCode home, Settings, Agent chrome.
+Overrides MASTER for TopBar, SideDrawer, OpenCode home, Agent chrome.
 
 ## Intent
 Calm companion chrome. Studio work (viewers) stays quiet behind the shell; chrome never competes with canvas.
@@ -17,17 +17,15 @@ Studio is the chrome; OpenCode is a first-class surface (not a leave-studio esca
 - `.osc-topbar-inner` / `.osc-topbar-actions`; safe-area top padding.
 - Outline chips h-8, 11–12px.
 - Menu button: `aria-expanded` + `aria-haspopup="dialog"` when drawer open.
-- Settings gear opens drawer on Settings panel.
+- Theme control: compact `.osc-segmented.osc-theme-toggle` (System | Light | Dark) in the top-right actions.
 - Agent toggle (CAD/PCB only): status dot + “Agent”; `aria-pressed` + `aria-label` with status.
-- **No** TopBar “OpenCode” / leave-shell link — use drawer Navigate → OpenCode.
+- **No** Settings gear or settings drawer.
+- **No** TopBar “OpenCode” / leave-shell link — use drawer → OpenCode.
 
 ## Drawer
 - Full-bleed on phones; 22rem max from `sm`.
-- Shared `.osc-segmented` for **Navigate | Settings** and theme.
-- Nav: Workspace (**OpenCode**, Files) + Studios groups; `.osc-nav-item` + accent rail/dot; `aria-current="page"`.
-- Settings order: Appearance → concise System health → collapsed Advanced.
-- System health shows one overall state and one status per studio; skill/engine details expand on demand.
-- Advanced contains version, paths, per-studio install details and the secondary Repair action.
+- Nav only: Home (**OpenCode**, Files) + Studios (CAD, PCB); `.osc-nav-item` + accent rail/dot; `aria-current="page"`.
+- No Navigate/Settings tabs; no health/repair UI in the drawer (CLI: `opencode-studio repair`).
 - OpenCode iframe error: banner + Retry (reload frame).
 
 ## Agent chrome (side panel on CAD/PCB)
