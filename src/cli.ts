@@ -300,7 +300,10 @@ async function main(argv: string[]) {
         }
       }
 
-      const result = await upgradeAndRestart({ packageRoot })
+      const result = await upgradeAndRestart({
+        packageRoot,
+        onProgress: (line) => console.error(`→ ${line}`),
+      })
       if (values.json) console.log(JSON.stringify(result, null, 2))
       else console.log(result.message)
       return 0

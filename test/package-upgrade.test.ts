@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseOpenCodeServePids, parsePidsFromSs } from "../src/package-upgrade"
+import { mergeRestartEnv, parseListenHostPort, parseOpenCodeServePids, parsePidsFromSs, parseProcEnviron } from "../src/package-upgrade"
 
 describe("parseOpenCodeServePids", () => {
   test("matches real and wrapper serve lines, skips self and TUI", () => {
@@ -22,5 +22,51 @@ describe("parsePidsFromSs", () => {
 LISTEN 0 512 0.0.0.0:4096 0.0.0.0:* users:(("opencode",pid=705581,fd=17))`
     expect(parsePidsFromSs(ss, 999).sort()).toEqual([705581, 705582])
     expect(parsePidsFromSs(ss, 705582)).toEqual([705581])
+  })
+})
+
+describe("parseListenHostPort", () => {
+  test("reads 0.0.0.0 and loopback binds", () => {
+    const ss = `LISTEN 0 512 0.0.0.0:4096 0.0.0.0:* users:(("opencode",pid=1,fd=17))
+LISTEN 0 512 127.0.0.1:4173 0.0.0.0:* users:(("bun",pid=2,fd=18))`
+    expect(parseListenHostPort(ss, 4096)).toEqual({ hostname: "0.0.0.0", port: "4096" })
+    expect(parseListenHostPort(ss, 4173)).toEqual({ hostname: "127.0.0.1", port: "4173" })
+    expect(parseListenHostPort(ss, 9999)).toBeNull()
+  })
+})
+
+describe("parseProcEnviron", () => {
+  test("keeps only snapshot OPENCODE keys", () => {
+    const raw = ["PATH=/bin", "OPENCODE_SERVER_PASSWORD=secret", "OPENCODE_HOSTNAME=0.0.0.0", "FOO=bar", ""].join("\0")
+    expect(parseProcEnviron(raw)).toEqual({
+      OPENCODE_SERVER_PASSWORD: "secret",
+      OPENCODE_HOSTNAME: "0.0.0.0",
+    })
+  })
+})
+
+describe("mergeRestartEnv", () => {
+  test("caller env wins; snapshot fills gaps", () => {
+    const { env, fromSnapshot } = mergeRestartEnv(
+      { OPENCODE_SERVER_PASSWORD: "from-caller", HOME: "/home/u" },
+      {
+        serveHostname: "0.0.0.0",
+        servePort: "4096",
+        studioHostname: "0.0.0.0",
+        env: {
+          OPENCODE_SERVER_PASSWORD: "from-snap",
+          OPENCODE_STUDIO_PASSWORD: "studio-secret",
+          OPENCODE_SERVER_USERNAME: "opencode",
+        },
+      },
+    )
+    expect(env.OPENCODE_SERVER_PASSWORD).toBe("from-caller")
+    expect(env.OPENCODE_STUDIO_PASSWORD).toBe("studio-secret")
+    expect(env.OPENCODE_HOSTNAME).toBe("0.0.0.0")
+    expect(env.OPENCODE_PORT).toBe("4096")
+    expect(env.OPENCODE_STUDIO_HOSTNAME).toBe("0.0.0.0")
+    expect(fromSnapshot).toContain("OPENCODE_STUDIO_PASSWORD")
+    expect(fromSnapshot).toContain("OPENCODE_HOSTNAME")
+    expect(fromSnapshot).not.toContain("OPENCODE_SERVER_PASSWORD")
   })
 })
