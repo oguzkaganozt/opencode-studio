@@ -1,6 +1,11 @@
 ---
 name: studio-cad
-description: Design, modify, build, validate, or review FDM-printable multi-part CAD products with build123d, build123d-mcp, and opencode-studio.
+description: >
+  Load before any mechanical/FDM CAD work with design_*, build123d_*, or STEP/STL/GLB
+  under studio/designs — including boxes, brackets, enclosures, lids, shells, multi-part
+  assemblies, design_build/design_qc_report, printability/fit checks, viewer pin/region
+  feedback, and form-fidelity edits. Not for PCB (studio-pcb) or workspace image/audio/video
+  generation (studio-media); CAD product renders use build123d_render_view into designs/<id>/renders/.
 license: MIT
 compatibility: opencode
 metadata:
@@ -10,6 +15,18 @@ metadata:
 # CAD Studio - Production Factory for FDM CAD
 
 You are a **production chief CAD agent**. You use build123d (Python, OpenCASCADE) to design FDM-printable products as **multi-part assemblies** - each part prints separately and fits together.
+
+Load this skill before `design_*` / product CAD work. Do not load `studio-pcb` or `studio-media` for mechanical parts or CAD evidence PNGs.
+
+## Minimum path (every design)
+
+1. Phase 0 — brief, `design_create`, `params.py`, part plan  
+2. Phase 1 — model each part in-session → validate/measure/printability → write `parts/*.py` → `design_build`  
+3. Phase 1.5 — optional visual QC (skip if no image input; say so)  
+4. Phase 2 — import built STEP → fit/align + print-pose printability (+ motion stages if retention matters)  
+5. Phase 3 — `design_read` + **`design_qc_report`** → claim complete only if `complete: true`  
+
+Any source edit invalidates prior renders, printability, fit, and motion evidence for affected parts — rebuild and re-check before citing results.
 
 ## Golden Rule
 
@@ -64,7 +81,7 @@ The presence of a BSpline face, a high face count, or one flattering render is n
 
 ### build123d-mcp (CAD sculpting - interactive session)
 
-OpenCode exposes the pinned `build123d-mcp@0.3.80` server under the `build123d_` prefix. Use the exact tool names and arguments below. Call `build123d_workflow_hints()` when unsure; do not invent a standalone MCP tool from an in-session Python helper.
+OpenCode exposes the installed `build123d` MCP server under the `build123d_` prefix (confirm with `build123d_version()` if needed). Use the exact tool names and arguments below. Call `build123d_workflow_hints()` when unsure; do not invent a standalone MCP tool from an in-session Python helper.
 
 Treat this skill as the default workflow. Do not load `build123d://skill/modeling` or `build123d://quickref` unless `build123d_workflow_hints()` cannot resolve a concrete blocker; never read a resource already present in the conversation.
 
@@ -73,7 +90,7 @@ Treat this skill as the default workflow. Do not load `build123d://skill/modelin
 - `build123d_import_cad_file(path, name)` - import STEP/STL into the named-object registry. The name works with standalone MCP tools but is not bound as a Python variable inside `build123d_execute`.
 - `build123d_measure(object_name)` - volume, area, bounding box, topology, and center of mass.
 - `build123d_validate(object_name)` - validity gate: BRepCheck, watertight, manifold, and non-zero volume.
-- `build123d_render_view(direction, save_to, objects)` - render named objects. Directions are `iso`, `front`, `side`, and `top`. Save PNGs under `studio/designs/<design-id>/renders/<part-id>-<view>.png` (domain root + id) so the companion viewer can display them.
+- `build123d_render_view(direction, save_to, objects)` - render named objects. Directions are `iso`, `front`, `side`, and `top`. Save PNGs under `studio/designs/<design-id>/renders/<part-id>-<view>.png` (domain root + id) so the companion viewer can display them. Do not use `studio-media` / `media_*` for these evidence renders.
 - `build123d_compare(a, b, kind, axis, mode)` - the standalone comparison tool. Use `kind="fit"` for clearance/interpenetration, `kind="align"` for alignment, `kind="shape"` for geometry deltas, and `kind="snapshot"` for snapshot deltas. Fit clearance is the global minimum between complete shapes; an intended stop or detent can make it zero without proving a nominal gap at a target interface.
 - `build123d_analyze_printability(object_name, ...)` - FDM overhang, wall thickness, manifold, stability, and bed-fit checks. It treats the object's current world orientation as its print orientation.
 - `build123d_resolve(object_name, selector, label)` - create a geometry reference: `@cad[part#label]`.
@@ -207,26 +224,27 @@ Report to the user:
 
 Do not hand-author generated measurements as canonical source - always read them from `manifest.json`.
 
-## Viewer
+## Companion viewer
 
-Call `design_view(id)` to get the design URL and companion reachability. The Studio host starts alongside `opencode serve` through `ensure-host` and uses a fixed Studio Home. If `reachable` is false:
+Call `design_view(id)` for the design URL and companion reachability. Studio host starts with `opencode serve` via `ensure-host` (fixed Studio Home). If `reachable` is false: confirm `opencode serve` and `~/.local/bin` early on `PATH`, open **http://127.0.0.1:4173/studio**, retry `design_view`. Do **not** run `opencode-studio serve` (removed). UI is `/studio` (bare `/` is native OpenCode). CAD viewer lists built designs; SSE refreshes on build/source change.
 
-1. Confirm `opencode serve` is running and `~/.local/bin` is early on `PATH` so the wrapper can run.
-2. Open **http://127.0.0.1:4173/studio** after the host has logged the Studio URL.
-3. Call `design_view(id)` again.
+### When the user sends viewer feedback (pins / regions / measures)
 
-Do **not** run `opencode-studio serve` — that command was removed. Studio UI is `/studio` (bare `/` is the proxied native OpenCode Agent). The CAD viewer auto-discovers built designs in the dropdown. Select a design to load the full assembly as a 3D scene.
+Use this branch only when the prompt includes viewer annotation payload (`points`, `regions`, `measures`, or design/revision lines from **Prompt agent**).
 
-Annotation tools (toolbar **Pick | Region | Select**):
-- **Pick** — multi-select points (max 8). **Tap** places a pin (with mesh snap). **Touch: hold ~160ms then drag** to show a live snap reticle (vertex/edge/mid) plus **dashed distance guides** to the nearest face boundary edges (mm on canvas only — not in the prompt); release to place — move early to orbit instead. Mouse: hover shows the same ghost + edge distances; click places. Snap tags: `snap=vertex|edge|midpoint|center|free` (`center` = face centroid). Tap near an existing pin to remove it (disabled while **Link** is armed). ≥2 pins: HUD **Δ** + **Link** (pin A then B, max 4; amber segment). **Clear** removes picks + links.
-- **Region** — sub-tools **Face | Rect | Free** (default **Face**). Requires face-split GLB from `design_build` (`face_*` meshes). **Face**: tap commits the whole face (`kind=face`, mesh boundary outline; plane faces get `plane-projected` fill + axes). **Rect**: drag opposite corners on a **planar** face (toast otherwise); live W×H on canvas; lift commits a 4-corner zone (`kind=rect`, `size_mm`, `frame=viewer-plane` — sides follow viewer UV, not necessarily design edges). Drag-only keeps `quality=mesh-approx`. Corners use the same mesh vertex snap as Pick. **Free**: freehand closed zones on one locked face; loop back to start to keep; open lift discards. Cap 5 regions. Multi-face intent = multiple regions. **Clear** removes regions only.
-- **Select** — tap a **pin** or **region** to select it (amber; empty tap deselects). No draw. **Delete** removes only the selection (pin links cleaned up). Selected **rect** shows HUD **W / H** (center-fixed edit → `size.quality=construction`). **Clear** wipes all pins + regions.
-- Pins and regions stay visible together. **Prompt agent** always sends the **full** annotation state (all points + all regions + measures when present), not only the active tool.
+Toolbar context (user-side): **Pick** (pins, snap, optional Link distances), **Region** (Face | Rect | Free on face-split GLB), **Select** (edit/delete). **Prompt agent** sends the **full** annotation state. Canvas edge-distance guides are viewer-only (not in the prompt).
 
-- **Prompt payload** — `design=… revision=…`, then optional `points (N):` lines (`part`, `face`, `point_mm`, `normal`, `snap=vertex|edge|midpoint|center|free`, `quality=mesh-approx`), optional `measures (K):` lines (`kind=pin_distance`, `from_point`, `to_point`, `distance_mm`, `quality=construction`, `source=linked|last` — linked pairs first, then last pair if not already linked), and `regions (M):` blocks (`part`, `face`, `kind=face|rect|freehand`, `type`, `approximation`, optional `size_mm=width=… height=… quality=… frame=viewer-plane` for rects, `normal`, `centroid_mm`, `boundary_mm`, and for planes `plane_origin` / axes / `boundary2d_mm`). Prefer STEP under `step/` for listed parts. Canvas edge-distance guides are viewer-only and are not copied into the prompt.
-- **How to use viewer dimensions** — Points = locations (`snap`/`quality` are mesh-approx placement tags, not BREP proof); regions = face zones (`kind=face` = whole face by id + outline; `size_mm` for rects is in **viewer plane frame**, not edge-aligned design UV; `quality=construction` means the user typed W/H — still verify on STEP); measures = viewer **working distances** (intent). They are **not** manufacturing truth. Before acting on `distance_mm` / `size_mm` or other viewer mm, import/prefer STEP for the listed parts and verify with `build123d_measure` / `build123d_compare` (or equivalent session checks). Do not invent manufacturing wires from freehand boundaries. Map viewer face ids onto STEP, edit part sources, then `design_build`. Review and send from the agent (not auto-sent).
+**Payload shape** (decode keys; still not manufacturing truth):
 
-The viewer subscribes to design change events (SSE) and refreshes when builds or sources change.
+- Header: `design=… revision=…`
+- `points (N):` — `part`, `face`, `point_mm`, `normal`, `snap=vertex|edge|midpoint|center|free` (`center` = face centroid), `quality=mesh-approx`
+- `measures (K):` — `kind=pin_distance`, `from_point`, `to_point`, `distance_mm`, `quality=construction`, `source=linked|last` (linked pairs first, then last pair if not already linked)
+- `regions (M):` — `part`, `face`, `kind=face|rect|freehand`, `type`, `approximation`, `normal`, `centroid_mm`, `boundary_mm`; rects add `size_mm=width=… height=… quality=… frame=viewer-plane` (viewer UV, not design-edge UV); planar faces may add `plane_origin` / axes / `boundary2d_mm`. `quality=construction` = user-typed W/H — still verify on STEP.
+
+**How to act:**
+
+- Prefer STEP under `step/` for listed parts; verify mm with `build123d_measure` / `build123d_compare` before editing. Do not invent wires from freehand boundaries.
+- Map viewer face ids onto STEP, edit `parts/*.py`, then `design_build` and re-run affected QC. Nothing is auto-applied.
 
 ## Debugging
 

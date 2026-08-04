@@ -1,12 +1,19 @@
 ---
 name: studio-pcb
-description: Use for PCB design, tscircuit TSX, Circuit JSON diagnostics, Gerber, BOM, CPL/Pick & Place, or pcb_* tools. Guides incremental authoring and honest validation.
+description: >
+  Load before any electronics/PCB work with pcb_* tools — schematics, PCB layout,
+  tscircuit TSX, Circuit JSON diagnostics, DRC, Gerber, BOM, CPL/Pick & Place,
+  part search/catalog, footprints, routing, or viewer diagnostics. Not for mechanical
+  FDM CAD (studio-cad) or workspace image/audio/video generation (studio-media).
+license: MIT
+compatibility: opencode
 ---
 
 # PCB Studio
 
-Use PCB Studio for electronic schematics and PCB layouts. Do not load
-`studio-cad`; that skill is for mechanical/FDM CAD with build123d.
+Use PCB Studio for electronic schematics and PCB layouts. Load this skill before
+`pcb_*` product work. Do not load `studio-cad` (mechanical/FDM) or `studio-media`
+(workspace media generation).
 
 Studio UI: `http://127.0.0.1:4173/studio` (not bare `/`, which is native OpenCode).
 PCB domain root defaults to `$STUDIO_HOME/studio/circuits` (projects as
@@ -14,12 +21,17 @@ PCB domain root defaults to `$STUDIO_HOME/studio/circuits` (projects as
 UI and tools only discover projects under that root. The viewer can send diagnostics
 to the Agent panel; treat that draft as user intent, then fix with tools below.
 
+Any TSX/source change invalidates prior build, SVG, Gerber, BOM, and CPL claims —
+rebuild (and re-export if needed) before asserting readiness.
+
 ## Workflow
 
 1. Call `pcb_workspace_list` and `pcb_catalog_list` once before authoring.
    The catalog is optional and workspace-local; do not repeat searches when it
    reports that no catalog is available.
-2. Decide exact parts before claiming a production-oriented design. Record the
+2. New project: `pcb_project_create` (name/directory) unless an existing id already
+   covers the work. Then edit `src/circuit.tsx`.
+3. Decide exact parts before claiming a production-oriented design. Record the
    MPN, pinout, footprint, and whether each complex device is a module or bare
    IC. When the local catalog has no exact match, call `pcb_component_search`
    with each named complex part's exact MPN before inspecting `node_modules` or
@@ -34,16 +46,16 @@ to the Agent panel; treat that draft as user intent, then fix with tools below.
    conservative area with `<keepout shape="rect" ... />`, outline it with
    `<pcbnoterect ... />`, and label it with
    `<pcbnotetext text="PCB_STUDIO_PLACEHOLDER: U1 - exact footprint required" ... />`.
-3. Build incrementally: board and power, MCU, peripherals, then placement and
+4. Build incrementally: board and power, MCU, peripherals, then placement and
    routing. Run `pcb_circuit_build` after each meaningful stage.
-4. After the first build, make targeted edits instead of rewriting the entire
+5. After the first build, make targeted edits instead of rewriting the entire
    `src/circuit.tsx`. Read locally installed tscircuit source and types before
    broad web research.
-5. Use compact build diagnostics first. For complete records, call
+6. Use compact build diagnostics first. For complete records, call
    `pcb_circuit_read` with the exact error type in `types`; do not fetch full
    Circuit JSON unless necessary. Fix placement errors rather than disabling
    placement DRC.
-6. Use schematic and PCB SVG exports to debug incomplete designs. Gerber and
+7. Use schematic and PCB SVG exports to debug incomplete designs. Gerber and
    CPL are blocked while placeholders, unverified complex part identities,
    supplier footprint mismatches, or unconnected non-`noConnect` pins remain.
 
@@ -52,7 +64,9 @@ to the Agent panel; treat that draft as user intent, then fix with tools below.
 Typical loop for a new project (names are illustrative):
 
 1. `pcb_workspace_list` → note empty or existing project ids under the domain root.
-2. Author or scaffold `src/circuit.tsx` (board outline, nets, power, then MCU).
+2. `pcb_project_create` with a name (and optional directory) → then edit
+   `src/circuit.tsx` (board outline, nets, power, then MCU). Skip create if the
+   project already exists.
 3. `pcb_circuit_build` with the project id → read `success`, `designValid`,
    `fabricationReady`, `assemblyReady`, and `manufacturingBlockers`.
 4. If errors: `pcb_circuit_read` filtered by error `types` → targeted TSX edit →
@@ -78,6 +92,9 @@ Tools return separate axes. Never collapse them into a single “done”.
 | `manufacturingBlockers` | Why fab is blocked | Quote these; do not invent clearance |
 | `debugOnly` | Build useful for debug only (invalid design) | Never present as production-ready |
 | `bomComplete` (BOM tools) | Every BOM line has an MPN where required | Blocks `assemblyReady` |
+
+Stop claiming X when Y is false: good build needs `success`+`designValid`; fab needs
+`fabricationReady`; assembly needs `assemblyReady`. Quote `manufacturingBlockers`.
 
 Honesty rules:
 
