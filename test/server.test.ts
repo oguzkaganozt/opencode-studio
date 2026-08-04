@@ -63,11 +63,12 @@ describe("host server", () => {
     expect((await health.json()).studioRoot).toBe(ctx.workspace)
     const studios = await app.request("http://127.0.0.1:4173/api/studios", { headers: { host: "127.0.0.1:4173" } })
     const body = await studios.json()
-    expect(body.enabled).toEqual([...STUDIO_IDS])
     expect(body.nativeOpenCodeAvailable).toBe(true)
-    expect(Array.isArray(body.checks)).toBe(true)
-    expect(body.checks.length).toBeGreaterThan(0)
-    expect(typeof body.ok).toBe("boolean")
+    expect(Array.isArray(body.studios)).toBe(true)
+    expect(body.studios.length).toBeGreaterThan(0)
+    expect(body.studios[0].id).toBe("cad")
+    expect(typeof body.packageVersion).toBe("string")
+    expect(body.csrfRequired).toBe(true)
   })
 
   test("rejects bad host", async () => {

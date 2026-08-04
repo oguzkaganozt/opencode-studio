@@ -1,11 +1,11 @@
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import { Hono } from "hono"
-import { maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } from "./config"
+import { maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot, studioDomainRootPath } from "./config"
 import { errorBody } from "./core/errors"
-import { loadPackageMeta } from "./core/package-meta"
+import { loadPackageMeta, skillNameFor } from "./core/package-meta"
 import { isInside, packageRootFrom } from "./core/paths"
-import type { StudioId } from "./core/registry"
+import { CATALOG_ORDER, type StudioId } from "./core/registry"
 import {
   allowedHost,
   assertNotRoot,
@@ -19,11 +19,11 @@ import {
   securityHeaders,
 } from "./core/security"
 import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
-import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
-import { configureStudios, statusStudios } from "./lifecycle"
+import { pickUserPaths, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
+import { configureStudios } from "./lifecycle"
 import { createOpenCodeBridge, normalizeParentOpenCodeUrl, type OpenCodeBridge } from "./opencode-bridge"
 import { apiLoaders } from "./studio-loaders"
-import { listStudioDefinitions } from "./studios"
+import { getStudioDefinition } from "./studios"
 
 export type HostInput = UserPathOptions & {
   /** Immutable Studio filesystem root for this host process. */
@@ -54,6 +54,60 @@ export type HostHandle = {
 type StudioMountState = {
   /** Routes live under /:studioId/... relative to this app */
   studios: Hono
+}
+
+export type StudioCardMeta = {
+  id: string
+  label: string
+  description: string
+  root: string | null
+  rootError?: string
+  requiredEngines: string[]
+  skill: string
+  skillInstalled: boolean
+}
+
+type HostStudiosMeta = {
+  studioRoot: string
+  configPath?: string
+  configError?: string
+  studios: StudioCardMeta[]
+}
+
+/** Cheap viewer meta: config read + root resolve + skill stat. No doctor, no network. */
+async function buildHostStudiosMeta(input: { studioRoot: string; userPaths: UserPathOptions }): Promise<HostStudiosMeta> {
+  const config = await readStudioConfigFile(input.userPaths)
+  const skillsHome = resolveOpenCodeSkillsHome(input.userPaths)
+  const studios: StudioCardMeta[] = []
+  for (const studioId of CATALOG_ORDER) {
+    const def = getStudioDefinition(studioId)
+    let root: string | null = null
+    let rootError: string | undefined
+    try {
+      root = await resolveStudioRoot({ studioId, studioRoot: input.studioRoot, roots: config.roots, create: false })
+    } catch (error) {
+      rootError = error instanceof Error ? error.message : String(error)
+      try {
+        root = studioDomainRootPath({ studioId, studioRoot: input.studioRoot, roots: config.roots })
+        rootError = undefined
+      } catch {
+        root = null
+      }
+    }
+    const skill = skillNameFor(studioId)
+    const skillInstalled = await Bun.file(path.join(skillsHome, skill, "SKILL.md")).exists()
+    studios.push({
+      id: studioId,
+      label: def.label,
+      description: def.description,
+      root,
+      rootError,
+      requiredEngines: def.requiredEngines,
+      skill,
+      skillInstalled,
+    })
+  }
+  return { studioRoot: input.studioRoot, configPath: config.configPath, configError: config.error, studios }
 }
 
 async function buildStudioMounts(input: {
@@ -135,6 +189,9 @@ export async function createHostApp(input: HostInput) {
     return next
   }
 
+  // Viewer meta changes only with config — computed once, refreshed on configure.
+  const studiosMeta = { current: await buildHostStudiosMeta({ studioRoot: domain.studioRoot, userPaths }) }
+
   const { createFilesApi } = await import("./platform/media/files-api")
   const filesMount = { current: await createFilesApi(domain.studioRoot) }
 
@@ -176,30 +233,16 @@ export async function createHostApp(input: HostInput) {
   app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok", parentOpenCodeUrl: resolvedParentUrl, studioRoot: domain.studioRoot }))
   app.get("/api/csrf", (ctx) => ctx.json({ token: csrfToken }))
 
+  // Viewer meta is a startup snapshot: computed once, refreshed only on PUT /api/config.
+  // Out-of-band changes (CLI repair, remote studio.json edits) are picked up on host restart.
   app.get("/api/studios", async (ctx) => {
-    const status = await statusStudios({ workspace: domain.studioRoot, packageRoot, ...userPaths })
-    const update = await checkNpmUpdate({ packageName: meta.name, current: packageVersion })
     return ctx.json({
-      studioRoot: status.workspace,
-      configPath: status.configPath,
-      enabled: status.enabled,
-      configError: status.configError,
+      ...studiosMeta.current,
       packageVersion,
       csrfRequired: true,
-      studios: status.studios,
-      checks: status.checks,
-      ok: status.ok,
-      catalog: listStudioDefinitions().map((def) => ({
-        id: def.id,
-        label: def.label,
-        description: def.description,
-        requiredEngines: def.requiredEngines,
-        rootDefault: def.root.default,
-      })),
-      restartRequiredHint: status.restartRequiredHint,
+      restartRequiredHint: "After repair, restart OpenCode so plugins and skills load.",
       hostHotReload: true,
       nativeOpenCodeAvailable,
-      update,
     })
   })
 
@@ -242,6 +285,7 @@ export async function createHostApp(input: HostInput) {
         ...userPaths,
       })
       const reloaded = await reloadStudios()
+      studiosMeta.current = await buildHostStudiosMeta({ studioRoot: domain.studioRoot, userPaths })
       openCode.close()
       return ctx.json({
         ...result,
