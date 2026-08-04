@@ -2,7 +2,7 @@
 
 OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
 
-**Package:** [`@oguzkaganozt/opencode-studio@1.0.6`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
+**Package:** [`@oguzkaganozt/opencode-studio@1.0.7`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
 **CAD and PCB are always on.** Install wires OpenCode once (plugins, skills, CAD MCP). Media tools and the Files explorer are always on too.
 
@@ -16,7 +16,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 ## Install (pinned)
 
 ```bash
-bun add -g @oguzkaganozt/opencode-studio@1.0.6
+bun add -g @oguzkaganozt/opencode-studio@1.0.7
 hash -r
 command -v opencode-studio
 
@@ -100,7 +100,16 @@ Prefer SSH tunnel to loopback. If public: TLS at your reverse-proxy; enable WebS
 { "roots": { "cad": "/absolute/path" } }
 ```
 
-Missing `studio.json` is fine. CAD/PCB roots default to fixed Studio Home; configured roots are persistent overrides. Media paths remain OpenCode-project-scoped. Keep **one** of `opencode.json` / `opencode.jsonc`.
+Missing `studio.json` is fine. Default layout under Studio Home (`$HOME` or `OPENCODE_STUDIO_WORKSPACE`):
+
+```text
+$STUDIO_HOME/studio/
+  designs/<id>/              # CAD (design.json, parts/, …)
+  circuits/<id>/             # PCB (src/circuit.tsx, …)
+  circuits/catalog/parts/    # optional PCB catalog
+```
+
+`roots.<id>` are absolute domain-root overrides. Media paths remain OpenCode-project-scoped. Keep **one** of `opencode.json` / `opencode.jsonc`.
 
 **Upgrade from project-local config:** if global config is missing and the domain still has `.opencode/studio.json` with roots, roots are migrated on plugin load. Run `opencode-studio repair` once to finish.
 
@@ -120,7 +129,7 @@ Shell completion installs on global `bun add -g`. Skip: `OPENCODE_STUDIO_SKIP_PO
 
 ```bash
 # Prefer an explicit pin over unattended @latest
-bun add -g @oguzkaganozt/opencode-studio@1.0.6
+bun add -g @oguzkaganozt/opencode-studio@1.0.7
 opencode-studio repair
 opencode-studio status --workspace /abs/project
 # restart OpenCode

@@ -8,6 +8,7 @@ export const pcbStudio: StudioDefinition = {
   requiredEngines: ["tsci"],
   root: {
     default: "studio_home",
-    create: false,
+    relativePath: "studio/circuits",
+    create: true,
   },
 }

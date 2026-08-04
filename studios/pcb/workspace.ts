@@ -23,7 +23,7 @@ export type CircuitProject = {
   assemblyReady: boolean | null
 }
 
-const SKIP_DIRS = new Set(["node_modules", ".venv", ".git", "dist", "__pycache__", ".pytest_cache"])
+const SKIP_DIRS = new Set(["node_modules", ".venv", ".git", "dist", "__pycache__", ".pytest_cache", "catalog"])
 
 export async function discoverProjects(workspaceRoot: string): Promise<CircuitProject[]> {
   const root = path.resolve(workspaceRoot)

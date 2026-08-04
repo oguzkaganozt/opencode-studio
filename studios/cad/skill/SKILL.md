@@ -117,7 +117,7 @@ Use epsilon only to extend cutters or joins beyond non-mating boundaries. Never 
 
 ## Production Factory Pipeline
 
-The studio root contains one canonical `designs/` directory. Each design is one directory containing source files (`design.json`, `params.py`, `parts/*.py`) and generated outputs (`step/`, `stl/`, `glb/`, `manifest.json`). Generated outputs are gitignored; sources are tracked.
+CAD domain root defaults to `$STUDIO_HOME/studio` (Studio Home is `$HOME` unless overridden). Designs live only under `designs/<id>/` there (`$STUDIO_HOME/studio/designs/<id>/`). Each design directory contains source files (`design.json`, `params.py`, `parts/*.py`) and generated outputs (`step/`, `stl/`, `glb/`, `manifest.json`). Generated outputs are gitignored; sources are tracked. Do not create designs outside `designs/`.
 
 Follow these phases in order. Phase 1.5 is optional when the active model cannot view images.
 

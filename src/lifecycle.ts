@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import { access, mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises"
+import { access, mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import {
@@ -8,6 +8,7 @@ import {
   readLegacyStudioConfig,
   readStudioConfigFile,
   resolveStudioRoot,
+  studioDomainRootPath,
   writeStudioConfigFile,
 } from "./config"
 import { ensureUv, resolveEngine } from "./core/engines"
@@ -130,6 +131,19 @@ function platformMediaSkillTarget(packageRoot: string): SkillTarget {
 /** @deprecated path helper used by tests — studio skills only */
 function skillPaths(studioId: StudioId, packageRoot: string, userPaths: UserPathOptions = {}) {
   return skillPathsFor(studioSkillTarget(studioId, packageRoot), userPaths)
+}
+
+async function directoryHasChildDesignJson(designsDir: string): Promise<boolean> {
+  try {
+    const entries = await readdir(designsDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) continue
+      if (await Bun.file(path.join(designsDir, entry.name, "design.json")).exists()) return true
+    }
+  } catch {
+    return false
+  }
+  return false
 }
 
 function assertSkillConflict(
@@ -729,9 +743,19 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         studioId,
         studioRoot: domainRoot,
         roots: config.roots,
+        create: false,
       })
     } catch (error) {
       rootError = error instanceof Error ? error.message : String(error)
+      try {
+        root = studioDomainRootPath({
+          studioId,
+          studioRoot: domainRoot,
+          roots: config.roots,
+        })
+      } catch {
+        root = null
+      }
     }
     const paths = skillPaths(studioId, packageRoot, userPaths)
     const skillInstalled = await Bun.file(paths.skillFile).exists()
@@ -780,6 +804,25 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       repair: "Run opencode-studio repair (scrubs project files) or delete the legacy path",
     })
   }
+
+  // Pre-studio/ layout: designs lived at $HOME/designs (CAD root was Studio Home).
+  if (!config.roots.cad) {
+    const oldDesigns = path.join(domainRoot, "designs")
+    const newDesigns = path.join(domainRoot, "studio", "designs")
+    const oldHasDesign = await directoryHasChildDesignJson(oldDesigns)
+    if (oldHasDesign) {
+      const newHasDesign = await directoryHasChildDesignJson(newDesigns)
+      if (!newHasDesign) {
+        checks.push({
+          id: "legacy-home-designs",
+          status: "warn",
+          message: `CAD designs still under ${oldDesigns}; default root is now ${path.join(domainRoot, "studio")} (designs/ under that)`,
+          repair: `Move projects into ${newDesigns}/, or set roots.cad to the directory that contains designs/`,
+        })
+      }
+    }
+  }
+
   for (const studioId of STUDIO_IDS) {
     const skillDir = path.join(domainRoot, ".opencode", "skills", skillNameFor(studioId))
     if (await Bun.file(path.join(skillDir, "SKILL.md")).exists()) {

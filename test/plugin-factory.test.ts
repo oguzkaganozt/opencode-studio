@@ -32,11 +32,12 @@ describe("Studio plugin roots", () => {
     const tools = hooks.tool as any
 
     await tools.design_create.execute({ id: "home-design", parts: [{ id: "body" }] }, { ask: async () => {} })
-    expect(await Bun.file(path.join(studioRoot, "designs", "home-design", "design.json")).exists()).toBe(true)
+    expect(await Bun.file(path.join(studioRoot, "studio", "designs", "home-design", "design.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(project, "designs", "home-design", "design.json")).exists()).toBe(false)
+    expect(await Bun.file(path.join(studioRoot, "designs", "home-design", "design.json")).exists()).toBe(false)
 
     const pcb = JSON.parse(await tools.pcb_workspace_list.execute({}, {}))
-    expect(pcb.workspaceRoot).toBe(studioRoot)
+    expect(pcb.workspaceRoot).toBe(path.join(studioRoot, "studio", "circuits"))
   }, 60_000)
 
   test("migrates legacy project roots without making the project Studio Home", async () => {

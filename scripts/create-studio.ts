@@ -23,7 +23,7 @@ export const ${id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}Studio: Studio
   description: "TODO",
   skill: "studio-${id}",
   requiredEngines: [],
-  root: { default: "studio_home", create: false },
+  root: { default: "studio_home", relativePath: "studio/${id}", create: true },
 }
 `,
 )

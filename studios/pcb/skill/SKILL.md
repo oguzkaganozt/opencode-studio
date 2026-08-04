@@ -9,8 +9,10 @@ Use PCB Studio for electronic schematics and PCB layouts. Do not load
 `studio-cad`; that skill is for mechanical/FDM CAD with build123d.
 
 Studio UI: `http://127.0.0.1:4173/studio` (not bare `/`, which is native OpenCode).
-PCB projects live under Studio → PCB. The viewer can send diagnostics to the Agent
-panel; treat that draft as user intent, then fix with tools below.
+PCB domain root defaults to `$STUDIO_HOME/studio/circuits` (projects as
+`circuits/<id>/` with `src/circuit.tsx`; optional catalog at `circuits/catalog/parts/`).
+UI and tools only discover projects under that root. The viewer can send diagnostics
+to the Agent panel; treat that draft as user intent, then fix with tools below.
 
 ## Workflow
 

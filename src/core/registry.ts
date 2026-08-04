@@ -22,6 +22,12 @@ export type StudioDefinition = {
   requiredEngines: string[]
   root: {
     default: StudioRootDefault
+    /**
+     * Path under Studio Home when `studio.json` has no `roots.<id>` override.
+     * CAD: `studio` → `$HOME/studio/designs/<id>`
+     * PCB: `studio/circuits` → `$HOME/studio/circuits/<id>`
+     */
+    relativePath?: string
     create: boolean
   }
 }

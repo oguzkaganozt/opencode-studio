@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { StudioError } from "./core/errors"
-import { atomicWriteJson, canonicalExistingDirectory, ensureDirectory, resolveWorkspace } from "./core/paths"
+import { atomicWriteJson, canonicalExistingDirectory, ensureDirectory, isInside, resolveWorkspace } from "./core/paths"
 import { isLegacyStudioId, isStudioId, STUDIO_IDS, type StudioId } from "./core/registry"
 import { resolveStudioConfigHome, type UserPathOptions } from "./core/user-paths"
 import { getStudioDefinition } from "./studios"
@@ -189,9 +189,28 @@ export async function writeStudioConfigFile(config: StudioConfig, options: Studi
 }
 
 /**
- * Resolve a studio's domain data root.
- * - override in global config.roots.<id> (absolute)
- * - default: fixed Studio Home
+ * Compute domain root path without touching the filesystem.
+ * - override: absolute `roots.<id>`
+ * - default: Studio Home + definition `root.relativePath`
+ */
+export function studioDomainRootPath(input: { studioId: StudioId; studioRoot: string; roots?: Partial<Record<StudioId, string>> }): string {
+  const override = input.roots?.[input.studioId]
+  if (override) return path.resolve(override)
+
+  const def = getStudioDefinition(input.studioId)
+  const home = path.resolve(input.studioRoot)
+  const relative = def.root.relativePath?.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") ?? ""
+  const target = relative ? path.resolve(home, ...relative.split("/").filter(Boolean)) : home
+  if (target !== home && !isInside(home, target)) {
+    throw new StudioError("invalid_config", `${input.studioId} root.relativePath escapes Studio Home`)
+  }
+  return target
+}
+
+/**
+ * Resolve a studio's domain data root on disk.
+ * - override in global config.roots.<id> (absolute) — that path is the domain root
+ * - default: Studio Home + definition `root.relativePath` (e.g. `studio`, `studio/circuits`)
  */
 export async function resolveStudioRoot(input: {
   studioId: StudioId
@@ -202,14 +221,10 @@ export async function resolveStudioRoot(input: {
 }): Promise<string> {
   const def = getStudioDefinition(input.studioId)
   const shouldCreate = input.create ?? def.root.create
-  const override = input.roots?.[input.studioId]
+  const target = studioDomainRootPath(input)
 
-  if (override) {
-    if (shouldCreate && def.root.create) return ensureDirectory(override, 0o700)
-    return canonicalExistingDirectory(override, `${input.studioId} root`)
-  }
-
-  return input.studioRoot
+  if (shouldCreate && def.root.create) return ensureDirectory(target, 0o700)
+  return canonicalExistingDirectory(target, `${input.studioId} root`)
 }
 
 /** Domain workspace (data root) + global studio config. */

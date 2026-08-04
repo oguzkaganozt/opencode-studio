@@ -331,7 +331,7 @@ const domain = path.join(workspace, "domain")
 await import("node:fs/promises").then(async ({ mkdir, writeFile }) => {
   await mkdir(domain, { recursive: true })
   await writeFile(path.join(domain, "README.md"), "# Browser smoke fixture\n")
-  const catalogDir = path.join(domain, "catalog", "parts")
+  const catalogDir = path.join(domain, "studio", "circuits", "catalog", "parts")
   await mkdir(catalogDir, { recursive: true })
   await writeFile(
     path.join(catalogDir, "TEST-1.yml"),
