@@ -816,10 +816,23 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         checks.push({
           id: "legacy-home-designs",
           status: "warn",
-          message: `CAD designs still under ${oldDesigns}; default root is now ${path.join(domainRoot, "studio")} (designs/ under that)`,
-          repair: `Move projects into ${newDesigns}/, or set roots.cad to the directory that contains designs/`,
+          message: `CAD designs still under ${oldDesigns}; default root is now ${newDesigns}`,
+          repair: `Move projects into ${newDesigns}/, or set roots.cad to that designs directory`,
         })
       }
+    }
+  } else {
+    // Intermediate contract: roots.cad was parent of designs/ (children = designs/<id>).
+    // Current contract: roots.cad is the designs directory (children = <id>).
+    const cadRoot = path.resolve(config.roots.cad)
+    const nestedDesigns = path.join(cadRoot, "designs")
+    if ((await directoryHasChildDesignJson(nestedDesigns)) && !(await directoryHasChildDesignJson(cadRoot))) {
+      checks.push({
+        id: "legacy-cad-root-nested-designs",
+        status: "warn",
+        message: `roots.cad is ${cadRoot} but projects live under ${nestedDesigns}/ (old parent-of-designs layout)`,
+        repair: `Set roots.cad to ${nestedDesigns}, or move each project up into ${cadRoot}/<id>/`,
+      })
     }
   }
 

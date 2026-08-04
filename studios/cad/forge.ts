@@ -157,7 +157,7 @@ export async function scaffoldDesign(
       () => false,
     )
   )
-    throw new Error(`Design already exists: designs/${id}`)
+    throw new Error(`Design already exists: ${id}`)
 
   await mkdir(layout.designsRoot, { recursive: true })
   const temporary = path.join(layout.designsRoot, `.${id}.${randomUUID()}.tmp`)
@@ -187,7 +187,7 @@ export async function scaffoldDesign(
   } catch (error) {
     await rm(temporary, { recursive: true, force: true })
     if ((error as NodeJS.ErrnoException).code === "EEXIST" || (error as NodeJS.ErrnoException).code === "ENOTEMPTY") {
-      throw new Error(`Design already exists: designs/${id}`, { cause: error })
+      throw new Error(`Design already exists: ${id}`, { cause: error })
     }
     throw error
   }

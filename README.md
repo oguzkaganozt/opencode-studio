@@ -2,7 +2,7 @@
 
 OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
 
-**Package:** [`@oguzkaganozt/opencode-studio@1.0.7`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
+**Package:** [`@oguzkaganozt/opencode-studio@1.0.8`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
 **CAD and PCB are always on.** Install wires OpenCode once (plugins, skills, CAD MCP). Media tools and the Files explorer are always on too.
 
@@ -16,7 +16,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 ## Install (pinned)
 
 ```bash
-bun add -g @oguzkaganozt/opencode-studio@1.0.7
+bun add -g @oguzkaganozt/opencode-studio@1.0.8
 hash -r
 command -v opencode-studio
 
@@ -109,7 +109,7 @@ $STUDIO_HOME/studio/
   circuits/catalog/parts/    # optional PCB catalog
 ```
 
-`roots.<id>` are absolute domain-root overrides. Media paths remain OpenCode-project-scoped. Keep **one** of `opencode.json` / `opencode.jsonc`.
+`roots.<id>` are absolute domain-root overrides (the directory that directly contains project ids — CAD: designs folder, PCB: circuits folder). Media paths remain OpenCode-project-scoped. Keep **one** of `opencode.json` / `opencode.jsonc`.
 
 **Upgrade from project-local config:** if global config is missing and the domain still has `.opencode/studio.json` with roots, roots are migrated on plugin load. Run `opencode-studio repair` once to finish.
 
@@ -129,7 +129,7 @@ Shell completion installs on global `bun add -g`. Skip: `OPENCODE_STUDIO_SKIP_PO
 
 ```bash
 # Prefer an explicit pin over unattended @latest
-bun add -g @oguzkaganozt/opencode-studio@1.0.7
+bun add -g @oguzkaganozt/opencode-studio@1.0.8
 opencode-studio repair
 opencode-studio status --workspace /abs/project
 # restart OpenCode

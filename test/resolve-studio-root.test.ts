@@ -11,14 +11,14 @@ afterEach(async () => {
 })
 
 describe("resolveStudioRoot", () => {
-  test("defaults CAD to studio/ and PCB to studio/circuits under Studio Home", async () => {
+  test("defaults CAD to studio/designs and PCB to studio/circuits under Studio Home", async () => {
     const home = await mkdtemp(path.join(tmpdir(), "osc-root-home-"))
     temps.push(home)
 
     const cad = await resolveStudioRoot({ studioId: "cad", studioRoot: home })
     const pcb = await resolveStudioRoot({ studioId: "pcb", studioRoot: home })
 
-    expect(cad).toBe(await realpath(path.join(home, "studio")))
+    expect(cad).toBe(await realpath(path.join(home, "studio", "designs")))
     expect(pcb).toBe(await realpath(path.join(home, "studio", "circuits")))
   })
 
@@ -47,9 +47,9 @@ describe("resolveStudioRoot", () => {
     const home = await mkdtemp(path.join(tmpdir(), "osc-root-home-"))
     temps.push(home)
     const intended = studioDomainRootPath({ studioId: "cad", studioRoot: home })
-    expect(intended).toBe(path.join(home, "studio"))
+    expect(intended).toBe(path.join(home, "studio", "designs"))
     await expect(resolveStudioRoot({ studioId: "cad", studioRoot: home, create: false })).rejects.toThrow(/does not exist/)
     const { access } = await import("node:fs/promises")
-    await expect(access(path.join(home, "studio"))).rejects.toThrow()
+    await expect(access(path.join(home, "studio", "designs"))).rejects.toThrow()
   })
 })

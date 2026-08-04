@@ -87,7 +87,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
       tool: {
         design_list: tool({
           description:
-            "List CAD designs discovered under the studio designs/ directory. Each entry reports id, build status, and part count.",
+            "List CAD designs discovered under the CAD domain root (default studio/designs/). Each entry reports id, build status, and part count.",
           args: {},
           async execute() {
             const designs = await scanDesigns(layout)
@@ -129,9 +129,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             await context.ask({
               permission: "edit",
               patterns: [
-                `designs/${args.id}/design.json`,
-                `designs/${args.id}/params.py`,
-                ...args.parts.map((part) => `designs/${args.id}/${part.source ?? `parts/${part.id.replace(/-/g, "_")}.py`}`),
+                `studio/designs/${args.id}/design.json`,
+                `studio/designs/${args.id}/params.py`,
+                ...args.parts.map((part) => `studio/designs/${args.id}/${part.source ?? `parts/${part.id.replace(/-/g, "_")}.py`}`),
               ],
               always: [],
               metadata: {},
@@ -210,10 +210,10 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             await context.ask({
               permission: "edit",
               patterns: [
-                `designs/${args.id}/step/`,
-                `designs/${args.id}/stl/`,
-                `designs/${args.id}/glb/`,
-                `designs/${args.id}/manifest.json`,
+                `studio/designs/${args.id}/step/`,
+                `studio/designs/${args.id}/stl/`,
+                `studio/designs/${args.id}/glb/`,
+                `studio/designs/${args.id}/manifest.json`,
               ],
               always: [],
               metadata: {},

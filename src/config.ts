@@ -210,7 +210,7 @@ export function studioDomainRootPath(input: { studioId: StudioId; studioRoot: st
 /**
  * Resolve a studio's domain data root on disk.
  * - override in global config.roots.<id> (absolute) — that path is the domain root
- * - default: Studio Home + definition `root.relativePath` (e.g. `studio`, `studio/circuits`)
+ * - default: Studio Home + definition `root.relativePath` (e.g. `studio/designs`, `studio/circuits`)
  */
 export async function resolveStudioRoot(input: {
   studioId: StudioId

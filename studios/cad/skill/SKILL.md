@@ -73,7 +73,7 @@ Treat this skill as the default workflow. Do not load `build123d://skill/modelin
 - `build123d_import_cad_file(path, name)` - import STEP/STL into the named-object registry. The name works with standalone MCP tools but is not bound as a Python variable inside `build123d_execute`.
 - `build123d_measure(object_name)` - volume, area, bounding box, topology, and center of mass.
 - `build123d_validate(object_name)` - validity gate: BRepCheck, watertight, manifold, and non-zero volume.
-- `build123d_render_view(direction, save_to, objects)` - render named objects. Directions are `iso`, `front`, `side`, and `top`. Save PNGs under `designs/<design-id>/renders/<part-id>-<view>.png` so the companion viewer can display them.
+- `build123d_render_view(direction, save_to, objects)` - render named objects. Directions are `iso`, `front`, `side`, and `top`. Save PNGs under `studio/designs/<design-id>/renders/<part-id>-<view>.png` (domain root + id) so the companion viewer can display them.
 - `build123d_compare(a, b, kind, axis, mode)` - the standalone comparison tool. Use `kind="fit"` for clearance/interpenetration, `kind="align"` for alignment, `kind="shape"` for geometry deltas, and `kind="snapshot"` for snapshot deltas. Fit clearance is the global minimum between complete shapes; an intended stop or detent can make it zero without proving a nominal gap at a target interface.
 - `build123d_analyze_printability(object_name, ...)` - FDM overhang, wall thickness, manifold, stability, and bed-fit checks. It treats the object's current world orientation as its print orientation.
 - `build123d_resolve(object_name, selector, label)` - create a geometry reference: `@cad[part#label]`.
@@ -85,7 +85,7 @@ Inside `build123d_execute`, composable Python helpers such as `clearance(a, b)`,
 
 ### opencode-studio plugin (design orchestration)
 
-- `design_list()` - list designs under `designs/` with build status.
+- `design_list()` - list designs under the CAD domain root (`studio/designs/` by default) with build status.
 - `design_create(id, parts[])` - scaffold a new design directory with `design.json`, `params.py`, and `parts/`.
 - `design_read(id)` - read the canonical design/build summary, resolved artifact paths with existence checks, metrics, revision, and render inventory. Do not follow it with raw manifest reads or artifact globs.
 - `design_build(id)` - deterministically validate source and round-tripped STEP geometry as one valid solid, export STEP/STL/GLB, and write `manifest.json`. It does not run assembly or printability verification. Do not revalidate or remeasure unchanged STEP solely to repeat build guarantees. A failed build preserves the previous output.
@@ -95,7 +95,7 @@ Inside `build123d_execute`, composable Python helpers such as `clearance(a, b)`,
 ### Responsibility boundary
 
 - Use `build123d_*` tools to model, inspect, measure, render, validate, and compare geometry in the interactive CAD session.
-- Use `design_*` tools to manage the persistent product lifecycle under `designs/`.
+- Use `design_*` tools to manage the persistent product lifecycle under the CAD domain root.
 - Final STEP/STL/GLB artifacts must come from `design_build`, because it rebuilds the canonical `parts/*.py` sources deterministically.
 - `build123d_export` is only for temporary inspection or an explicit one-off handoff; it must not replace `design_build` in this workflow.
 - `build123d_render_view` creates PNG evidence; `design_view` returns the interactive companion viewer URL.
@@ -117,7 +117,7 @@ Use epsilon only to extend cutters or joins beyond non-mating boundaries. Never 
 
 ## Production Factory Pipeline
 
-CAD domain root defaults to `$STUDIO_HOME/studio` (Studio Home is `$HOME` unless overridden). Designs live only under `designs/<id>/` there (`$STUDIO_HOME/studio/designs/<id>/`). Each design directory contains source files (`design.json`, `params.py`, `parts/*.py`) and generated outputs (`step/`, `stl/`, `glb/`, `manifest.json`). Generated outputs are gitignored; sources are tracked. Do not create designs outside `designs/`.
+CAD domain root defaults to `$STUDIO_HOME/studio/designs` (Studio Home is `$HOME` unless overridden). Each child directory is one design (`$STUDIO_HOME/studio/designs/<id>/`) with source files (`design.json`, `params.py`, `parts/*.py`) and generated outputs (`step/`, `stl/`, `glb/`, `manifest.json`). Generated outputs are gitignored; sources are tracked. Do not create designs outside this domain root.
 
 Follow these phases in order. Phase 1.5 is optional when the active model cannot view images.
 
@@ -156,7 +156,7 @@ Any source geometry change invalidates every prior render, printability result, 
 
 After `design_build` succeeds, optionally inspect the built design visually if your model supports image input. The renders are served at the companion viewer URL and visible in the sidebar's render panel.
 
-1. Generate renders for the full assembly, naming every registered object: `build123d_render_view(objects="body,lid", direction="iso", save_to="designs/<design-id>/renders/assembly-iso.png")`. In Manufactured Freeform Mode, also capture front and side views after the final source change.
+1. Generate renders for the full assembly, naming every registered object: `build123d_render_view(objects="body,lid", direction="iso", save_to="studio/designs/<design-id>/renders/assembly-iso.png")`. In Manufactured Freeform Mode, also capture front and side views after the final source change.
 2. If your model can view images, visually verify:
    - **Shelling**: the model should appear hollow, not solid. Look for visible interior cavities.
    - **Features**: holes, cutouts, fillets, and other intended geometry should be present and correctly proportioned.
@@ -170,8 +170,8 @@ After `design_build` succeeds, optionally inspect the built design visually if y
 
 Import each generated STEP file as a named session object, then compare every mating pair:
 
-1. `build123d_import_cad_file(path="designs/<design-id>/step/body.step", name="body_built")`
-2. `build123d_import_cad_file(path="designs/<design-id>/step/lid.step", name="lid_built")`
+1. `build123d_import_cad_file(path="studio/designs/<design-id>/step/body.step", name="body_built")`
+2. `build123d_import_cad_file(path="studio/designs/<design-id>/step/lid.step", name="lid_built")`
 3. `build123d_compare(a="body_built", b="lid_built", kind="fit")` - inspect clearance, touching/containment/interpenetration status, and overlap volume.
 4. `build123d_compare(a="body_built", b="lid_built", kind="align", axis="Z", mode="center")` - verify the required alignment mode and axis.
 5. Run `build123d_analyze_printability` on each printable part in its actual bed pose, not merely its assembly orientation. Before resetting the interactive Python namespace, retain or recreate the final source-built shape, transform it into the intended print pose, register it with `show()`, and confirm its volume and bounding-box dimensions match the final build metrics before analysis.

@@ -51,7 +51,8 @@ async function sha256(filePath: string) {
 
 export async function initializeStudio(root: string): Promise<StudioLayout> {
   const canonical = await realpath(root)
-  return { root: canonical, designsRoot: path.join(canonical, "designs") }
+  // Domain root is the designs directory (…/studio/designs); each child dir is one design.
+  return { root: canonical, designsRoot: canonical }
 }
 
 export async function resolveDesignDirectory(layout: StudioLayout, id: string) {

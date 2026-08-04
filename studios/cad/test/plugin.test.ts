@@ -64,19 +64,20 @@ afterEach(async () => {
 async function makeStudio() {
   const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-studio-plugin-"))
   tmpRoots.push(tmpRoot)
-  await mkdir(path.join(tmpRoot, "designs"), { recursive: true })
+  const designsRoot = path.join(tmpRoot, "designs")
+  await mkdir(designsRoot, { recursive: true })
   await mkdir(path.join(tmpRoot, "forge"), { recursive: true })
-  await initializeStudio(tmpRoot)
-  return tmpRoot
+  await initializeStudio(designsRoot)
+  return { designsRoot, forgeDir: path.join(tmpRoot, "forge") }
 }
 
 describe("cad plugin smoke", () => {
   test("registers tools and scaffolds a design", async () => {
-    const tmpRoot = await makeStudio()
+    const studio = await makeStudio()
     const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
     const hooks = await plugin(fakeContext, {
-      studioRoot: tmpRoot,
-      forgeProjectDir: path.join(tmpRoot, "forge"),
+      studioRoot: studio.designsRoot,
+      forgeProjectDir: studio.forgeDir,
       companionUrl: "http://127.0.0.1:4173",
     })
     expect(Object.keys(hooks.tool ?? {}).sort()).toEqual(
@@ -92,13 +93,13 @@ describe("cad plugin smoke", () => {
   })
 
   test("build + qc report reflect artifact and axis honesty", async () => {
-    const tmpRoot = await makeStudio()
+    const studio = await makeStudio()
     const runner = async ({ designDir }: { designDir: string }) => {
       await writeBuiltDesign(designDir, "demo")
       return { ok: true, exitCode: 0, stdout: "", stderr: "", manifestPath: null, designDir }
     }
     const plugin = createStudioPlugin({ forgeRunner: runner as any })
-    const hooks = await plugin(fakeContext, { studioRoot: tmpRoot, forgeProjectDir: path.join(tmpRoot, "forge") })
+    const hooks = await plugin(fakeContext, { studioRoot: studio.designsRoot, forgeProjectDir: studio.forgeDir })
     await (hooks.tool as any).design_create.execute({ id: "demo", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
     const built = await (hooks.tool as any).design_build.execute({ id: "demo" }, { ...fakeContext, ask: async () => {} })
     expect(JSON.parse(built.output).parts[0].metrics.solid_count).toBe(1)

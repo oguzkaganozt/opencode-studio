@@ -63,8 +63,8 @@ describe("Studio plugin roots", () => {
     const tools = hooks.tool as any
 
     await tools.design_create.execute({ id: "legacy-design", parts: [{ id: "body" }] }, { ask: async () => {} })
-    expect(await Bun.file(path.join(cadRoot, "designs", "legacy-design", "design.json")).exists()).toBe(true)
-    expect(await Bun.file(path.join(studioRoot, "designs", "legacy-design", "design.json")).exists()).toBe(false)
+    expect(await Bun.file(path.join(cadRoot, "legacy-design", "design.json")).exists()).toBe(true)
+    expect(await Bun.file(path.join(studioRoot, "studio", "designs", "legacy-design", "design.json")).exists()).toBe(false)
     expect(JSON.parse(await tools.pcb_workspace_list.execute({}, {})).workspaceRoot).toBe(pcbRoot)
     expect((await readStudioConfigFile({ studioConfigHome })).roots).toEqual({ cad: cadRoot, pcb: pcbRoot })
   }, 60_000)

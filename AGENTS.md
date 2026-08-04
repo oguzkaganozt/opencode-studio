@@ -46,9 +46,9 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 - **CAD and PCB are always on** (full catalog). No enable/disable toggle. Platform media + Files stay on too.
 - Optional `~/.config/opencode-studio/studio.json` holds **roots only**: `{ "roots": { "cad": "/abs", "pcb": "/abs" } }`. Missing file is fine. Legacy `enabled` is ignored.
 - CAD/PCB **data** roots default under fixed Studio Home (`$HOME` or `OPENCODE_STUDIO_WORKSPACE`), not the OpenCode project directory:
-  - CAD → `$STUDIO_HOME/studio` (designs at `studio/designs/<id>/`)
+  - CAD → `$STUDIO_HOME/studio/designs` (projects at `studio/designs/<id>/`)
   - PCB → `$STUDIO_HOME/studio/circuits` (projects at `studio/circuits/<id>/`, catalog at `studio/circuits/catalog/parts/`)
-  - `roots.<id>` must be **absolute** domain-root overrides (CAD override contains `designs/`; PCB override is the circuits workspace). Platform media remains OpenCode-project-scoped.
+  - `roots.<id>` must be **absolute** domain roots (directory that directly contains project ids). Platform media remains OpenCode-project-scoped.
 - Global install channel is **bun only** (`bun add -g @oguzkaganozt/opencode-studio`). npm registry is publish-only. **postinstall** on bun global runs `repair` once (soft): managed skills under `~/.config/opencode/skills/studio-<id>/` (`studio-cad`, `studio-pcb`, `studio-media`; marker `.opencode-studio-managed.json`), plugin + media-go **without version pins**, MCP `build123d`. Does **not** write into project directories. Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1` or `OPENCODE_STUDIO_SKIP_CONFIGURE=1`. `opencode-studio upgrade` → `bun add -g …@latest`.
 - `opencode-studio repair` and UI **Repair install** / `PUT /api/config` re-run the same install (loopback + CSRF). Restart **OpenCode** after install so plugins/skills load.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).

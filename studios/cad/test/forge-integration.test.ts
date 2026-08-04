@@ -15,8 +15,8 @@ afterEach(async () => {
   }
 })
 
-async function makeDesign(root: string, id: string): Promise<string> {
-  const designDir = path.join(root, "designs", id)
+async function makeDesign(designsRoot: string, id: string): Promise<string> {
+  const designDir = path.join(designsRoot, id)
   await mkdir(path.join(designDir, "parts"), { recursive: true })
   await writeFile(
     path.join(designDir, "design.json"),
@@ -41,7 +41,6 @@ describe("design_build integration (real subprocess)", () => {
     async () => {
       const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-forge-int-"))
       tmpRoots.push(tmpRoot)
-      await mkdir(path.join(tmpRoot, "designs"), { recursive: true })
       await makeDesign(tmpRoot, "cube-test")
 
       const layout = await initializeStudio(tmpRoot)
@@ -50,7 +49,7 @@ describe("design_build integration (real subprocess)", () => {
       expect(result.ok).toBe(true)
       expect(result.exitCode).toBe(0)
 
-      const designDir = path.join(tmpRoot, "designs", "cube-test")
+      const designDir = path.join(tmpRoot, "cube-test")
       const manifestText = await readFile(path.join(designDir, "manifest.json"), "utf8")
       const manifest = JSON.parse(manifestText)
       expect(manifest.id).toBe("cube-test")
@@ -75,7 +74,6 @@ describe("design_build integration (real subprocess)", () => {
     async () => {
       const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-forge-preserve-"))
       tmpRoots.push(tmpRoot)
-      await mkdir(path.join(tmpRoot, "designs"), { recursive: true })
       const designDir = await makeDesign(tmpRoot, "preserve-test")
 
       const layout = await initializeStudio(tmpRoot)

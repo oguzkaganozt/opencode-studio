@@ -8,7 +8,7 @@ export const cadStudio: StudioDefinition = {
   requiredEngines: ["uv"],
   root: {
     default: "studio_home",
-    relativePath: "studio",
+    relativePath: "studio/designs",
     create: true,
   },
 }
