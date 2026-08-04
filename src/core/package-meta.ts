@@ -151,11 +151,6 @@ export async function ensureForgeRuntimeDir(packageRoot: string) {
   return runtime
 }
 
-/** @deprecated Prefer ensureForgeRuntimeDir; kept as the cache path for callers that already ensure. */
-export function forgeProjectDir(_packageRoot?: string) {
-  return forgeRuntimeDir()
-}
-
 /** Pin for managed build123d MCP; `uv` path is resolved at configure time. */
 export const BUILD123D_MCP_PACKAGE = "build123d-mcp@0.3.80"
 export const BUILD123D_MCP_PYTHON = "3.12"
@@ -171,9 +166,6 @@ export function build123dMcpEntry(uvPath: string) {
     enabled: true as const,
   }
 }
-
-/** @deprecated Prefer build123dMcpEntry(uvPath) so OpenCode can find uv outside PATH. */
-export const BUILD123D_MCP = build123dMcpEntry("uv")
 
 export const MANAGED_MCP_KEY = "build123d"
 export const MANAGED_MARKER_NAME = ".opencode-studio-managed.json"

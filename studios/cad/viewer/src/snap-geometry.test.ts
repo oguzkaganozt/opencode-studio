@@ -5,7 +5,6 @@ import {
   dedupeVertices,
   faceCentroid,
   resolveMeshSnap,
-  resolveVertexSnap,
   VERTEX_SNAP_PX,
 } from "./snap-geometry"
 
@@ -22,24 +21,24 @@ describe("snap-geometry", () => {
     expect(out).toHaveLength(2)
   })
 
-  test("resolveVertexSnap picks nearest screen vertex", () => {
+  test("resolveMeshSnap picks nearest screen vertex", () => {
     const verts = [
       { x: 0, y: 0, z: 0 },
       { x: 10, y: 0, z: 0 },
     ]
     const project = (p: { x: number; y: number; z: number }) => ({ x: p.x * 10, y: 100 })
     const hit = { x: 0.5, y: 0, z: 0 }
-    const r = resolveVertexSnap(hit, 2, 100, verts, project, VERTEX_SNAP_PX)
+    const r = resolveMeshSnap(hit, 2, 100, { vertices: verts, edges: [], center: null }, project, VERTEX_SNAP_PX)
     expect(r.snap).toBe("vertex")
     expect(r.position.x).toBe(0)
     expect(r.quality).toBe("mesh-approx")
   })
 
-  test("resolveVertexSnap free when outside threshold", () => {
+  test("resolveMeshSnap free when outside threshold", () => {
     const verts = [{ x: 0, y: 0, z: 0 }]
     const project = () => ({ x: 0, y: 0 })
     const hit = { x: 1, y: 2, z: 3 }
-    const r = resolveVertexSnap(hit, 100, 100, verts, project, 10)
+    const r = resolveMeshSnap(hit, 100, 100, { vertices: verts, edges: [], center: null }, project, 10)
     expect(r.snap).toBe("free")
     expect(r.position).toEqual(hit)
   })

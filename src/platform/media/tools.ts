@@ -144,6 +144,13 @@ function promoteToolMedia(messages: Array<{ info: any; parts: Part[] }>, strip: 
   messages.splice(0, messages.length, ...output)
 }
 
+function nativeMediaOptions(npm: string) {
+  return {
+    nativeMediaAdapter: npm,
+    nativeMediaProtocol: npm === "@ai-sdk/anthropic" ? "anthropic" : "openai-compatible",
+  } as const
+}
+
 function patchModels(provider: any, providerPackage: string, providerID: string) {
   return Object.fromEntries(
     Object.entries(provider.models).map(([id, value]) => {
@@ -161,8 +168,7 @@ function patchModels(provider: any, providerPackage: string, providerID: string)
           api: { ...model.api, npm: providerPackage },
           options: {
             ...model.options,
-            nativeMediaAdapter: npm,
-            nativeMediaProtocol: npm === "@ai-sdk/anthropic" ? "anthropic" : "openai-compatible",
+            ...nativeMediaOptions(npm),
           },
         },
       ]
@@ -174,7 +180,6 @@ export type MediaStudioPluginDependencies = {
   createFalClient?: () => FalClient
   platformFetch?: FalPlatformFetcher
   beforeMediaSpawn?: () => Promise<void>
-  resolveUsername?: (uid: number) => string
 }
 
 export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependencies = {}): Plugin {
@@ -184,7 +189,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
   return async (context, rawOptions) => {
     const config = options(rawOptions)
     const workspaceRoot = await canonicalStudioRoot(config.libraryRoot ?? context.directory)
-    const library = await initializeLibrary({ root: workspaceRoot, resolveUsername: dependencies.resolveUsername })
+    const library = await initializeLibrary({ root: workspaceRoot })
     const studioRoot = library.root
     const fal = createFalClient()
     const compacting = new Set<string>()
@@ -269,8 +274,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
             model.provider = { ...model.provider, npm: config.providerPackage }
             model.options = {
               ...model.options,
-              nativeMediaAdapter: npm,
-              nativeMediaProtocol: npm === "@ai-sdk/anthropic" ? "anthropic" : "openai-compatible",
+              ...nativeMediaOptions(npm),
             }
           }
         }

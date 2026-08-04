@@ -7,7 +7,7 @@ import { type DesignEntry, findDesign, listRenders, RENDER_FILE_PATTERN, type St
 import { ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
 import { ensureDesignWatching, onDesignEvent } from "./watcher"
 
-class StudioError extends Error {
+class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
@@ -24,23 +24,23 @@ const ARTIFACT_MIME: Record<string, string> = {
 }
 
 function safeDesignId(id: string) {
-  if (!ID_PATTERN.test(id)) throw new StudioError(400, "Invalid design id")
+  if (!ID_PATTERN.test(id)) throw new ApiError(400, "Invalid design id")
   return id
 }
 
 async function resolveRegularFileInside(root: string, candidate: string, escapeMessage: string, notFoundMessage: string) {
-  if (!isInside(root, candidate)) throw new StudioError(400, escapeMessage)
+  if (!isInside(root, candidate)) throw new ApiError(400, escapeMessage)
   let resolved: string
   let canonicalRoot: string
   try {
     resolved = await realpath(candidate)
     canonicalRoot = await realpath(root)
   } catch {
-    throw new StudioError(404, notFoundMessage)
+    throw new ApiError(404, notFoundMessage)
   }
-  if (!isInside(canonicalRoot, resolved)) throw new StudioError(400, escapeMessage)
+  if (!isInside(canonicalRoot, resolved)) throw new ApiError(400, escapeMessage)
   const info = await lstat(resolved)
-  if (!info.isFile()) throw new StudioError(404, notFoundMessage)
+  if (!info.isFile()) throw new ApiError(404, notFoundMessage)
   return resolved
 }
 
@@ -60,7 +60,7 @@ export function createCadApi(layout: StudioLayout) {
   const app = new Hono()
 
   app.onError((error, context) => {
-    if (error instanceof StudioError) return context.json({ error: error.message }, error.status as 400 | 404 | 409 | 500)
+    if (error instanceof ApiError) return context.json({ error: error.message }, error.status as 400 | 404 | 409 | 500)
     console.error("cad API error", error)
     return context.json({ error: "Internal server error" }, 500)
   })

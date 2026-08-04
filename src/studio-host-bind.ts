@@ -1,3 +1,5 @@
+import path from "node:path"
+
 export const STUDIO_HOST_PORT = 4173
 export const DEFAULT_STUDIO_HOST_URL = `http://127.0.0.1:${STUDIO_HOST_PORT}`
 
@@ -30,13 +32,20 @@ export function resolveStudioBind(parentOpenCodeUrl: string, env: NodeJS.Process
   return { hostname, port, localUrl: `http://127.0.0.1:${port}` }
 }
 
-export async function studioHealthOk(localUrl: string): Promise<boolean> {
+export async function fetchStudioHealth(localUrl: string): Promise<{ ok: boolean; studioRoot?: string }> {
   try {
     const response = await fetch(new URL("/studio-api/health", `${localUrl}/`), { signal: AbortSignal.timeout(1_500) })
-    return response.ok
+    if (!response.ok) return { ok: false }
+    const body = (await response.json().catch(() => null)) as { studioRoot?: unknown } | null
+    const studioRoot = body && typeof body.studioRoot === "string" && path.isAbsolute(body.studioRoot) ? body.studioRoot : undefined
+    return { ok: true, studioRoot }
   } catch {
-    return false
+    return { ok: false }
   }
+}
+
+export async function studioHealthOk(localUrl: string): Promise<boolean> {
+  return (await fetchStudioHealth(localUrl)).ok
 }
 
 /** Probe loopback Studio health for CLI status (env port/bind). Does not claim ownership. */

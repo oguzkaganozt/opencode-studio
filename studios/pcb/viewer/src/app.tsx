@@ -6,8 +6,8 @@ import { requestAgentHandoff } from "@ui/agent-handoff"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
 import { cn } from "@ui/lib/cn"
-import { safeHref } from "@ui/lib/safe-href"
 import { api, type CircuitDiagnostics, type DiagnosticGroup, type PartSummary, type ProjectSummary, studioHref } from "./api"
+import { DatasheetLink } from "./datasheet-link"
 import { PartDetailModal } from "./part-detail"
 import { ViewerErrorBoundary } from "./error-boundary"
 
@@ -815,7 +815,6 @@ function ProjectPage() {
 // ── Catalog Page ──────────────────────────────────────────────────────────────
 
 function PartRow({ part, onSelect }: { part: PartSummary; onSelect: () => void }) {
-  const datasheetHref = part.datasheet ? safeHref(part.datasheet) : null
   return (
     <tr className="border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)]">
       <td className="whitespace-nowrap px-4 py-2.5 font-mono text-sm">
@@ -827,23 +826,13 @@ function PartRow({ part, onSelect }: { part: PartSummary; onSelect: () => void }
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.description ?? "—"}</td>
       <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.category ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm">
-        {datasheetHref && (
-          <a
-            href={datasheetHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-[var(--osc-accent)] hover:opacity-80"
-          >
-            Datasheet ↗
-          </a>
-        )}
+        <DatasheetLink href={part.datasheet} />
       </td>
     </tr>
   )
 }
 
 function PartCard({ part, onSelect }: { part: PartSummary; onSelect: () => void }) {
-  const datasheetHref = part.datasheet ? safeHref(part.datasheet) : null
   return (
     <article className="pcb-data-card">
       <div className="flex min-w-0 items-start justify-between gap-3">
@@ -854,11 +843,7 @@ function PartCard({ part, onSelect }: { part: PartSummary; onSelect: () => void 
       </div>
       <p className="mt-2 text-[13px] text-[var(--osc-text)]">{part.manufacturer ?? "Manufacturer unknown"}</p>
       {part.description ? <p className="mt-1 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">{part.description}</p> : null}
-      {datasheetHref ? (
-        <a href={datasheetHref} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-xs text-[var(--osc-accent)]">
-          Datasheet ↗
-        </a>
-      ) : null}
+      <DatasheetLink href={part.datasheet} className="mt-3 inline-flex text-xs text-[var(--osc-accent)]" />
     </article>
   )
 }

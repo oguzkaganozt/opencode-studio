@@ -27,26 +27,23 @@ function absoluteEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
   return path.resolve(value)
 }
 
-export function resolveStudioConfigHome(options: UserPathOptions = {}) {
-  if (options.studioConfigHome) return path.resolve(options.studioConfigHome)
+function resolveXdgConfigApp(options: UserPathOptions, explicit: string | undefined, envKey: string, appName: string) {
+  if (explicit) return path.resolve(explicit)
   const env = options.env ?? process.env
   const home = options.home ?? homedir()
-  const override = absoluteEnv(env, "OPENCODE_STUDIO_CONFIG_HOME")
+  const override = absoluteEnv(env, envKey)
   if (override) return override
   const xdg = absoluteEnv(env, "XDG_CONFIG_HOME")
-  if (xdg) return path.join(xdg, "opencode-studio")
-  return path.join(home, ".config", "opencode-studio")
+  if (xdg) return path.join(xdg, appName)
+  return path.join(home, ".config", appName)
+}
+
+export function resolveStudioConfigHome(options: UserPathOptions = {}) {
+  return resolveXdgConfigApp(options, options.studioConfigHome, "OPENCODE_STUDIO_CONFIG_HOME", "opencode-studio")
 }
 
 export function resolveOpenCodeHome(options: UserPathOptions = {}) {
-  if (options.openCodeHome) return path.resolve(options.openCodeHome)
-  const env = options.env ?? process.env
-  const home = options.home ?? homedir()
-  const override = absoluteEnv(env, "OPENCODE_CONFIG_HOME")
-  if (override) return override
-  const xdg = absoluteEnv(env, "XDG_CONFIG_HOME")
-  if (xdg) return path.join(xdg, "opencode")
-  return path.join(home, ".config", "opencode")
+  return resolveXdgConfigApp(options, options.openCodeHome, "OPENCODE_CONFIG_HOME", "opencode")
 }
 
 export function resolveOpenCodeSkillsHome(options: UserPathOptions = {}) {

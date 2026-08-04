@@ -144,27 +144,33 @@ export async function createHostApp(input: HostInput) {
   const username = resolveBasicUsername(env)
   const needBasic = !isLoopbackHost(hostname)
 
+  const basicAuthError = (kind: "missing_password" | "unauthorized") => {
+    if (kind === "missing_password") {
+      return new Response(JSON.stringify(errorBody("chat_auth_required", "Set OPENCODE_SERVER_PASSWORD or OPENCODE_STUDIO_PASSWORD.")), {
+        status: 503,
+        headers: { "Content-Type": "application/json", ...securityHeaders() },
+      })
+    }
+    return new Response(JSON.stringify(errorBody("unauthorized", "Basic auth required.")), {
+      status: 401,
+      headers: { "Content-Type": "application/json", "WWW-Authenticate": `Basic realm="opencode-studio"`, ...securityHeaders() },
+    })
+  }
+
   app.use("*", async (ctx, next) => {
     const host = ctx.req.header("host")
     if (!allowedHost(host, hostname, port)) {
       return ctx.json(errorBody("invalid_host", "Host header rejected."), 400)
     }
     if (needBasic && new URL(ctx.req.url).pathname !== "/studio-api/health") {
-      if (!password) {
-        return new Response(JSON.stringify(errorBody("chat_auth_required", "Set OPENCODE_SERVER_PASSWORD or OPENCODE_STUDIO_PASSWORD.")), {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        })
-      }
-      if (!basicAuthMatches(ctx.req.header("authorization"), username, password)) {
-        return new Response(JSON.stringify(errorBody("unauthorized", "Basic auth required.")), {
-          status: 401,
-          headers: { "Content-Type": "application/json", "WWW-Authenticate": `Basic realm="opencode-studio"` },
-        })
-      }
+      if (!password) return basicAuthError("missing_password")
+      if (!basicAuthMatches(ctx.req.header("authorization"), username, password)) return basicAuthError("unauthorized")
     }
     await next()
-    ctx.header("X-Content-Type-Options", "nosniff")
+    const headers = securityHeaders() as Record<string, string>
+    for (const [key, value] of Object.entries(headers)) {
+      ctx.header(key, value)
+    }
   })
 
   app.get("/studio-api/health", (ctx) => ctx.json({ status: "ok", parentOpenCodeUrl: resolvedParentUrl, studioRoot: domain.studioRoot }))
@@ -362,18 +368,7 @@ export async function createHostApp(input: HostInput) {
     closeOpenCode: () => openCode.close(),
     openCodeAuthorized: (authorization: string | undefined) =>
       !needBasic || Boolean(password && basicAuthMatches(authorization, username, password)),
-    openCodeAuthResponse: () => {
-      if (!password) {
-        return new Response(JSON.stringify(errorBody("chat_auth_required", "Set OPENCODE_SERVER_PASSWORD or OPENCODE_STUDIO_PASSWORD.")), {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        })
-      }
-      return new Response(JSON.stringify(errorBody("unauthorized", "Basic auth required.")), {
-        status: 401,
-        headers: { "Content-Type": "application/json", "WWW-Authenticate": `Basic realm="opencode-studio"` },
-      })
-    },
+    openCodeAuthResponse: () => (password ? basicAuthError("unauthorized") : basicAuthError("missing_password")),
     openCodeWebSocketTarget: (requestUrl: string) => openCode.webSocketTarget(requestUrl),
     nativeOpenCodeAvailable,
   }

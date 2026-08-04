@@ -53,7 +53,7 @@ export function assertStudioIds(values: string[]): StudioId[] {
 }
 
 /** Catalog order used for deterministic hook composition. */
-export const CATALOG_ORDER: StudioId[] = [...STUDIO_IDS]
+export const CATALOG_ORDER: readonly StudioId[] = STUDIO_IDS
 
 /** Platform contribution owner (not a catalog studio). */
 export const PLATFORM_OWNER = "platform" as const

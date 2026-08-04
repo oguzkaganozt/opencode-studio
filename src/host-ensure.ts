@@ -5,6 +5,7 @@ import { normalizeParentOpenCodeUrl, openCodeBasicAuthHeaders } from "./opencode
 import { type HostHandle, startHost } from "./server"
 import {
   DEFAULT_STUDIO_HOST_URL,
+  fetchStudioHealth,
   probeLocalStudioHost,
   resolveStudioBind,
   STUDIO_HOST_PORT,
@@ -32,7 +33,7 @@ export type EnsureStudioHostResult =
 let state: { bind: StudioBind; handle: HostHandle; studioRoot: string } | undefined
 let starting: Promise<EnsureStudioHostResult> | undefined
 
-function autostartDisabled(value: string | undefined) {
+export function autostartDisabled(value: string | undefined) {
   if (!value) return false
   const v = value.trim().toLowerCase()
   return v === "0" || v === "false" || v === "no" || v === "off"
@@ -154,14 +155,9 @@ async function ensureStudioHostLocked(input: EnsureStudioHostInput, env: NodeJS.
 }
 
 async function readStudioHostRoot(localUrl: string): Promise<string | undefined> {
-  try {
-    const response = await fetch(new URL("/studio-api/health", `${localUrl}/`), { signal: AbortSignal.timeout(1_500) })
-    if (!response.ok) return undefined
-    const body = (await response.json()) as { studioRoot?: unknown }
-    return typeof body.studioRoot === "string" && path.isAbsolute(body.studioRoot) ? path.resolve(body.studioRoot) : undefined
-  } catch {
-    return undefined
-  }
+  const health = await fetchStudioHealth(localUrl)
+  if (!health.ok || !health.studioRoot || !path.isAbsolute(health.studioRoot)) return undefined
+  return path.resolve(health.studioRoot)
 }
 
 export function resetStudioHostEnsureForTests() {

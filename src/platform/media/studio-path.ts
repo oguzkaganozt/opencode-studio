@@ -23,29 +23,6 @@ export function resolveStudioPath(root: string, input: string) {
   return candidate
 }
 
-export async function validateStudioDirectory(root: string, input: string) {
-  if (path.isAbsolute(input)) throw new Error(`Directory must be relative to the Studio root: ${input}`)
-  const directory = resolveStudioPath(root, input)
-  const relative = path.relative(root, directory)
-  if (!relative) throw new Error("Directory must name a subdirectory inside the Studio root")
-
-  let current = root
-  for (const component of relative.split(path.sep).filter(Boolean)) {
-    current = path.join(current, component)
-    try {
-      const info = await lstat(current)
-      if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(`Unsafe media directory: ${current}`)
-      const canonical = await realpath(current)
-      if (!isInside(root, canonical)) throw new Error(`Media directory resolves outside the Studio root: ${input}`)
-      current = canonical
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") break
-      throw error
-    }
-  }
-  return relative
-}
-
 async function ensureSafeDirectory(root: string, directory: string) {
   const relative = path.relative(root, directory)
   let current = root

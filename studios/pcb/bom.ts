@@ -1,5 +1,6 @@
 import type { CatalogPart } from "./catalog"
 import type { CircuitElement } from "./circuit-json"
+import { csvCell } from "./csv"
 
 export type BomEntry = {
   mpn: string | null
@@ -183,11 +184,6 @@ export function generateBom(circuitJson: unknown, catalogParts: CatalogPart[] = 
     listedCount: mpnGroups.size + supplierGroups.size,
     unlistedCount: componentsWithoutPartNumbers,
   }
-}
-
-function csvCell(value: string | null): string {
-  if (value === null) return ""
-  return value.includes(",") || value.includes('"') || value.includes("\n") ? `"${value.replace(/"/g, '""')}"` : value
 }
 
 export function toBomCsv(entries: BomEntry[]): string {

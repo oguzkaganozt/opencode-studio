@@ -128,11 +128,6 @@ function platformMediaSkillTarget(packageRoot: string): SkillTarget {
   }
 }
 
-/** @deprecated path helper used by tests — studio skills only */
-function skillPaths(studioId: StudioId, packageRoot: string, userPaths: UserPathOptions = {}) {
-  return skillPathsFor(studioSkillTarget(studioId, packageRoot), userPaths)
-}
-
 async function directoryHasChildDesignJson(designsDir: string): Promise<boolean> {
   try {
     const entries = await readdir(designsDir, { withFileTypes: true })
@@ -247,15 +242,17 @@ function isManagedBuild123dEntry(value: unknown) {
   return command.some((part) => part.includes("build123d-mcp") || part.includes(BUILD123D_MCP_PACKAGE.split("@")[0]!))
 }
 
+function isManagedPackagePluginBase(base: string | null, metaName: string): boolean {
+  if (!base) return false
+  if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return true
+  return base === metaName || base.startsWith(`${metaName}/`)
+}
+
 function stripManagedPlugins(entries: unknown[], meta: PackageMeta): unknown[] {
   return entries.filter((entry) => {
     if (isManagedMediaGoPluginEntry(entry)) return false
-    const s = String(entry)
-    if (s.includes("opencode-studio")) return false
-    const base = pluginBaseName(entry)
-    if (!base) return true
-    if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
-    return base !== meta.name && !base.startsWith(`${meta.name}/`)
+    if (String(entry).includes("opencode-studio")) return false
+    return !isManagedPackagePluginBase(pluginBaseName(entry), meta.name)
   })
 }
 
@@ -281,6 +278,41 @@ async function skillDoctorCheck(input: {
     return { id: input.id, status: "warn", message: input.driftLabel, repair: "Run opencode-studio repair" }
   }
   return { id: input.id, status: "pass", message: input.passLabel }
+}
+
+async function pushEngineCheck(
+  checks: StudioDoctorCheck[],
+  id: string,
+  engine: string,
+  options?: {
+    missingMessage?: (engine: string) => string
+    missingRepair?: string
+  },
+) {
+  try {
+    const resolved = engine === "uv" ? await ensureUv() : resolveEngine(engine as "ffmpeg" | "ffprobe" | "tsci" | "uv")
+    if (!resolved) {
+      checks.push({
+        id,
+        status: "fail",
+        message: options?.missingMessage?.(engine) ?? `${engine} missing (expected bundled with the package)`,
+        repair: options?.missingRepair ?? "Reinstall @oguzkaganozt/opencode-studio",
+      })
+    } else {
+      checks.push({
+        id,
+        status: "pass",
+        message: `${engine} available (${resolved.source}: ${resolved.path})`,
+      })
+    }
+  } catch (error) {
+    checks.push({
+      id,
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+      repair: options?.missingRepair,
+    })
+  }
 }
 
 function isManagedMediaGoPluginEntry(entry: unknown) {
@@ -409,12 +441,7 @@ async function scrubProjectLocalManagedState(input: {
   const projectConfigPath = await resolveProjectOpenCodeConfigPath(input.domainRoot)
   if (projectConfigPath) {
     const openCode = await readOpenCodeConfig(projectConfigPath)
-    const plugins = pluginEntries(openCode).filter((entry) => {
-      const base = pluginBaseName(entry)
-      if (!base) return true
-      if (LEGACY_PACKAGE_NAMES.some((legacy) => base === legacy || base.startsWith(`${legacy}/`))) return false
-      return base !== input.meta.name && !base.startsWith(`${input.meta.name}/`)
-    })
+    const plugins = pluginEntries(openCode).filter((entry) => !isManagedPackagePluginBase(pluginBaseName(entry), input.meta.name))
     let nextText = configWithPlugins(openCode, plugins)
     let workingValue: Record<string, unknown> = { ...openCode.value }
     if (plugins.length > 0) workingValue.plugin = plugins
@@ -757,7 +784,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         root = null
       }
     }
-    const paths = skillPaths(studioId, packageRoot, userPaths)
+    const paths = skillPathsFor(studioSkillTarget(studioId, packageRoot), userPaths)
     const skillInstalled = await Bun.file(paths.skillFile).exists()
     studios.push({
       id: studioId,
@@ -851,12 +878,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     const projectOpenCode = await resolveProjectOpenCodeConfigPath(domainRoot)
     if (projectOpenCode) {
       const openCode = await readOpenCodeConfig(projectOpenCode)
-      const hasPlugin = pluginEntries(openCode).some((entry) => {
-        const base = pluginBaseName(entry)
-        if (!base) return false
-        if (LEGACY_PACKAGE_NAMES.some((legacyName) => base === legacyName || base.startsWith(`${legacyName}/`))) return true
-        return base === meta.name || base.startsWith(`${meta.name}/`)
-      })
+      const hasPlugin = pluginEntries(openCode).some((entry) => isManagedPackagePluginBase(pluginBaseName(entry), meta.name))
       const hasMcp = isManagedBuild123dEntry(mcpEntries(openCode)[MANAGED_MCP_KEY])
       if (hasPlugin || hasMcp) {
         checks.push({
@@ -963,36 +985,19 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       }),
     )
     for (const engine of ["ffmpeg", "ffprobe"] as const) {
-      try {
-        const resolved = resolveEngine(engine)
-        if (!resolved) {
+      await pushEngineCheck(checks, `engine:platform:${engine}`, engine, {
+        missingMessage: (id) => {
           const armFfprobe =
-            engine === "ffprobe" && process.platform === "linux" && process.arch === "arm64"
+            id === "ffprobe" && process.platform === "linux" && process.arch === "arm64"
               ? " — linux/arm64 has no bundled ffprobe-static; install system ffprobe on PATH"
               : ""
-          checks.push({
-            id: `engine:platform:${engine}`,
-            status: "fail",
-            message: `${engine} missing (expected bundled with the package)${armFfprobe}`,
-            repair:
-              engine === "ffprobe" && process.platform === "linux" && process.arch === "arm64"
-                ? "Install ffprobe on PATH (e.g. ffmpeg package) or reinstall on amd64"
-                : "Reinstall @oguzkaganozt/opencode-studio",
-          })
-        } else {
-          checks.push({
-            id: `engine:platform:${engine}`,
-            status: "pass",
-            message: `${engine} available (${resolved.source}: ${resolved.path})`,
-          })
-        }
-      } catch (error) {
-        checks.push({
-          id: `engine:platform:${engine}`,
-          status: "fail",
-          message: error instanceof Error ? error.message : String(error),
-        })
-      }
+          return `${id} missing (expected bundled with the package)${armFfprobe}`
+        },
+        missingRepair:
+          engine === "ffprobe" && process.platform === "linux" && process.arch === "arm64"
+            ? "Install ffprobe on PATH (e.g. ffmpeg package) or reinstall on amd64"
+            : "Reinstall @oguzkaganozt/opencode-studio",
+      })
     }
   }
 
@@ -1020,30 +1025,9 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     }
 
     for (const engine of def.requiredEngines) {
-      try {
-        const resolved = engine === "uv" ? await ensureUv() : resolveEngine(engine as "ffmpeg" | "ffprobe" | "tsci" | "uv")
-        if (!resolved) {
-          checks.push({
-            id: `engine:${studioId}:${engine}`,
-            status: "fail",
-            message: `${engine} missing (expected bundled with the package)`,
-            repair: "Reinstall @oguzkaganozt/opencode-studio",
-          })
-        } else {
-          checks.push({
-            id: `engine:${studioId}:${engine}`,
-            status: "pass",
-            message: `${engine} available (${resolved.source}: ${resolved.path})`,
-          })
-        }
-      } catch (error) {
-        checks.push({
-          id: `engine:${studioId}:${engine}`,
-          status: "fail",
-          message: error instanceof Error ? error.message : String(error),
-          repair: "Reinstall @oguzkaganozt/opencode-studio or install the engine on PATH",
-        })
-      }
+      await pushEngineCheck(checks, `engine:${studioId}:${engine}`, engine, {
+        missingRepair: "Reinstall @oguzkaganozt/opencode-studio or install the engine on PATH",
+      })
     }
 
     if (studioId === "pcb") {

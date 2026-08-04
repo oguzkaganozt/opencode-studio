@@ -52,11 +52,7 @@ export async function ensureDirectory(dir: string, mode = 0o700) {
   return await realpath(absolute)
 }
 
-export async function readRegularFileInside(root: string, relativePath: string) {
-  const candidate = path.resolve(root, relativePath)
-  if (!isInside(root, candidate)) throw new StudioError("path_escape", "Path escapes root")
-  const parent = await realpath(path.dirname(candidate))
-  if (!isInside(root, parent)) throw new StudioError("path_escape", "Path escapes root")
+async function readOpenRegularFile(candidate: string) {
   const handle = await open(candidate, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const info = await handle.stat()
@@ -67,6 +63,14 @@ export async function readRegularFileInside(root: string, relativePath: string) 
   } finally {
     await handle.close()
   }
+}
+
+export async function readRegularFileInside(root: string, relativePath: string) {
+  const candidate = path.resolve(root, relativePath)
+  if (!isInside(root, candidate)) throw new StudioError("path_escape", "Path escapes root")
+  const parent = await realpath(path.dirname(candidate))
+  if (!isInside(root, parent)) throw new StudioError("path_escape", "Path escapes root")
+  return readOpenRegularFile(candidate)
 }
 
 /** Read an absolute path that must stay a regular, non-symlink file inside root. */
@@ -84,16 +88,7 @@ export async function readRegularFileAt(root: string, absolutePath: string) {
   if (!linkInfo.isFile()) throw new StudioError("not_file", "Not a regular file")
   const parent = await realpath(path.dirname(candidate))
   if (!isInside(resolvedRoot, parent)) throw new StudioError("path_escape", "Path escapes root")
-  const handle = await open(candidate, constants.O_RDONLY | constants.O_NOFOLLOW)
-  try {
-    const info = await handle.stat()
-    if (!info.isFile()) throw new StudioError("not_file", "Not a regular file")
-    const buffer = Buffer.alloc(info.size)
-    await handle.read(buffer, 0, info.size, 0)
-    return buffer
-  } finally {
-    await handle.close()
-  }
+  return readOpenRegularFile(candidate)
 }
 
 export function packageRootFrom(importMetaDir: string) {

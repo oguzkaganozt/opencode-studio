@@ -9,7 +9,7 @@ export function useStudioChrome() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerPanel, setDrawerPanel] = useState<DrawerPanel>("nav")
   const [agentOpen, setAgentOpen] = useState(() => readAgentOpen())
-  const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (readAgentOpen() ? "loading" : "closed"))
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (agentOpen ? "loading" : "closed"))
 
   useEffect(() => {
     if (!agentOpen) setAgentStatus("closed")
@@ -45,8 +45,6 @@ export function useStudioChrome() {
   return {
     drawerOpen,
     drawerPanel,
-    setDrawerOpen,
-    setDrawerPanel,
     openDrawer,
     closeDrawer,
     agentOpen,

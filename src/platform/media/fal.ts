@@ -30,17 +30,6 @@ export function falRequestID(value: string) {
   return requestID
 }
 
-export function falJobStatus(value: unknown): "running" | "completed" | "failed" | "cancelled" {
-  const status =
-    typeof value === "object" && value !== null && typeof (value as { status?: unknown }).status === "string"
-      ? (value as { status: string }).status.toUpperCase()
-      : ""
-  if (status === "COMPLETED") return "completed"
-  if (status === "FAILED" || status === "ERROR") return "failed"
-  if (status === "CANCELLED" || status === "CANCELED") return "cancelled"
-  return "running"
-}
-
 /** Always throw an Error with a stable message (Bun/Node AbortSignal reason shapes differ). */
 export function throwIfAborted(signal: AbortSignal, fallback = "operation aborted"): void {
   if (!signal.aborted) return

@@ -26,12 +26,6 @@ export function uiBase(fallback = "/") {
   return getStudioRuntime()?.uiBase ?? fallback
 }
 
-export function apiUrl(path: string) {
-  const base = apiBase().replace(/\/$/, "")
-  const suffix = path.startsWith("/") ? path : `/${path}`
-  return `${base}${suffix}`
-}
-
 /** Absolute path under the current studio UI mount (host or standalone root). */
 export function studioHref(path = "") {
   const base = uiBase("").replace(/\/$/, "")

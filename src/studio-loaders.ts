@@ -1,7 +1,7 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import type { Hono } from "hono"
 import type { resolveStudioRoot } from "./config"
-import { CATALOG_ORDER, STUDIO_IDS, type StudioId } from "./core/registry"
+import { STUDIO_IDS, type StudioId } from "./core/registry"
 
 export type PluginLoadContext = {
   studioRoot: string
@@ -64,18 +64,9 @@ export async function loadPlatformMediaPlugin(ctx: { workspace: string; mediaPro
 
 /** Ensures loader maps stay in lockstep with the catalog. */
 export function assertLoaderCoverage() {
-  for (const id of STUDIO_IDS) {
-    if (!(id in pluginLoaders)) throw new Error(`pluginLoaders missing ${id}`)
-    if (!(id in apiLoaders)) throw new Error(`apiLoaders missing ${id}`)
-  }
-  for (const id of CATALOG_ORDER) {
-    if (!(id in pluginLoaders) || !(id in apiLoaders)) {
-      throw new Error(`loaders incomplete for catalog id ${id}`)
-    }
-  }
+  const catalogKeys = [...STUDIO_IDS].sort().join(",")
   const pluginKeys = Object.keys(pluginLoaders).sort().join(",")
   const apiKeys = Object.keys(apiLoaders).sort().join(",")
-  const catalogKeys = [...STUDIO_IDS].sort().join(",")
   if (pluginKeys !== catalogKeys) throw new Error(`pluginLoaders keys mismatch: ${pluginKeys} vs ${catalogKeys}`)
   if (apiKeys !== catalogKeys) throw new Error(`apiLoaders keys mismatch: ${apiKeys} vs ${catalogKeys}`)
 }

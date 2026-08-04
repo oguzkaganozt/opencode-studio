@@ -1,6 +1,6 @@
 import path from "node:path"
 import { packageRootFrom } from "./core/paths"
-import { ensureStudioHost, probeParentOpenCode } from "./host-ensure"
+import { autostartDisabled, ensureStudioHost, probeParentOpenCode } from "./host-ensure"
 
 const g = globalThis as typeof globalThis & { __opencodeStudioBootstrap?: boolean }
 
@@ -38,7 +38,7 @@ export async function runEnsureHostLoop(options?: {
   pollMs?: number
 }): Promise<void> {
   const env = options?.env ?? process.env
-  if (env.OPENCODE_STUDIO_AUTOSTART === "0" || env.OPENCODE_STUDIO_AUTOSTART === "false") {
+  if (autostartDisabled(env.OPENCODE_STUDIO_AUTOSTART)) {
     console.error("[opencode-studio] ensure-host skipped (AUTOSTART disabled)")
     return
   }
@@ -92,7 +92,7 @@ export function scheduleServeBootstrap(options?: { packageRoot?: string; env?: N
   g.__opencodeStudioBootstrap = true
 
   const env = options?.env ?? process.env
-  if (env.OPENCODE_STUDIO_AUTOSTART === "0" || env.OPENCODE_STUDIO_AUTOSTART === "false") return
+  if (autostartDisabled(env.OPENCODE_STUDIO_AUTOSTART)) return
 
   const packageRoot = options?.packageRoot ?? packageRootFrom(import.meta.dir)
   const timeoutMs = options?.timeoutMs ?? 45_000
@@ -130,8 +130,4 @@ export function scheduleServeBootstrap(options?: { packageRoot?: string; env?: N
       await sleep(300)
     }
   })()
-}
-
-export function resetServeBootstrapForTests() {
-  g.__opencodeStudioBootstrap = false
 }

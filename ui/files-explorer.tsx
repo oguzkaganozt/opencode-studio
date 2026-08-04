@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { useMemo, useRef, useState } from "react"
+import { type ReactNode, useMemo, useRef, useState } from "react"
 import { EmptyState } from "./components/empty-state"
 import { ErrorState } from "./components/error-state"
 import { fetchJson } from "./lib/fetch-json"
@@ -9,7 +9,6 @@ type FileEntry = {
   path: string
   kind: "dir" | "file"
   bytes?: number
-  modifiedAt?: string
   mime?: string
   preview: "image" | "audio" | "video" | "text" | "none"
 }
@@ -22,7 +21,6 @@ type ContentResponse = {
   mime?: string
   text?: string | null
   truncated?: boolean
-  url?: string
 }
 
 function formatBytes(bytes?: number) {
@@ -93,6 +91,33 @@ function MobileBack({ onBack }: { onBack?: () => void }) {
   )
 }
 
+function PreviewChrome({
+  onBack,
+  children,
+  trailing,
+  tall,
+}: {
+  onBack?: () => void
+  children?: ReactNode
+  trailing?: ReactNode
+  tall?: boolean
+}) {
+  if (!onBack && !children && !trailing) return null
+  return (
+    <div
+      className={`flex shrink-0 items-center gap-3 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 ${
+        tall || children || trailing ? "h-12 sm:px-4" : "h-10"
+      } ${trailing || children ? "justify-between" : ""}`}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <MobileBack onBack={onBack} />
+        {children}
+      </div>
+      {trailing}
+    </div>
+  )
+}
+
 function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry | null; selectedPath: string | null; onBack?: () => void }) {
   const [mediaError, setMediaError] = useState(false)
   const contentQuery = useQuery({
@@ -104,11 +129,7 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
   if (!selected) {
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]">
-        {onBack && (
-          <div className="flex h-10 items-center border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3">
-            <MobileBack onBack={onBack} />
-          </div>
-        )}
+        <PreviewChrome onBack={onBack} />
         <EmptyState
           className="m-6 max-w-sm self-center border-0 bg-transparent py-12 sm:mt-16"
           title={selectedPath ? "File unavailable" : "Select a file to preview"}
@@ -122,11 +143,7 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
   if (selected.kind === "dir") {
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]">
-        {onBack && (
-          <div className="flex h-10 items-center border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3">
-            <MobileBack onBack={onBack} />
-          </div>
-        )}
+        <PreviewChrome onBack={onBack} />
         <EmptyState
           className="m-6 max-w-sm self-center border-0 bg-transparent py-12 sm:mt-16"
           title="Directory"
@@ -139,10 +156,9 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]" role="status" aria-busy="true">
         <span className="sr-only">Loading preview…</span>
-        <div className="flex h-12 items-center gap-3 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 sm:px-4">
-          <MobileBack onBack={onBack} />
+        <PreviewChrome onBack={onBack} tall>
           <div className="osc-skeleton h-4 w-40" />
-        </div>
+        </PreviewChrome>
         <div className="flex-1 p-4">
           <div className="osc-skeleton h-full min-h-48 w-full" />
         </div>
@@ -152,11 +168,7 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
   if (contentQuery.error) {
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]">
-        {onBack && (
-          <div className="flex h-10 items-center border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3">
-            <MobileBack onBack={onBack} />
-          </div>
-        )}
+        <PreviewChrome onBack={onBack} />
         <ErrorState
           className="m-4 flex-1 border-0 py-12"
           title="Preview failed"
@@ -178,22 +190,23 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]">
-      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <MobileBack onBack={onBack} />
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-medium text-[var(--osc-text)]">{selected.name}</p>
-            <p className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]">
-              {selected.path}
-              {selected.bytes !== undefined ? ` · ${formatBytes(selected.bytes)}` : ""}
-              {selected.mime ? ` · ${selected.mime}` : ""}
-            </p>
-          </div>
+      <PreviewChrome
+        onBack={onBack}
+        trailing={
+          <a href={downloadHref} className="osc-chip h-10 shrink-0 px-2.5 text-[11px] sm:h-8">
+            Download
+          </a>
+        }
+      >
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-medium text-[var(--osc-text)]">{selected.name}</p>
+          <p className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]">
+            {selected.path}
+            {selected.bytes !== undefined ? ` · ${formatBytes(selected.bytes)}` : ""}
+            {selected.mime ? ` · ${selected.mime}` : ""}
+          </p>
         </div>
-        <a href={downloadHref} className="osc-chip h-10 shrink-0 px-2.5 text-[11px] sm:h-8">
-          Download
-        </a>
-      </div>
+      </PreviewChrome>
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {mediaError ? (
           <ErrorState

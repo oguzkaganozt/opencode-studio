@@ -1,12 +1,11 @@
-import { apiBase as runtimeApiBase, studioHref as runtimeStudioHref } from "@ui/studio-context"
+import { fetchJson } from "@ui/lib/fetch-json"
+import { apiBase as runtimeApiBase } from "@ui/studio-context"
+
+export { studioHref } from "@ui/studio-context"
 
 function apiPath(path: string) {
   const base = runtimeApiBase("/api/studios/pcb").replace(/\/$/, "")
   return `${base}${path.startsWith("/") ? path : `/${path}`}`
-}
-
-export function studioHref(path = "") {
-  return runtimeStudioHref(path)
 }
 
 export type ProjectSummary = {
@@ -103,40 +102,31 @@ export type WorkspaceInfo = {
   projectCount: number
 }
 
-async function apiFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error((body as any).error ?? `HTTP ${res.status}`)
-  }
-  return res.json() as Promise<T>
-}
-
 export const api = {
-  workspace: (): Promise<WorkspaceInfo> => apiFetch(apiPath("/workspace")),
+  workspace: (): Promise<WorkspaceInfo> => fetchJson(apiPath("/workspace")),
 
   projects: (params?: { limit?: number; offset?: number }): Promise<ProjectsResponse> => {
     const q = new URLSearchParams()
     if (params?.limit !== undefined) q.set("limit", String(params.limit))
     if (params?.offset !== undefined) q.set("offset", String(params.offset))
-    return apiFetch(apiPath(`/projects?${q}`))
+    return fetchJson(apiPath(`/projects?${q}`))
   },
 
-  project: (id: string): Promise<ProjectDetail> => apiFetch(apiPath(`/projects/${encodeURIComponent(id)}`)),
+  project: (id: string): Promise<ProjectDetail> => fetchJson(apiPath(`/projects/${encodeURIComponent(id)}`)),
 
   catalog: (query?: string): Promise<CatalogResponse> => {
     const q = new URLSearchParams()
     if (query) q.set("q", query)
-    return apiFetch(apiPath(`/catalog?${q}`))
+    return fetchJson(apiPath(`/catalog?${q}`))
   },
 
-  catalogPart: (mpn: string): Promise<CatalogPartResponse> => apiFetch(apiPath(`/catalog/${encodeURIComponent(mpn)}`)),
+  catalogPart: (mpn: string): Promise<CatalogPartResponse> => fetchJson(apiPath(`/catalog/${encodeURIComponent(mpn)}`)),
 
   schematicSvgUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/schematic.svg`),
   pcbSvgUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/pcb.svg`),
   gerbersZipUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/gerbers.zip`),
   circuitJsonUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/circuit.json`),
-  bom: (id: string): Promise<BomResponse> => apiFetch(apiPath(`/projects/${encodeURIComponent(id)}/bom`)),
+  bom: (id: string): Promise<BomResponse> => fetchJson(apiPath(`/projects/${encodeURIComponent(id)}/bom`)),
   bomCsvUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/bom.csv`),
   assemblyCsvUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/assembly.csv`),
   eventsUrl: () => apiPath("/events"),

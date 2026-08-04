@@ -168,23 +168,3 @@ export function resolveMeshSnap(
 
   return { position: hit, snap: "free", quality: "mesh-approx" }
 }
-
-/** @deprecated use resolveMeshSnap */
-export function resolveVertexSnap(
-  hit: Vec3,
-  clientX: number,
-  clientY: number,
-  vertices: ReadonlyArray<Vec3>,
-  project: (p: Vec3) => { x: number; y: number } | null,
-  thresholdPx = VERTEX_SNAP_PX,
-): { position: Vec3; snap: SnapKind; quality: SnapQuality } {
-  return resolveMeshSnap(
-    hit,
-    clientX,
-    clientY,
-    { vertices: [...vertices], edges: [], center: faceCentroid(vertices) },
-    project,
-    thresholdPx,
-    EDGE_SNAP_PX,
-  )
-}

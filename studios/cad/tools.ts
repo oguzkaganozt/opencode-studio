@@ -3,7 +3,7 @@ import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import manifest from "../../package.json" with { type: "json" }
 import { buildDesign, defaultForgeRunner, type ForgeRunner, scaffoldDesign } from "./forge"
-import { findDesign, initializeStudio, listRenders, scanDesigns } from "./library"
+import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "./library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
 import { buildDesignQcReport, type QcAxisStatus } from "./qc-report"
 
@@ -26,7 +26,6 @@ type Options = {
   studioRoot: string
   forgeProjectDir: string
   companionUrl?: string
-  forgeRunner?: ForgeRunner
 }
 
 function truncate(value: string, max = MAX_TOOL_OUTPUT_BYTES) {
@@ -36,10 +35,6 @@ function truncate(value: string, max = MAX_TOOL_OUTPUT_BYTES) {
 
 function asJson(value: unknown) {
   return truncate(JSON.stringify(value, null, 2))
-}
-
-async function fileExists(filePath: string) {
-  return Bun.file(filePath).exists()
 }
 
 async function companionReachable(companionUrl: string) {
@@ -73,15 +68,11 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
   return async (context, rawOptions) => {
     const config = options(rawOptions, context.directory)
     const layout = await initializeStudio(config.studioRoot)
-    const forgeRunner = dependencies.forgeRunner ?? config.forgeRunner ?? defaultForgeRunner
+    const forgeRunner = dependencies.forgeRunner ?? defaultForgeRunner
     return {
       "tool.definition": async ({ toolID }, output) => {
         const guidance = BUILD123D_TOOL_GUIDANCE[toolID]
         if (guidance && !output.description.includes(guidance)) output.description = `${output.description} ${guidance}`
-      },
-
-      event: async ({ event }) => {
-        if (event.type !== "session.deleted") return
       },
 
       tool: {
@@ -180,14 +171,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                     parts: await Promise.all(
                       artifact.parts.map(async (part) => ({
                         id: part.id,
-                        files: Object.fromEntries(
-                          await Promise.all(
-                            Object.entries(part.files).map(async ([format, relativePath]) => {
-                              const resolvedPath = path.resolve(entry.directory, relativePath)
-                              return [format, { path: resolvedPath, exists: await fileExists(resolvedPath) }]
-                            }),
-                          ),
-                        ),
+                        files: await mapArtifactPartFiles(entry.directory, part.files),
                         metrics: part.metrics,
                       })),
                     ),
@@ -335,7 +319,3 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
     }
   }
 }
-
-const StudioPlugin = createStudioPlugin()
-
-export default StudioPlugin

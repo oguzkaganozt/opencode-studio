@@ -1,6 +1,5 @@
-import path from "node:path"
 import type { DesignEntry } from "./library"
-import { listRenders } from "./library"
+import { listRenders, mapArtifactPartFiles } from "./library"
 import type { ArtifactManifest } from "./manifest"
 
 export type QcAxisStatus = "pass" | "fail" | "unverified"
@@ -39,10 +38,6 @@ export type DesignQcReport = {
   summary: string
 }
 
-async function fileExists(filePath: string) {
-  return Bun.file(filePath).exists()
-}
-
 function normalizeAxis(input: QcAxisInput | undefined, fallback: QcAxisStatus = "unverified"): QcAxisReport {
   if (!input) {
     return { status: fallback, findings: fallback === "unverified" ? ["not reported"] : [], source: "agent" }
@@ -69,14 +64,8 @@ export async function buildDesignQcReport(input: {
   if (artifact) {
     const partResults = await Promise.all(
       artifact.parts.map(async (part) => {
-        const fileEntries = await Promise.all(
-          Object.entries(part.files).map(async ([format, relativePath]) => {
-            const resolvedPath = path.resolve(entry.directory, relativePath)
-            return [format, { path: resolvedPath, exists: await fileExists(resolvedPath) }] as const
-          }),
-        )
-        const files = Object.fromEntries(fileEntries)
-        for (const [format, info] of fileEntries) {
+        const files = await mapArtifactPartFiles(entry.directory, part.files)
+        for (const [format, info] of Object.entries(files)) {
           if (!info.exists) missingFiles.push(`${part.id}/${format}`)
         }
         return {

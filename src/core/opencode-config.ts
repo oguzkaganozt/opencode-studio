@@ -85,15 +85,18 @@ export function pluginEntries(config: OpenCodeConfig) {
   return value
 }
 
-export function configWithPlugins(config: OpenCodeConfig, plugins: unknown[] | undefined) {
-  if (plugins !== undefined) validatePluginEntries(plugins)
-  const value = plugins && plugins.length > 0 ? plugins : undefined
-  const edits = modify(config.text, ["plugin"], value, {
+function configWithKey(config: OpenCodeConfig, key: "plugin" | "mcp", value: unknown) {
+  const edits = modify(config.text, [key], value, {
     formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
   })
   const text = applyEdits(config.text, edits)
   parseConfig(text, "generated config")
   return text.endsWith("\n") ? text : `${text}\n`
+}
+
+export function configWithPlugins(config: OpenCodeConfig, plugins: unknown[] | undefined) {
+  if (plugins !== undefined) validatePluginEntries(plugins)
+  return configWithKey(config, "plugin", plugins && plugins.length > 0 ? plugins : undefined)
 }
 
 export function mcpEntries(config: OpenCodeConfig): Record<string, unknown> {
@@ -106,12 +109,7 @@ export function mcpEntries(config: OpenCodeConfig): Record<string, unknown> {
 }
 
 export function configWithMcp(config: OpenCodeConfig, mcp: Record<string, unknown> | undefined) {
-  const edits = modify(config.text, ["mcp"], mcp && Object.keys(mcp).length > 0 ? mcp : undefined, {
-    formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
-  })
-  const text = applyEdits(config.text, edits)
-  parseConfig(text, "generated config")
-  return text.endsWith("\n") ? text : `${text}\n`
+  return configWithKey(config, "mcp", mcp && Object.keys(mcp).length > 0 ? mcp : undefined)
 }
 
 async function validateWithOpenCode(candidate: string) {

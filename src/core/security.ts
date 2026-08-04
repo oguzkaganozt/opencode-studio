@@ -22,11 +22,6 @@ export function isLoopbackHost(hostname: string) {
   return false
 }
 
-export function assertLoopbackBind(hostname: string) {
-  if (isLoopbackHost(hostname)) return
-  console.warn(`WARNING: binding to ${hostname} — accessible to other machines on the network`)
-}
-
 /** CLI bind modes: local (loopback) or web (all interfaces). */
 export type BindMode = "local" | "web"
 

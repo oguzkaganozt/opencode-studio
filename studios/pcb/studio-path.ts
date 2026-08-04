@@ -1,7 +1,5 @@
 import path from "node:path"
-import { canonicalExistingDirectory, isInside } from "../../src/core/paths"
-
-export { isInside }
+import { canonicalExistingDirectory } from "../../src/core/paths"
 
 export async function canonicalWorkspaceRoot(rawPath: string): Promise<string> {
   if (!path.isAbsolute(rawPath)) throw new Error(`workspaceRoot must be an absolute path: ${rawPath}`)

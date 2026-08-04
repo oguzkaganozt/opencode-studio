@@ -154,17 +154,6 @@ export function engineCommand(engine: ResolvedEngine): string[] {
   return [engine.path]
 }
 
-export async function resolveEngineOrThrow(id: EngineId): Promise<ResolvedEngine> {
-  if (id === "uv") return ensureUv()
-  const resolved = resolveEngine(id)
-  if (!resolved) {
-    throw new Error(
-      `Required engine "${id}" is missing. Reinstall @oguzkaganozt/opencode-studio (ships ffmpeg/ffprobe/tsci; uv is cached on first use).`,
-    )
-  }
-  return resolved
-}
-
 async function findFileNamed(root: string, name: string): Promise<string | null> {
   const entries = await readdir(root, { withFileTypes: true })
   for (const entry of entries) {

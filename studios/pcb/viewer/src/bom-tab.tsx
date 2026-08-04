@@ -3,8 +3,8 @@ import { useState } from "react"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
-import { safeHref } from "@ui/lib/safe-href"
 import { api, type BomEntry } from "./api"
+import { DatasheetLink } from "./datasheet-link"
 import { PartDetailModal } from "./part-detail"
 
 function summarizeRefdes(refdes: string[], limit: number) {
@@ -25,7 +25,6 @@ function hasPartIdentity(entry: BomEntry) {
 
 function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEntry) => void }) {
   const clickable = Boolean(entry.mpn && onSelect)
-  const datasheetHref = entry.datasheet ? safeHref(entry.datasheet) : null
   const refdes = summarizeRefdes(entry.refdes, 8)
   const supplierPartNumber = supplierIdentity(entry)
   return (
@@ -50,23 +49,13 @@ function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEn
         {entry.description ?? "—"}
       </td>
       <td className="px-4 py-2.5 text-sm">
-        {datasheetHref && (
-          <a
-            href={datasheetHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--osc-accent)] hover:opacity-80 text-xs"
-          >
-            Datasheet ↗
-          </a>
-        )}
+        <DatasheetLink href={entry.datasheet} />
       </td>
     </tr>
   )
 }
 
 function BomCard({ entry, onSelect }: { entry: BomEntry; onSelect: (entry: BomEntry) => void }) {
-  const datasheetHref = entry.datasheet ? safeHref(entry.datasheet) : null
   const supplierPartNumber = supplierIdentity(entry)
   const identified = hasPartIdentity(entry)
   return (
@@ -91,11 +80,7 @@ function BomCard({ entry, onSelect }: { entry: BomEntry; onSelect: (entry: BomEn
           {[entry.manufacturer, entry.description].filter(Boolean).join(" · ")}
         </p>
       ) : null}
-      {datasheetHref ? (
-        <a href={datasheetHref} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-xs text-[var(--osc-accent)]">
-          Datasheet ↗
-        </a>
-      ) : null}
+      <DatasheetLink href={entry.datasheet} className="mt-3 inline-flex text-xs text-[var(--osc-accent)]" />
     </article>
   )
 }

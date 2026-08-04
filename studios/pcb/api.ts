@@ -4,10 +4,10 @@ import { safeContentDisposition } from "../../src/core/security"
 import { createSseResponse } from "../../src/core/sse"
 import { generatePickAndPlace, toCplCsv } from "./assembly"
 import { bomIdentityBlocker, generateBom, toBomCsv } from "./bom"
-import { getCatalogPart, loadCatalogParts, partSummary } from "./catalog"
+import { filterCatalogParts, getCatalogPart, loadCatalogParts, partSummary } from "./catalog"
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
 import { ensureWatching, onProjectEvent } from "./watcher"
-import { discoverProjects, projectDetail, projectSummary, resolveProject } from "./workspace"
+import { type CircuitProject, discoverProjects, projectDetail, projectSummary, resolveProject } from "./workspace"
 
 function integerQuery(value: string | undefined, fallback: number, min: number, max: number) {
   if (value === undefined) return fallback
@@ -22,6 +22,18 @@ class ApiError extends Error {
   ) {
     super(message)
   }
+}
+
+async function requireProject(workspaceRoot: string, id: string): Promise<CircuitProject> {
+  const project = await resolveProject(workspaceRoot, id).catch(() => null)
+  if (!project) throw new ApiError(404, "Project not found")
+  return project
+}
+
+async function requireBuiltProject(workspaceRoot: string, id: string): Promise<CircuitProject & { circuitJsonPath: string }> {
+  const project = await requireProject(workspaceRoot, id)
+  if (!project.circuitJsonPath) throw new ApiError(404, "Circuit JSON not built yet. Run pcb_circuit_build first.")
+  return project as CircuitProject & { circuitJsonPath: string }
 }
 
 async function serveWorkspaceFile(workspaceRoot: string, filePath: string, contentType: string, downloadName?: string): Promise<Response> {
@@ -63,22 +75,17 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/projects/:id", async (ctx) => {
-    const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
-    if (!project) return ctx.json({ error: "Project not found" }, 404)
+    const project = await requireProject(workspaceRoot, ctx.req.param("id"))
     return ctx.json(projectDetail(project))
   })
 
   app.get("/projects/:id/circuit.json", async (ctx) => {
-    const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
-    if (!project) return ctx.json({ error: "Project not found" }, 404)
-    if (!project.circuitJsonPath) return ctx.json({ error: "Circuit JSON not built yet. Run pcb_circuit_build first." }, 404)
+    const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
     return serveWorkspaceFile(workspaceRoot, project.circuitJsonPath, "application/json")
   })
 
   app.get("/projects/:id/bom", async (ctx) => {
-    const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
-    if (!project) return ctx.json({ error: "Project not found" }, 404)
-    if (!project.circuitJsonPath) return ctx.json({ error: "Circuit JSON not built yet. Run pcb_circuit_build first." }, 404)
+    const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
     const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
     const catalogParts = await loadCatalogParts(workspaceRoot)
     const bom = generateBom(json, catalogParts)
@@ -92,9 +99,7 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/projects/:id/bom.csv", async (ctx) => {
-    const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
-    if (!project) return ctx.json({ error: "Project not found" }, 404)
-    if (!project.circuitJsonPath) return ctx.json({ error: "Circuit JSON not built yet. Run pcb_circuit_build first." }, 404)
+    const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
     const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
     const catalogParts = await loadCatalogParts(workspaceRoot)
     const bom = generateBom(json, catalogParts)
@@ -109,9 +114,7 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/projects/:id/assembly.csv", async (ctx) => {
-    const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
-    if (!project) return ctx.json({ error: "Project not found" }, 404)
-    if (!project.circuitJsonPath) return ctx.json({ error: "Circuit JSON not built yet. Run pcb_circuit_build first." }, 404)
+    const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
     const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
     const fabricationBlockers = manufacturingBlockers(json)
     const bomBlocker = bomIdentityBlocker(generateBom(json))
@@ -139,22 +142,19 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/projects/:id/schematic.svg", async (ctx) => {
-    const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
-    if (!project) return ctx.json({ error: "Project not found" }, 404)
+    const project = await requireProject(workspaceRoot, ctx.req.param("id"))
     if (!project.schematicSvgPath) return ctx.json({ error: "Schematic SVG not built yet. Run pcb_circuit_export first." }, 404)
     return serveWorkspaceFile(workspaceRoot, project.schematicSvgPath, "image/svg+xml")
   })
 
   app.get("/projects/:id/pcb.svg", async (ctx) => {
-    const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
-    if (!project) return ctx.json({ error: "Project not found" }, 404)
+    const project = await requireProject(workspaceRoot, ctx.req.param("id"))
     if (!project.pcbSvgPath) return ctx.json({ error: "PCB SVG not built yet. Run pcb_circuit_export first." }, 404)
     return serveWorkspaceFile(workspaceRoot, project.pcbSvgPath, "image/svg+xml")
   })
 
   app.get("/projects/:id/gerbers.zip", async (ctx) => {
-    const project = await resolveProject(workspaceRoot, ctx.req.param("id")).catch(() => null)
-    if (!project) return ctx.json({ error: "Project not found" }, 404)
+    const project = await requireProject(workspaceRoot, ctx.req.param("id"))
     if (!project.gerbersZipPath) return ctx.json({ error: "Gerbers not exported yet. Run pcb_circuit_export with format 'gerber'." }, 404)
     if (!project.circuitJsonPath) {
       return ctx.json({ error: "Circuit JSON missing; rebuild before downloading Gerbers." }, 404)
@@ -184,8 +184,7 @@ export function createPcbApi(workspaceRoot: string) {
 
   app.get("/catalog", async (ctx) => {
     const parts = await loadCatalogParts(workspaceRoot)
-    const q = ctx.req.query("q")?.toLowerCase()
-    const filtered = q ? parts.filter((p) => JSON.stringify(p).toLowerCase().includes(q)) : parts
+    const filtered = filterCatalogParts(parts, ctx.req.query("q"))
     return ctx.json({ parts: filtered.map(partSummary), total: filtered.length })
   })
 

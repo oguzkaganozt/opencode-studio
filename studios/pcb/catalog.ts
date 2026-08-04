@@ -136,6 +136,12 @@ export async function loadCatalogParts(workspaceRoot: string): Promise<CatalogPa
   return (await inspectCatalog(workspaceRoot)).parts
 }
 
+export function filterCatalogParts(parts: CatalogPart[], query?: string): CatalogPart[] {
+  const q = query?.trim().toLowerCase()
+  if (!q) return parts
+  return parts.filter((p) => JSON.stringify(p).toLowerCase().includes(q))
+}
+
 export async function getCatalogPart(workspaceRoot: string, mpn: string): Promise<CatalogPart | null> {
   if (!mpn || !MPN_FILE_RE.test(mpn) || mpn.includes("..") || mpn.includes("/") || mpn.includes("\\") || mpn.includes("\0")) {
     return null
@@ -156,8 +162,7 @@ export async function getCatalogPart(workspaceRoot: string, mpn: string): Promis
     }
   }
 
-  const parts = await loadCatalogParts(workspaceRoot)
-  return parts.find((p) => p.mpn.toLowerCase() === mpn.toLowerCase()) ?? null
+  return null
 }
 
 export function partSummary(part: CatalogPart) {

@@ -46,24 +46,27 @@ export async function checkPackageUpgrade(options: UpgradeOptions = {}) {
 }
 
 /** bun add -g @latest. Restart OpenCode after. */
-export async function upgradePackage(_options: UpgradeOptions = {}): Promise<{
+export async function upgradePackage(options: UpgradeOptions = {}): Promise<{
   action: "upgrade"
   packageName: string
   installOutput: string
   message: string
   restartOpenCode: true
 }> {
+  const packageRoot = options.packageRoot ?? packageRootFrom(import.meta.dir)
+  const meta = await loadPackageMeta(packageRoot)
+  const packageName = meta.name || PACKAGE_NAME
   const bun = Bun.which("bun")
   if (!bun) throw new Error("bun not found on PATH (required to install/upgrade opencode-studio)")
-  const install = Bun.spawn([bun, "add", "-g", `${PACKAGE_NAME}@latest`], { stdout: "pipe", stderr: "pipe" })
+  const install = Bun.spawn([bun, "add", "-g", `${packageName}@latest`], { stdout: "pipe", stderr: "pipe" })
   const [out, err, code] = await Promise.all([new Response(install.stdout).text(), new Response(install.stderr).text(), install.exited])
   if (code !== 0) throw new Error(err.trim() || out.trim() || "bun add -g failed")
   const installOutput = (out.trim() || err.trim()).trim()
   return {
     action: "upgrade",
-    packageName: PACKAGE_NAME,
+    packageName,
     installOutput,
     restartOpenCode: true,
-    message: [`Updated ${PACKAGE_NAME}.`, installOutput, "", OPENCODE_RESTART_HINT].filter(Boolean).join("\n").trim(),
+    message: [`Updated ${packageName}.`, installOutput, "", OPENCODE_RESTART_HINT].filter(Boolean).join("\n").trim(),
   }
 }

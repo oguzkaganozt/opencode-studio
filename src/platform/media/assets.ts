@@ -4,7 +4,7 @@ import { open, realpath, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import { fileTypeFromBuffer, fileTypeFromFile } from "file-type"
 import type { LibraryModality as MediaModality } from "./library"
-import { type AskPermission, isInside, prepareNewOutput, readSecureFile, verifyOutputParent } from "./studio-path"
+import { type AskPermission, isInside, prepareNewOutput, verifyOutputParent } from "./studio-path"
 
 const DETECTION_BYTES = 64 * 1024
 
@@ -12,20 +12,6 @@ export function modalityFromMime(mime: string): MediaModality | undefined {
   if (mime.startsWith("image/")) return "image"
   if (mime.startsWith("audio/")) return "audio"
   if (mime.startsWith("video/")) return "video"
-}
-
-export async function readMediaForUpload(input: {
-  root: string
-  filePath: string
-  maxBytes: number
-  signal: AbortSignal
-  ask: AskPermission
-}) {
-  const file = await readSecureFile(input)
-  const detected = await fileTypeFromBuffer(file.bytes)
-  const modality = detected ? modalityFromMime(detected.mime) : undefined
-  if (!detected || !modality) throw new Error(`Unsupported media file: ${file.filePath}`)
-  return { ...file, mime: detected.mime, modality }
 }
 
 export async function openMediaAsset(input: { root: string; filePath: string; signal: AbortSignal; ask: AskPermission }) {

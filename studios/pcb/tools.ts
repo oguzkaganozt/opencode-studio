@@ -3,7 +3,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import { generatePickAndPlace, toCplCsv } from "./assembly"
 import { bomIdentityBlocker, generateBom } from "./bom"
-import { getCatalogPart, inspectCatalog, loadCatalogParts, partSummary } from "./catalog"
+import { filterCatalogParts, getCatalogPart, inspectCatalog, loadCatalogParts, partSummary } from "./catalog"
 import { inspectCircuitJson, manufacturingBlockers, queryCircuitJson, readCircuitJson } from "./circuit-json"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
 import { canonicalWorkspaceRoot } from "./studio-path"
@@ -12,6 +12,40 @@ import { discoverProjects, encodeProjectId, projectSummary, resolveProject } fro
 
 function formatToolJSON(value: unknown): string {
   return JSON.stringify(value, null, 2)
+}
+
+async function readProjectSvg(
+  workspaceRoot: string,
+  projectId: string,
+  kind: "schematic" | "pcb",
+): Promise<{
+  title: string
+  output: string
+  metadata: { projectId: string; name: string; path: string; bytes: number }
+  attachments: Array<{ type: "file"; mime: string; filename: string; url: string }>
+}> {
+  const project = await resolveProject(workspaceRoot, projectId)
+  const svgPath = kind === "schematic" ? project.schematicSvgPath : project.pcbSvgPath
+  const label = kind === "schematic" ? "schematic" : "pcb"
+  const missing =
+    kind === "schematic"
+      ? `Schematic SVG not found for project '${project.name}'. Run pcb_circuit_export with format 'schematic'.`
+      : `PCB SVG not found for project '${project.name}'. Run pcb_circuit_export with format 'pcb'.`
+  if (!svgPath) throw new Error(missing)
+  const svg = await readFile(svgPath, "utf8")
+  return {
+    title: `${project.name} — ${label}`,
+    output: `${kind === "schematic" ? "Schematic" : "PCB layout"} SVG for ${project.name} (${svgPath})`,
+    metadata: { projectId, name: project.name, path: svgPath, bytes: svg.length },
+    attachments: [
+      {
+        type: "file" as const,
+        mime: "image/svg+xml",
+        filename: `${label}.svg`,
+        url: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
+      },
+    ],
+  }
 }
 
 export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plugin {
@@ -92,13 +126,12 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
           },
           async execute(args) {
             const catalog = await inspectCatalog(workspaceRoot)
-            const q = args.query?.toLowerCase()
-            const filtered = q ? catalog.parts.filter((p) => JSON.stringify(p).toLowerCase().includes(q)) : catalog.parts
+            const filtered = filterCatalogParts(catalog.parts, args.query)
             return formatToolJSON({
               available: catalog.available,
               scope: catalog.scope,
               catalogPath: catalog.catalogPath,
-              reason: catalog.reason ?? (q && filtered.length === 0 ? "no_matches" : null),
+              reason: catalog.reason ?? (args.query && filtered.length === 0 ? "no_matches" : null),
               malformedCount: catalog.malformedCount,
               skippedCount: catalog.skippedCount,
               parts: filtered.map(partSummary),
@@ -235,7 +268,6 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             if (!project.circuitJsonPath) {
               throw new Error(`Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
-            const { readCircuitJson } = await import("./circuit-json")
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
             const catalogParts = await loadCatalogParts(workspaceRoot)
@@ -261,14 +293,12 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             "Generate Pick & Place (CPL) CSV from a built project's Circuit JSON. Blocked by fabrication issues or BOM entries without manufacturer or supplier part identities.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
-            format: tool.schema.enum(["cpl"]).optional().describe("Output format (default 'cpl')"),
           },
           async execute(args) {
             const project = await resolveProject(workspaceRoot, args.projectId)
             if (!project.circuitJsonPath) {
               throw new Error(`Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
-            const { readCircuitJson } = await import("./circuit-json")
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
             const fabricationBlockers = manufacturingBlockers(json)
@@ -278,7 +308,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               return formatToolJSON({
                 projectId: args.projectId,
                 name: project.name,
-                format: args.format ?? "cpl",
+                format: "cpl",
                 success: false,
                 artifactGenerationSucceeded: false,
                 designValid: inspection.designValid,
@@ -296,7 +326,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             return formatToolJSON({
               projectId: args.projectId,
               name: project.name,
-              format: args.format ?? "cpl",
+              format: "cpl",
               success: inspection.designValid,
               artifactGenerationSucceeded: true,
               designValid: inspection.designValid,
@@ -344,24 +374,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
           },
           async execute(args) {
-            const project = await resolveProject(workspaceRoot, args.projectId)
-            if (!project.schematicSvgPath) {
-              throw new Error(`Schematic SVG not found for project '${project.name}'. Run pcb_circuit_export with format 'schematic'.`)
-            }
-            const svg = await readFile(project.schematicSvgPath, "utf8")
-            return {
-              title: `${project.name} — schematic`,
-              output: `Schematic SVG for ${project.name} (${project.schematicSvgPath})`,
-              metadata: { projectId: args.projectId, name: project.name, path: project.schematicSvgPath, bytes: svg.length },
-              attachments: [
-                {
-                  type: "file" as const,
-                  mime: "image/svg+xml",
-                  filename: "schematic.svg",
-                  url: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
-                },
-              ],
-            }
+            return readProjectSvg(workspaceRoot, args.projectId, "schematic")
           },
         }),
         pcb_pcb_svg: tool({
@@ -371,29 +384,10 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
           },
           async execute(args) {
-            const project = await resolveProject(workspaceRoot, args.projectId)
-            if (!project.pcbSvgPath) {
-              throw new Error(`PCB SVG not found for project '${project.name}'. Run pcb_circuit_export with format 'pcb'.`)
-            }
-            const svg = await readFile(project.pcbSvgPath, "utf8")
-            return {
-              title: `${project.name} — pcb`,
-              output: `PCB layout SVG for ${project.name} (${project.pcbSvgPath})`,
-              metadata: { projectId: args.projectId, name: project.name, path: project.pcbSvgPath, bytes: svg.length },
-              attachments: [
-                {
-                  type: "file" as const,
-                  mime: "image/svg+xml",
-                  filename: "pcb.svg",
-                  url: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
-                },
-              ],
-            }
+            return readProjectSvg(workspaceRoot, args.projectId, "pcb")
           },
         }),
       },
     }
   }
 }
-
-export default createPcbStudioPlugin()

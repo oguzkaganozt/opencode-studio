@@ -18,7 +18,6 @@ type StudioCard = {
   id: string
   label: string
   description: string
-  enabled: boolean
   root: string | null
   rootError?: string
   requiredEngines: string[]
@@ -37,13 +36,11 @@ type UpdateInfo = {
   current: string
   latest: string | null
   updateAvailable: boolean
-  message?: string
 }
 
 type StudiosResponse = {
   studioRoot: string
   configPath?: string
-  enabled: string[]
   configError?: string
   packageVersion: string
   studios: StudioCard[]
@@ -157,7 +154,7 @@ function useRepairInstall() {
     mutationFn: async () => {
       const token = csrfQuery.data?.token
       if (!token) throw new Error("CSRF token unavailable")
-      return fetchJson<{ message?: string; restartRequired?: boolean }>("/api/config", {
+      return fetchJson<unknown>("/api/config", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -759,32 +756,6 @@ class ViewerRouteBoundary extends Component<{ children: React.ReactNode; studioL
   }
 }
 
-function AgentChromeActions({
-  agentOpen,
-  agentStatusLabel: statusLabel,
-  agentStatusDotClass: statusDot,
-  onToggle,
-}: {
-  agentOpen: boolean
-  agentStatusLabel: string
-  agentStatusDotClass: string
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="osc-chip"
-      aria-pressed={agentOpen}
-      aria-label={`Agent, ${statusLabel}`}
-      title={statusLabel}
-    >
-      <span className={`size-1.5 rounded-full ${statusDot}`} aria-hidden />
-      Agent
-    </button>
-  )
-}
-
 function StudioFrame() {
   const { studioId = "" } = useParams()
   const studiosQuery = useStudios()
@@ -855,7 +826,6 @@ function StudioFrame() {
 
   const card = studiosQuery.data.studios.find((s) => s.id === studioId)
   const Viewer = viewerLoaders[studioId]
-  const page = Viewer ? <Viewer key={studioId} /> : <p className="p-8 text-sm">Unknown studio</p>
   const label = card?.label ?? studioId
   const nativeAvailable = studiosQuery.data.nativeOpenCodeAvailable
   const studioRoot = studiosQuery.data.studioRoot
@@ -875,12 +845,17 @@ function StudioFrame() {
           onSettings={() => chrome.openDrawer("settings")}
           edge="flush"
           actions={
-            <AgentChromeActions
-              agentOpen={chrome.agentOpen}
-              agentStatusLabel={chrome.agentStatusLabel}
-              agentStatusDotClass={chrome.agentStatusDotClass}
-              onToggle={chrome.toggleAgent}
-            />
+            <button
+              type="button"
+              onClick={chrome.toggleAgent}
+              className="osc-chip"
+              aria-pressed={chrome.agentOpen}
+              aria-label={`Agent, ${chrome.agentStatusLabel}`}
+              title={chrome.agentStatusLabel}
+            >
+              <span className={`size-1.5 rounded-full ${chrome.agentStatusDotClass}`} aria-hidden />
+              Agent
+            </button>
           }
         />
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -898,7 +873,7 @@ function StudioFrame() {
               }
             >
               <ViewerRouteBoundary key={studioId} studioLabel={label}>
-                {page}
+                <Viewer key={studioId} />
               </ViewerRouteBoundary>
             </Suspense>
           </main>
@@ -949,13 +924,12 @@ export function App() {
   const location = useLocation()
 
   useEffect(() => {
+    const studioMatch = location.pathname.match(/^\/studios\/([^/]+)/)
     const title = location.pathname.startsWith("/files")
       ? "Files"
-      : location.pathname.startsWith("/studios/cad")
-        ? "CAD"
-        : location.pathname.startsWith("/studios/pcb")
-          ? "PCB"
-          : "OpenCode"
+      : studioMatch
+        ? (STUDIO_META[studioMatch[1]]?.short ?? studioMatch[1])
+        : "OpenCode"
     document.title = `${title} · OpenCode Studio`
   }, [location.pathname])
 

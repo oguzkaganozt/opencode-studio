@@ -1,5 +1,5 @@
 import { constants } from "node:fs"
-import { lstat, mkdir, open, opendir, realpath } from "node:fs/promises"
+import { lstat, open, opendir, realpath } from "node:fs/promises"
 import path from "node:path"
 import { fileTypeFromBuffer } from "file-type"
 import { isInside } from "../../core/paths"
@@ -26,9 +26,9 @@ export type ManagedAsset = {
   modifiedAt: string
 }
 
-const SKIP_DIR_NAMES = new Set([".git", "node_modules", "dist", ".venv", "__pycache__", ".opencode", ".cache"])
+export const SKIP_DIR_NAMES = new Set([".git", "node_modules", "dist", ".venv", "__pycache__", ".opencode", ".cache"])
 
-export async function initializeLibrary(input: { root?: string; resolveUsername?: (uid: number) => string }): Promise<LibraryLayout> {
+export async function initializeLibrary(input: { root?: string }): Promise<LibraryLayout> {
   if (!input.root || !path.isAbsolute(input.root)) {
     throw new Error("opencode-media: workspace root must be an absolute path")
   }
@@ -193,10 +193,6 @@ export async function scanLibrary(input: {
   limit: number
   offset: number
   scanLimit?: number
-  /** @deprecated ignored — workspace has no user scope */
-  user?: string
-  /** @deprecated ignored */
-  scope?: string
 }) {
   const scanLimit = input.scanLimit ?? LIBRARY_SCAN_LIMIT
   const candidates: string[] = []
@@ -223,15 +219,4 @@ export async function scanLibrary(input: {
     }
   }
   return assets
-}
-
-export async function ensureMediaDir(layout: LibraryLayout) {
-  try {
-    await mkdir(layout.mediaDir, { recursive: true, mode: 0o755 })
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
-  }
-  const info = await lstat(layout.mediaDir)
-  if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(`Unsafe media directory: ${layout.mediaDir}`)
-  return layout.mediaDir
 }

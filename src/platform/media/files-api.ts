@@ -5,7 +5,8 @@ import { Readable } from "node:stream"
 import { fileTypeFromBuffer } from "file-type"
 import { Hono } from "hono"
 import { isInside } from "../../core/paths"
-import { safeContentDisposition } from "../../core/security"
+import { safeContentDisposition, securityHeaders } from "../../core/security"
+import { SKIP_DIR_NAMES } from "./library"
 
 const DETECTION_BYTES = 64 * 1024
 const MAX_TEXT_PREVIEW = 1_048_576
@@ -54,8 +55,6 @@ const TEXT_EXTENSIONS = new Set([
   ".svg",
   ".log",
 ])
-
-const SKIP_DIR_NAMES = new Set([".git", "node_modules", "dist", ".venv", "__pycache__", ".cache", ".opencode"])
 
 export type EntryKind = "dir" | "file"
 export type PreviewKind = "image" | "audio" | "video" | "text" | "none"
@@ -262,7 +261,7 @@ export async function createFilesApi(workspaceRoot: string) {
       "Content-Type": mime,
       "Accept-Ranges": "bytes",
       "Cache-Control": "private, max-age=0",
-      "X-Content-Type-Options": "nosniff",
+      ...(securityHeaders() as Record<string, string>),
     }
     if (download) {
       headers["Content-Disposition"] = safeContentDisposition(path.basename(relative))

@@ -2,14 +2,7 @@ import { createHash } from "node:crypto"
 import { lstat, opendir, readdir, readFile, realpath, stat } from "node:fs/promises"
 import path from "node:path"
 import { isInside } from "../../src/core/paths"
-import {
-  type ArtifactManifest,
-  artifactRevision,
-  type DesignManifest,
-  ID_PATTERN,
-  readArtifactManifest,
-  readDesignManifest,
-} from "./manifest"
+import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
 
 export type DesignEntry = {
   id: string
@@ -74,13 +67,27 @@ export async function findDesign(layout: StudioLayout, id: string): Promise<Desi
   if (!directory) return null
   try {
     await readDesignManifest(directory, id)
-    return await inspectDesign(layout, id, directory)
+    return await inspectDesign(id, directory)
   } catch {
     return null
   }
 }
 
-export async function inspectDesign(_layout: StudioLayout, id: string, directory: string): Promise<DesignEntry> {
+export async function mapArtifactPartFiles(
+  directory: string,
+  files: Record<string, string>,
+): Promise<Record<string, { path: string; exists: boolean }>> {
+  return Object.fromEntries(
+    await Promise.all(
+      Object.entries(files).map(async ([format, relativePath]) => {
+        const resolvedPath = path.resolve(directory, relativePath)
+        return [format, { path: resolvedPath, exists: await Bun.file(resolvedPath).exists() }]
+      }),
+    ),
+  )
+}
+
+export async function inspectDesign(id: string, directory: string): Promise<DesignEntry> {
   let partCount = 0
   let buildStatus: DesignEntry["buildStatus"] = "unbuilt"
   let revision: string | null = null
@@ -140,25 +147,11 @@ export async function scanDesigns(layout: StudioLayout): Promise<DesignEntry[]> 
   const settled = await Promise.all(
     candidates.map(async ({ id, directory }) => {
       try {
-        return await inspectDesign(layout, id, directory)
+        return await inspectDesign(id, directory)
       } catch {
         return null
       }
     }),
   )
   return settled.filter((entry): entry is DesignEntry => entry !== null).sort((a, b) => a.id.localeCompare(b.id))
-}
-
-export async function readDesignWithArtifact(
-  layout: StudioLayout,
-  id: string,
-): Promise<{ design: DesignManifest; artifact: ArtifactManifest | null; directory: string } | null> {
-  const directory = await resolveDesignDirectory(layout, id)
-  try {
-    const design = await readDesignManifest(directory, id)
-    const artifact = await readArtifactManifest(directory, id)
-    return { design, artifact, directory }
-  } catch {
-    return null
-  }
 }

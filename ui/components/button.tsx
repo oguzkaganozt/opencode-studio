@@ -11,8 +11,6 @@ const buttonVariants = cva(
           "border-[var(--osc-primary)] bg-[var(--osc-primary)] px-4 py-2 text-[var(--osc-primary-fg)] hover:bg-[var(--osc-primary-hover)]",
         outline:
           "border-[var(--osc-border-strong)] bg-[var(--osc-bg-elevated)] px-4 py-2 text-[var(--osc-text)] hover:bg-[var(--osc-surface)]",
-        ghost: "border-transparent px-3 py-2 text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]",
-        danger: "border-[var(--osc-error)] bg-[var(--osc-error)] px-4 py-2 text-[var(--osc-error-fg)] hover:opacity-90",
       },
       size: {
         sm: "h-8 px-3 text-[12px]",
@@ -28,5 +26,3 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & VariantProps
 export function Button({ className, variant, size, ...props }: ButtonProps) {
   return <button className={cn(buttonVariants({ variant, size }), className)} {...props} />
 }
-
-export { buttonVariants }

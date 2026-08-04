@@ -163,7 +163,7 @@ export function NativeAgentFrame({
   }, [available, studioRoot, navigateFrame])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !mdUp) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       const target = event.target as HTMLElement | null
@@ -174,7 +174,7 @@ export function NativeAgentFrame({
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [open, onClose])
+  }, [open, mdUp, onClose])
 
   useFocusTrap(open && !mdUp, asideRef, onClose)
 

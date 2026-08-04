@@ -1,4 +1,5 @@
 import type { CircuitElement } from "./circuit-json"
+import { csvCell } from "./csv"
 
 export type AssemblyEntry = {
   designator: string
@@ -70,13 +71,6 @@ export function generatePickAndPlace(circuitJson: unknown): AssemblyResult {
   entries.sort((a, b) => a.designator.localeCompare(b.designator))
 
   return { entries, totalComponents: entries.length, skipped }
-}
-
-function csvCell(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return ""
-  const s = String(value)
-  if (/[",\n\r]/.test(s)) return `"${s.replaceAll('"', '""')}"`
-  return s
 }
 
 export function toCplCsv(entries: AssemblyEntry[]): string {

@@ -1,12 +1,11 @@
-import { apiBase as runtimeApiBase, studioHref as runtimeStudioHref } from "@ui/studio-context"
+import { fetchJson } from "@ui/lib/fetch-json"
+import { apiBase as runtimeApiBase } from "@ui/studio-context"
+
+export { studioHref } from "@ui/studio-context"
 
 function api(path: string) {
   const base = runtimeApiBase("/api/studios/cad").replace(/\/$/, "")
   return `${base}${path.startsWith("/") ? path : `/${path}`}`
-}
-
-export function studioHref(path = "") {
-  return runtimeStudioHref(path)
 }
 
 export type DesignSummary = {
@@ -45,30 +44,13 @@ export type DesignDetail = DesignSummary & {
   renders: string[]
 }
 
-export type StudioInfo = {
-  id: string
-  packageVersion: string
-  contractVersion?: string
-}
-
 export async function listDesigns(): Promise<DesignSummary[]> {
-  const response = await fetch(api("/designs"))
-  if (!response.ok) throw new Error(`listDesigns failed: ${response.status}`)
-  const data = (await response.json()) as { designs?: DesignSummary[] }
+  const data = await fetchJson<{ designs?: DesignSummary[] }>(api("/designs"))
   return data.designs ?? []
 }
 
 export async function readDesign(id: string): Promise<DesignDetail> {
-  const response = await fetch(api(`/designs/${encodeURIComponent(id)}`))
-  if (!response.ok) throw new Error(`readDesign failed: ${response.status}`)
-  return response.json() as Promise<DesignDetail>
-}
-
-export async function fetchStudio(): Promise<StudioInfo> {
-  const response = await fetch("/api/studios")
-  if (!response.ok) throw new Error(`fetchStudio failed: ${response.status}`)
-  const body = (await response.json()) as { packageVersion?: string; enabled?: string[] }
-  return { id: "cad", packageVersion: body.packageVersion ?? "0.0.0" }
+  return fetchJson<DesignDetail>(api(`/designs/${encodeURIComponent(id)}`))
 }
 
 export function artifactUrl(designId: string, file: string) {

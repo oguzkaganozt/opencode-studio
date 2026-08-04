@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { StudioError } from "./core/errors"
-import { atomicWriteJson, canonicalExistingDirectory, ensureDirectory, isInside, resolveWorkspace } from "./core/paths"
+import { atomicWriteJson, canonicalExistingDirectory, ensureDirectory, isInside } from "./core/paths"
 import { isLegacyStudioId, isStudioId, STUDIO_IDS, type StudioId } from "./core/registry"
 import { resolveStudioConfigHome, type UserPathOptions } from "./core/user-paths"
 import { getStudioDefinition } from "./studios"
@@ -21,21 +21,11 @@ export type ResolvedStudioConfig = {
   warnings?: string[]
 }
 
-const EMPTY: StudioConfig = {}
-
 export type StudioConfigOptions = UserPathOptions
 
 /** Effective domain set — always the full catalog. */
 export function allStudioIds(): StudioId[] {
   return [...STUDIO_IDS]
-}
-
-export function studioConfigHome(options: StudioConfigOptions = {}) {
-  return resolveStudioConfigHome(options)
-}
-
-export function studioConfigPath(options: StudioConfigOptions = {}) {
-  return path.join(resolveStudioConfigHome(options), "studio.json")
 }
 
 export type ParseStudioConfigResult = StudioConfig & { warnings: string[] }
@@ -220,18 +210,8 @@ export async function resolveStudioRoot(input: {
   env?: NodeJS.ProcessEnv
 }): Promise<string> {
   const def = getStudioDefinition(input.studioId)
-  const shouldCreate = input.create ?? def.root.create
   const target = studioDomainRootPath(input)
 
-  if (shouldCreate && def.root.create) return ensureDirectory(target, 0o700)
+  if (def.root.create && input.create !== false) return ensureDirectory(target, 0o700)
   return canonicalExistingDirectory(target, `${input.studioId} root`)
 }
-
-/** Domain workspace (data root) + global studio config. */
-export async function loadProjectState(explicitWorkspace?: string, options: StudioConfigOptions = {}) {
-  const workspace = await resolveWorkspace(explicitWorkspace)
-  const config = await readStudioConfigFile(options)
-  return { workspace, config }
-}
-
-export { EMPTY, STUDIO_IDS }

@@ -31,10 +31,6 @@ export function openCodeBasicAuthHeaders(env: NodeJS.ProcessEnv = process.env): 
   return { Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` }
 }
 
-function authHeaders(env: NodeJS.ProcessEnv) {
-  return openCodeBasicAuthHeaders(env)
-}
-
 function absoluteDirectory(raw: string | null | undefined): string | null {
   if (!raw || typeof raw !== "string") return null
   let value = raw.trim()
@@ -81,7 +77,7 @@ export function createOpenCodeBridge(input: OpenCodeBridgeInput): OpenCodeBridge
       headers.delete("x-opencode-workspace")
       headers.set("accept-encoding", "identity")
       headers.delete("connection")
-      for (const [key, value] of Object.entries(authHeaders(env) ?? {})) headers.set(key, value)
+      for (const [key, value] of Object.entries(openCodeBasicAuthHeaders(env) ?? {})) headers.set(key, value)
       for (const key of ["directory", "workspace", "location[directory]", "location[workspace]"]) upstream.searchParams.delete(key)
       const isStatic =
         upstream.pathname === "/" ||
