@@ -2,7 +2,7 @@
 
 OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
 
-**Package:** [`@oguzkaganozt/opencode-studio@1.0.8`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
+**Package:** [`@oguzkaganozt/opencode-studio@1.0.9`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
 **CAD and PCB are always on.** Install wires OpenCode once (plugins, skills, CAD MCP). Media tools and the Files explorer are always on too.
 
@@ -16,7 +16,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 ## Install (pinned)
 
 ```bash
-bun add -g @oguzkaganozt/opencode-studio@1.0.8
+bun add -g @oguzkaganozt/opencode-studio@1.0.9
 hash -r
 command -v opencode-studio
 
@@ -129,7 +129,7 @@ Shell completion installs on global `bun add -g`. Skip: `OPENCODE_STUDIO_SKIP_PO
 
 ```bash
 # Prefer an explicit pin over unattended @latest
-bun add -g @oguzkaganozt/opencode-studio@1.0.8
+bun add -g @oguzkaganozt/opencode-studio@1.0.9
 opencode-studio repair
 opencode-studio status --workspace /abs/project
 # restart OpenCode

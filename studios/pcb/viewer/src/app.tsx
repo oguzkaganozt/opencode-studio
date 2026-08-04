@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
+import { setAgentContextDirectory } from "@ui/agent-context"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
@@ -670,6 +671,11 @@ function ProjectPage() {
     queryFn: () => api.project(id!),
     enabled: !!id,
   })
+
+  useEffect(() => {
+    setAgentContextDirectory(project?.directory)
+    return () => setAgentContextDirectory(undefined)
+  }, [project?.directory])
 
   if (isLoading)
     return (

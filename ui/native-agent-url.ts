@@ -7,9 +7,14 @@ export function encodeBase64Url(value: string): string {
   return encoded.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
 }
 
-/** Native OpenCode home. */
+/** Native OpenCode home (no fixed directory). */
 export function nativeOpenCodeHomeUrl(): string {
   return "/"
+}
+
+/** Open OpenCode UI bound to one absolute directory (project or Studio Home). */
+export function nativeDirectoryUrl(directory: string): string {
+  return `/${encodeBase64Url(directory)}`
 }
 
 /** A domain handoff can target one project without changing the fixed Studio Home. */
@@ -23,7 +28,7 @@ export function resolveAgentDirectory(directory: string | undefined, studioRoot:
  */
 export function nativePromptDraftUrl(directory: string, prompt: string): string {
   const text = prompt.trim()
-  if (!text) return nativeOpenCodeHomeUrl()
+  if (!text) return nativeDirectoryUrl(directory)
   const dir = encodeBase64Url(directory)
   return `/${dir}/session?prompt=${encodeURIComponent(text)}`
 }

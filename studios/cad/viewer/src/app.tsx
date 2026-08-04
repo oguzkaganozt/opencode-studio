@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router"
+import { setAgentContextDirectory } from "@ui/agent-context"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Badge } from "@ui/components/badge"
 import { Dialog, DialogHeader } from "@ui/components/dialog"
@@ -406,6 +407,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   const designs = designsQuery.data ?? []
   const selectedDesign = designId ? designs.find((d) => d.id === designId) : undefined
   const selectedDesignDirectory = designQuery.data?.absoluteDirectory ?? selectedDesign?.absoluteDirectory
+
+  useEffect(() => {
+    setAgentContextDirectory(selectedDesignDirectory)
+    return () => setAgentContextDirectory(undefined)
+  }, [selectedDesignDirectory])
 
   useEffect(() => {
     if (!designId && designs.length > 0) {

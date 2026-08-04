@@ -1,9 +1,10 @@
-import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react"
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from "react"
+import { getAgentContextDirectory, subscribeAgentContext } from "./agent-context"
 import { subscribeAgentHandoff } from "./agent-handoff"
 import { type AgentStatus, agentStatusDotClass, deriveAgentStatus } from "./agent-status"
 import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, clampAgentWidth, readAgentWidth, viewportAgentWidthMax, writeAgentWidth } from "./agent-width"
 import { useFocusTrap } from "./lib/focus-trap"
-import { nativeOpenCodeHomeUrl, nativePromptDraftUrl, resolveAgentDirectory } from "./native-agent-url"
+import { nativeDirectoryUrl, nativeOpenCodeHomeUrl, nativePromptDraftUrl, resolveAgentDirectory } from "./native-agent-url"
 
 function sameOriginPath(href: string): string | null {
   try {
@@ -102,12 +103,47 @@ export function NativeAgentFrame({
     return () => window.removeEventListener("resize", onResize)
   }, [])
 
+  const [contextDirectory, setContextDirectory] = useState(getAgentContextDirectory)
+  const wasOpenRef = useRef(false)
+  const skipDirectoryBindRef = useRef(false)
+
   useEffect(() => {
-    if (!(open && available) || mounted) return
+    return subscribeAgentContext(() => setContextDirectory(getAgentContextDirectory()))
+  }, [])
+
+  const bindDirectory = resolveAgentDirectory(contextDirectory, studioRoot)
+
+  const navigateFrame = useCallback((next: string) => {
     setMounted(true)
     setLoading(true)
     setError(false)
-  }, [open, available, mounted])
+    setSrc((prev) => (prev === next ? prev : next))
+    const frame = iframeRef.current
+    if (frame?.contentWindow) {
+      try {
+        frame.contentWindow.location.assign(next)
+      } catch {
+        // React src update still applies if the frame is not same-origin ready yet.
+      }
+    }
+  }, [])
+
+  // Open / rebind Agent to the active studio project (or Studio Home).
+  useEffect(() => {
+    if (!open || !available || !studioRoot) {
+      if (!open) wasOpenRef.current = false
+      return
+    }
+    const justOpened = !wasOpenRef.current
+    wasOpenRef.current = true
+    if (skipDirectoryBindRef.current) {
+      skipDirectoryBindRef.current = false
+      return
+    }
+    const next = nativeDirectoryUrl(bindDirectory)
+    if (!justOpened && src === next) return
+    navigateFrame(next)
+  }, [open, available, studioRoot, bindDirectory, src, navigateFrame])
 
   useEffect(() => {
     return subscribeAgentHandoff((request) => {
@@ -120,22 +156,11 @@ export function NativeAgentFrame({
         return
       }
 
+      skipDirectoryBindRef.current = true
       const next = nativePromptDraftUrl(resolveAgentDirectory(request.directory, studioRoot), request.text)
-      setMounted(true)
-      setLoading(true)
-      setError(false)
-      setSrc(next)
-
-      const frame = iframeRef.current
-      if (frame?.contentWindow) {
-        try {
-          frame.contentWindow.location.assign(next)
-        } catch {
-          // React src update still applies if the frame is not same-origin ready yet.
-        }
-      }
+      navigateFrame(next)
     })
-  }, [available, studioRoot])
+  }, [available, studioRoot, navigateFrame])
 
   useEffect(() => {
     if (!open) return
