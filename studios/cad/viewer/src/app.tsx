@@ -1,10 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { Navigate, Route, Routes, useNavigate, useParams } from "react-router"
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
 import { setAgentContextDirectory } from "@ui/agent-context"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Badge } from "@ui/components/badge"
 import { Dialog, DialogHeader } from "@ui/components/dialog"
+import { EmptyState } from "@ui/components/empty-state"
+import { ErrorState } from "@ui/components/error-state"
+import { cn } from "@ui/lib/cn"
 import { useFocusTrap } from "@ui/lib/focus-trap"
 import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, renderUrl, studioHref } from "./api"
 import {
@@ -31,6 +34,223 @@ function statusBadge(status: DesignSummary["buildStatus"]): { label: string; ton
   if (status === "built") return { label: "built", tone: "ok" }
   if (status === "stale") return { label: "stale", tone: "warn" }
   return { label: "unbuilt", tone: "neutral" }
+}
+
+function designHealthTone(status: DesignSummary["buildStatus"]): "success" | "warning" | "neutral" {
+  if (status === "built") return "success"
+  if (status === "stale") return "warning"
+  return "neutral"
+}
+
+function Shell({ children, fill = false }: { children: React.ReactNode; fill?: boolean }) {
+  return (
+    <div data-studio="cad" className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]">
+      <header className="studio-subnav">
+        <span className="sr-only">CAD Studio</span>
+        <nav className="flex items-center gap-0.5" aria-label="CAD sections">
+          <CadNavLink to={studioHref()} end>
+            Designs
+          </CadNavLink>
+        </nav>
+      </header>
+      <div className={cn("min-h-0 flex-1", fill ? "flex flex-col overflow-hidden" : "overflow-auto")}>{children}</div>
+    </div>
+  )
+}
+
+function CadNavLink({ to, children, end = false }: { to: string; children: React.ReactNode; end?: boolean }) {
+  const { pathname } = useLocation()
+  const path = pathname.replace(/\/$/, "") || "/"
+  const target = (to || "/").replace(/\/$/, "") || "/"
+  const active = end ? path === target || path.startsWith(`${target}/designs/`) : path === target || path.startsWith(`${target}/`)
+  return (
+    <Link to={to} aria-current={active ? "page" : undefined} className={cn(active && "font-medium")}>
+      {children}
+    </Link>
+  )
+}
+
+function DesignCard({ design }: { design: DesignSummary }) {
+  const badge = statusBadge(design.buildStatus)
+  const tone = designHealthTone(design.buildStatus)
+  return (
+    <Link to={studioHref(`designs/${encodeURIComponent(design.id)}`)} className="cad-card group" data-tone={tone}>
+      <span className="cad-card__rail" aria-hidden />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-[14px] font-semibold tracking-tight text-[var(--osc-text)]">{design.id}</p>
+          <p className="mt-1 truncate font-mono text-[11px] text-[var(--osc-text-muted)]" title={design.directory}>
+            {design.directory}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge tone={badge.tone}>{badge.label}</Badge>
+          <svg
+            className="mt-0.5 h-4 w-4 text-[var(--osc-text-faint)] transition-transform duration-[var(--osc-motion-duration)] group-hover:translate-x-0.5 group-hover:text-[var(--osc-text-muted)]"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </div>
+      </div>
+      <div className="cad-card__meta" aria-label="Design summary">
+        <span>
+          {design.partCount} {design.partCount === 1 ? "part" : "parts"}
+        </span>
+        {design.revision ? <span className="font-mono">rev {design.revision.slice(0, 8)}</span> : <span>No build revision</span>}
+      </div>
+    </Link>
+  )
+}
+
+function DesignsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ["cad", "designs"], queryFn: listDesigns })
+  const search = searchParams.get("q") ?? ""
+  const filter = searchParams.get("status") ?? "all"
+  const normalizedSearch = search.trim().toLowerCase()
+  const designs = data ?? []
+  const filtered = designs.filter((design) => {
+    const matchesSearch = !normalizedSearch || `${design.id} ${design.directory}`.toLowerCase().includes(normalizedSearch)
+    if (!matchesSearch) return false
+    if (filter === "built") return design.buildStatus === "built"
+    if (filter === "stale") return design.buildStatus === "stale"
+    if (filter === "unbuilt") return design.buildStatus === "unbuilt"
+    return true
+  })
+
+  const updateFilter = (key: "q" | "status", value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (!value || value === "all") next.delete(key)
+    else next.set(key, value)
+    setSearchParams(next, { replace: true })
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8 sm:py-10">
+      <div className="mb-6 flex items-end justify-between gap-4 sm:mb-8">
+        <div>
+          <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Studio Home</p>
+          <h1 className="text-pretty text-xl font-semibold tracking-tight text-[var(--osc-text)] sm:text-2xl">Designs</h1>
+        </div>
+        {data && (
+          <span className="font-mono text-[12px] text-[var(--osc-text-muted)] tabular-nums">
+            {filtered.length === designs.length ? designs.length : `${filtered.length} of ${designs.length}`} design
+            {designs.length !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      {isLoading && (
+        <div className="flex flex-col gap-3" role="status" aria-busy="true">
+          <span className="sr-only">Loading designs…</span>
+          <div className="osc-skeleton h-24 w-full" aria-hidden />
+          <div className="osc-skeleton h-24 w-full max-w-md" aria-hidden />
+        </div>
+      )}
+
+      {error && (
+        <ErrorState
+          className="border-dashed py-16"
+          title="Failed to load designs"
+          description={`${String(error)}. Check Studio Home and retry.`}
+          action={
+            <button type="button" className="cad-home-chip" onClick={() => void refetch()}>
+              Retry
+            </button>
+          }
+        />
+      )}
+
+      {data && designs.length === 0 && (
+        <EmptyState
+          className="border-dashed py-16"
+          title="No designs yet"
+          description="Scaffold and build a design with the agent — finished designs show up here."
+          action={
+            <button
+              type="button"
+              className="cad-home-chip cad-home-chip--primary"
+              onClick={() =>
+                requestAgentHandoff({
+                  text: "Create a new CAD design in Studio Home, model the parts, then design_build and open the viewer.",
+                  source: "cad",
+                  open: true,
+                  copyFallback: true,
+                })
+              }
+            >
+              Draft design request
+            </button>
+          }
+        />
+      )}
+
+      {data && designs.length > 0 && (
+        <>
+          <div className="cad-design-tools" role="search" aria-label="Filter designs">
+            <label className="sr-only" htmlFor="cad-design-search">
+              Filter designs by id or path
+            </label>
+            <input
+              id="cad-design-search"
+              type="search"
+              name="design-filter"
+              value={search}
+              onChange={(event) => updateFilter("q", event.target.value)}
+              placeholder="Filter designs…"
+              autoComplete="off"
+              spellCheck={false}
+              className="cad-home-input min-w-0 px-3"
+            />
+            <div className="cad-design-filters" aria-label="Build status">
+              {(
+                [
+                  ["all", "All"],
+                  ["built", "Built"],
+                  ["stale", "Stale"],
+                  ["unbuilt", "Unbuilt"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className="cad-filter"
+                  aria-pressed={filter === value}
+                  onClick={() => updateFilter("status", value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filtered.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {filtered.map((design) => (
+                <DesignCard key={design.id} design={design} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              className="border-dashed py-14"
+              title="No designs match"
+              description="Try another name, path, or build-status filter."
+              action={
+                <button type="button" className="cad-home-chip" onClick={() => setSearchParams({}, { replace: true })}>
+                  Clear filters
+                </button>
+              }
+            />
+          )}
+        </>
+      )}
+    </div>
+  )
 }
 
 const CAD_COMPACT_WIDTH = 1120
@@ -358,7 +578,7 @@ function useCadDesignEvents() {
   }, [queryClient])
 }
 
-function DesignWorkspace({ designId }: { designId?: string }) {
+function DesignWorkspace({ designId }: { designId: string }) {
   const navigate = useNavigate()
   const sceneRef = useRef<SceneHandle | null>(null)
   const { rootRef, compact, phone } = useCadSpace()
@@ -400,12 +620,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const designQuery = useQuery({
     queryKey: ["cad", "design", designId],
-    enabled: Boolean(designId),
-    queryFn: () => readDesign(designId!),
+    queryFn: () => readDesign(designId),
   })
 
   const designs = designsQuery.data ?? []
-  const selectedDesign = designId ? designs.find((d) => d.id === designId) : undefined
+  const selectedDesign = designs.find((d) => d.id === designId)
   const selectedDesignDirectory = designQuery.data?.absoluteDirectory ?? selectedDesign?.absoluteDirectory
 
   useEffect(() => {
@@ -413,17 +632,11 @@ function DesignWorkspace({ designId }: { designId?: string }) {
     return () => setAgentContextDirectory(undefined)
   }, [selectedDesignDirectory])
 
-  useEffect(() => {
-    if (!designId && designs.length > 0) {
-      navigate(studioHref(`designs/${designs[0]!.id}`), { replace: true })
-    }
-  }, [designId, designs, navigate])
-
   const designRevision = designQuery.data?.revision ?? null
 
   const serverParts = useMemo<LoadPart[] | null>(() => {
     const artifact = designQuery.data?.artifact
-    if (!designId || !artifact) return null
+    if (!artifact) return null
     const withGlb = artifact.parts.filter((part) => part.files?.glb)
     if (withGlb.length === 0) return null
     return withGlb.map((part, index) => ({
@@ -435,11 +648,6 @@ function DesignWorkspace({ designId }: { designId?: string }) {
   }, [designId, designQuery.data])
 
   useEffect(() => {
-    if (!designId) {
-      setStatus("no model")
-      setStatusTone("idle")
-      return
-    }
     if (designQuery.isLoading) {
       setStatus("loading…")
       setStatusTone("waiting")
@@ -552,27 +760,26 @@ function DesignWorkspace({ designId }: { designId?: string }) {
 
   const emptyTitle = designQuery.isError
     ? "Could not load design"
-    : designId && designQuery.isLoading
+    : designQuery.isLoading
       ? "Loading design…"
-      : designId
-        ? "No build yet"
-        : "No server design selected"
+      : "No build yet"
 
   const emptyBody = designQuery.isError
-    ? ((designQuery.error as Error)?.message ?? "Reload the design, or choose another server design.")
-    : designId && designQuery.isLoading
+    ? ((designQuery.error as Error)?.message ?? "Reload the design, or choose another from Designs.")
+    : designQuery.isLoading
       ? "Fetching assembly artifacts…"
-      : designId
-        ? "Build this design with the agent, then reload."
-        : "Choose a design from the server list, or create one with the agent."
+      : "Build this design with the agent, then reload."
 
   const showEmptyActions = !designQuery.isLoading
 
   const requestDesignBuild = () => {
-    const text = designId
-      ? `Build or rebuild the CAD design "${designId}", then verify its artifacts and refresh the Studio viewer.`
-      : "Create a new CAD design from my requirements, build it, and verify its artifacts for the Studio viewer."
-    requestAgentHandoff({ text, source: "cad", directory: selectedDesignDirectory, open: true, copyFallback: true })
+    requestAgentHandoff({
+      text: `Build or rebuild the CAD design "${designId}", then verify its artifacts and refresh the Studio viewer.`,
+      source: "cad",
+      directory: selectedDesignDirectory,
+      open: true,
+      copyFallback: true,
+    })
     showToast("Opened build request in agent")
   }
 
@@ -847,6 +1054,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
           }}
         >
           <div className="cad-toolbar absolute top-3 z-10" role="toolbar" aria-label="CAD viewer tools">
+            <Link to={studioHref()} className="cad-chip cad-chip--icon" aria-label="All designs" title="All designs">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M10 3.5L5.5 8 10 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Link>
+
             {compact ? (
               <button
                 type="button"
@@ -951,7 +1164,7 @@ function DesignWorkspace({ designId }: { designId?: string }) {
             <button type="button" className="cad-chip" disabled={partCount === 0} onClick={fitView} aria-label="Fit view">
               Fit
             </button>
-            <button type="button" className="cad-chip cad-chip--icon" disabled={!designId} onClick={reload} aria-label="Reload">
+            <button type="button" className="cad-chip cad-chip--icon" onClick={reload} aria-label="Reload">
               <ReloadIcon />
             </button>
           </div>
@@ -970,10 +1183,10 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                     ) : null}
                     {!designQuery.isError ? (
                       <button type="button" className="cad-chip cad-chip--accent" onClick={requestDesignBuild}>
-                        {designId ? "Build with agent" : "Create with agent"}
+                        Build with agent
                       </button>
                     ) : null}
-                    {compact && designs.length > 0 ? (
+                    {compact && designs.length > 1 ? (
                       <button
                         type="button"
                         className="cad-chip"
@@ -982,9 +1195,12 @@ function DesignWorkspace({ designId }: { designId?: string }) {
                           setInspectorOpen(false)
                         }}
                       >
-                        Choose server design
+                        Switch design
                       </button>
                     ) : null}
+                    <Link to={studioHref()} className="cad-chip">
+                      All designs
+                    </Link>
                   </div>
                 ) : null}
               </div>
@@ -1421,33 +1637,36 @@ function HashRedirect() {
   return null
 }
 
-function Home() {
-  return <DesignWorkspace />
-}
-
 function DesignRoute() {
   const { id } = useParams()
   if (!id) return <Navigate to=".." replace />
-  return <DesignWorkspace designId={id} />
-}
-
-export function App() {
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col border-t border-[var(--osc-border)] bg-[var(--osc-bg)] text-[var(--osc-text)]"
-      data-studio="cad"
-    >
-      <HashRedirect />
-      <h1 className="sr-only">CAD Studio</h1>
-      <Routes>
-        <Route index element={<Home />} />
-        <Route path="designs/:id" element={<DesignRoute />} />
-        <Route path="*" element={<Navigate to="." replace />} />
-      </Routes>
+    <Shell fill>
+      <DesignWorkspace designId={id} />
       <footer className="flex min-h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-1 text-[11px] text-[var(--osc-text-muted)] sm:px-4 pb-[max(.25rem,env(safe-area-inset-bottom))]">
         <span className="cad-footer-meta">Inspect + annotate · source files unchanged</span>
         <span className="cad-footer-note">Measurements are working references until verified on STEP</span>
       </footer>
-    </div>
+    </Shell>
+  )
+}
+
+export function App() {
+  return (
+    <>
+      <HashRedirect />
+      <Routes>
+        <Route
+          index
+          element={
+            <Shell>
+              <DesignsPage />
+            </Shell>
+          }
+        />
+        <Route path="designs/:id" element={<DesignRoute />} />
+        <Route path="*" element={<Navigate to="." replace />} />
+      </Routes>
+    </>
   )
 }

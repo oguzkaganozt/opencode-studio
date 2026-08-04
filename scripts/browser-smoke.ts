@@ -182,9 +182,9 @@ async function browserSmoke(base: string) {
       cad: {
         wait: "CAD Studio",
         extra: async (p) => {
-          await p.waitForSelector("text=Server designs")
-          await p.waitForSelector("text=Parts")
-          await p.getByRole("region", { name: "3D assembly viewport" }).waitFor()
+          await p.getByRole("navigation", { name: "CAD sections" }).getByRole("link", { name: "Designs", exact: true }).waitFor()
+          await p.getByRole("heading", { name: "Designs", exact: true }).waitFor()
+          await p.waitForSelector("text=Studio Home")
           assert((await p.getByLabel("Open GLB file").count()) === 0, "cad: local GLB import must not be available")
           assert((await p.locator('input[type="file"]').count()) === 0, "cad: local file input must not be available")
         },
@@ -250,15 +250,19 @@ async function browserSmoke(base: string) {
     await assertNoHorizontalScroll(page, "360 opencode")
     await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
     await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
+    await page.getByRole("heading", { name: "Designs", exact: true }).waitFor()
     await assertNoHorizontalScroll(page, "360 cad")
-    const compactToolbar = await page.locator(".cad-toolbar").evaluate((element) => ({
-      clientHeight: element.clientHeight,
-      scrollHeight: element.scrollHeight,
-    }))
-    assert(
-      compactToolbar.scrollHeight <= compactToolbar.clientHeight + 1,
-      `360 cad: toolbar wrapped vertically (${compactToolbar.scrollHeight}px > ${compactToolbar.clientHeight}px)`,
-    )
+    const toolbarCount = await page.locator(".cad-toolbar").count()
+    if (toolbarCount > 0) {
+      const compactToolbar = await page.locator(".cad-toolbar").evaluate((element) => ({
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+      }))
+      assert(
+        compactToolbar.scrollHeight <= compactToolbar.clientHeight + 1,
+        `360 cad: toolbar wrapped vertically (${compactToolbar.scrollHeight}px > ${compactToolbar.clientHeight}px)`,
+      )
+    }
     await page.goto(`${base}/studio/studios/pcb`, { waitUntil: "domcontentloaded" })
     await page.waitForSelector("text=PCB Studio", { timeout: 15_000 })
     await page.getByRole("navigation").getByRole("link", { name: "Projects" }).waitFor()
