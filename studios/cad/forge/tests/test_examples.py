@@ -9,12 +9,12 @@ from pathlib import Path
 from forge_cli import build_design
 
 
-DESIGNS = Path(__file__).resolve().parents[2] / "designs"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 EXAMPLE_ID = "box-lid-demo"
 
 
 def load_shapes(design_id: str):
-    design = DESIGNS / design_id
+    design = FIXTURES / design_id
     manifest = json.loads((design / "design.json").read_text(encoding="utf-8"))
     sys.modules.pop("params", None)
     sys.path.insert(0, str(design))
@@ -34,7 +34,7 @@ def load_shapes(design_id: str):
 class ExampleDesignTest(unittest.TestCase):
     def test_example_design_builds_successfully(self):
         with tempfile.TemporaryDirectory() as tmp:
-            source = DESIGNS / EXAMPLE_ID
+            source = FIXTURES / EXAMPLE_ID
             design = Path(tmp) / EXAMPLE_ID
             design.mkdir()
             shutil.copy2(source / "design.json", design / "design.json")

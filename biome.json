@@ -6,9 +6,6 @@
       "!!dist",
       "!!node_modules",
       "!!studios/cad/forge",
-      "!!studios/cad/designs",
-      "!!studios/cad/benchmarks",
-      "!!studios/pcb/authoring",
       "!!studios/*/viewer",
       "!!ui/public",
       "!!studios/*/viewer/node_modules"

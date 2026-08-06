@@ -29,7 +29,7 @@ describe("pcb studio smoke", () => {
   })
 
   test("project ids roundtrip and path jail holds", () => {
-    expect(decodeProjectId(encodeProjectId("authoring/wall-sconce-rev-a"))).toBe("authoring/wall-sconce-rev-a")
+    expect(decodeProjectId(encodeProjectId("nested/demo-board"))).toBe("nested/demo-board")
     expect(isInside("/ws", "/ws/a")).toBe(true)
     expect(isInside("/ws", "/ws/../etc")).toBe(false)
     expect(isInside("/ws", "/ws-other")).toBe(false)

@@ -33,7 +33,7 @@ Re-polished **2026-07-29** (toolbar; status pill; empty recovery).
 | PCB viewer | `studios/pcb/viewer/src/*` (app, styles, tabs, viewer-frame) |
 | Spec | `pages/pcb.md` |
 
-QA: projects list; **built** `wall-sconce-rev-a` schematic/PCB/BOM tabs; diagnostics (108 warnings); catalog empty; mobile project detail + tab strip. 3D/JSON tabs not re-dogfooded this pass.
+QA: projects list; built project schematic/PCB/BOM tabs; diagnostics; catalog empty; mobile project detail + tab strip. 3D/JSON tabs not re-dogfooded this pass.
 
 ## Locked surfaces
 

@@ -1,6 +1,6 @@
 # box-lid-demo
 
-Minimal 2-part FDM assembly used as the studio MVP.
+Minimal 2-part FDM assembly used as the forge unit-test fixture (`test_examples.py`).
 
 ## Parts
 

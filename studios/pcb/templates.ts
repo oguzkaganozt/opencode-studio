@@ -1,7 +1,4 @@
-/**
- * File contents for a minimal tscircuit project created by pcb_project_create.
- * Kept in sync with the authoring/wall-sconce-rev-a example project.
- */
+/** File contents for a minimal tscircuit project created by pcb_project_create. */
 
 export const TSCIRCUIT_VERSION = "0.0.2083"
 export const TYPESCRIPT_VERSION = "5.9.3"

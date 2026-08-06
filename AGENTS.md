@@ -15,7 +15,6 @@ bun run check                                     # typecheck + test + lint + bu
 bun run release:check                             # full gate (CI)
 bun run test:python                               # CAD forge (uv via PATH or package cache)
 bun run test:browser:install                      # once: Playwright Chromium for UI smoke
-bun run test:pcb-fixture                          # regenerate PCB authoring fixtures
 bun run test:package                              # pack + verify shipped files
 bun run test:browser                              # HTTP + Chromium layout/CSS smoke (needs dist/ui)
 bun run dev:ui                                    # Vite :5173 (UI only)
@@ -68,8 +67,8 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 - Domain agent workflows live in `studios/*/skill/SKILL.md` (copied into `~/.config/opencode/skills/` on configure). Prefer those over inventing tool flows.
 - Viewer CSS: Vite root is `ui/`, so Tailwind only auto-scans `ui/**`. `ui/styles.css` registers `@source "../studios"` and each studio `styles.css` carries `@source "."` — keep both when adding a studio or its utilities silently never generate.
 - Viewer framing: `.studio-shell` is `flex min-h-dvh flex-col`; studio viewer roots must be `flex-1 min-h-0` (files explorer uses flex-1 min-h-0). Never `h-full`/`min-h-screen` on viewer roots and never style `.studio-shell` from studio CSS — that breaks the height chain.
-- CAD forge runs from XDG cache (`ensureForgeRuntimeDir`), not in-package; source is `studios/cad/forge/` (Python, excluded from tsc/biome). Example design: `studios/cad/designs/box-lid-demo/`; organic benchmark fixture: `studios/cad/benchmarks/organic-shell/` (`target.py` + reference PNGs; required by `bun run test:python`).
-- PCB authoring fixtures under `studios/pcb/authoring/` are excluded from tsc/biome. Domain engines ship with the package: `ffmpeg`/`ffprobe` (static), `tsci` (`tscircuit`), `uv` (downloaded to XDG cache on first use). Engines are not gated by config.
+- CAD forge runs from XDG cache (`ensureForgeRuntimeDir`), not in-package; source is `studios/cad/forge/` (Python, excluded from tsc/biome). Forge fixtures: `studios/cad/forge/tests/fixtures/` (`box-lid-demo/`, `organic-shell/`; required by `bun run test:python`).
+- Domain engines ship with the package: `ffmpeg`/`ffprobe` (static), `tsci` (`tscircuit`), `uv` (downloaded to XDG cache on first use). Engines are not gated by config.
 - Exports: `.` + `./server` (OpenCode 1.18 server entry), `./media-provider`, `./media-go`. Package must set `"main"` and/or `exports["./server"]` or OpenCode silently skips the plugin. media-go is registered as `file://…/dist/media-go.js` on configure (npm subpath is not a server entry). Build entrypoints in `scripts/build.ts`; do not commit `dist/`.
 
 ## Verify before done

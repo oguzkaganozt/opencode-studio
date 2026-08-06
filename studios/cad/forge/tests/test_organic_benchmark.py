@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 
-TARGET = Path(__file__).resolve().parents[2] / "benchmarks" / "organic-shell" / "target.py"
+TARGET = Path(__file__).resolve().parent / "fixtures" / "organic-shell" / "target.py"
 
 
 class OrganicBenchmarkTest(unittest.TestCase):

@@ -21,7 +21,7 @@ __pycache__/
 /workspace/
 dogfood-output/
 .demo-library/
-# CAD design build artifacts: studios/cad/designs/.gitignore
+# Accidental CAD domain root at repo root
 /designs/
 
 # tscircuit local footprint cache (regenerable)
