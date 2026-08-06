@@ -5,7 +5,7 @@ import { maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot, stud
 import { errorBody } from "./core/errors"
 import { loadPackageMeta, skillNameFor } from "./core/package-meta"
 import { isInside, packageRootFrom } from "./core/paths"
-import { CATALOG_ORDER, type StudioId } from "./core/registry"
+import { STUDIO_IDS, type StudioId } from "./core/registry"
 import {
   allowedHost,
   assertNotRoot,
@@ -22,6 +22,7 @@ import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
 import { pickUserPaths, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
 import { configureStudios } from "./lifecycle"
 import { createOpenCodeBridge, normalizeParentOpenCodeUrl, type OpenCodeBridge } from "./opencode-bridge"
+import { STUDIO_HOST_PORT } from "./studio-host-bind"
 import { apiLoaders } from "./studio-loaders"
 import { getStudioDefinition } from "./studios"
 
@@ -79,7 +80,7 @@ async function buildHostStudiosMeta(input: { studioRoot: string; userPaths: User
   const config = await readStudioConfigFile(input.userPaths)
   const skillsHome = resolveOpenCodeSkillsHome(input.userPaths)
   const studios: StudioCardMeta[] = []
-  for (const studioId of CATALOG_ORDER) {
+  for (const studioId of STUDIO_IDS) {
     const def = getStudioDefinition(studioId)
     let root: string | null = null
     let rootError: string | undefined
@@ -154,7 +155,7 @@ async function buildStudioMounts(input: {
 export async function createHostApp(input: HostInput) {
   assertNotRoot("start the studio host")
   const hostname = input.hostname ?? "127.0.0.1"
-  const port = input.port ?? 4173
+  const port = input.port ?? STUDIO_HOST_PORT
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
   const meta = await loadPackageMeta(packageRoot)
   const packageVersion = input.packageVersion ?? meta.version

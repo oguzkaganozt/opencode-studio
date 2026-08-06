@@ -53,7 +53,7 @@ function designIdFromRelative(filename: string | null | undefined): string | und
  * Start a recursive watcher on designs/. Safe to call repeatedly per root.
  */
 export function ensureDesignWatching(layout: StudioLayout): void {
-  const root = layout.designsRoot
+  const root = layout.root
   if (rootWatchers.has(root)) return
   if (!existsSync(layout.root)) return
 

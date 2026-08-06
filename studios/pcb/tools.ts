@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises"
 import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import { generatePickAndPlace, toCplCsv } from "./assembly"
-import { bomIdentityBlocker, generateBom } from "./bom"
 import { filterCatalogParts, getCatalogPart, inspectCatalog, loadCatalogParts, partSummary } from "./catalog"
-import { inspectCircuitJson, manufacturingBlockers, queryCircuitJson, readCircuitJson } from "./circuit-json"
+import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
+import { circuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
 import { canonicalWorkspaceRoot } from "./studio-path"
 import { exportCircuit, runProjectBuild, searchComponents } from "./tsci"
@@ -196,9 +196,10 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const project = await resolveProject(workspaceRoot, args.projectId)
             const result = await runProjectBuild(project.absolutePath, ctx.abort)
             const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
-            const blockers = circuit ? manufacturingBlockers(circuit) : []
-            const fabricationReady = result.inspection !== null && blockers.length === 0
-            const assemblyReady = fabricationReady && circuit !== null && generateBom(circuit).bomComplete
+            const readiness = circuit
+              ? circuitReadiness(circuit, { inspection: result.inspection ?? undefined })
+              : { fabricationReady: false, assemblyReady: false, manufacturingBlockers: [] as const }
+            const fabricationReady = result.inspection !== null && readiness.fabricationReady
             return formatToolJSON({
               projectId: args.projectId,
               name: project.name,
@@ -207,9 +208,9 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               exitCode: result.exitCode,
               designValid: result.inspection?.designValid ?? null,
               fabricationReady,
-              assemblyReady,
+              assemblyReady: fabricationReady && readiness.assemblyReady,
               debugOnly: result.inspection ? !result.inspection.designValid : false,
-              manufacturingBlockers: blockers,
+              manufacturingBlockers: readiness.manufacturingBlockers,
               diagnostics: result.inspection,
               artifacts: result.artifacts,
               stdout: result.stdout.slice(0, 8000),
@@ -234,6 +235,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const result = await exportCircuit(project.absolutePath, formats, ctx.abort)
             const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
             const fabricationReady = result.manufacturingBlockers.length === 0
+            const assemblyReady = fabricationReady && circuit !== null && circuitReadiness(circuit).assemblyReady
             return formatToolJSON({
               projectId: args.projectId,
               name: project.name,
@@ -243,7 +245,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               exitCode: result.exitCode,
               designValid: result.designValid,
               fabricationReady,
-              assemblyReady: fabricationReady && circuit !== null && generateBom(circuit).bomComplete,
+              assemblyReady,
               debugOnly: result.debugOnly,
               generatedFormats: result.generatedFormats,
               blockedFormats: result.blockedFormats,
@@ -271,18 +273,17 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
             const catalogParts = await loadCatalogParts(workspaceRoot)
-            const bom = generateBom(json, catalogParts)
-            const fabricationReady = manufacturingBlockers(json).length === 0
+            const readiness = circuitReadiness(json, { inspection, catalogParts })
             return formatToolJSON({
               projectId: args.projectId,
               name: project.name,
               success: true,
               artifactGenerationSucceeded: true,
               designValid: inspection.designValid,
-              fabricationReady,
-              assemblyReady: fabricationReady && bom.bomComplete,
+              fabricationReady: readiness.fabricationReady,
+              assemblyReady: readiness.assemblyReady,
               debugOnly: false,
-              ...bom,
+              ...readiness.bom,
             })
           },
         }),
@@ -301,10 +302,8 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             }
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
-            const fabricationBlockers = manufacturingBlockers(json)
-            const bomBlocker = bomIdentityBlocker(generateBom(json))
-            const assemblyBlockers = [...fabricationBlockers, ...(bomBlocker ? [bomBlocker] : [])]
-            if (assemblyBlockers.length > 0) {
+            const readiness = circuitReadiness(json, { inspection })
+            if (readiness.assemblyBlockers.length > 0) {
               return formatToolJSON({
                 projectId: args.projectId,
                 name: project.name,
@@ -312,12 +311,12 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
                 success: false,
                 artifactGenerationSucceeded: false,
                 designValid: inspection.designValid,
-                fabricationReady: fabricationBlockers.length === 0,
+                fabricationReady: readiness.fabricationReady,
                 assemblyReady: false,
                 debugOnly: false,
-                reason: assemblyBlockers[0].type,
-                manufacturingBlockers: fabricationBlockers,
-                assemblyBlockers,
+                reason: readiness.assemblyBlockers[0].type,
+                manufacturingBlockers: readiness.manufacturingBlockers,
+                assemblyBlockers: readiness.assemblyBlockers,
                 diagnostics: inspection,
               })
             }

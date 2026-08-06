@@ -65,14 +65,6 @@ async function readOpenRegularFile(candidate: string) {
   }
 }
 
-export async function readRegularFileInside(root: string, relativePath: string) {
-  const candidate = path.resolve(root, relativePath)
-  if (!isInside(root, candidate)) throw new StudioError("path_escape", "Path escapes root")
-  const parent = await realpath(path.dirname(candidate))
-  if (!isInside(root, parent)) throw new StudioError("path_escape", "Path escapes root")
-  return readOpenRegularFile(candidate)
-}
-
 /** Read an absolute path that must stay a regular, non-symlink file inside root. */
 export async function readRegularFileAt(root: string, absolutePath: string) {
   const resolvedRoot = path.resolve(root)

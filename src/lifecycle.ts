@@ -42,7 +42,7 @@ import {
 } from "./core/package-meta"
 import { packageRootFrom, resolveWorkspace } from "./core/paths"
 import type { StudioDoctorCheck, StudioId } from "./core/registry"
-import { CATALOG_ORDER, STUDIO_IDS } from "./core/registry"
+import { STUDIO_IDS } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, resolveOpenCodePluginsHome, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
 import { probeLocalStudioHost } from "./studio-host-bind"
@@ -761,7 +761,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
   const meta = await loadPackageMeta(packageRoot)
   const config = await readStudioConfigFile(userPaths)
   const studios = []
-  for (const studioId of CATALOG_ORDER) {
+  for (const studioId of STUDIO_IDS) {
     const def = getStudioDefinition(studioId)
     let root: string | null = null
     let rootError: string | undefined

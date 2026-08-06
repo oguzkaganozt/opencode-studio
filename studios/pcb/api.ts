@@ -3,9 +3,10 @@ import { readRegularFileAt } from "../../src/core/paths"
 import { safeContentDisposition } from "../../src/core/security"
 import { createSseResponse } from "../../src/core/sse"
 import { generatePickAndPlace, toCplCsv } from "./assembly"
-import { bomIdentityBlocker, generateBom, toBomCsv } from "./bom"
+import { generateBom, toBomCsv } from "./bom"
 import { filterCatalogParts, getCatalogPart, loadCatalogParts, partSummary } from "./catalog"
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
+import { circuitReadiness } from "./readiness"
 import { ensureWatching, onProjectEvent } from "./watcher"
 import { type CircuitProject, discoverProjects, projectDetail, projectSummary, resolveProject } from "./workspace"
 
@@ -116,16 +117,14 @@ export function createPcbApi(workspaceRoot: string) {
   app.get("/projects/:id/assembly.csv", async (ctx) => {
     const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
     const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
-    const fabricationBlockers = manufacturingBlockers(json)
-    const bomBlocker = bomIdentityBlocker(generateBom(json))
-    const assemblyBlockers = [...fabricationBlockers, ...(bomBlocker ? [bomBlocker] : [])]
-    if (assemblyBlockers.length > 0) {
+    const readiness = circuitReadiness(json)
+    if (readiness.assemblyBlockers.length > 0) {
       return ctx.json(
         {
           error: "Assembly export blocked",
-          fabricationReady: fabricationBlockers.length === 0,
+          fabricationReady: readiness.fabricationReady,
           assemblyReady: false,
-          assemblyBlockers,
+          assemblyBlockers: readiness.assemblyBlockers,
         },
         409,
       )

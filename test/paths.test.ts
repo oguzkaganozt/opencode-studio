@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { atomicWriteJson, isInside, readRegularFileAt, readRegularFileInside } from "../src/core/paths"
+import { atomicWriteJson, isInside, readRegularFileAt } from "../src/core/paths"
 
 const temps: string[] = []
 afterEach(async () => {
@@ -66,22 +66,6 @@ describe("readRegularFileAt", () => {
     temps.push(root)
     await mkdir(path.join(root, "subdir"))
     expect(readRegularFileAt(root, path.join(root, "subdir"))).rejects.toThrow()
-  })
-})
-
-describe("readRegularFileInside", () => {
-  test("reads relative path inside root", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "osc-paths-"))
-    temps.push(root)
-    await mkdir(path.join(root, "sub"))
-    await writeFile(path.join(root, "sub", "file.txt"), "data")
-    const buffer = await readRegularFileInside(root, "sub/file.txt")
-    expect(buffer.toString("utf8")).toBe("data")
-  })
-  test("rejects path escape with ..", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "osc-paths-"))
-    temps.push(root)
-    expect(readRegularFileInside(root, "../../etc/passwd")).rejects.toThrow()
   })
 })
 

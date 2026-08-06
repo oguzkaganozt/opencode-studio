@@ -14,8 +14,8 @@ export type DesignEntry = {
 }
 
 export type StudioLayout = {
+  /** CAD domain root (designs directory). */
   root: string
-  designsRoot: string
 }
 
 export const RENDER_FILE_PATTERN = /^[a-z0-9][a-z0-9_-]*\.png$/
@@ -45,16 +45,16 @@ async function sha256(filePath: string) {
 export async function initializeStudio(root: string): Promise<StudioLayout> {
   const canonical = await realpath(root)
   // Domain root is the designs directory (…/studio/designs); each child dir is one design.
-  return { root: canonical, designsRoot: canonical }
+  return { root: canonical }
 }
 
 export async function resolveDesignDirectory(layout: StudioLayout, id: string) {
   if (!ID_PATTERN.test(id)) throw new Error(`Invalid design id: ${id}`)
-  const directory = path.resolve(layout.designsRoot, id)
-  if (!isInside(layout.designsRoot, directory)) throw new Error(`Design id escapes designs root: ${id}`)
+  const directory = path.resolve(layout.root, id)
+  if (!isInside(layout.root, directory)) throw new Error(`Design id escapes designs root: ${id}`)
   try {
     const canonical = await realpath(directory)
-    if (!isInside(layout.designsRoot, canonical)) throw new Error(`Design directory resolves outside designs root: ${id}`)
+    if (!isInside(layout.root, canonical)) throw new Error(`Design directory resolves outside designs root: ${id}`)
     return canonical
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return directory
@@ -125,16 +125,16 @@ export async function inspectDesign(id: string, directory: string): Promise<Desi
 export async function scanDesigns(layout: StudioLayout): Promise<DesignEntry[]> {
   const candidates: Array<{ id: string; directory: string }> = []
   try {
-    const dir = await opendir(layout.designsRoot)
+    const dir = await opendir(layout.root)
     for await (const entry of dir) {
       if (!entry.isDirectory()) continue
       if (!ID_PATTERN.test(entry.name)) continue
-      const directory = path.join(layout.designsRoot, entry.name)
+      const directory = path.join(layout.root, entry.name)
       try {
         const info = await lstat(directory)
         if (info.isSymbolicLink()) continue
         const canonical = await realpath(directory)
-        if (!isInside(layout.designsRoot, canonical)) continue
+        if (!isInside(layout.root, canonical)) continue
       } catch {
         continue
       }

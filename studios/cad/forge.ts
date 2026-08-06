@@ -147,7 +147,7 @@ export async function scaffoldDesign(
   parts: Array<{ id: string; source?: string }>,
 ): Promise<{ designDir: string; manifest: ReturnType<typeof scaffoldDesignManifest> }> {
   const designDir = await resolveDesignDirectory(layout, id)
-  if (!isInside(layout.designsRoot, designDir)) {
+  if (!isInside(layout.root, designDir)) {
     throw new Error(`Design id escapes designs root: ${id}`)
   }
   const manifest = scaffoldDesignManifest(id, parts)
@@ -159,8 +159,8 @@ export async function scaffoldDesign(
   )
     throw new Error(`Design already exists: ${id}`)
 
-  await mkdir(layout.designsRoot, { recursive: true })
-  const temporary = path.join(layout.designsRoot, `.${id}.${randomUUID()}.tmp`)
+  await mkdir(layout.root, { recursive: true })
+  const temporary = path.join(layout.root, `.${id}.${randomUUID()}.tmp`)
   try {
     await mkdir(path.join(temporary, "parts"), { recursive: true })
     await mkdir(path.join(temporary, "renders"), { recursive: true })

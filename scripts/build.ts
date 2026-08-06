@@ -6,8 +6,8 @@ const outdir = path.join(root, "dist")
 await rm(outdir, { recursive: true, force: true })
 await mkdir(outdir, { recursive: true })
 
-const entrypoints = ["plugin", "cli", "server", "media-provider", "media-go-plugin", "ensure-completion"].map((name) =>
-  path.join(root, "src", `${name === "media-go-plugin" ? "media-go-plugin" : name}.ts`),
+const entrypoints = ["plugin", "cli", "media-provider", "media-go-plugin", "ensure-completion"].map((name) =>
+  path.join(root, "src", `${name}.ts`),
 )
 
 const result = await Bun.build({

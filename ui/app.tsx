@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Component, lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router"
-import { isStudioId, STUDIO_IDS, type StudioId } from "../src/core/registry"
+import { assertCatalogComplete, isStudioId, type StudioId } from "../src/core/registry"
 import { Button } from "./components/button"
 import { ErrorState } from "./components/error-state"
 import { FilesExplorer } from "./files-explorer"
@@ -332,14 +332,7 @@ const viewerLoaders: Record<StudioId, React.LazyExoticComponent<() => React.Reac
   }),
 }
 
-function assertViewerLoadersComplete() {
-  const expected = [...STUDIO_IDS].sort()
-  const actual = Object.keys(viewerLoaders).sort()
-  if (expected.length !== actual.length || expected.some((id, i) => id !== actual[i])) {
-    throw new Error(`viewerLoaders must match catalog exactly. expected=${expected.join(",")} actual=${actual.join(",")}`)
-  }
-}
-assertViewerLoadersComplete()
+assertCatalogComplete(Object.keys(viewerLoaders), "viewerLoaders")
 
 class ViewerRouteBoundary extends Component<{ children: React.ReactNode; studioLabel: string }, { error: boolean }> {
   state = { error: false }

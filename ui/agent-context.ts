@@ -22,9 +22,3 @@ export function subscribeAgentContext(listener: Listener): () => void {
     listeners.delete(listener)
   }
 }
-
-/** Test helper. */
-export function __resetAgentContextForTests() {
-  currentDirectory = undefined
-  listeners.clear()
-}

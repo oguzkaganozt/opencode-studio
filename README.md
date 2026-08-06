@@ -2,7 +2,7 @@
 
 OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
 
-**Package:** [`@oguzkaganozt/opencode-studio@1.0.9`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
+**Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
 **CAD and PCB are always on.** Install wires OpenCode once (plugins, skills, CAD MCP). Media tools and the Files explorer are always on too.
 
@@ -13,10 +13,10 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 3. **Node + npm** recommended for PCB project scripts (if missing, build falls back to bundled `tsci`).
 4. Restart OpenCode after install/repair so plugins and skills load.
 
-## Install (pinned)
+## Install
 
 ```bash
-bun add -g @oguzkaganozt/opencode-studio@1.0.9
+bun add -g @oguzkaganozt/opencode-studio
 hash -r
 command -v opencode-studio
 
@@ -117,19 +117,19 @@ $STUDIO_HOME/studio/
 opencode-studio status [--workspace <path>]     # health + version (exit 1 if broken)
 opencode-studio repair [--workspace <path>]     # reinstall plugins/skills/MCP
 opencode-studio remove                          # uninstall managed OpenCode state
-opencode-studio upgrade [--check]               # bun add -g @latest (prefer pin for servers)
+opencode-studio upgrade [--check]               # bun add -g @latest
 opencode-studio --help | -v
 ```
 
 Shell completion installs on global `bun add -g`. Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1`.
 
-### Upgrade / rollback (servers)
+### Upgrade / rollback
 
 ```bash
-# Prefer an explicit pin over unattended @latest
-bun add -g @oguzkaganozt/opencode-studio@1.0.9
+opencode-studio upgrade
+# or: bun add -g @oguzkaganozt/opencode-studio@latest
 opencode-studio repair
-opencode-studio status --workspace /abs/project
+opencode-studio status
 # restart OpenCode
 
 # Rollback

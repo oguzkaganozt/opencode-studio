@@ -39,8 +39,3 @@ export function requestAgentHandoff(request: AgentHandoffRequest): void {
 
   for (const listener of listeners) listener(normalized)
 }
-
-/** Test helper — clear all subscribers. */
-export function __resetAgentHandoffForTests() {
-  listeners.clear()
-}

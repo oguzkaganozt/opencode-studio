@@ -1,8 +1,8 @@
 import { lstat, readdir, realpath } from "node:fs/promises"
 import path from "node:path"
 import { isInside } from "../../src/core/paths"
-import { generateBom } from "./bom"
-import { type CircuitInspection, inspectCircuitJson, manufacturingBlockers, readCircuitJson } from "./circuit-json"
+import { type CircuitInspection, inspectCircuitJson, readCircuitJson } from "./circuit-json"
+import { circuitReadiness } from "./readiness"
 
 export type CircuitProject = {
   id: string
@@ -100,8 +100,9 @@ async function loadProjectAt(workspaceRoot: string, dir: string): Promise<Circui
     try {
       const circuit = await readCircuitJson(workspaceRoot, circuitJsonPath)
       inspection = inspectCircuitJson(circuit)
-      fabricationReady = manufacturingBlockers(circuit, inspection).length === 0
-      assemblyReady = fabricationReady && generateBom(circuit).bomComplete
+      const readiness = circuitReadiness(circuit, { inspection })
+      fabricationReady = readiness.fabricationReady
+      assemblyReady = readiness.assemblyReady
     } catch {
       // Keep malformed or transient build artifacts distinguishable from valid designs.
     }

@@ -40,20 +40,14 @@ export function isLegacyStudioId(value: string): boolean {
   return (LEGACY_STUDIO_IDS as readonly string[]).includes(value)
 }
 
-export function assertStudioIds(values: string[]): StudioId[] {
-  const seen = new Set<string>()
-  const result: StudioId[] = []
-  for (const value of values) {
-    if (!isStudioId(value)) throw new Error(`Unknown Studio ID: ${value}`)
-    if (seen.has(value)) continue
-    seen.add(value)
-    result.push(value)
+/** Ensure a key set matches STUDIO_IDS exactly (order-independent). */
+export function assertCatalogComplete(ids: string[], label: string) {
+  const expected = [...STUDIO_IDS].sort()
+  const actual = [...new Set(ids)].sort()
+  if (expected.length !== actual.length || expected.some((id, index) => id !== actual[index])) {
+    throw new Error(`${label} must match catalog exactly. expected=${expected.join(",")} actual=${actual.join(",")}`)
   }
-  return result
 }
-
-/** Catalog order used for deterministic hook composition. */
-export const CATALOG_ORDER: readonly StudioId[] = STUDIO_IDS
 
 /** Platform contribution owner (not a catalog studio). */
 export const PLATFORM_OWNER = "platform" as const

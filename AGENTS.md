@@ -33,7 +33,7 @@ CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` 
 | `src/platform/media/` | Always-on media tools, provider hooks, Files API, `media` skill |
 | `studios/<id>/` | Domain CAD/PCB: `studio.ts`, `plugin.ts`, `api.ts`, `tools.ts`, `skill/`, `viewer/`, `test/` |
 | `ui/` | Shared Viewer shell (`app.tsx`); Files explorer + lazy `@studios/<id>/viewer` |
-| `test/parity/` | 4 frozen fixtures: `tools.json`, `skill-digests.json`, `plugin-hooks.json`, `source-commits.json` |
+| `test/parity/` | 3 frozen fixtures: `tools.json`, `skill-digests.json`, `plugin-hooks.json` |
 
 Catalog IDs (`src/core/registry.ts`): `cad` \| `pcb`. Composition order: platform media first, then catalog order.
 

@@ -38,7 +38,7 @@ function parseRoots(raw: unknown, warnings: string[], strict: boolean): Partial<
   const roots: Partial<Record<StudioId, string>> = {}
   for (const [key, root] of Object.entries(raw as Record<string, unknown>)) {
     if (!isStudioId(key)) {
-      if (isLegacyStudioId(key) || key === "media") {
+      if (isLegacyStudioId(key)) {
         warnings.push(`Ignoring legacy roots.${key}`)
       } else if (strict) {
         throw new StudioError("invalid_config", `Unknown Studio ID in roots: ${key}`)

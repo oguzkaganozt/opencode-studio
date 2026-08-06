@@ -1,5 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { CATALOG_ORDER, PLATFORM_OWNER, type PluginOwner, type StudioId } from "./registry"
+import { PLATFORM_OWNER, type PluginOwner, STUDIO_IDS, type StudioId } from "./registry"
 
 const KNOWN_HOOK_KEYS = new Set([
   "tool",
@@ -49,7 +49,7 @@ export type StudioPluginContribution = {
 
 function ownerOrderIndex(owner: PluginOwner) {
   if (owner === PLATFORM_OWNER) return -1
-  return CATALOG_ORDER.indexOf(owner as StudioId)
+  return STUDIO_IDS.indexOf(owner as StudioId)
 }
 
 function isFunction(value: unknown): value is (...args: any[]) => any {
