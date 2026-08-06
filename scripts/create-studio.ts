@@ -32,7 +32,7 @@ await writeFile(
   `---
 name: studio-${id}
 description: TODO
-license: MIT
+license: proprietary
 compatibility: opencode
 ---
 

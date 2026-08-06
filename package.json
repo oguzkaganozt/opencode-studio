@@ -4,7 +4,7 @@
   "version": "1.0.14",
   "description": "OpenCode Studios for CAD and PCB, plus always-on workspace media tools",
   "type": "module",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "main": "./dist/plugin.js",
   "exports": {
     ".": "./dist/plugin.js",
@@ -26,7 +26,6 @@
     "studios/cad/skill/SKILL.md",
     "studios/pcb/skill/SKILL.md",
     "src/platform/media/skill/SKILL.md",
-    "LICENSE",
     "README.md"
   ],
   "scripts": {

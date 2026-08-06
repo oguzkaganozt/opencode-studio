@@ -6,7 +6,7 @@ description: >
   media_list/info/probe, or Files explorer media paths. Not for mechanical CAD product
   renders (studio-cad + build123d_render_view into designs/<id>/renders/) or PCB artifacts
   (studio-pcb).
-license: MIT
+license: proprietary
 compatibility: opencode
 ---
 

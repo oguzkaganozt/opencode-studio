@@ -5,7 +5,7 @@ description: >
   tscircuit TSX, Circuit JSON diagnostics, DRC, Gerber, BOM, CPL/Pick & Place,
   part search/catalog, footprints, routing, or viewer diagnostics. Not for mechanical
   FDM CAD (studio-cad) or workspace image/audio/video generation (studio-media).
-license: MIT
+license: proprietary
 compatibility: opencode
 ---
 

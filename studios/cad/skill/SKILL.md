@@ -6,7 +6,7 @@ description: >
   assemblies, design_build/design_qc_report, printability/fit checks, viewer pin/region
   feedback, and form-fidelity edits. Not for PCB (studio-pcb) or workspace image/audio/video
   generation (studio-media); CAD product renders use build123d_render_view into designs/<id>/renders/.
-license: MIT
+license: proprietary
 compatibility: opencode
 metadata:
   workflow: fdm-cad
