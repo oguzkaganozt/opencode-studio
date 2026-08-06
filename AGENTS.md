@@ -21,7 +21,6 @@ bun run test:browser                              # HTTP + Chromium layout/CSS s
 bun run dev:ui                                    # Vite :5173 (UI only)
 # CLI (after build/global): status | repair | remove | upgrade
 # Studio host: started by the ensure-host companion when `opencode serve` starts
-# Internal server bring-up: v1-release-plan.md
 ```
 
 CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` → `bun install --frozen-lockfile` → `bun run release:check`. Bun ≥ 1.3, Python 3.12 + uv for forge/MCP.

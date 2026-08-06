@@ -66,8 +66,6 @@ Health: `opencode-studio status` (exit 1 if unwired). CAD: `design_build` runs f
 
 Studio does **not** spawn OpenCode and has no separate `serve` / systemd host daemon. Lifecycle follows `opencode serve`. Opt out of auto host: `OPENCODE_STUDIO_AUTOSTART=0`.
 
-**Team / internal server:** systemd, pin/rollback, full checklist → [`v1-release-plan.md`](./v1-release-plan.md).
-
 ### Web / LAN (same model as `opencode serve`)
 
 ```bash
