@@ -2,6 +2,53 @@ import type { Session } from "@opencode-ai/sdk/v2/client"
 
 const GENERATED_SESSION_TITLE = /^New session - (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)$/
 
+export type SessionDayGroup<T> = {
+  key: string
+  label: string
+  sessions: T[]
+}
+
+function localDayKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+function sessionDayLabel(timestamp: number, now: number): string {
+  const date = new Date(timestamp)
+  const today = new Date(now)
+  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  const dayDifference = Math.round((todayStart - dateStart) / 86_400_000)
+
+  if (dayDifference === 0 || dayDifference === 1) {
+    return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(-dayDifference, "day")
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  }).format(date)
+}
+
+export function sessionGroupsByLastMessage<T extends Pick<Session, "time">>(sessions: T[], now = Date.now()): SessionDayGroup<T>[] {
+  const groups = new Map<string, SessionDayGroup<T>>()
+  const ordered = [...sessions].sort((a, b) => b.time.updated - a.time.updated)
+
+  for (const session of ordered) {
+    const date = new Date(session.time.updated)
+    const key = localDayKey(date)
+    const group = groups.get(key)
+    if (group) {
+      group.sessions.push(session)
+    } else {
+      groups.set(key, { key, label: sessionDayLabel(session.time.updated, now), sessions: [session] })
+    }
+  }
+
+  return [...groups.values()]
+}
+
 export function sessionLabel(session?: Pick<Session, "id" | "title">, now = Date.now()): string {
   if (!session) return "New session"
   const title = session.title || session.id.slice(0, 12)

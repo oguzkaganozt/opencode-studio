@@ -1,24 +1,55 @@
-/** Active studio project directory for the Agent panel (does not change Studio Home). */
+import type { StudioSessionContextKind, StudioSessionContextStatus } from "../src/core/session-history"
+
+export type AgentContext = {
+  key: string
+  kind: StudioSessionContextKind
+  label: string
+  directory?: string
+  historicalDirectory?: string
+  studioId?: "cad" | "pcb"
+  projectId?: string
+  relativePath?: string
+  status: StudioSessionContextStatus | "checking"
+}
 
 type Listener = () => void
 
-let currentDirectory: string | undefined
+let currentClaim: { owner: string; token: symbol; context: AgentContext } | undefined
 const listeners = new Set<Listener>()
 
-export function getAgentContextDirectory(): string | undefined {
-  return currentDirectory
+function notify() {
+  for (const listener of listeners) listener()
 }
 
-export function setAgentContextDirectory(directory: string | undefined): void {
-  const next = directory?.trim() || undefined
-  if (next === currentDirectory) return
-  currentDirectory = next
-  for (const listener of listeners) listener()
+export function getAgentContext(): AgentContext | undefined {
+  return currentClaim?.context
+}
+
+export function claimAgentContext(owner: string, context: AgentContext): () => void {
+  const token = Symbol(owner)
+  currentClaim = { owner, token, context }
+  notify()
+  return () => {
+    queueMicrotask(() => {
+      if (currentClaim?.token !== token) return
+      currentClaim = undefined
+      notify()
+    })
+  }
 }
 
 export function subscribeAgentContext(listener: Listener): () => void {
   listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
+  return () => listeners.delete(listener)
+}
+
+export function homeAgentContext(directory: string): AgentContext {
+  return {
+    key: "home",
+    kind: "home",
+    label: "Studio Home",
+    directory,
+    historicalDirectory: directory,
+    status: "available",
   }
 }

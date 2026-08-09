@@ -8,7 +8,15 @@ import { filterCatalogParts, getCatalogPart, loadCatalogParts, partSummary } fro
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
 import { ensureWatching, onProjectEvent } from "./watcher"
-import { type CircuitProject, discoverProjectDescriptors, loadProjects, projectDetail, projectSummary, resolveProject } from "./workspace"
+import {
+  type CircuitProject,
+  discoverProjectDescriptors,
+  loadProjects,
+  projectDetail,
+  projectSummary,
+  resolveProject,
+  resolveProjectLocation,
+} from "./workspace"
 
 function integerQuery(value: string | undefined, fallback: number, min: number, max: number) {
   if (value === undefined) return fallback
@@ -64,7 +72,14 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/workspace", async (ctx) => {
-    return ctx.json({ root: workspaceRoot })
+    const projectId = ctx.req.query("projectId")
+    if (!projectId) return ctx.json({ root: workspaceRoot })
+    try {
+      const location = resolveProjectLocation(workspaceRoot, projectId)
+      return ctx.json({ root: workspaceRoot, path: location.relativePath, directory: location.absolutePath })
+    } catch {
+      throw new ApiError(400, "Invalid project ID")
+    }
   })
 
   app.get("/projects", async (ctx) => {

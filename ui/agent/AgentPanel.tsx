@@ -1,7 +1,18 @@
 import type { Part, PermissionRequest, Session, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
-import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { getAgentContextDirectory, setAgentContextDirectory, subscribeAgentContext } from "../agent-context"
-import { subscribeAgentHandoff } from "../agent-handoff"
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
+import { Link } from "react-router"
+import type { StudioSessionContext, StudioSessionHistoryItem } from "../../src/core/session-history"
+import { type AgentContext, getAgentContext, homeAgentContext, subscribeAgentContext } from "../agent-context"
+import { type AgentHandoffRequest, subscribeAgentHandoff } from "../agent-handoff"
 import { type AgentStatus, agentStatusDotClass, deriveAgentStatus } from "../agent-status"
 import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, clampAgentWidth, readAgentWidth, viewportAgentWidthMax, writeAgentWidth } from "../agent-width"
 import { Button } from "../components/button"
@@ -14,8 +25,8 @@ import {
   listMessages,
   listPendingPermissions,
   listProviders,
+  listSessionHistory,
   listSessionStatuses,
-  listSessions,
   probeAgentHealth,
   promptSessionAsync,
   replyPermission,
@@ -25,8 +36,7 @@ import {
 import { Markdown } from "./markdown"
 import { availableModelVariants, modelVariantLabel } from "./model-variant"
 import { summarizePart, textFromParts, toolDetail, toolLabel, toolPreview, toolStatus } from "./part-text"
-import { resolveAgentDirectory } from "./resolve-directory"
-import { sessionLabel, sessionOptionLabels } from "./session-label"
+import { sessionGroupsByLastMessage, sessionLabel, sessionOptionLabels } from "./session-label"
 
 type ModelPreference = { providerID: string; modelID: string }
 type ModelRef = ModelPreference & { variants: string[] }
@@ -44,9 +54,86 @@ type ComposerState = {
   chips: ComposerChip[]
 }
 
+type PendingSession = { id: string; directory: string }
+
+function checkingContext(): AgentContext {
+  return { key: "route", kind: "home", label: "Loading context…", status: "checking" }
+}
+
+function contextFromHistory(context: StudioSessionContext): AgentContext {
+  return context
+}
+
+function contextMetadata(context: AgentContext): StudioSessionContext {
+  if (!context.directory) throw new Error("Agent context directory is unavailable")
+  return {
+    schema: 1,
+    key: context.key,
+    kind: context.kind,
+    label: context.label,
+    studioId: context.studioId,
+    projectId: context.projectId,
+    relativePath: context.relativePath,
+    directory: context.directory,
+    historicalDirectory: context.historicalDirectory ?? context.directory,
+    status: context.status === "checking" ? "missing" : context.status,
+  }
+}
+
+function contextLink(context: AgentContext): { href: string; label: string } | undefined {
+  if (!context.projectId) return undefined
+  const id = encodeURIComponent(context.projectId)
+  if (context.kind === "cad-project") return { href: `/studios/cad/designs/${id}`, label: "Open design" }
+  if (context.kind === "pcb-project") return { href: `/studios/pcb/projects/${id}/schematic`, label: "Open project" }
+  return undefined
+}
+
+function sameContext(left: AgentContext, right: AgentContext): boolean {
+  return (
+    left.key === right.key &&
+    left.directory === right.directory &&
+    left.historicalDirectory === right.historicalDirectory &&
+    left.label === right.label &&
+    left.relativePath === right.relativePath &&
+    left.status === right.status
+  )
+}
+
+function handoffChips(handoff: AgentHandoffRequest): ComposerChip[] {
+  const chips: ComposerChip[] = []
+  for (const value of handoff.paths ?? []) {
+    chips.push({ id: `path:${value}`, kind: "path", value, label: value.split("/").pop() || value })
+  }
+  if (handoff.annotation?.trim()) {
+    const value = handoff.annotation.trim()
+    chips.push({
+      id: `ann:${value.slice(0, 48)}`,
+      kind: "annotation",
+      value,
+      label: value.length > 36 ? `${value.slice(0, 36)}…` : value,
+    })
+  }
+  return chips
+}
+
+function historyItem(session: Session, context: AgentContext): StudioSessionHistoryItem {
+  return {
+    id: session.id,
+    title: session.title,
+    directory: session.directory,
+    parentID: session.parentID,
+    model: session.model,
+    time: session.time,
+    context: contextMetadata(context),
+  }
+}
+
+function composerKey(contextKey: string, directory: string, sessionID?: string): string {
+  return `${contextKey}\0${directory}\0${sessionID ?? "new"}`
+}
+
 type PopoverKind = "session" | "model" | "variant" | null
 
-const SESSION_UI_LIMIT = 40
 const MODEL_UI_LIMIT = 80
 
 function useMdUp() {
@@ -252,6 +339,14 @@ function IconClose() {
   )
 }
 
+function IconHome() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M2 6.25 7 2l5 4.25v5.25H8.75V8.25h-3.5v3.25H2V6.25Z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function IconSend() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -289,6 +384,7 @@ export function AgentPanel({
   onClose,
   onStatusChange,
   fullPage = false,
+  historyScope = "directory",
 }: {
   studioRoot: string
   available: boolean
@@ -296,8 +392,12 @@ export function AgentPanel({
   onClose: () => void
   onStatusChange?: (status: AgentStatus) => void
   fullPage?: boolean
+  historyScope?: "studio" | "directory"
 }) {
-  const asideRef = useRef<HTMLElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
+  const setPanelRef = useCallback((node: HTMLElement | null) => {
+    panelRef.current = node
+  }, [])
   const widthRef = useRef(readAgentWidth())
   const listRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
@@ -308,8 +408,15 @@ export function AgentPanel({
   const [viewportMax, setViewportMax] = useState(() =>
     typeof window !== "undefined" ? viewportAgentWidthMax(window.innerWidth) : AGENT_WIDTH_MAX,
   )
-  const [contextDirectory, setContextDirectory] = useState(getAgentContextDirectory)
-  const directory = resolveAgentDirectory(contextDirectory, studioRoot)
+  const homeContext = useMemo(() => homeAgentContext(studioRoot), [studioRoot])
+  const [activeContext, setActiveContext] = useState<AgentContext>(() =>
+    historyScope === "studio" ? homeContext : (getAgentContext() ?? checkingContext()),
+  )
+  const activeContextRef = useRef(activeContext)
+  const [contextRevision, setContextRevision] = useState(0)
+  const directory = activeContext.directory
+  const contextWritable = Boolean(directory && (activeContext.status === "available" || activeContext.status === "moved"))
+  const readDirectory = contextWritable ? directory : activeContext.status === "missing" ? studioRoot : undefined
 
   const [healthOk, setHealthOk] = useState(available)
   const [healthError, setHealthError] = useState<string | undefined>()
@@ -317,11 +424,13 @@ export function AgentPanel({
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | undefined>()
-  const [sessions, setSessions] = useState<Session[]>([])
+  const [sessions, setSessions] = useState<StudioSessionHistoryItem[]>([])
   const [sessionID, setSessionID] = useState<string | undefined>()
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [draft, setDraft] = useState("")
   const [chips, setChips] = useState<ComposerChip[]>([])
+  const composerStateRef = useRef<ComposerState>({ draft, chips })
+  composerStateRef.current = { draft, chips }
   const composersBySession = useRef(new Map<string, ComposerState>())
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>({})
   const [permissions, setPermissions] = useState<PermissionRequest[]>([])
@@ -334,6 +443,14 @@ export function AgentPanel({
   const [sessionQuery, setSessionQuery] = useState("")
   const [modelQuery, setModelQuery] = useState("")
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const contextEpoch = useRef(0)
+  const historyRequest = useRef(0)
+  const catalogRequest = useRef(0)
+  const runtimeRequest = useRef(0)
+  const messageRequest = useRef(0)
+  const diffRequest = useRef(0)
+  const pendingSession = useRef<PendingSession | undefined>(undefined)
+  const pendingHandoff = useRef<AgentHandoffRequest | undefined>(undefined)
   const sessionIDRef = useRef(sessionID)
   const openRef = useRef(open)
   const busy =
@@ -343,7 +460,81 @@ export function AgentPanel({
   const selectedVariant = model ? variantsByModel[modelKey(model)] : undefined
   const variant = selectedVariant && modelVariants.includes(selectedVariant) ? selectedVariant : undefined
 
-  useEffect(() => subscribeAgentContext(() => setContextDirectory(getAgentContextDirectory())), [])
+  const saveComposer = useCallback(() => {
+    if (!directory) return
+    composersBySession.current.set(composerKey(activeContext.key, directory, sessionID), { draft, chips })
+  }, [activeContext.key, chips, directory, draft, sessionID])
+
+  const applyHandoff = useCallback((handoff: AgentHandoffRequest) => {
+    setChips(handoffChips(handoff))
+    setDraft(handoff.text.trim())
+    requestAnimationFrame(() => composerRef.current?.focus())
+  }, [])
+
+  const transitionContext = useCallback(
+    (next: AgentContext, targetSession?: PendingSession, handoff?: AgentHandoffRequest) => {
+      saveComposer()
+      pendingSession.current = targetSession
+      pendingHandoff.current = handoff
+      activeContextRef.current = next
+      setActiveContext(next)
+      setContextRevision((current) => current + 1)
+    },
+    [saveComposer],
+  )
+
+  const syncClaimedContext = useEffectEvent((next: AgentContext) => transitionContext(next))
+
+  useEffect(() => {
+    if (historyScope === "studio") return
+    const sync = () => {
+      syncClaimedContext(getAgentContext() ?? checkingContext())
+    }
+    sync()
+    return subscribeAgentContext(sync)
+  }, [historyScope])
+
+  useLayoutEffect(() => {
+    void contextRevision
+    contextEpoch.current += 1
+    historyRequest.current += 1
+    catalogRequest.current += 1
+    runtimeRequest.current += 1
+    messageRequest.current += 1
+    diffRequest.current += 1
+    if (refreshTimer.current) {
+      clearTimeout(refreshTimer.current)
+      refreshTimer.current = undefined
+    }
+    if (historyScope === "directory") setSessions([])
+    setMessages([])
+    setFiles([])
+    setSessionStatuses({})
+    setPermissions([])
+    setSending(false)
+    setModelOptions([])
+    setModel(undefined)
+    setCatalogDirectory(undefined)
+    setPopover(null)
+    setSessionQuery("")
+    setError(undefined)
+
+    const target = pendingSession.current?.directory === directory ? pendingSession.current : undefined
+    pendingSession.current = undefined
+    const nextSessionID = target?.id
+    sessionIDRef.current = nextSessionID
+    setSessionID(nextSessionID)
+    const composer = directory ? composersBySession.current.get(composerKey(activeContext.key, directory, nextSessionID)) : undefined
+    const handoff = pendingHandoff.current
+    pendingHandoff.current = undefined
+    if (handoff) {
+      applyHandoff(handoff)
+    } else {
+      setDraft(composer?.draft ?? "")
+      setChips(composer?.chips ?? [])
+    }
+  }, [activeContext.key, applyHandoff, contextRevision, directory, historyScope])
+
   useEffect(() => {
     widthRef.current = width
   }, [width])
@@ -399,18 +590,68 @@ export function AgentPanel({
 
   const refreshSessions = useCallback(async () => {
     if (!healthOk) return
-    const rows = await listSessions(directory)
+    if (historyScope === "directory" && !directory) return
+    const epoch = contextEpoch.current
+    const request = ++historyRequest.current
+    let response: Awaited<ReturnType<typeof listSessionHistory>>
+    try {
+      response = await listSessionHistory({
+        scope: historyScope,
+        directory: historyScope === "directory" ? directory : undefined,
+        contextKey: historyScope === "directory" ? activeContextRef.current.key : undefined,
+      })
+    } catch (error) {
+      if (epoch !== contextEpoch.current || request !== historyRequest.current) return
+      throw error
+    }
+    if (epoch !== contextEpoch.current || request !== historyRequest.current) return
+    const rows = response.sessions
     setSessions(rows)
-    setSessionID((current) => {
-      if (current && rows.some((s) => s.id === current)) return current
-      return rows[0]?.id
-    })
-  }, [directory, healthOk])
+    const selectedID = sessionIDRef.current
+    const selected = selectedID ? rows.find((session) => session.id === selectedID) : undefined
+    if (selected) {
+      const nextContext = contextFromHistory(selected.context)
+      if (!sameContext(activeContextRef.current, nextContext)) {
+        transitionContext(nextContext, { id: selected.id, directory: selected.context.directory })
+        return
+      }
+    }
+    const current = sessionIDRef.current
+    const hasNewComposer =
+      current === undefined && (Boolean(composerStateRef.current.draft.trim()) || composerStateRef.current.chips.length > 0)
+    const next =
+      current && rows.some((session) => session.id === current)
+        ? current
+        : hasNewComposer
+          ? undefined
+          : rows.find(
+              (session) =>
+                session.context.key === activeContextRef.current.key && session.context.directory === activeContextRef.current.directory,
+            )?.id
+    if (current !== next && directory) {
+      const contextKey = activeContextRef.current.key
+      composersBySession.current.set(composerKey(contextKey, directory, current), composerStateRef.current)
+      const composer = composersBySession.current.get(composerKey(contextKey, directory, next))
+      setDraft(composer?.draft ?? "")
+      setChips(composer?.chips ?? [])
+    }
+    sessionIDRef.current = next
+    setSessionID(next)
+  }, [directory, healthOk, historyScope, transitionContext])
 
   const refreshCatalog = useCallback(async () => {
-    if (!healthOk) return
+    if (!healthOk || !directory || !contextWritable) return
+    const epoch = contextEpoch.current
+    const request = ++catalogRequest.current
     const prefs = readPrefs(directory)
-    const providerData = await listProviders(directory)
+    let providerData: Awaited<ReturnType<typeof listProviders>>
+    try {
+      providerData = await listProviders(directory)
+    } catch (error) {
+      if (epoch !== contextEpoch.current || request !== catalogRequest.current) return
+      throw error
+    }
+    if (epoch !== contextEpoch.current || request !== catalogRequest.current) return
     const options: ModelRef[] = []
     for (const provider of providerData?.providers ?? []) {
       for (const [modelID, config] of Object.entries(provider.models ?? {})) {
@@ -432,35 +673,57 @@ export function AgentPanel({
       ),
     )
     setCatalogDirectory(directory)
-  }, [directory, healthOk])
+  }, [contextWritable, directory, healthOk])
 
   const refreshMessages = useCallback(
     async (id: string) => {
-      const rows = await listMessages(id, directory)
-      if (sessionIDRef.current !== id) return
+      if (!readDirectory) return
+      const epoch = contextEpoch.current
+      const request = ++messageRequest.current
+      let rows: AgentMessage[]
+      try {
+        rows = await listMessages(id, readDirectory)
+      } catch (error) {
+        if (epoch !== contextEpoch.current || request !== messageRequest.current || sessionIDRef.current !== id) return
+        throw error
+      }
+      if (epoch !== contextEpoch.current || request !== messageRequest.current || sessionIDRef.current !== id) return
       setMessages(rows)
     },
-    [directory],
+    [readDirectory],
   )
 
   const refreshDiff = useCallback(
     async (id: string) => {
+      if (!readDirectory) return
+      const epoch = contextEpoch.current
+      const request = ++diffRequest.current
       try {
-        const diff = await sessionDiff(id, directory)
-        if (sessionIDRef.current === id) setFiles(diff)
+        const diff = await sessionDiff(id, readDirectory)
+        if (epoch === contextEpoch.current && request === diffRequest.current && sessionIDRef.current === id) setFiles(diff)
       } catch {
-        if (sessionIDRef.current === id) setFiles([])
+        if (epoch === contextEpoch.current && request === diffRequest.current && sessionIDRef.current === id) setFiles([])
       }
     },
-    [directory],
+    [readDirectory],
   )
 
   const refreshRuntimeState = useCallback(async () => {
-    if (!healthOk) return
-    const [statuses, pending] = await Promise.all([listSessionStatuses(directory), listPendingPermissions(directory)])
+    if (!healthOk || !directory || !contextWritable) return
+    const epoch = contextEpoch.current
+    const request = ++runtimeRequest.current
+    let result: [Record<string, SessionStatus>, PermissionRequest[]]
+    try {
+      result = await Promise.all([listSessionStatuses(directory), listPendingPermissions(directory)])
+    } catch (error) {
+      if (epoch !== contextEpoch.current || request !== runtimeRequest.current) return
+      throw error
+    }
+    const [statuses, pending] = result
+    if (epoch !== contextEpoch.current || request !== runtimeRequest.current) return
     setSessionStatuses(statuses)
     setPermissions(pending)
-  }, [directory, healthOk])
+  }, [contextWritable, directory, healthOk])
 
   const scheduleMessageRefresh = useCallback(
     (id: string) => {
@@ -480,29 +743,47 @@ export function AgentPanel({
   }, [refreshHealth])
 
   useEffect(() => {
+    void contextRevision
     if (!open || !healthOk) return
+    const epoch = contextEpoch.current
     setLoading(true)
     setError(undefined)
     void Promise.all([refreshSessions(), refreshCatalog()])
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false))
-  }, [open, healthOk, refreshSessions, refreshCatalog])
+      .catch((err) => {
+        if (epoch === contextEpoch.current) setError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (epoch === contextEpoch.current) setLoading(false)
+      })
+  }, [contextRevision, open, healthOk, refreshSessions, refreshCatalog])
 
   useEffect(() => {
+    if (!open || !healthOk) return
+    const timer = setInterval(() => void refreshSessions().catch(() => {}), 10_000)
+    return () => clearInterval(timer)
+  }, [healthOk, open, refreshSessions])
+
+  useEffect(() => {
+    void contextRevision
     if (!healthOk) return
-    void refreshRuntimeState().catch((err) => setError(err instanceof Error ? err.message : String(err)))
-  }, [healthOk, refreshRuntimeState])
+    const epoch = contextEpoch.current
+    void refreshRuntimeState().catch((err) => {
+      if (epoch === contextEpoch.current) setError(err instanceof Error ? err.message : String(err))
+    })
+  }, [contextRevision, healthOk, refreshRuntimeState])
 
   useEffect(() => {
+    void contextRevision
     if (!open || !sessionID || !healthOk) {
       setMessages([])
       setFiles([])
       return
     }
+    const epoch = contextEpoch.current
     void Promise.all([refreshMessages(sessionID), refreshDiff(sessionID)]).catch((err) =>
-      setError(err instanceof Error ? err.message : String(err)),
+      epoch === contextEpoch.current ? setError(err instanceof Error ? err.message : String(err)) : undefined,
     )
-  }, [open, sessionID, healthOk, refreshMessages, refreshDiff])
+  }, [contextRevision, open, sessionID, healthOk, refreshMessages, refreshDiff])
 
   useEffect(() => {
     return () => {
@@ -511,7 +792,7 @@ export function AgentPanel({
   }, [])
 
   useEffect(() => {
-    if (!healthOk) return
+    if (!healthOk || !directory || !contextWritable) return
     return subscribeAgentEvents(
       directory,
       (event) => {
@@ -520,22 +801,26 @@ export function AgentPanel({
           return
         }
         if (event.type === "permission.asked") {
+          runtimeRequest.current += 1
           const next = event.properties as PermissionRequest
           setPermissions((current) => [...current.filter((item) => item.id !== next.id), next])
           return
         }
         if (event.type === "permission.replied") {
+          runtimeRequest.current += 1
           const props = event.properties as { requestID?: string; permissionID?: string }
           const id = props.requestID || props.permissionID
           if (id) setPermissions((current) => current.filter((item) => item.id !== id))
           return
         }
         if (event.type === "session.status") {
+          runtimeRequest.current += 1
           const props = event.properties as { sessionID?: string; status?: SessionStatus }
           if (props.sessionID && props.status) setSessionStatuses((current) => ({ ...current, [props.sessionID!]: props.status! }))
           return
         }
         if (event.type === "session.idle") {
+          runtimeRequest.current += 1
           const props = event.properties as { sessionID?: string }
           if (props.sessionID) setSessionStatuses((current) => ({ ...current, [props.sessionID!]: { type: "idle" } }))
           if (props.sessionID && props.sessionID === activeSessionID && openRef.current) {
@@ -550,6 +835,7 @@ export function AgentPanel({
           return
         }
         if (event.type === "session.diff") {
+          diffRequest.current += 1
           const props = event.properties as { sessionID?: string; diff?: SnapshotFileDiff[] }
           const diff = props.diff ?? []
           if (props.sessionID === activeSessionID) setFiles(diff)
@@ -558,6 +844,7 @@ export function AgentPanel({
           return
         }
         if (event.type === "message.updated" || event.type === "message.part.updated" || event.type === "message.part.delta") {
+          messageRequest.current += 1
           const props = event.properties as { info?: { sessionID?: string }; part?: { sessionID?: string } }
           const eventSessionID = props.info?.sessionID || props.part?.sessionID
           if (openRef.current && activeSessionID && (!eventSessionID || eventSessionID === activeSessionID))
@@ -573,35 +860,33 @@ export function AgentPanel({
         },
       },
     )
-  }, [healthOk, directory, scheduleMessageRefresh, refreshSessions, refreshRuntimeState, refreshMessages, refreshDiff])
+  }, [contextWritable, healthOk, directory, scheduleMessageRefresh, refreshSessions, refreshRuntimeState, refreshMessages, refreshDiff])
 
   useEffect(() => {
     return subscribeAgentHandoff(
       (request) => {
-        if (request.directory?.trim()) setAgentContextDirectory(request.directory.trim())
-        const nextChips: ComposerChip[] = []
-        for (const p of request.paths ?? []) {
-          nextChips.push({ id: `path:${p}`, kind: "path", value: p, label: p.split("/").pop() || p })
+        const requestedDirectory = request.directory?.trim() || directory
+        const claimed = getAgentContext()
+        const fromHistory = sessions.find((session) => session.context.directory === requestedDirectory)?.context
+        const next =
+          requestedDirectory === studioRoot
+            ? homeContext
+            : claimed && claimed.directory === requestedDirectory
+              ? claimed
+              : fromHistory
+                ? contextFromHistory(fromHistory)
+                : activeContext
+        if (sameContext(activeContextRef.current, next)) {
+          saveComposer()
+          applyHandoff(request)
+          return true
         }
-        if (request.annotation?.trim()) {
-          const ann = request.annotation.trim()
-          nextChips.push({
-            id: `ann:${ann.slice(0, 48)}`,
-            kind: "annotation",
-            value: ann,
-            label: ann.length > 36 ? `${ann.slice(0, 36)}…` : ann,
-          })
-        }
-        setChips(nextChips)
-        if (request.text.trim()) {
-          setDraft((prev) => (prev.trim() ? `${prev.trim()}\n\n${request.text.trim()}` : request.text.trim()))
-        }
-        requestAnimationFrame(() => composerRef.current?.focus())
+        transitionContext(next, undefined, request)
         return true
       },
       { consumer: true },
     )
-  }, [])
+  }, [activeContext, applyHandoff, directory, homeContext, saveComposer, sessions, studioRoot, transitionContext])
 
   useEffect(() => {
     if (!open || !mdUp || fullPage) return
@@ -621,7 +906,7 @@ export function AgentPanel({
     return () => document.removeEventListener("keydown", onKey)
   }, [open, mdUp, fullPage, onClose, popover])
 
-  useFocusTrap(open && !mdUp && !fullPage, asideRef, onClose)
+  useFocusTrap(open && !mdUp && !fullPage, panelRef, onClose)
 
   // Auto-scroll only when the user is already at (near) the bottom — never yank mid-read.
   useEffect(() => {
@@ -657,22 +942,31 @@ export function AgentPanel({
 
   const switchSession = useCallback(
     (nextSessionID: string, empty = false) => {
-      if (sessionID) composersBySession.current.set(sessionID, { draft, chips })
-      const nextComposer = empty ? undefined : composersBySession.current.get(nextSessionID)
+      if (!directory) return
+      composersBySession.current.set(composerKey(activeContext.key, directory, sessionID), { draft, chips })
+      const nextComposer = empty ? undefined : composersBySession.current.get(composerKey(activeContext.key, directory, nextSessionID))
+      messageRequest.current += 1
+      diffRequest.current += 1
+      sessionIDRef.current = nextSessionID
       setSessionID(nextSessionID)
       setDraft(nextComposer?.draft ?? "")
       setChips(nextComposer?.chips ?? [])
     },
-    [sessionID, draft, chips],
+    [activeContext.key, chips, directory, draft, sessionID],
   )
 
   const ensureSession = useCallback(async () => {
     if (sessionID) return sessionID
-    const created = await createSession(directory)
-    setSessions((prev) => [created, ...prev])
+    if (!directory || !contextWritable) throw new Error("Agent context is unavailable")
+    const epoch = contextEpoch.current
+    const created = await createSession(directory, contextMetadata(activeContext))
+    if (epoch !== contextEpoch.current) throw new Error("Agent context changed")
+    historyRequest.current += 1
+    setSessions((prev) => [historyItem(created, activeContext), ...prev])
+    sessionIDRef.current = created.id
     setSessionID(created.id)
     return created.id
-  }, [sessionID, directory])
+  }, [activeContext, contextWritable, directory, sessionID])
 
   const composeOutbound = () => {
     const pieces: string[] = []
@@ -686,52 +980,67 @@ export function AgentPanel({
 
   const onSend = async () => {
     const text = composeOutbound()
-    if (!text || busy) return
+    const sendDirectory = directory
+    if (!text || busy || !contextWritable || !sendDirectory) return
+    const epoch = contextEpoch.current
     setError(undefined)
     setSending(true)
     stickToBottom.current = true
     let activeID = sessionID
     try {
       activeID = await ensureSession()
+      runtimeRequest.current += 1
       setSessionStatuses((current) => ({ ...current, [activeID!]: { type: "busy" } }))
       await promptSessionAsync({
         sessionID: activeID,
         text,
-        directory,
+        directory: sendDirectory,
         model,
         variant,
       })
-      setDraft("")
-      setChips([])
-      await refreshMessages(activeID)
+      if (epoch === contextEpoch.current) {
+        setDraft("")
+        setChips([])
+        await refreshMessages(activeID)
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      if (activeID) setSessionStatuses((current) => ({ ...current, [activeID!]: { type: "idle" } }))
+      if (epoch === contextEpoch.current) {
+        setError(err instanceof Error ? err.message : String(err))
+        if (activeID) {
+          runtimeRequest.current += 1
+          setSessionStatuses((current) => ({ ...current, [activeID!]: { type: "idle" } }))
+        }
+      }
     } finally {
-      setSending(false)
+      if (epoch === contextEpoch.current) setSending(false)
     }
   }
 
   const onNewSession = async () => {
+    if (!directory || !contextWritable) return
+    const epoch = contextEpoch.current
     setError(undefined)
     setPopover(null)
     try {
-      const created = await createSession(directory)
-      setSessions((prev) => [created, ...prev])
+      const created = await createSession(directory, contextMetadata(activeContext))
+      if (epoch !== contextEpoch.current) return
+      historyRequest.current += 1
+      setSessions((prev) => [historyItem(created, activeContext), ...prev])
       switchSession(created.id, true)
       setMessages([])
       setFiles([])
       composerRef.current?.focus()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (epoch === contextEpoch.current) setError(err instanceof Error ? err.message : String(err))
     }
   }
 
   const onAbort = async () => {
-    if (!sessionID) return
+    if (!sessionID || !directory || !contextWritable) return
     try {
       await abortSession(sessionID, directory)
       setSending(false)
+      runtimeRequest.current += 1
       setSessionStatuses((current) => ({ ...current, [sessionID]: { type: "idle" } }))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -739,13 +1048,14 @@ export function AgentPanel({
   }
 
   const onPermission = async (response: "once" | "always" | "reject") => {
-    if (!permission) return
+    if (!permission || !directory || !contextWritable) return
     try {
       await replyPermission({
         requestID: permission.id,
         reply: response,
         directory,
       })
+      runtimeRequest.current += 1
       setPermissions((current) => current.filter((item) => item.id !== permission.id))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -785,20 +1095,26 @@ export function AgentPanel({
   }
 
   const shellClass = fullPage
-    ? "oc-panel oc-panel--page flex min-h-0 flex-1 flex-col"
+    ? "oc-panel oc-panel--page flex min-h-0 min-w-0 flex-1 flex-col"
     : `${open ? "flex" : "hidden"} oc-panel absolute inset-0 z-30 min-h-0 w-full flex-col md:static md:inset-auto md:shrink-0 ${dragging ? "select-none" : ""}`
+  const mobileDialog = !fullPage && open && !mdUp
+  const Panel = mobileDialog ? "div" : "aside"
 
   const activeSession = sessions.find((s) => s.id === sessionID)
   const sessionTitle = activeSession ? sessionLabel(activeSession) : sessionID ? sessionID.slice(0, 8) : "New session"
   const optionLabels = useMemo(() => sessionOptionLabels(sessions), [sessions])
 
   const filteredSessions = useMemo(() => {
-    const q = sessionQuery.trim().toLowerCase()
-    const rows = q
-      ? sessions.filter((s) => (s.title || s.id).toLowerCase().includes(q) || optionLabels.get(s.id)?.toLowerCase().includes(q))
+    const q = sessionQuery.trim().toLocaleLowerCase()
+    return q
+      ? sessions.filter((s) =>
+          `${s.title || s.id}\n${optionLabels.get(s.id) ?? ""}\n${s.context.label}\n${s.context.relativePath ?? ""}`
+            .toLocaleLowerCase()
+            .includes(q),
+        )
       : sessions
-    return rows.slice(0, SESSION_UI_LIMIT)
   }, [sessions, sessionQuery, optionLabels])
+  const sessionGroups = useMemo(() => sessionGroupsByLastMessage(filteredSessions), [filteredSessions])
 
   const filteredModels = useMemo(() => {
     const q = modelQuery.trim().toLowerCase()
@@ -812,7 +1128,8 @@ export function AgentPanel({
     return [...paths]
   }, [files])
 
-  const canSend = Boolean(composeOutbound()) && !busy
+  const activeContextLink = contextLink(activeContext)
+  const canSend = Boolean(composeOutbound()) && !busy && contextWritable
   const statusLabel =
     !available || !healthOk
       ? healthError || "Unavailable"
@@ -825,9 +1142,11 @@ export function AgentPanel({
             : "Ready"
 
   return (
-    <aside
-      ref={asideRef}
+    <Panel
+      ref={setPanelRef}
       aria-label="Agent"
+      role={mobileDialog ? "dialog" : undefined}
+      aria-modal={mobileDialog ? true : undefined}
       data-agent-open={open || fullPage ? "true" : "false"}
       data-agent-width={width}
       className={shellClass}
@@ -848,10 +1167,40 @@ export function AgentPanel({
             <IconChevron />
           </button>
           <p className="oc-panel__sub" title={directory}>
-            {statusLabel}
+            {activeContext.label} ·{" "}
+            {activeContext.status === "checking"
+              ? "Loading…"
+              : activeContext.status === "missing"
+                ? "Unavailable"
+                : activeContext.status === "moved"
+                  ? `Moved · ${statusLabel}`
+                  : statusLabel}
           </p>
         </div>
-        <button type="button" className="oc-icon-btn" onClick={() => void onNewSession()} aria-label="New session" title="New session">
+        {fullPage && activeContextLink ? (
+          <Link className="oc-context-link" to={activeContextLink.href}>
+            {activeContextLink.label}
+          </Link>
+        ) : null}
+        {fullPage && activeContext.key !== "home" ? (
+          <button
+            type="button"
+            className="oc-icon-btn"
+            onClick={() => transitionContext(homeContext)}
+            aria-label="Return to Studio Home"
+            title="Return to Studio Home"
+          >
+            <IconHome />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="oc-icon-btn"
+          onClick={() => void onNewSession()}
+          aria-label="New session"
+          title="New session"
+          disabled={!contextWritable}
+        >
           <IconPlus />
         </button>
         {sessionID && busy ? (
@@ -875,21 +1224,38 @@ export function AgentPanel({
             onChange={(e) => setSessionQuery(e.target.value)}
           />
           <div className="oc-popover__list">
-            {filteredSessions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                role="option"
-                aria-selected={s.id === sessionID}
-                className={`oc-popover__item ${s.id === sessionID ? "is-active" : ""}`}
-                onClick={() => {
-                  switchSession(s.id)
-                  setPopover(null)
-                  setSessionQuery("")
-                }}
-              >
-                <span className="truncate">{optionLabels.get(s.id) ?? sessionLabel(s)}</span>
-              </button>
+            {sessionGroups.map((group) => (
+              <fieldset key={group.key} className="oc-popover__group">
+                <legend className="oc-popover__group-label">{group.label}</legend>
+                {group.sessions.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="option"
+                    aria-selected={s.id === sessionID}
+                    className={`oc-popover__item ${s.id === sessionID ? "is-active" : ""}`}
+                    onClick={() => {
+                      const nextContext = contextFromHistory(s.context)
+                      if (historyScope === "studio" && !sameContext(nextContext, activeContextRef.current)) {
+                        transitionContext(nextContext, { id: s.id, directory: s.context.directory })
+                      } else {
+                        switchSession(s.id)
+                      }
+                      setPopover(null)
+                      setSessionQuery("")
+                    }}
+                  >
+                    <span className="truncate">{optionLabels.get(s.id) ?? sessionLabel(s)}</span>
+                    {historyScope === "studio" ? (
+                      <span className="oc-popover__meta">
+                        {s.context.label}
+                        {s.context.relativePath && s.context.relativePath !== s.context.projectId ? ` · ${s.context.relativePath}` : ""}
+                        {s.context.status === "missing" ? " · unavailable" : s.context.status === "moved" ? " · moved" : ""}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </fieldset>
             ))}
             {filteredSessions.length === 0 ? <p className="oc-popover__empty">No sessions</p> : null}
           </div>
@@ -970,6 +1336,19 @@ export function AgentPanel({
             </div>
           ) : null}
 
+          {!contextWritable ? (
+            <div className="oc-error" role="status">
+              {activeContext.status === "checking"
+                ? "Resolving the active Studio context…"
+                : "This session's project directory is unavailable. The conversation is read-only."}
+              {fullPage && activeContext.key !== "home" ? (
+                <button type="button" className="ml-2 underline" onClick={() => transitionContext(homeContext)}>
+                  Return Home
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="oc-composer-wrap">
             <div className="oc-composer-inner">
               {chips.length > 0 ? (
@@ -1006,7 +1385,7 @@ export function AgentPanel({
                   className="oc-dock__input"
                   placeholder="Ask anything…"
                   value={draft}
-                  disabled={busy}
+                  disabled={busy || !contextWritable}
                   rows={2}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -1022,6 +1401,7 @@ export function AgentPanel({
                       type="button"
                       data-oc-popover-trigger
                       className="oc-dock__model oc-dock__model--primary"
+                      disabled={!contextWritable}
                       onClick={() => setPopover((p) => (p === "model" ? null : "model"))}
                       aria-expanded={popover === "model"}
                       title={model ? modelKey(model) : "Model"}
@@ -1064,6 +1444,7 @@ export function AgentPanel({
                         type="button"
                         data-oc-popover-trigger
                         className="oc-dock__model oc-dock__model--variant"
+                        disabled={!contextWritable}
                         onClick={() => setPopover((p) => (p === "variant" ? null : "variant"))}
                         aria-expanded={popover === "variant"}
                         aria-label={`Reasoning effort: ${modelVariantLabel(variant ?? "")}`}
@@ -1118,7 +1499,7 @@ export function AgentPanel({
                 </div>
               </form>
               <p className="oc-dock__dir" title={directory}>
-                {directory}
+                {directory ?? "Resolving context…"}
               </p>
             </div>
           </div>
@@ -1155,6 +1536,6 @@ export function AgentPanel({
           }}
         />
       ) : null}
-    </aside>
+    </Panel>
   )
 }

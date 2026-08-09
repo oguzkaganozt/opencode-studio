@@ -65,6 +65,13 @@ export function createCadApi(layout: StudioLayout) {
     return context.json({ error: "Internal server error" }, 500)
   })
 
+  app.get("/workspace", (context) => {
+    const designId = context.req.query("designId")
+    if (!designId) return context.json({ root: layout.root })
+    const id = safeDesignId(designId)
+    return context.json({ root: layout.root, path: id, directory: path.resolve(layout.root, id) })
+  })
+
   app.get("/designs", async (context) => {
     const designs = await scanDesigns(layout)
     return context.json({ designs: designs.map((entry) => designEntryDto(layout.root, entry)) })

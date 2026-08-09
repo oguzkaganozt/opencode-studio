@@ -219,10 +219,19 @@ function PreviewPane({
       <PreviewChrome onBack={onBack} trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} />}>
         <div className="min-w-0">
           <p className="truncate text-[13px] font-medium text-[var(--osc-text)]">{selected.name}</p>
-          <p className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]">
-            {selected.path}
-            {selected.bytes !== undefined ? ` · ${formatBytes(selected.bytes)}` : ""}
-            {selected.mime ? ` · ${selected.mime}` : ""}
+          <p
+            className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]"
+            title={`${selected.path}${selected.bytes !== undefined ? ` · ${formatBytes(selected.bytes)}` : ""}${selected.mime ? ` · ${selected.mime}` : ""}`}
+          >
+            <span className="sm:hidden">
+              {selected.bytes !== undefined ? formatBytes(selected.bytes) : selected.mime || selected.path}
+              {selected.bytes !== undefined && selected.mime ? ` · ${selected.mime}` : ""}
+            </span>
+            <span className="hidden sm:inline">
+              {selected.path}
+              {selected.bytes !== undefined ? ` · ${formatBytes(selected.bytes)}` : ""}
+              {selected.mime ? ` · ${selected.mime}` : ""}
+            </span>
           </p>
         </div>
       </PreviewChrome>

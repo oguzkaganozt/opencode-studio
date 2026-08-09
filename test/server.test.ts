@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import type { GlobalSession } from "@opencode-ai/sdk/v2/client"
 import { STUDIO_IDS } from "../src/core/registry"
 import type { OpenCodeBridge } from "../src/opencode-bridge"
 import { createHostApp, startHost } from "../src/server"
@@ -136,6 +137,26 @@ describe("host server", () => {
     const { app } = await hostApp(ctx, { parentOpenCodeUrl: "http://127.0.0.1:4096" })
     const response = await app.request("http://127.0.0.1:4173/api/studios", { headers: { host: "127.0.0.1:4173" } })
     expect((await response.json()).nativeOpenCodeAvailable).toBe(true)
+  })
+
+  test("serves Studio-wide agent history without proxy directory scoping", async () => {
+    const ctx = await isolatedHost()
+    const history = {
+      id: "ses_home",
+      title: "Home task",
+      directory: ctx.workspace,
+      time: { created: 1, updated: 2 },
+    } as GlobalSession
+    const { app } = await hostApp(ctx, { sessionHistorySource: async () => [history] })
+
+    const response = await app.request("http://127.0.0.1:4173/api/agent/history?scope=studio", {
+      headers: { host: "127.0.0.1:4173" },
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      sessions: [{ id: "ses_home", context: { key: "home", status: "available" } }],
+    })
   })
 
   test("configure requires csrf and origin (matrix)", async () => {

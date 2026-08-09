@@ -101,10 +101,15 @@ export type BomResponse = {
 
 export type WorkspaceInfo = {
   root: string
+  path?: string
+  directory?: string
 }
 
 export const api = {
-  workspace: (): Promise<WorkspaceInfo> => fetchJson(apiPath("/workspace")),
+  workspace: (projectId?: string): Promise<WorkspaceInfo> => {
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""
+    return fetchJson(apiPath(`/workspace${query}`))
+  },
 
   projects: (params?: { all?: boolean; limit?: number; offset?: number }): Promise<ProjectsResponse> => {
     const q = new URLSearchParams()

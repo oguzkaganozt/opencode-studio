@@ -2,7 +2,7 @@ import { useViewerRefresh } from "@ui/agent/use-viewer-refresh"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
-import { setAgentContextDirectory } from "@ui/agent-context"
+import { claimAgentContext } from "@ui/agent-context"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Badge } from "@ui/components/badge"
 import { Dialog, DialogHeader } from "@ui/components/dialog"
@@ -10,7 +10,7 @@ import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
 import { cn } from "@ui/lib/cn"
 import { useFocusTrap } from "@ui/lib/focus-trap"
-import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, renderUrl, studioHref } from "./api"
+import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, readWorkspace, renderUrl, studioHref } from "./api"
 import {
   type ClickInfo,
   type InteractionMode,
@@ -111,6 +111,19 @@ function DesignCard({ design }: { design: DesignSummary }) {
 function DesignsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data, isLoading, error, refetch } = useQuery({ queryKey: ["cad", "designs"], queryFn: listDesigns })
+  const { data: workspace } = useQuery({ queryKey: ["cad", "workspace"], queryFn: () => readWorkspace() })
+  useEffect(() => {
+    if (!workspace?.root) return
+    return claimAgentContext("cad-root", {
+      key: "cad-root",
+      kind: "cad-root",
+      studioId: "cad",
+      label: "CAD Studio",
+      directory: workspace.root,
+      historicalDirectory: workspace.root,
+      status: "available",
+    })
+  }, [workspace?.root])
   const search = searchParams.get("q") ?? ""
   const filter = searchParams.get("status") ?? "all"
   const normalizedSearch = search.trim().toLowerCase()
@@ -623,16 +636,32 @@ function DesignWorkspace({ designId }: { designId: string }) {
     queryKey: ["cad", "design", designId],
     queryFn: () => readDesign(designId),
   })
+  const workspaceQuery = useQuery({
+    queryKey: ["cad", "workspace", designId],
+    queryFn: () => readWorkspace(designId),
+  })
   const queryClient = useQueryClient()
 
   const designs = designsQuery.data ?? []
   const selectedDesign = designs.find((d) => d.id === designId)
   const selectedDesignDirectory = designQuery.data?.absoluteDirectory ?? selectedDesign?.absoluteDirectory
+  const agentDirectory = selectedDesignDirectory ?? workspaceQuery.data?.directory
 
-  useEffect(() => {
-    setAgentContextDirectory(selectedDesignDirectory)
-    return () => setAgentContextDirectory(undefined)
-  }, [selectedDesignDirectory])
+  useEffect(
+    () =>
+      claimAgentContext(`cad:${designId}`, {
+        key: `cad:${designId}`,
+        kind: "cad-project",
+        studioId: "cad",
+        projectId: designId,
+        relativePath: designId,
+        label: `CAD · ${designId}`,
+        directory: agentDirectory,
+        historicalDirectory: agentDirectory,
+        status: selectedDesignDirectory ? "available" : designQuery.error ? "missing" : "checking",
+      }),
+    [agentDirectory, designId, designQuery.error, selectedDesignDirectory],
+  )
 
   useViewerRefresh(selectedDesignDirectory, () => {
     void queryClient.invalidateQueries({ queryKey: ["cad", "designs"] })
@@ -1096,7 +1125,11 @@ function DesignWorkspace({ designId }: { designId: string }) {
             showToast("Choose a server design from the Designs list")
           }}
         >
-          <div className="cad-toolbar absolute top-3 z-10" role="toolbar" aria-label="CAD viewer tools">
+          <div
+            className="cad-toolbar absolute top-3 z-10"
+            role="toolbar"
+            aria-label="CAD viewer tools. Scroll horizontally for more tools."
+          >
             <Link to={studioHref()} className="cad-chip cad-chip--icon" aria-label="All designs" title="All designs">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <path d="M10 3.5L5.5 8 10 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

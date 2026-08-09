@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import { createCadApi } from "../api"
 import { initializeStudio } from "../library"
 import { createStudioPlugin } from "../tools"
 
@@ -72,6 +73,20 @@ async function makeStudio() {
 }
 
 describe("cad plugin smoke", () => {
+  test("resolves the expected directory for a missing design", async () => {
+    const studio = await makeStudio()
+    const app = createCadApi(await initializeStudio(studio.designsRoot))
+
+    const response = await app.request("/workspace?designId=missing-design")
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      root: studio.designsRoot,
+      path: "missing-design",
+      directory: path.join(studio.designsRoot, "missing-design"),
+    })
+  })
+
   test("registers tools and scaffolds a design", async () => {
     const studio = await makeStudio()
     const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })

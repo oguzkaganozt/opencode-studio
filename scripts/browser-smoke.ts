@@ -423,16 +423,18 @@ try {
     async fetch(request) {
       const pathname = new URL(request.url).pathname
       if (pathname === "/global/health") return Response.json({ healthy: true, version: "smoke" })
-      if (pathname === "/session") {
+      if (pathname === "/experimental/session") {
         return Response.json([
           {
             id: "session-generated",
             title: "New session - 2026-08-09T08:32:31.853Z",
+            directory: domain,
             time: { created: 1_786_264_351_853, updated: 1_786_264_351_853 },
           },
           {
             id: "session-existing",
             title: "Existing session",
+            directory: domain,
             time: { created: 1_786_264_300_000, updated: 1_786_264_300_000 },
           },
         ])

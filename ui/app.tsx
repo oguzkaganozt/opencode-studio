@@ -56,6 +56,20 @@ function CloseIcon() {
   )
 }
 
+function SettingsIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path
+        d="M7.65 2.75h2.7l.42 1.42c.3.13.58.29.85.48l1.43-.35 1.35 2.34-1.02 1.08a5 5 0 0 1 0 .96l1.02 1.08-1.35 2.34-1.43-.35c-.27.19-.55.35-.85.48l-.42 1.42h-2.7l-.42-1.42a5 5 0 0 1-.85-.48l-1.43.35-1.35-2.34 1.02-1.08a5 5 0 0 1 0-.96L3.6 6.64 4.95 4.3l1.43.35c.27-.19.55-.35.85-.48l.42-1.42Z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+      <circle cx="9" cy="8.2" r="1.8" stroke="currentColor" strokeWidth="1.25" />
+    </svg>
+  )
+}
+
 function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
   const dim = size === "sm" ? "size-6 text-[9px]" : "size-7 text-[10px]"
   return (
@@ -199,7 +213,6 @@ function SideDrawer({ open, onClose, studioId }: { open: boolean; onClose: () =>
               blurb="Home browser"
               accent="files"
             />
-            <DrawerNavLink to="/status" active={studioId === "status"} onNavigate={onClose} title="Status" blurb="Health & repair" />
           </div>
           <div className="flex flex-col gap-0.5">
             <p className="osc-drawer-label px-2.5 pt-0.5 pb-1">Studios</p>
@@ -240,6 +253,9 @@ function TopBar({
   edge?: "border" | "flush"
   actions?: React.ReactNode
 }) {
+  const location = useLocation()
+  const statusActive = location.pathname.startsWith("/status")
+
   return (
     <header
       className={`sticky top-0 z-40 shrink-0 bg-[var(--osc-bg-elevated)] pt-[env(safe-area-inset-top,0px)] ${edge === "border" ? "border-b border-[var(--osc-border)]" : ""}`}
@@ -276,6 +292,9 @@ function TopBar({
         <div className="osc-topbar-actions">
           {actions}
           <ThemePreferenceControl compact />
+          <Link to="/status" className="osc-icon-btn" aria-label="Status" aria-current={statusActive ? "page" : undefined} title="Status">
+            <SettingsIcon />
+          </Link>
         </div>
       </div>
     </header>
@@ -312,7 +331,14 @@ function OpenCodeFrame() {
               />
             </div>
           ) : (
-            <AgentPanel studioRoot={studiosQuery.data?.studioRoot ?? ""} available={available} open fullPage onClose={() => {}} />
+            <AgentPanel
+              studioRoot={studiosQuery.data?.studioRoot ?? ""}
+              available={available}
+              open
+              fullPage
+              historyScope="studio"
+              onClose={() => {}}
+            />
           )}
         </main>
       </div>
@@ -455,6 +481,7 @@ function StudioFrame() {
             studioRoot={studioRoot}
             available={nativeAvailable}
             open={chrome.agentOpen}
+            historyScope="directory"
             onClose={chrome.closeAgent}
             onStatusChange={chrome.setAgentStatus}
           />

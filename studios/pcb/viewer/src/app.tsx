@@ -2,7 +2,7 @@ import { useViewerRefresh } from "@ui/agent/use-viewer-refresh"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
-import { setAgentContextDirectory } from "@ui/agent-context"
+import { claimAgentContext } from "@ui/agent-context"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
@@ -52,7 +52,7 @@ function NavLink({ to, children, end = false }: { to: string; children: React.Re
 }
 
 function WorkspaceBadge() {
-  const { data } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: api.workspace })
+  const { data } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: () => api.workspace() })
   if (!data) return null
   return (
     <span className="pcb-workspace-badge" title={data.root}>
@@ -389,7 +389,19 @@ async function loadAllProjects() {
 function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data, isLoading, error, refetch } = useQuery({ queryKey: ["pcb", "projects"], queryFn: loadAllProjects })
-  const { data: rootInfo } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: api.workspace })
+  const { data: rootInfo } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: () => api.workspace() })
+  useEffect(() => {
+    if (!rootInfo?.root) return
+    return claimAgentContext("pcb-root", {
+      key: "pcb-root",
+      kind: "pcb-root",
+      studioId: "pcb",
+      label: "PCB Studio",
+      directory: rootInfo.root,
+      historicalDirectory: rootInfo.root,
+      status: "available",
+    })
+  }, [rootInfo?.root])
   const search = searchParams.get("q") ?? ""
   const filter = searchParams.get("status") ?? "all"
   const normalizedSearch = search.trim().toLowerCase()
@@ -750,11 +762,28 @@ function ProjectPage() {
     queryFn: () => api.project(id!),
     enabled: !!id,
   })
+  const { data: projectLocation } = useQuery({
+    queryKey: ["pcb", "workspace", id],
+    queryFn: () => api.workspace(id),
+    enabled: !!id,
+  })
+  const agentDirectory = project?.directory ?? projectLocation?.directory
 
-  useEffect(() => {
-    setAgentContextDirectory(project?.directory)
-    return () => setAgentContextDirectory(undefined)
-  }, [project?.directory])
+  useEffect(
+    () =>
+      claimAgentContext(`pcb:${id ?? "unknown"}`, {
+        key: `pcb:${id ?? "unknown"}`,
+        kind: "pcb-project",
+        studioId: "pcb",
+        projectId: id,
+        relativePath: project?.path ?? projectLocation?.path,
+        label: `PCB · ${project?.name ?? "Project"}`,
+        directory: agentDirectory,
+        historicalDirectory: agentDirectory,
+        status: project?.directory ? "available" : error ? "missing" : "checking",
+      }),
+    [agentDirectory, error, id, project?.directory, project?.name, project?.path, projectLocation?.path],
+  )
 
   const queryClient = useQueryClient()
   useViewerRefresh(project?.directory, () => {
@@ -950,7 +979,19 @@ function CatalogPage() {
   const search = searchParams.get("q") ?? ""
   const selected = searchParams.get("part")
   const debouncedSearch = useDebounce(search, 200)
-  const { data: rootInfo } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: api.workspace })
+  const { data: rootInfo } = useQuery({ queryKey: ["pcb", "workspace"], queryFn: () => api.workspace() })
+  useEffect(() => {
+    if (!rootInfo?.root) return
+    return claimAgentContext("pcb-catalog", {
+      key: "pcb-root",
+      kind: "pcb-root",
+      studioId: "pcb",
+      label: "PCB Studio",
+      directory: rootInfo.root,
+      historicalDirectory: rootInfo.root,
+      status: "available",
+    })
+  }, [rootInfo?.root])
 
   const updateCatalogSearch = (value: string) => {
     const next = new URLSearchParams(searchParams)

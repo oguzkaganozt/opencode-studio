@@ -8,6 +8,8 @@ import {
   type SessionStatus,
   type SnapshotFileDiff,
 } from "@opencode-ai/sdk/v2/client"
+import { type StudioSessionContext, type StudioSessionHistoryResponse, studioSessionMetadata } from "../../src/core/session-history"
+import { fetchJson } from "../lib/fetch-json"
 
 export type AgentMessage = {
   info: Message
@@ -49,17 +51,22 @@ export async function probeAgentHealth(): Promise<AgentHealth> {
   }
 }
 
-export async function listSessions(directory?: string): Promise<Session[]> {
-  const client = createAgentClient(directory)
-  const result = await client.session.list(directory ? { directory } : undefined)
-  if (result.error) throw new Error(formatSdkError(result.error))
-  const rows = result.data ?? []
-  return [...rows].sort((a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0))
+export function listSessionHistory(input: {
+  scope: "studio" | "directory"
+  directory?: string
+  contextKey?: string
+  search?: string
+}): Promise<StudioSessionHistoryResponse> {
+  const params = new URLSearchParams({ scope: input.scope })
+  if (input.directory) params.set("directory", input.directory)
+  if (input.contextKey) params.set("contextKey", input.contextKey)
+  if (input.search) params.set("search", input.search)
+  return fetchJson<StudioSessionHistoryResponse>(`/api/agent/history?${params}`)
 }
 
-export async function createSession(directory?: string, title?: string): Promise<Session> {
+export async function createSession(directory: string, context: StudioSessionContext, title?: string): Promise<Session> {
   const client = createAgentClient(directory)
-  const result = await client.session.create({ directory, title })
+  const result = await client.session.create({ directory, title, metadata: studioSessionMetadata(context) })
   if (result.error || !result.data) throw new Error(formatSdkError(result.error) || "create session failed")
   return result.data
 }

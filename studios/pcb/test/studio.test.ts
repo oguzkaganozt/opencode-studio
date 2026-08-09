@@ -289,6 +289,11 @@ describe("pcb studio smoke", () => {
     }
     const app = createPcbApi(workspace)
     expect(await (await app.request("/workspace")).json()).toEqual({ root: workspace })
+    expect(await (await app.request(`/workspace?projectId=${encodeURIComponent(encodeProjectId("missing/board"))}`)).json()).toEqual({
+      root: workspace,
+      path: "missing/board",
+      directory: path.join(workspace, "missing", "board"),
+    })
     const page = (await (await app.request("/projects?offset=1&limit=1")).json()) as any
     expect(page.total).toBe(2)
     expect(page.projects.map((project: { name: string }) => project.name)).toEqual(["b-board"])

@@ -146,7 +146,7 @@ export function StatusPage() {
         <p className="mt-1 text-[13px] text-[var(--osc-text-muted)]">OpenCode runtime and Studio installation health.</p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid items-start gap-3 sm:grid-cols-2">
         <section className="osc-setting-card">
           <div className="flex items-start gap-3">
             <span className="osc-status-dot" data-status={healthStatus} aria-hidden />

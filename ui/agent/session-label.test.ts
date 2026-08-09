@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Session } from "@opencode-ai/sdk/v2/client"
-import { sessionLabel, sessionOptionLabels } from "./session-label"
+import { sessionGroupsByLastMessage, sessionLabel, sessionOptionLabels } from "./session-label"
 
 const session = (title: string) => ({ id: "session-id", title }) as Session
 
@@ -30,5 +30,32 @@ describe("sessionLabel", () => {
     expect(labels.get("older")).toMatch(/^New session · .+ \(2\/2\)$/)
     expect(labels.get("named")).toBe("Review the release workflow")
     expect(labels.get("named-again")).toBe("Review the release workflow")
+  })
+
+  test("groups sessions by last message day with the newest activity first", () => {
+    const now = new Date(2026, 7, 9, 15).getTime()
+    const rows = [
+      {
+        id: "yesterday",
+        title: "Yesterday",
+        time: { created: new Date(2026, 7, 8, 8).getTime(), updated: new Date(2026, 7, 8, 22).getTime() },
+      },
+      {
+        id: "today-older",
+        title: "Today older",
+        time: { created: new Date(2026, 7, 9, 9).getTime(), updated: new Date(2026, 7, 9, 10).getTime() },
+      },
+      {
+        id: "today-newest",
+        title: "Today newest",
+        time: { created: new Date(2026, 6, 1, 9).getTime(), updated: new Date(2026, 7, 9, 14).getTime() },
+      },
+    ] as Session[]
+
+    const groups = sessionGroupsByLastMessage(rows, now)
+
+    expect(groups.map((group) => group.sessions.map((row) => row.id))).toEqual([["today-newest", "today-older"], ["yesterday"]])
+    expect(groups[0]?.label).toBe(new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(0, "day"))
+    expect(groups[1]?.label).toBe(new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(-1, "day"))
   })
 })

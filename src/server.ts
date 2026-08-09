@@ -23,6 +23,7 @@ import { pickUserPaths, resolveOpenCodeSkillsHome, type UserPathOptions } from "
 import { configureStudios, statusStudios } from "./lifecycle"
 import { createOpenCodeBridge, normalizeParentOpenCodeUrl, type OpenCodeBridge } from "./opencode-bridge"
 import { restartOwnedOpenCode, supervisorStatus } from "./opencode-supervisor"
+import { createGlobalSessionSource, type GlobalSessionSource, SessionHistoryInputError, studioSessionHistory } from "./session-history"
 import { STUDIO_HOST_PORT } from "./studio-host-bind"
 import { apiLoaders } from "./studio-loaders"
 import { getStudioDefinition } from "./studios"
@@ -38,6 +39,7 @@ export type HostInput = UserPathOptions & {
   /** Parent OpenCode HTTP base. Required unless `openCodeBridge` is injected. */
   parentOpenCodeUrl?: string
   openCodeBridge?: OpenCodeBridge
+  sessionHistorySource?: GlobalSessionSource
   /**
    * When true, register SIGINT/SIGTERM → stop + process.exit.
    * Default false (safe inside OpenCode plugin process).
@@ -193,6 +195,8 @@ export async function createHostApp(input: HostInput) {
 
   // Viewer meta changes only with config — computed once, refreshed on configure.
   const studiosMeta = { current: await buildHostStudiosMeta({ studioRoot: domain.studioRoot, userPaths }) }
+  const sessionHistorySource =
+    input.sessionHistorySource ?? (resolvedParentUrl ? createGlobalSessionSource(resolvedParentUrl, env) : undefined)
 
   const { createFilesApi } = await import("./platform/media/files-api")
   const filesMount = { current: await createFilesApi(domain.studioRoot) }
@@ -321,6 +325,29 @@ export async function createHostApp(input: HostInput) {
   })
 
   app.get("/api/agent/supervisor", (ctx) => ctx.json(supervisorStatus()))
+
+  app.get("/api/agent/history", async (ctx) => {
+    if (!sessionHistorySource) return ctx.json(errorBody("history_unavailable", "OpenCode session history is unavailable."), 503)
+    const scopeParam = ctx.req.query("scope")
+    const scope = scopeParam === undefined || scopeParam === "studio" ? "studio" : scopeParam === "directory" ? "directory" : undefined
+    if (!scope) return ctx.json(errorBody("invalid_scope", "scope must be studio or directory"), 400)
+    const roots = new Map(studiosMeta.current.studios.map((studio) => [studio.id, studio.root]))
+    try {
+      return ctx.json(
+        await studioSessionHistory({
+          source: sessionHistorySource,
+          roots: { home: domain.studioRoot, cad: roots.get("cad") ?? null, pcb: roots.get("pcb") ?? null },
+          scope,
+          directory: ctx.req.query("directory"),
+          contextKey: ctx.req.query("contextKey"),
+          search: ctx.req.query("search"),
+        }),
+      )
+    } catch (error) {
+      if (error instanceof SessionHistoryInputError) return ctx.json(errorBody("invalid_history_query", error.message), 400)
+      return openCodeError(ctx, error)
+    }
+  })
 
   app.post("/api/agent/restart", async (ctx) => {
     if (!isLoopbackHost(hostname)) {

@@ -1320,6 +1320,10 @@ html[data-theme="dark"] [data-studio="cad"] .cad-part-swatch {
 }
 
 [data-studio="cad"][data-cad-phone="true"] .cad-toolbar {
+  padding-right: 0.75rem;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.32),
+    inset -12px 0 10px -11px color-mix(in srgb, var(--cad-overlay-muted) 70%, transparent);
   scrollbar-width: thin;
   scrollbar-color: var(--cad-overlay-border-strong) transparent;
 }

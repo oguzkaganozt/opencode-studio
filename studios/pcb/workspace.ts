@@ -166,7 +166,7 @@ export function decodeProjectId(id: string): string {
   return Buffer.from(id, "base64url").toString("utf8")
 }
 
-export async function resolveProject(workspaceRoot: string, id: string): Promise<CircuitProject> {
+export function resolveProjectLocation(workspaceRoot: string, id: string) {
   const relativePath = decodeProjectId(id)
   if (relativePath.includes("\0") || path.isAbsolute(relativePath) || relativePath.split(path.sep).includes("..")) {
     throw new Error(`Project not found: ${relativePath}`)
@@ -174,6 +174,12 @@ export async function resolveProject(workspaceRoot: string, id: string): Promise
   const root = path.resolve(workspaceRoot)
   const absolutePath = relativePath === "." ? root : path.resolve(root, relativePath)
   if (!isInside(root, absolutePath) && absolutePath !== root) throw new Error(`Project not found: ${relativePath}`)
+  return { relativePath, absolutePath }
+}
+
+export async function resolveProject(workspaceRoot: string, id: string): Promise<CircuitProject> {
+  const { relativePath, absolutePath } = resolveProjectLocation(workspaceRoot, id)
+  const root = path.resolve(workspaceRoot)
   if (!(await regularFileExists(path.join(absolutePath, "src", "circuit.tsx")))) {
     throw new Error(`Project not found: ${relativePath}`)
   }

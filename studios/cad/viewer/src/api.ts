@@ -49,6 +49,11 @@ export async function listDesigns(): Promise<DesignSummary[]> {
   return data.designs ?? []
 }
 
+export function readWorkspace(designId?: string): Promise<{ root: string; path?: string; directory?: string }> {
+  const query = designId ? `?designId=${encodeURIComponent(designId)}` : ""
+  return fetchJson<{ root: string; path?: string; directory?: string }>(api(`/workspace${query}`))
+}
+
 export async function readDesign(id: string): Promise<DesignDetail> {
   return fetchJson<DesignDetail>(api(`/designs/${encodeURIComponent(id)}`))
 }
