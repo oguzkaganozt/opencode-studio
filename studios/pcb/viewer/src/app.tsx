@@ -1,3 +1,4 @@
+import { useViewerRefresh } from "@ui/agent/use-viewer-refresh"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
@@ -10,6 +11,7 @@ import { api, type CircuitDiagnostics, type DiagnosticGroup, type PartSummary, t
 import { DatasheetLink } from "./datasheet-link"
 import { PartDetailModal } from "./part-detail"
 import { ViewerErrorBoundary } from "./error-boundary"
+import { circuitElementPage, filterCircuitElements, type IndexedCircuitElement } from "./circuit-json"
 
 const CadViewerTab = lazy(() => import("./cad-viewer-tab"))
 const SchematicTab = lazy(() => import("./schematic-tab"))
@@ -63,6 +65,7 @@ function WorkspaceBadge() {
 
 /** Compact health for cards — one primary signal, optional warning count. */
 function CardHealth({ project }: { project: ProjectSummary }) {
+  if (project.artifactStatus === "stale") return <StatusBadge tone="error" label="Stale build" title={project.artifactError ?? undefined} />
   if (!project.built) return <StatusBadge tone="warning" label="Not built" />
   if (project.designValid === null) return <StatusBadge tone="warning" label="Health unknown" />
   if (!project.designValid) return <StatusBadge tone="error" label={`Design · ${project.errorCount} errors`} />
@@ -73,6 +76,7 @@ function CardHealth({ project }: { project: ProjectSummary }) {
 }
 
 function projectHealthTone(project: ProjectSummary): "success" | "warning" | "error" {
+  if (project.artifactStatus === "stale") return "error"
   if (!project.built || project.designValid === null) return "warning"
   if (!project.designValid || project.fabricationReady === false) return "error"
   if (project.assemblyReady === false || (project.warningCount ?? 0) > 0) return "warning"
@@ -82,7 +86,9 @@ function projectHealthTone(project: ProjectSummary): "success" | "warning" | "er
 /** Detail page: health + fab/assembly only (artifacts via downloads). */
 function DetailHealth({ project }: { project: ProjectSummary }) {
   const items: Array<{ label: string; value: string; tone: "success" | "warning" | "error" }> = []
-  if (!project.built) {
+  if (project.artifactStatus === "stale") {
+    items.push({ label: "Build", value: "Stale", tone: "error" })
+  } else if (!project.built) {
     items.push({ label: "Build", value: "Not built", tone: "warning" })
   } else if (project.designValid === null) {
     items.push({ label: "Design", value: "Unknown", tone: "warning" })
@@ -124,7 +130,7 @@ function DetailHealth({ project }: { project: ProjectSummary }) {
   )
 }
 
-function StatusBadge({ tone, label }: { tone: "success" | "warning" | "error"; label: string }) {
+function StatusBadge({ tone, label, title }: { tone: "success" | "warning" | "error"; label: string; title?: string }) {
   const colors = {
     success: "border-[var(--osc-success)]/30 bg-[var(--osc-success-bg)] text-[var(--osc-success)]",
     warning: "border-[var(--osc-warning)]/30 bg-[var(--osc-warning-bg)] text-[var(--osc-warning)]",
@@ -133,6 +139,7 @@ function StatusBadge({ tone, label }: { tone: "success" | "warning" | "error"; l
   const dots = { success: "bg-[var(--osc-success)]", warning: "bg-[var(--osc-warning)]", error: "bg-[var(--osc-error)]" }
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium tracking-wide uppercase",
         colors[tone],
@@ -539,8 +546,22 @@ function tabLabel(tab: ViewTab) {
   return "3D"
 }
 
-function CircuitJsonViewer({ projectId }: { projectId: string }) {
+function formatCircuitElementAnnotation(item: IndexedCircuitElement) {
+  const el = item.element
+  const parts = [
+    `type=${item.type}`,
+    el.name != null ? `name=${String(el.name)}` : null,
+    el.source_component_id != null ? `source_component_id=${String(el.source_component_id)}` : null,
+    el.source_net_id != null ? `source_net_id=${String(el.source_net_id)}` : null,
+    `index=${item.index}`,
+  ].filter(Boolean)
+  return parts.join(" ")
+}
+
+function CircuitJsonViewer({ projectId, directory }: { projectId: string; directory: string }) {
   const [search, setSearch] = useState("")
+  const [page, setPage] = useState(0)
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const deferredSearch = useDeferredValue(search)
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["pcb", "circuitJson", projectId],
@@ -551,15 +572,25 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
     },
   })
   const elements = Array.isArray(data) ? data : []
-  const indexedElements = useMemo(
-    () => elements.map((element: any) => ({ element, searchText: JSON.stringify(element).toLowerCase() })),
-    [elements],
-  )
-  const types = [...new Set(elements.map((element: any) => String(element.type ?? "unknown")))].sort()
   const normalizedSearch = deferredSearch.trim().toLowerCase()
-  const filtered = normalizedSearch
-    ? indexedElements.filter(({ searchText }) => searchText.includes(normalizedSearch)).map(({ element }) => element)
-    : elements
+  const filtered = useMemo(() => filterCircuitElements(elements, normalizedSearch), [elements, normalizedSearch])
+  const paged = circuitElementPage(filtered, page)
+  const selected = selectedIndex == null ? null : (filtered.find((item) => item.index === selectedIndex) ?? null)
+
+  useEffect(() => setPage(0), [normalizedSearch, data])
+
+  const sendElement = (item: IndexedCircuitElement) => {
+    const label = String(item.element.name ?? item.element.source_component_id ?? item.element.source_net_id ?? `[${item.index}]`)
+    requestAgentHandoff({
+      text: `Inspect PCB circuit element "${label}" in project ${projectId}.`,
+      source: "pcb",
+      directory,
+      paths: [directory],
+      annotation: formatCircuitElementAnnotation(item),
+      open: true,
+      copyFallback: true,
+    })
+  }
 
   if (isLoading) return <LoadingState label="Loading circuit.json…" />
   if (error)
@@ -574,13 +605,15 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
     return <PageError message="Circuit JSON has an unexpected format" description="Rebuild the project, then retry this view." onRetry={() => void refetch()} />
   }
 
-  const byType: Record<string, any[]> = {}
-  for (const el of filtered) {
-    const t = (el as any).type ?? "unknown"
-    if (!byType[t]) byType[t] = []
-    byType[t].push(el)
+  const typeCounts = new Map<string, number>()
+  for (const item of filtered) typeCounts.set(item.type, (typeCounts.get(item.type) ?? 0) + 1)
+  const byType = new Map<string, IndexedCircuitElement[]>()
+  for (const item of paged.elements) {
+    const group = byType.get(item.type)
+    if (group) group.push(item)
+    else byType.set(item.type, [item])
   }
-  const visibleTypes = types.filter((type) => byType[type])
+  const visibleTypes = [...byType.keys()].sort()
 
   return (
     <div className="pcb-json-viewer flex min-h-[min(560px,50dvh)] flex-1 flex-col">
@@ -600,30 +633,35 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
           className="pcb-input flex-1 px-3 py-1.5"
         />
         <span className="shrink-0 text-xs text-[var(--osc-text-muted)] tabular-nums" aria-live="polite">
-          {filtered.length === elements.length ? `${elements.length} elements` : `${filtered.length} of ${elements.length}`} · {visibleTypes.length}{" "}
-          {visibleTypes.length === 1 ? "type" : "types"}
+          {filtered.length === elements.length ? `${elements.length} elements` : `${filtered.length} of ${elements.length}`} · {typeCounts.size}{" "}
+          {typeCounts.size === 1 ? "type" : "types"}
         </span>
+        <button type="button" className="pcb-chip pcb-chip--primary" disabled={!selected} onClick={() => selected && sendElement(selected)}>
+          Send to agent
+        </button>
       </div>
       <div className="pcb-json-list">
         {visibleTypes.map((type) => {
-          const group = byType[type]
+          const group = byType.get(type)
           if (!group) return null
+          const totalForType = typeCounts.get(type) ?? group.length
           return (
             <details key={type} className="pcb-json-group">
               <summary className="pcb-json-summary">
                 <span className="min-w-0 text-[var(--osc-accent)]">{type}</span>
-                <span className="ml-auto shrink-0 pl-2 text-[var(--osc-text-faint)]">({group.length})</span>
+                <span className="ml-auto shrink-0 pl-2 text-[var(--osc-text-faint)]">
+                  ({group.length === totalForType ? totalForType : `${group.length} of ${totalForType}`})
+                </span>
               </summary>
               <div className="mt-1 space-y-1 pl-3 border-l border-[var(--osc-border)]">
-                {group.map((el: any, i: number) => (
-                  <details key={i} className="group">
-                    <summary className="pcb-json-item-summary">
-                      {el.name ?? el.source_component_id ?? el.source_net_id ?? `[${i}]`}
-                    </summary>
-                    <pre className="mt-1 bg-[var(--osc-bg)] rounded p-2 text-[var(--osc-text-muted)] overflow-auto text-xs leading-relaxed">
-                      {JSON.stringify(el, null, 2)}
-                    </pre>
-                  </details>
+                {group.map((item) => (
+                  <CircuitJsonItem
+                    key={item.index}
+                    item={item}
+                    selected={selectedIndex === item.index}
+                    onSelect={() => setSelectedIndex(item.index)}
+                    onSend={() => sendElement(item)}
+                  />
                 ))}
               </div>
             </details>
@@ -638,7 +676,59 @@ function CircuitJsonViewer({ projectId }: { projectId: string }) {
             </button>
           </div>
         )}
+        {filtered.length > 0 && paged.pageCount > 1 && (
+          <div className="flex items-center justify-center gap-2 py-3 text-xs text-[var(--osc-text-muted)]">
+            <button type="button" className="pcb-chip" disabled={paged.page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
+              Previous
+            </button>
+            <span className="tabular-nums">Page {paged.page + 1} of {paged.pageCount}</span>
+            <button
+              type="button"
+              className="pcb-chip"
+              disabled={paged.page + 1 >= paged.pageCount}
+              onClick={() => setPage((value) => Math.min(paged.pageCount - 1, value + 1))}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+function CircuitJsonItem({
+  item,
+  selected,
+  onSelect,
+  onSend,
+}: {
+  item: IndexedCircuitElement
+  selected: boolean
+  onSelect: () => void
+  onSend: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const element = item.element
+  const label = element.name ?? element.source_component_id ?? element.source_net_id ?? `[${item.index}]`
+  return (
+    <div className={`rounded-[var(--osc-radius-sm)] ${selected ? "bg-[var(--osc-surface-hover)] ring-1 ring-[var(--osc-accent)]/40" : ""}`}>
+      <div className="flex items-center gap-1">
+        <button type="button" className="pcb-json-item-summary min-w-0 flex-1 text-left" onClick={onSelect}>
+          {String(label)}
+        </button>
+        <button type="button" className="pcb-chip shrink-0 px-1.5 py-0.5 text-[10px]" onClick={onSend}>
+          Agent
+        </button>
+        <button type="button" className="pcb-chip shrink-0 px-1.5 py-0.5 text-[10px]" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          {open ? "Hide" : "JSON"}
+        </button>
+      </div>
+      {open ? (
+        <pre className="mt-1 bg-[var(--osc-bg)] rounded p-2 text-[var(--osc-text-muted)] overflow-auto text-xs leading-relaxed">
+          {JSON.stringify(element, null, 2)}
+        </pre>
+      ) : null}
     </div>
   )
 }
@@ -677,6 +767,14 @@ function ProjectPage() {
     return () => setAgentContextDirectory(undefined)
   }, [project?.directory])
 
+  const queryClient = useQueryClient()
+  useViewerRefresh(project?.directory, () => {
+    if (!id) return
+    void queryClient.invalidateQueries({ queryKey: ["pcb", "project", id] })
+    void queryClient.invalidateQueries({ queryKey: ["pcb", "projects"] })
+    void queryClient.invalidateQueries({ queryKey: ["pcb", "circuitJson", id] })
+  })
+
   if (isLoading)
     return (
       <Shell fill>
@@ -705,10 +803,12 @@ function ProjectPage() {
       text: `Build the PCB project "${project.name}" (${project.id}), inspect all diagnostics, and verify designValid, fabricationReady, and assemblyReady.`,
       source: "pcb",
       directory: project.directory,
+      paths: [project.directory],
       open: true,
       copyFallback: true,
     })
   }
+  const stale = project.artifactStatus === "stale" || buildState.status === "stale"
 
   return (
     <Shell fill>
@@ -733,15 +833,15 @@ function ProjectPage() {
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <DetailHealth project={project} />
-          {buildState.status === "stale" && (
+          {stale && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--osc-stale)]/30 bg-[var(--osc-stale-bg)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--osc-stale)]">
               <span className="size-1.5 shrink-0 rounded-full bg-[var(--osc-stale)]" aria-hidden />
-              Source changed — rebuild
+              Artifacts stale — rebuild
             </span>
           )}
-          {(buildState.status === "stale" || !project.built) && (
+          {(stale || !project.built) && (
             <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestBuild}>
-              {project.built ? "Draft rebuild request" : "Draft build request"}
+              {stale ? "Draft rebuild request" : "Draft build request"}
             </button>
           )}
           {project.hasGerbersZip && project.fabricationReady && id && (
@@ -755,6 +855,12 @@ function ProjectPage() {
             </a>
           )}
         </div>
+
+        {project.artifactStatus === "stale" && project.artifactError && (
+          <p className="shrink-0 text-xs text-[var(--osc-error)]" role="status">
+            {project.artifactError}
+          </p>
+        )}
 
         {project.diagnostics && id && (
           <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} directory={project.directory} />
@@ -804,7 +910,7 @@ function ProjectPage() {
                 <BomTab projectId={id} directory={project.directory} />
               </Suspense>
             )}
-            {tab === "json" && id && <CircuitJsonViewer projectId={id} />}
+            {tab === "json" && id && <CircuitJsonViewer projectId={id} directory={project.directory} />}
           </ViewerErrorBoundary>
         </section>
       </div>

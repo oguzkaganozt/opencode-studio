@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { chmod, rm } from "node:fs/promises"
+import { chmod, link, rm } from "node:fs/promises"
 import path from "node:path"
 import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
@@ -227,29 +227,39 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
           throw new Error(`Output path must end in .${plan.extension}`)
         }
         const target = await prepareNewOutput({ root: studioRoot, outputPath, ask: input.toolContext.ask })
-        let outputMayBePartial = false
+        const temporaryPath = path.join(
+          path.dirname(target.outputPath),
+          `.${path.basename(target.outputPath, path.extname(target.outputPath))}.${randomUUID()}.tmp${path.extname(target.outputPath)}`,
+        )
         try {
           await runMediaProcess({
             binary: config.ffmpegPath,
-            args: plan.ffmpegArgs(target.outputPath),
+            args: plan.ffmpegArgs(temporaryPath),
             signal: input.toolContext.abort,
             inputFd: source.handle.fd,
             beforeSpawn: async () => {
               await dependencies.beforeMediaSpawn?.()
               await verifyNewOutput(studioRoot, target.outputPath)
-              outputMayBePartial = true
+              await verifyNewOutput(studioRoot, temporaryPath)
             },
           })
-          await chmod(target.outputPath, 0o660)
-          const output = await inspectCreatedMedia(target.outputPath)
-          return {
-            title: output.filePath,
-            output: input.message(output.filePath),
-            metadata: await inspectManagedAsset(studioRoot, output.filePath),
+          await chmod(temporaryPath, 0o660)
+          await inspectCreatedMedia(temporaryPath)
+          try {
+            await link(temporaryPath, target.outputPath)
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+              throw new Error(`Output file already exists: ${target.outputPath}`)
+            }
+            throw error
           }
-        } catch (error) {
-          if (outputMayBePartial) await rm(target.outputPath, { force: true })
-          throw error
+          return {
+            title: target.outputPath,
+            output: input.message(target.outputPath),
+            metadata: await inspectManagedAsset(studioRoot, target.outputPath),
+          }
+        } finally {
+          await rm(temporaryPath, { force: true })
         }
       } finally {
         await source.handle.close()

@@ -14,6 +14,16 @@ export type AssemblyResult = {
   entries: AssemblyEntry[]
   totalComponents: number
   skipped: number
+  expectedComponents: number
+  intentionallySkipped: number
+  assemblyReady: boolean
+  blockers: AssemblyPlacementBlocker[]
+}
+
+export type AssemblyPlacementBlocker = {
+  type: "missing_placement" | "malformed_placement" | "unknown_source_mapping"
+  count: number
+  messages: string[]
 }
 
 export function generatePickAndPlace(circuitJson: unknown): AssemblyResult {
@@ -21,36 +31,57 @@ export function generatePickAndPlace(circuitJson: unknown): AssemblyResult {
 
   const sourceNames = new Map<string, string>()
   const sourceMpns = new Map<string, string | null>()
+  const sourceIds = new Set<string>()
+  const expectedSourceIds = new Set<string>()
+  let intentionallySkipped = 0
   for (const element of elements) {
     if (element.type !== "source_component") continue
     const id = element.source_component_id
     if (typeof id !== "string" || !id) continue
+    sourceIds.add(id)
     if (typeof element.name === "string" && element.name.length > 0) {
       sourceNames.set(id, element.name)
     }
     const mpn = element.manufacturer_part_number
-    sourceMpns.set(id, typeof mpn === "string" && mpn.length > 0 ? mpn : null)
+    sourceMpns.set(id, typeof mpn === "string" && mpn.trim().length > 0 ? mpn.trim() : null)
+    if (element.do_not_place === true) intentionallySkipped++
+    else expectedSourceIds.add(id)
   }
 
   const entries: AssemblyEntry[] = []
   let skipped = 0
+  const coveredSourceIds = new Set<string>()
+  const malformed: string[] = []
+  const unknownMappings: string[] = []
 
   for (const element of elements) {
     if (element.type !== "pcb_component") continue
-    if (element.do_not_place === true) {
+    const sourceId = element.source_component_id
+    if (typeof sourceId !== "string" || !sourceIds.has(sourceId)) {
+      unknownMappings.push(`PCB component ${String(element.pcb_component_id ?? "?")} does not map to a known source component`)
       skipped++
       continue
     }
-
-    const sourceId = element.source_component_id
-    if (typeof sourceId !== "string") {
+    if (!expectedSourceIds.has(sourceId)) continue
+    coveredSourceIds.add(sourceId)
+    if (element.do_not_place === true) {
+      intentionallySkipped++
       skipped++
       continue
     }
 
     const designator = sourceNames.get(sourceId) ?? "?"
     const center = element.center as { x?: number; y?: number } | undefined
-    if (!center || typeof center.x !== "number" || typeof center.y !== "number") {
+    if (
+      !center ||
+      typeof center.x !== "number" ||
+      !Number.isFinite(center.x) ||
+      typeof center.y !== "number" ||
+      !Number.isFinite(center.y) ||
+      (element.layer !== "top" && element.layer !== "bottom") ||
+      (element.rotation !== undefined && (typeof element.rotation !== "number" || !Number.isFinite(element.rotation)))
+    ) {
+      malformed.push(`${designator} has an invalid center, layer, or rotation`)
       skipped++
       continue
     }
@@ -70,7 +101,25 @@ export function generatePickAndPlace(circuitJson: unknown): AssemblyResult {
 
   entries.sort((a, b) => a.designator.localeCompare(b.designator))
 
-  return { entries, totalComponents: entries.length, skipped }
+  const missing = [...expectedSourceIds]
+    .filter((sourceId) => !coveredSourceIds.has(sourceId))
+    .map((sourceId) => `${sourceNames.get(sourceId) ?? sourceId} has no PCB placement`)
+  const blockers: AssemblyPlacementBlocker[] = []
+  if (missing.length > 0) blockers.push({ type: "missing_placement", count: missing.length, messages: missing })
+  if (malformed.length > 0) blockers.push({ type: "malformed_placement", count: malformed.length, messages: malformed })
+  if (unknownMappings.length > 0) {
+    blockers.push({ type: "unknown_source_mapping", count: unknownMappings.length, messages: unknownMappings })
+  }
+
+  return {
+    entries,
+    totalComponents: entries.length,
+    skipped,
+    expectedComponents: expectedSourceIds.size,
+    intentionallySkipped,
+    assemblyReady: blockers.length === 0,
+    blockers,
+  }
 }
 
 export function toCplCsv(entries: AssemblyEntry[]): string {

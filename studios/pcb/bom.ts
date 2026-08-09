@@ -45,7 +45,7 @@ export function bomIdentityBlocker(bom: BomResult): BomIdentityBlocker | null {
 
 function mpnField(component: CircuitElement): string | null {
   const value = component.manufacturer_part_number
-  if (typeof value === "string" && value.length > 0) return value
+  if (typeof value === "string" && value.trim().length > 0) return value.trim()
   return null
 }
 
@@ -56,13 +56,20 @@ function supplierPartNumbersField(component: CircuitElement): Record<string, str
     .map(
       ([supplier, partNumbers]) =>
         [
-          supplier,
+          supplier.trim(),
           Array.isArray(partNumbers)
-            ? [...new Set(partNumbers.filter((partNumber): partNumber is string => typeof partNumber === "string"))].sort()
+            ? [
+                ...new Set(
+                  partNumbers
+                    .filter((partNumber): partNumber is string => typeof partNumber === "string")
+                    .map((partNumber) => partNumber.trim())
+                    .filter(Boolean),
+                ),
+              ].sort()
             : [],
         ] as [string, string[]],
     )
-    .filter(([, partNumbers]) => partNumbers.length > 0)
+    .filter(([supplier, partNumbers]) => supplier.length > 0 && partNumbers.length > 0)
     .sort(([a], [b]) => a.localeCompare(b))
   return Object.fromEntries(entries)
 }
@@ -95,6 +102,12 @@ const catalogIndex = (parts: CatalogPart[]): Map<string, CatalogPart> => {
 export function generateBom(circuitJson: unknown, catalogParts: CatalogPart[] = []): BomResult {
   const elements = Array.isArray(circuitJson) ? (circuitJson as CircuitElement[]) : []
   const catalog = catalogIndex(catalogParts)
+  const doNotPlace = new Set(
+    elements
+      .filter((element) => element.type === "pcb_component" && element.do_not_place === true)
+      .map((element) => element.source_component_id)
+      .filter((id): id is string => typeof id === "string"),
+  )
 
   const mpnGroups = new Map<string, { refdes: string[]; mpn: string; supplierPartNumbers: Record<string, string[]> }>()
   const supplierGroups = new Map<string, { refdes: string[]; supplierPartNumbers: Record<string, string[]> }>()
@@ -102,6 +115,8 @@ export function generateBom(circuitJson: unknown, catalogParts: CatalogPart[] = 
 
   for (const element of elements) {
     if (element.type !== "source_component") continue
+    if (element.do_not_place === true || (typeof element.source_component_id === "string" && doNotPlace.has(element.source_component_id)))
+      continue
 
     const ref = refdes(element) ?? "?"
     const mpn = mpnField(element)

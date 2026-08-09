@@ -176,7 +176,7 @@ async function writeManagedSkill(input: { target: SkillTarget; packageRoot: stri
   assertSkillConflict(paths, existingDigest, marker, input.target.id)
 
   if (existingDigest === digest && marker?.digest === digest && marker.packageVersion === input.packageVersion) {
-    return { paths, previousSkill: null, previousMarker: null }
+    return { paths, changed: false as const, previousSkill: null, previousMarker: null }
   }
 
   const previousSkill = existingDigest ? await readFile(paths.skillFile) : null
@@ -194,7 +194,7 @@ async function writeManagedSkill(input: { target: SkillTarget; packageRoot: stri
     await writeFile(markerTmp, `${JSON.stringify(nextMarker, null, 2)}\n`, { mode: 0o644 })
     await rename(skillTmp, paths.skillFile)
     await rename(markerTmp, paths.markerFile)
-    return { paths, previousSkill, previousMarker }
+    return { paths, changed: true as const, previousSkill, previousMarker }
   } catch (error) {
     await rm(skillTmp, { force: true })
     await rm(markerTmp, { force: true })
@@ -337,8 +337,8 @@ async function resolveMediaGoPluginEntry(packageRoot: string, userPaths: UserPat
   if (await Bun.file(distPath).exists()) {
     return pathToFileURL(distPath).href
   }
-  await mkdir(pluginsHome, { recursive: true, mode: 0o755 })
   if (!dryRun) {
+    await mkdir(pluginsHome, { recursive: true, mode: 0o755 })
     await writeFile(legacyTarget, "export default async function mediaGoStub() {\n  return {}\n}\n", "utf8")
   }
   return pathToFileURL(legacyTarget).href
@@ -552,8 +552,8 @@ export async function configureStudios(
     throw new Error(`Conflict: mcp.${MANAGED_MCP_KEY} exists and is not the managed build123d-mcp entry`)
   }
   // Absolute uv path: OpenCode serve often lacks ~/.local/bin on PATH.
-  const uv = await ensureUv()
-  mcp[MANAGED_MCP_KEY] = build123dMcpEntry(uv.path)
+  const uv = input.dryRun ? resolveEngine("uv") : await ensureUv()
+  mcp[MANAGED_MCP_KEY] = build123dMcpEntry(uv?.path ?? "uv")
   nextText = configWithMcp({ ...working, text: nextText }, mcp)
   workingValue = { ...workingValue, mcp }
   working = { ...working, text: nextText, value: workingValue }
@@ -565,6 +565,7 @@ export async function configureStudios(
       workspace: domainRoot,
       enabled,
       plugin: meta.pluginSpecifier,
+      uv: uv?.path ?? null,
       restartRequired: true,
     }
   }
@@ -581,10 +582,12 @@ export async function configureStudios(
         userPaths,
       })
       installed.push(PLATFORM_MEDIA_SKILL_ID)
-      rollbacks.push(async () => {
-        await restoreFile(result.paths.skillFile, result.previousSkill)
-        await restoreFile(result.paths.markerFile, result.previousMarker)
-      })
+      if (result.changed) {
+        rollbacks.push(async () => {
+          await restoreFile(result.paths.skillFile, result.previousSkill)
+          await restoreFile(result.paths.markerFile, result.previousMarker)
+        })
+      }
     }
 
     for (const studioId of enabled) {
@@ -595,10 +598,12 @@ export async function configureStudios(
         userPaths,
       })
       installed.push(studioId)
-      rollbacks.push(async () => {
-        await restoreFile(result.paths.skillFile, result.previousSkill)
-        await restoreFile(result.paths.markerFile, result.previousMarker)
-      })
+      if (result.changed) {
+        rollbacks.push(async () => {
+          await restoreFile(result.paths.skillFile, result.previousSkill)
+          await restoreFile(result.paths.markerFile, result.previousMarker)
+        })
+      }
     }
 
     if (nextText !== openCode.text) {
@@ -626,13 +631,20 @@ export async function configureStudios(
       // Non-fatal: global config already applied; status will surface leftovers.
     }
 
-    let serveWrapper: string | undefined
-    try {
-      const { installOpencodeServeWrapper } = await import("./opencode-wrapper")
-      const wrapped = await installOpencodeServeWrapper()
-      if (wrapped.wrote) serveWrapper = wrapped.path
-    } catch {
-      // optional PATH hook
+    let wrapperRemoved: string | undefined
+    const pathEnv = input.env ?? process.env
+    const isolatedHomes = Boolean(
+      input.studioConfigHome || input.openCodeHome || pathEnv.OPENCODE_STUDIO_CONFIG_HOME || pathEnv.OPENCODE_CONFIG_HOME,
+    )
+    // PATH wrapper is obsolete (`opencode-studio up` supervises). Strip legacy install on repair.
+    if (!isolatedHomes) {
+      try {
+        const { removeOpencodeServeWrapper } = await import("./opencode-wrapper")
+        const stripped = await removeOpencodeServeWrapper()
+        if (stripped.removed) wrapperRemoved = stripped.path
+      } catch {
+        // optional cleanup
+      }
     }
 
     return {
@@ -647,13 +659,14 @@ export async function configureStudios(
       openCodeConfigPath: configPath,
       skillsHome: resolveOpenCodeSkillsHome(userPaths),
       projectScrubbed,
-      serveWrapper,
+      serveWrapper: undefined as string | undefined,
+      wrapperRemoved,
       restartRequired: true,
       restartOpenCode: true,
       restartHost: false,
-      message: serveWrapper
-        ? `Installed plugins/skills/MCP. Serve hook: ${serveWrapper} (keep ~/.local/bin early on PATH). Restart OpenCode.`
-        : "Installed plugins, CAD/PCB skills, media skill, and build123d MCP (user-global). Restart OpenCode to load tools.",
+      message: wrapperRemoved
+        ? `Installed plugins/skills/MCP. Removed legacy PATH wrapper at ${wrapperRemoved}. Prefer: opencode-studio up. Restart OpenCode.`
+        : "Installed plugins, CAD/PCB skills, media skill, and build123d MCP (user-global). Prefer: opencode-studio up. Restart OpenCode to load tools.",
     }
   } catch (error) {
     for (const rollback of rollbacks.reverse()) {
@@ -736,6 +749,15 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     }
   }
 
+  let wrapperRemoved: string | undefined
+  try {
+    const { removeOpencodeServeWrapper } = await import("./opencode-wrapper")
+    const stripped = await removeOpencodeServeWrapper()
+    if (stripped.removed) wrapperRemoved = stripped.path
+  } catch {
+    // optional
+  }
+
   return {
     action: "remove" as const,
     dryRun: false,
@@ -747,10 +769,13 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     configPath: written.configPath,
     openCodeConfigPath: configPath,
     skillsHome: resolveOpenCodeSkillsHome(userPaths),
+    wrapperRemoved,
     restartRequired: true,
     restartOpenCode: true,
     restartHost: false,
-    message: "Removed managed plugins, skills, and build123d MCP. Restart OpenCode. Run repair to reinstall.",
+    message: wrapperRemoved
+      ? `Removed managed plugins, skills, MCP, and legacy PATH wrapper (${wrapperRemoved}). Restart OpenCode. Run repair to reinstall.`
+      : "Removed managed plugins, skills, and build123d MCP. Restart OpenCode. Run repair to reinstall.",
   }
 }
 
@@ -1014,7 +1039,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       }),
     )
 
-    if (studio.root) {
+    if (studio.root && !studio.rootError) {
       checks.push({ id: `root:${studioId}`, status: "pass", message: studio.root })
     } else {
       checks.push({

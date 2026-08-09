@@ -22,6 +22,7 @@ import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
 import { pickUserPaths, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
 import { configureStudios } from "./lifecycle"
 import { createOpenCodeBridge, normalizeParentOpenCodeUrl, type OpenCodeBridge } from "./opencode-bridge"
+import { restartOwnedOpenCode, supervisorStatus } from "./opencode-supervisor"
 import { STUDIO_HOST_PORT } from "./studio-host-bind"
 import { apiLoaders } from "./studio-loaders"
 import { getStudioDefinition } from "./studios"
@@ -305,6 +306,30 @@ export async function createHostApp(input: HostInput) {
     }
   })
 
+  app.get("/api/agent/supervisor", (ctx) => ctx.json(supervisorStatus()))
+
+  app.post("/api/agent/restart", async (ctx) => {
+    if (!isLoopbackHost(hostname)) {
+      return ctx.json(errorBody("remote_restart_disabled", "Restart agent locally on the server."), 403)
+    }
+    const denied = await writeGuard(ctx)
+    if (denied) return denied
+    try {
+      const result = await restartOwnedOpenCode(env)
+      if (!result.ok) return ctx.json(errorBody("restart_failed", result.reason), 400)
+      return ctx.json({
+        ok: true,
+        baseUrl: result.baseUrl,
+        spawned: result.spawned,
+        pid: result.pid,
+        message: "OpenCode agent restarted.",
+        supervisor: supervisorStatus(),
+      })
+    } catch (error) {
+      return ctx.json(errorBody("restart_failed", error instanceof Error ? error.message : String(error)), 500)
+    }
+  })
+
   const dispatchFiles = async (ctx: { req: { url: string; raw: Request } }) => {
     const url = new URL(ctx.req.url)
     const suffix = url.pathname.replace(/^\/api\/files/, "") || "/"
@@ -387,6 +412,10 @@ export async function createHostApp(input: HostInput) {
     return ctx.redirect(`/studio${url.pathname}${url.search}`, 308)
   })
 
+  // Optional OpenCode web UI entry (same-origin catch-all still serves OC SPA at `/`).
+  app.get("/opencode", (ctx) => ctx.redirect("/", 302))
+  app.get("/opencode/", (ctx) => ctx.redirect("/", 302))
+
   app.all("*", async (ctx) => {
     // Basic already applied by global middleware when non-loopback.
     const origin = ctx.req.header("origin")
@@ -444,6 +473,8 @@ export async function startHost(input: HostInput): Promise<HostHandle> {
   const server = Bun.serve<ProxySocketData>({
     hostname,
     port,
+    // SSE/event streams must not be killed by Bun's default 10s idle timeout
+    idleTimeout: 0,
     async fetch(request, bunServer) {
       if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
         const boundPort = bunServer.port

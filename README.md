@@ -45,33 +45,32 @@ Domain engines ship in the package:
 ## Quick start
 
 ```bash
-# after repair + OpenCode restart
-opencode serve
-# Studio starts immediately with $HOME as its fixed Studio Home
+# after repair (wires plugins/skills/MCP into OpenCode)
+opencode-studio up
+# → attaches or spawns OpenCode API, starts Studio host
 ```
 
-The serve wrapper starts the Studio host and attaches it to this OpenCode server.
-
-Then open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — OpenCode home, CAD / PCB / Files. Parent OpenCode UI is proxied at `/` (full-pane home + Agent side panel on domain pages).
+Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent home, CAD / PCB / Files. One browser URL; OpenCode API is proxied (loopback child by default).
 
 | URL | What |
 | --- | --- |
-| `http://127.0.0.1:4173/studio` | Studio shell (OpenCode home iframe) |
+| `http://127.0.0.1:4173/studio` | Studio shell (native Agent panel) |
 | `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
-| `http://127.0.0.1:4173/` | Proxied native OpenCode (iframe source) |
+| `http://127.0.0.1:4173/studio/status` | Health / repair / restart agent |
+| `http://127.0.0.1:4173/` or `/opencode` | Optional OpenCode web UI (same-origin proxy) |
 
-**Critical:** `repair` installs `~/.local/bin/opencode` wrapper so **`opencode serve` auto-starts Studio** (`ensure-host`, fixed Studio Home `$HOME`). Keep `~/.local/bin` early on `PATH`. OpenCode projects affect only their own Agent requests; they never change Studio Home. Opt out: `OPENCODE_STUDIO_AUTOSTART=0`.
+**Lifecycle:** `opencode-studio up` supervises OpenCode (`opencode serve` on loopback if nothing is healthy; auto-restarts when this host spawned it). Attach instead with `OPENCODE_URL`. Disable spawn: `OPENCODE_STUDIO_NO_SUPERVISE=1`. Disable host: `OPENCODE_STUDIO_AUTOSTART=0`. Studio Home defaults to `$HOME`; agent directory follows the open project. PATH wrapper is removed on repair — do not rely on it.
 
-Health: `opencode-studio status` (exit 1 if unwired). CAD: `design_build` runs forge `uv sync` outside the 120s build timer (no separate warm step). Prefer **`OPENCODE_SERVER_PASSWORD`** on the OpenCode process (Studio-only password breaks Agent proxy).
+Health: `opencode-studio status` (exit 1 if unwired). Prefer **`OPENCODE_SERVER_PASSWORD`** when binding non-loopback (shared with Studio Basic auth).
 
-Studio does **not** spawn OpenCode and has no separate `serve` / systemd host daemon. Lifecycle follows `opencode serve`. Opt out of auto host: `OPENCODE_STUDIO_AUTOSTART=0`.
+See `INTENT-AGENT-PANEL.md` for the native-agent / supervise plan.
 
-### Web / LAN (same model as `opencode serve`)
+### Web / LAN
 
 ```bash
 export OPENCODE_SERVER_PASSWORD='strong-password'
-opencode serve --hostname 0.0.0.0 --port 4096
-# Studio binds 0.0.0.0:4173 and uses the same Basic password
+export OPENCODE_STUDIO_HOSTNAME=0.0.0.0
+opencode-studio up
 # → http://<server-ip>:4173/studio
 ```
 

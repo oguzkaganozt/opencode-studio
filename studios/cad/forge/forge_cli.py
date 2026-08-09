@@ -37,6 +37,7 @@ STEP_VOLUME_ABS_TOL_MM3 = 1e-6
 STEP_BOUNDS_ABS_TOL_MM = 1e-6
 MESH_LINEAR_DEFLECTION = 0.1
 MESH_ANGULAR_DEFLECTION = 0.5
+GENERATION_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 _SURFACE_TYPE_NAMES = {
     GeomAbs_SurfaceType.GeomAbs_Plane: "plane",
@@ -351,6 +352,21 @@ def build_input_hashes(design_dir: Path) -> dict[str, str]:
     }
 
 
+def prune_generations(artifacts_dir: Path, current: str, previous: str | None) -> None:
+    """Retain the current generation and at most its complete predecessor."""
+    retained = {current}
+    if previous is not None:
+        previous_dir = artifacts_dir / previous
+        if GENERATION_PATTERN.fullmatch(previous) and (previous_dir / "manifest.json").is_file():
+            retained.add(previous)
+
+    for candidate in artifacts_dir.iterdir():
+        if candidate.name in retained or not GENERATION_PATTERN.fullmatch(candidate.name):
+            continue
+        if candidate.is_dir() and not candidate.is_symlink():
+            shutil.rmtree(candidate)
+
+
 def build_design(design_path: str) -> Path:
     design_dir = Path(design_path).resolve()
     if not design_dir.is_dir():
@@ -360,9 +376,12 @@ def build_design(design_path: str) -> Path:
     temporary_generation: Path | None = None
     path_inserted = False
     try:
+        input_hashes = build_input_hashes(design_dir)
         manifest = load_manifest(design_dir)
         artifacts_dir = design_dir / ARTIFACTS_DIR
         artifacts_dir.mkdir(exist_ok=True)
+        current_link = artifacts_dir / "current"
+        previous_generation = os.readlink(current_link) if current_link.is_symlink() else None
         generation_id = uuid.uuid4().hex
         temporary_generation = artifacts_dir / f".{generation_id}.tmp"
         final_generation = artifacts_dir / generation_id
@@ -388,17 +407,20 @@ def build_design(design_path: str) -> Path:
             "parts": built_parts,
             "build": {
                 "engine": FORGE_ENGINE,
-                "inputs": build_input_hashes(design_dir),
+                "inputs": input_hashes,
             },
         }
         manifest_text = json.dumps(artifact_manifest, indent=2) + "\n"
         (temporary_generation / "manifest.json").write_text(manifest_text, encoding="utf-8")
+        if build_input_hashes(design_dir) != input_hashes:
+            raise ValueError("Design inputs changed during build; build was not published")
         temporary_generation.rename(final_generation)
 
         temporary_link = artifacts_dir / f".current.{generation_id}.tmp"
         os.symlink(generation_id, temporary_link)
-        os.replace(temporary_link, artifacts_dir / "current")
+        os.replace(temporary_link, current_link)
         ensure_public_links(design_dir)
+        prune_generations(artifacts_dir, generation_id, previous_generation)
         return design_dir / "manifest.json"
     except Exception:
         if temporary_generation is not None:

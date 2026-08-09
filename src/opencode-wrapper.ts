@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 
@@ -49,7 +49,13 @@ exec "$REAL" "$@"
 `
 }
 
-/** Install PATH wrapper so `opencode serve` brings up Studio host automatically. */
+export function opencodeWrapperPath(home = homedir()): string {
+  return path.join(home, ".local", "bin", "opencode")
+}
+
+/**
+ * @deprecated Prefer `opencode-studio up`. Kept only for emergency reinstall; repair no longer installs.
+ */
 export async function installOpencodeServeWrapper(): Promise<{ path: string; wrote: boolean }> {
   const dir = path.join(homedir(), ".local", "bin")
   await mkdir(dir, { recursive: true, mode: 0o755 })
@@ -70,4 +76,17 @@ export async function installOpencodeServeWrapper(): Promise<{ path: string; wro
     await chmod(target, 0o755)
   }
   return { path: target, wrote }
+}
+
+/** Remove PATH wrapper if it is the Studio ensure-host script (marker match). */
+export async function removeOpencodeServeWrapper(home = homedir()): Promise<{ path: string; removed: boolean }> {
+  const target = opencodeWrapperPath(home)
+  try {
+    const prev = await readFile(target, "utf8")
+    if (!prev.includes(MARKER)) return { path: target, removed: false }
+    await unlink(target)
+    return { path: target, removed: true }
+  } catch {
+    return { path: target, removed: false }
+  }
 }

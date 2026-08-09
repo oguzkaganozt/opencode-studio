@@ -85,7 +85,7 @@ function RefreshIcon() {
 function MobileBack({ onBack }: { onBack?: () => void }) {
   if (!onBack) return null
   return (
-    <button type="button" className="osc-chip h-10 shrink-0 px-2.5 text-[11px] md:hidden" onClick={onBack}>
+    <button type="button" className="osc-chip osc-mobile-only h-10 shrink-0 px-2.5 text-[11px]" onClick={onBack}>
       ← List
     </button>
   )

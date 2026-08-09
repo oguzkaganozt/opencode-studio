@@ -142,27 +142,14 @@ export function filterCatalogParts(parts: CatalogPart[], query?: string): Catalo
   return parts.filter((p) => JSON.stringify(p).toLowerCase().includes(q))
 }
 
+export function findCatalogPart(parts: CatalogPart[], mpn: string): CatalogPart | null {
+  const normalized = mpn.trim().toLowerCase()
+  if (!normalized) return null
+  return parts.find((part) => part.mpn.trim().toLowerCase() === normalized) ?? null
+}
+
 export async function getCatalogPart(workspaceRoot: string, mpn: string): Promise<CatalogPart | null> {
-  if (!mpn || !MPN_FILE_RE.test(mpn) || mpn.includes("..") || mpn.includes("/") || mpn.includes("\\") || mpn.includes("\0")) {
-    return null
-  }
-  const dir = catalogPartsDir(workspaceRoot)
-
-  for (const ext of [".yml", ".yaml"]) {
-    const filePath = path.join(dir, `${mpn}${ext}`)
-    if (!isInside(workspaceRoot, filePath)) continue
-    try {
-      const info = await lstat(filePath)
-      if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_PART_FILE_BYTES) continue
-      const content = await readFile(filePath, "utf8")
-      const raw = yaml.load(content)
-      return parsePart(raw, mpn)
-    } catch {
-      // try next extension
-    }
-  }
-
-  return null
+  return findCatalogPart((await inspectCatalog(workspaceRoot)).parts, mpn)
 }
 
 export function partSummary(part: CatalogPart) {

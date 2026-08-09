@@ -1,3 +1,4 @@
+import { useViewerRefresh } from "@ui/agent/use-viewer-refresh"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
@@ -622,6 +623,7 @@ function DesignWorkspace({ designId }: { designId: string }) {
     queryKey: ["cad", "design", designId],
     queryFn: () => readDesign(designId),
   })
+  const queryClient = useQueryClient()
 
   const designs = designsQuery.data ?? []
   const selectedDesign = designs.find((d) => d.id === designId)
@@ -631,6 +633,11 @@ function DesignWorkspace({ designId }: { designId: string }) {
     setAgentContextDirectory(selectedDesignDirectory)
     return () => setAgentContextDirectory(undefined)
   }, [selectedDesignDirectory])
+
+  useViewerRefresh(selectedDesignDirectory, () => {
+    void queryClient.invalidateQueries({ queryKey: ["cad", "designs"] })
+    void queryClient.invalidateQueries({ queryKey: ["cad", "design", designId] })
+  })
 
   const designRevision = designQuery.data?.revision ?? null
 
@@ -802,12 +809,15 @@ function DesignWorkspace({ designId }: { designId: string }) {
   const pairMeasures = useMemo(() => collectPinPairMeasures(picks, linkedPairs), [picks, linkedPairs])
   const primaryPair = pairMeasures[0] ?? null
 
-  const formatAnnotationText = () => {
-    if (!hasAnnotations) return ""
+  const formatAnnotationText = (options?: { selectionOnly?: boolean }) => {
+    const selectionOnly = Boolean(options?.selectionOnly)
+    const activePicks = selectionOnly && selectedPinId ? picks.filter((p) => p.id === selectedPinId) : picks
+    const activeRegions = selectionOnly && selectedRegionId ? regions.filter((r) => r.id === selectedRegionId) : regions
+    if (activePicks.length === 0 && activeRegions.length === 0) return ""
     const designLine = designId
       ? `design=${designId}${designRevision ? ` revision=${designRevision.slice(0, 12)}` : ""}`
       : ""
-    const pointLines = picks.map((pick, index) => {
+    const pointLines = activePicks.map((pick, index) => {
       const face =
         pick.faceId !== null ? `face=${pick.faceId}${pick.faceType ? ` (${pick.faceType})` : ""}` : "face=unknown"
       const point = `point_mm=(${pick.position.x}, ${pick.position.y}, ${pick.position.z})`
@@ -816,7 +826,7 @@ function DesignWorkspace({ designId }: { designId: string }) {
       const quality = pick.quality ?? "mesh-approx"
       return `  ${index + 1}) part=${pick.part} ${face} ${point} ${normal} direction=${pick.direction} snap=${snap} quality=${quality}`
     })
-    const regionLines = regions.map((region, index) => {
+    const regionLines = activeRegions.map((region, index) => {
       const kind = region.kind ?? "freehand"
       const head = `  ${index + 1}) part=${region.part} face=${region.faceId}${region.faceType ? ` type=${region.faceType}` : ""} kind=${kind} approximation=${region.approximation}`
       const sizeLine = region.size
@@ -839,21 +849,25 @@ function DesignWorkspace({ designId }: { designId: string }) {
       }
       return [head, sizeLine, normal, centroid, ...planeLines, boundary].filter(Boolean).join("\n")
     })
-    const measureLines = pairMeasures.map(
-      (pair, i) =>
-        `  ${i + 1}) kind=pin_distance from_point=${pair.fromIndex} to_point=${pair.toIndex} distance_mm=${formatMm(pair.distance_mm, 2)} quality=${pair.quality} source=${pair.source}`,
-    )
+    const measureLines = selectionOnly
+      ? []
+      : pairMeasures.map(
+          (pair, i) =>
+            `  ${i + 1}) kind=pin_distance from_point=${pair.fromIndex} to_point=${pair.toIndex} distance_mm=${formatMm(pair.distance_mm, 2)} quality=${pair.quality} source=${pair.source}`,
+        )
 
     const blocks: string[] = []
     if (designLine) blocks.push(designLine)
     const measureNote = measureLines.length > 0 ? `, ${measureLines.length} measure(s)` : ""
     blocks.push(
-      `User marked annotations in the CAD viewer (${picks.length} point(s), ${regions.length} region(s)${measureNote}).`,
+      selectionOnly
+        ? `User selected CAD viewer geometry (${activePicks.length} pin(s), ${activeRegions.length} region(s)).`
+        : `User marked annotations in the CAD viewer (${activePicks.length} point(s), ${activeRegions.length} region(s)${measureNote}).`,
     )
-    if (picks.length > 0) blocks.push(`points (${picks.length}):`, ...pointLines)
+    if (activePicks.length > 0) blocks.push(`points (${activePicks.length}):`, ...pointLines)
     if (measureLines.length > 0) blocks.push(`measures (${measureLines.length}):`, ...measureLines)
-    if (regions.length > 0) blocks.push(`regions (${regions.length}):`, ...regionLines)
-    const partNames = [...new Set([...picks.map((p) => p.part), ...regions.map((r) => r.part)])]
+    if (activeRegions.length > 0) blocks.push(`regions (${activeRegions.length}):`, ...regionLines)
+    const partNames = [...new Set([...activePicks.map((p) => p.part), ...activeRegions.map((r) => r.part)])]
     const stepHint =
       designId && partNames.length > 0
         ? ` Prefer STEP under step/ for: ${partNames.map((p) => `${p}.step`).join(", ")} (design ${designId}).`
@@ -865,7 +879,8 @@ function DesignWorkspace({ designId }: { designId: string }) {
   }
 
   const promptClick = () => {
-    if (!hasAnnotations) {
+    const selectionOnly = interactionMode === "select" && Boolean(selectedPinId || selectedRegionId)
+    if (!hasAnnotations && !selectionOnly) {
       showToast(
         interactionMode === "region"
           ? "Draw a region first"
@@ -876,8 +891,36 @@ function DesignWorkspace({ designId }: { designId: string }) {
       )
       return
     }
-    requestAgentHandoff({ text: formatAnnotationText(), source: "cad", directory: selectedDesignDirectory, open: true, copyFallback: true })
-    showToast("Opened in agent")
+    const annotation = formatAnnotationText({ selectionOnly })
+    if (!annotation) {
+      showToast("Nothing to send", "error")
+      return
+    }
+    const partNames = [
+      ...new Set([
+        ...(selectionOnly && selectedPinId ? picks.filter((p) => p.id === selectedPinId) : picks).map((p) => p.part),
+        ...(selectionOnly && selectedRegionId ? regions.filter((r) => r.id === selectedRegionId) : regions).map((r) => r.part),
+      ]),
+    ]
+    const paths: string[] = []
+    if (selectedDesignDirectory) {
+      paths.push(selectedDesignDirectory)
+      for (const part of partNames) {
+        paths.push(`${selectedDesignDirectory}/step/${part}.step`)
+      }
+    }
+    requestAgentHandoff({
+      text: selectionOnly
+        ? "Inspect the selected CAD geometry and propose the next design change."
+        : "Review these CAD viewer annotations and apply the requested geometry changes.",
+      source: "cad",
+      directory: selectedDesignDirectory,
+      paths: paths.length ? paths : undefined,
+      annotation,
+      open: true,
+      copyFallback: true,
+    })
+    showToast(selectionOnly ? "Selection sent to agent" : "Opened in agent")
   }
 
   const clearModeAnnotations = () => {
@@ -1390,7 +1433,11 @@ function DesignWorkspace({ designId }: { designId: string }) {
                           : regionTool === "rect"
                             ? `Rect on planar face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`
                             : `Freehand on face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`}
-                    {hasAnnotations ? " · Prompt sends all annotations" : ""}
+                    {hasAnnotations
+                      ? interactionMode === "select" && hasSelectTarget
+                        ? " · Prompt sends selection"
+                        : " · Prompt sends all annotations"
+                      : ""}
                   </div>
                   <div className="cad-hud__actions">
                     {interactionMode === "select" && activeRect?.size ? (
@@ -1486,7 +1533,7 @@ function DesignWorkspace({ designId }: { designId: string }) {
                           : "Clear all"}
                     </button>
                     <button type="button" className="cad-chip cad-chip--accent" onClick={promptClick}>
-                      Prompt agent
+                      {interactionMode === "select" && hasSelectTarget ? "Send selection" : "Prompt agent"}
                     </button>
                   </div>
                 </>

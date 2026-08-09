@@ -19,7 +19,7 @@
   --osc-accent-cad: #b45309;
   --osc-accent-files: #e11d48;
   --osc-accent-pcb: #0e7490;
-  --osc-accent: var(--osc-accent-cad);
+  --osc-accent: var(--osc-text);
 
   --osc-canvas-bg: #0c0d10;
   --osc-canvas-bg-light: #f4f4f5;

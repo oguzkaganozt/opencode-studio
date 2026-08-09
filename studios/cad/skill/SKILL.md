@@ -226,7 +226,7 @@ Do not hand-author generated measurements as canonical source - always read them
 
 ## Companion viewer
 
-Call `design_view(id)` for the design URL and companion reachability. Studio host starts with `opencode serve` via `ensure-host` (fixed Studio Home). If `reachable` is false: confirm `opencode serve` and `~/.local/bin` early on `PATH`, open **http://127.0.0.1:4173/studio**, retry `design_view`. Do **not** run `opencode-studio serve` (removed). UI is `/studio` (bare `/` is native OpenCode). CAD viewer lists built designs; SSE refreshes on build/source change.
+Call `design_view(id)` for the design URL and companion reachability. Prefer **`opencode-studio up`** (supervises OpenCode + Studio host, fixed Studio Home). If `reachable` is false: run `opencode-studio up`, open **http://127.0.0.1:4173/studio**, retry `design_view`. Do **not** run `opencode-studio serve` (removed). UI is `/studio`; bare `/` is optional OpenCode web. CAD viewer lists built designs; pick/region annotations send to the native Agent panel; SSE refreshes on build/source change.
 
 ### When the user sends viewer feedback (pins / regions / measures)
 

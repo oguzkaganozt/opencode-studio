@@ -4,8 +4,9 @@ import { type ParseArgsConfig, parseArgs } from "node:util"
 import { loadPackageMeta } from "./core/package-meta"
 import { resetStudioHostEnsureForTests } from "./host-ensure"
 import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
+import { stopOwnedOpenCode } from "./opencode-supervisor"
 import { checkPackageUpgrade, upgradeAndRestart } from "./package-upgrade"
-import { defaultStudioRoot, runEnsureHostLoop } from "./serve-bootstrap"
+import { defaultStudioRoot, runEnsureHostLoop, runStudioUp } from "./serve-bootstrap"
 
 type ParseFail = { ok: false; code: 2 }
 type ParseOk<T> = { ok: true; values: T }
@@ -33,16 +34,16 @@ function parseCmd<T extends ParseArgsConfig["options"]>(
 function printHelp() {
   console.log(`opencode-studio
 
-CAD and PCB are always on. Global install wires OpenCode once
-(plugins, skills, MCP). Studio UI starts in-process when you run
-opencode serve and a directory Instance loads.
+CAD and PCB studios + native Agent panel on OpenCode.
+Default path supervises OpenCode API and serves Studio on one URL.
 
 Commands:
+  up         Start OpenCode (spawn/attach) + Studio host (primary)
   status     Health, roots, skills (exit 1 if broken)
   repair     Reinstall plugins, skills, MCP
-  ensure-host  Start fixed-root Studio host for a running opencode serve
+  ensure-host  Studio host only (legacy companion for external serve)
   remove     Uninstall managed OpenCode state (package stays)
-  upgrade    Check npm, confirm, install @latest, restart serve+host
+  upgrade    Check npm, confirm, install @latest, restart stack
 
 Flags:
   --workspace <path>   Studio Home override for status/repair (default: $HOME)
@@ -52,16 +53,15 @@ Flags:
   -v, --version
 
 Examples:
+  opencode-studio up      # → http://127.0.0.1:4173/studio
   opencode-studio repair
-  opencode-studio status --workspace /abs/project
-  opencode-studio upgrade
-  opencode serve          # → http://127.0.0.1:4173/studio
+  opencode-studio status
 
 Notes:
-  Studio host starts with opencode serve (ensure-host companion / plugin bootstrap);
-  Studio Home is fixed to $HOME for the serve lifetime; OpenCode projects are request-scoped.
+  OPENCODE_URL / existing serve → attach; else spawn opencode serve on loopback.
+  OPENCODE_STUDIO_NO_SUPERVISE=1 disables spawn (attach-only).
+  Studio Home defaults to $HOME; agent directory follows the open project.
   Greenfield: always repair (postinstall is soft).
-  Skip postinstall setup: OPENCODE_STUDIO_SKIP_POSTINSTALL=1
 `)
 }
 
@@ -109,12 +109,18 @@ Options:
   --json
   -h, --help
 `,
+    up: `opencode-studio up
+
+Primary entry: ensure OpenCode API (attach or spawn), start Studio host, keep running.
+Open http://127.0.0.1:4173/studio (or OPENCODE_STUDIO_PORT).
+
+Options:
+  -h, --help
+`,
     "ensure-host": `opencode-studio ensure-host
 
-Attach a fixed-root Studio host to a running opencode serve (default Studio Home $HOME).
-Used by the opencode PATH wrapper
-installed on repair so \`opencode serve\` brings up :4173 automatically.
-Exits when parent OpenCode goes away.
+Legacy companion: attach Studio host to OpenCode (spawns OC if missing unless NO_SUPERVISE).
+Prefer: opencode-studio up
 
 Options:
   -h, --help
@@ -229,9 +235,37 @@ async function main(argv: string[]) {
     return 0
   }
 
+  if (command === "up") {
+    const stop = () => {
+      resetStudioHostEnsureForTests()
+      stopOwnedOpenCode({ permanent: true })
+      process.exit(0)
+    }
+    process.on("SIGINT", stop)
+    process.on("SIGTERM", stop)
+    try {
+      const result = await runStudioUp({ packageRoot })
+      if (!result.ok) {
+        console.error(result.reason)
+        stopOwnedOpenCode({ permanent: true })
+        return 1
+      }
+      console.log(result.studioUrl)
+      // Stay alive while host + supervised OC run
+      await new Promise(() => {})
+      return 0
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      resetStudioHostEnsureForTests()
+      stopOwnedOpenCode({ permanent: true })
+      return 1
+    }
+  }
+
   if (command === "ensure-host") {
     const stop = () => {
       resetStudioHostEnsureForTests()
+      stopOwnedOpenCode({ permanent: true })
       process.exit(0)
     }
     process.on("SIGINT", stop)
@@ -239,10 +273,12 @@ async function main(argv: string[]) {
     try {
       await runEnsureHostLoop({ packageRoot })
       resetStudioHostEnsureForTests()
+      stopOwnedOpenCode({ permanent: true })
       return 0
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
       resetStudioHostEnsureForTests()
+      stopOwnedOpenCode({ permanent: true })
       return 1
     }
   }
@@ -314,8 +350,8 @@ async function main(argv: string[]) {
   }
 
   if (command === "serve" || command === "service") {
-    console.error(`'${command}' was removed. Run: opencode serve`)
-    console.error("Studio host starts via ensure-host (PATH wrapper on repair) or plugin bootstrap.")
+    console.error(`'${command}' was removed. Prefer: opencode-studio up`)
+    console.error("Legacy: opencode serve + opencode-studio ensure-host")
     return 2
   }
 

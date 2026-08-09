@@ -223,29 +223,28 @@ export function manufacturingBlockers(value: unknown, inspection?: CircuitInspec
   }
 
   const unverifiedIdentities = elements
-    .filter(
-      (element) =>
-        element.type === "source_component" &&
-        element.ftype === "simple_chip" &&
-        typeof element.manufacturer_part_number === "string" &&
-        element.manufacturer_part_number.length > 0,
-    )
+    .filter((element) => element.type === "source_component" && (element.ftype === "simple_chip" || element.ftype === "complex"))
     .filter((element) => {
       const suppliers = element.supplier_part_numbers
-      return (
-        !suppliers ||
-        typeof suppliers !== "object" ||
-        Array.isArray(suppliers) ||
-        !Object.values(suppliers).some(
-          (partNumbers) =>
-            Array.isArray(partNumbers) && partNumbers.some((partNumber) => typeof partNumber === "string" && partNumber.length > 0),
+      const hasSupplierIdentity =
+        !!suppliers &&
+        typeof suppliers === "object" &&
+        !Array.isArray(suppliers) &&
+        Object.entries(suppliers).some(
+          ([supplier, partNumbers]) =>
+            supplier.trim().length > 0 &&
+            Array.isArray(partNumbers) &&
+            partNumbers.some((partNumber) => typeof partNumber === "string" && partNumber.trim().length > 0),
         )
-      )
+      return !hasSupplierIdentity
     })
-    .map(
-      (element) =>
-        `${typeof element.name === "string" ? element.name : "Unnamed chip"} (${String(element.manufacturer_part_number)}) has no verifiable supplier part number`,
-    )
+    .map((element) => {
+      const name = typeof element.name === "string" && element.name.trim() ? element.name.trim() : "Unnamed chip"
+      const mpn = typeof element.manufacturer_part_number === "string" ? element.manufacturer_part_number.trim() : ""
+      return mpn
+        ? `${name} (${mpn}) has no verifiable supplier part number`
+        : `${name} has no manufacturer part number or verifiable supplier part number`
+    })
   if (unverifiedIdentities.length > 0) {
     blockers.push({
       type: "unverified_part",

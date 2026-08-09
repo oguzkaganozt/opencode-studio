@@ -5,6 +5,7 @@ import { configureStudios } from "../src/lifecycle"
 
 const root = path.resolve(import.meta.dir, "..")
 const staging = await mkdtemp(path.join(tmpdir(), "opencode-studio-pack-"))
+let tarballPath: string | undefined
 
 try {
   const pack = Bun.spawn(["bun", "pm", "pack"], { cwd: root, stdout: "pipe", stderr: "pipe" })
@@ -15,7 +16,7 @@ try {
     .map((line) => line.trim())
     .find((line) => line.endsWith(".tgz"))
   if (!tarball) throw new Error(`Could not find tarball in pack output:\n${out}`)
-  const tarballPath = path.join(root, tarball)
+  tarballPath = path.join(root, tarball)
 
   const install = Bun.spawn(["bun", "add", tarballPath], { cwd: staging, stdout: "pipe", stderr: "pipe" })
   const installCode = await install.exited
@@ -124,6 +125,5 @@ try {
   console.log("package-smoke ok")
 } finally {
   await rm(staging, { recursive: true, force: true })
-  const tgz = Bun.spawn(["bash", "-lc", "rm -f ./*.tgz oguzkaganozt-opencode-studio-*.tgz opencode-studio-*.tgz"], { cwd: root })
-  await tgz.exited
+  if (tarballPath) await rm(tarballPath, { force: true })
 }

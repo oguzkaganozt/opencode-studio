@@ -1,6 +1,7 @@
 import { lstat, readdir, realpath } from "node:fs/promises"
 import path from "node:path"
 import { isInside } from "../../src/core/paths"
+import { artifactFreshness, staleArtifactMessage } from "./artifact-freshness"
 import { type CircuitInspection, inspectCircuitJson, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
 
@@ -21,18 +22,26 @@ export type CircuitProject = {
   inspection: CircuitInspection | null
   fabricationReady: boolean | null
   assemblyReady: boolean | null
+  artifactStatus: "missing" | "fresh" | "stale"
+  artifactError: string | null
 }
+
+export type CircuitProjectDescriptor = Pick<CircuitProject, "id" | "name" | "relativePath" | "absolutePath" | "circuitSource">
 
 const SKIP_DIRS = new Set(["node_modules", ".venv", ".git", "dist", "__pycache__", ".pytest_cache", "catalog"])
 
 export async function discoverProjects(workspaceRoot: string): Promise<CircuitProject[]> {
+  return loadProjects(await discoverProjectDescriptors(workspaceRoot))
+}
+
+export async function discoverProjectDescriptors(workspaceRoot: string): Promise<CircuitProjectDescriptor[]> {
   const root = path.resolve(workspaceRoot)
-  const projects: CircuitProject[] = []
+  const projects: CircuitProjectDescriptor[] = []
   await walkDir(root, root, projects, 0)
   return projects.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProject[], depth: number) {
+async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProjectDescriptor[], depth: number) {
   if (depth > 6) return
   if (!isInside(workspaceRoot, dir) && path.resolve(dir) !== path.resolve(workspaceRoot)) return
 
@@ -48,7 +57,7 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
 
   const circuitSource = path.join(dir, "src", "circuit.tsx")
   if (await regularFileExists(circuitSource)) {
-    const project = await loadProjectAt(workspaceRoot, dir)
+    const project = await describeProjectAt(workspaceRoot, dir)
     if (project) projects.push(project)
     return
   }
@@ -70,7 +79,7 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
   }
 }
 
-async function loadProjectAt(workspaceRoot: string, dir: string): Promise<CircuitProject | null> {
+async function describeProjectAt(workspaceRoot: string, dir: string): Promise<CircuitProjectDescriptor | null> {
   let canonicalDir: string
   try {
     canonicalDir = await realpath(dir)
@@ -82,23 +91,42 @@ async function loadProjectAt(workspaceRoot: string, dir: string): Promise<Circui
   const relativePath = path.relative(workspaceRoot, canonicalDir) || "."
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return null
 
+  return {
+    id: encodeProjectId(relativePath),
+    name: path.basename(canonicalDir),
+    relativePath,
+    absolutePath: canonicalDir,
+    circuitSource: path.join(canonicalDir, "src", "circuit.tsx"),
+  }
+}
+
+async function loadProject(descriptor: CircuitProjectDescriptor): Promise<CircuitProject> {
+  const canonicalDir = descriptor.absolutePath
+
   const circuitJsonPath = path.join(canonicalDir, "dist", "src", "circuit", "circuit.json")
   const schematicSvgPath = path.join(canonicalDir, "dist", "schematic.svg")
   const pcbSvgPath = path.join(canonicalDir, "dist", "pcb.svg")
   const gerbersZipPath = path.join(canonicalDir, "dist", "circuit-gerbers.zip")
 
-  const [hasCircuitJson, hasSchematicSvg, hasPcbSvg, hasGerbersZip] = await Promise.all([
+  const [rawCircuitJson, rawSchematicSvg, rawPcbSvg, rawGerbersZip] = await Promise.all([
     regularFileExists(circuitJsonPath),
     regularFileExists(schematicSvgPath),
     regularFileExists(pcbSvgPath),
     regularFileExists(gerbersZipPath),
   ])
+  const hasArtifacts = rawCircuitJson || rawSchematicSvg || rawPcbSvg || rawGerbersZip
+  const freshness = hasArtifacts ? await artifactFreshness(canonicalDir) : null
+  const artifactsFresh = freshness?.fresh === true
+  const hasCircuitJson = artifactsFresh && rawCircuitJson
+  const hasSchematicSvg = artifactsFresh && rawSchematicSvg
+  const hasPcbSvg = artifactsFresh && rawPcbSvg
+  const hasGerbersZip = artifactsFresh && rawGerbersZip
   let inspection: CircuitInspection | null = null
   let fabricationReady: boolean | null = null
   let assemblyReady: boolean | null = null
   if (hasCircuitJson) {
     try {
-      const circuit = await readCircuitJson(workspaceRoot, circuitJsonPath)
+      const circuit = await readCircuitJson(canonicalDir, circuitJsonPath)
       inspection = inspectCircuitJson(circuit)
       const readiness = circuitReadiness(circuit, { inspection })
       fabricationReady = readiness.fabricationReady
@@ -109,11 +137,7 @@ async function loadProjectAt(workspaceRoot: string, dir: string): Promise<Circui
   }
 
   return {
-    id: encodeProjectId(relativePath),
-    name: path.basename(canonicalDir),
-    relativePath,
-    absolutePath: canonicalDir,
-    circuitSource: path.join(canonicalDir, "src", "circuit.tsx"),
+    ...descriptor,
     hasCircuitJson,
     hasSchematicSvg,
     hasPcbSvg,
@@ -125,7 +149,13 @@ async function loadProjectAt(workspaceRoot: string, dir: string): Promise<Circui
     inspection,
     fabricationReady,
     assemblyReady,
+    artifactStatus: !hasArtifacts ? "missing" : artifactsFresh ? "fresh" : "stale",
+    artifactError: freshness && !freshness.fresh ? staleArtifactMessage(freshness.reason) : null,
   }
+}
+
+export async function loadProjects(descriptors: CircuitProjectDescriptor[]): Promise<CircuitProject[]> {
+  return Promise.all(descriptors.map((descriptor) => loadProject(descriptor)))
 }
 
 async function regularFileExists(filePath: string): Promise<boolean> {
@@ -157,9 +187,9 @@ export async function resolveProject(workspaceRoot: string, id: string): Promise
   if (!(await regularFileExists(path.join(absolutePath, "src", "circuit.tsx")))) {
     throw new Error(`Project not found: ${relativePath}`)
   }
-  const project = await loadProjectAt(root, absolutePath)
-  if (!project) throw new Error(`Project not found: ${relativePath}`)
-  return project
+  const descriptor = await describeProjectAt(root, absolutePath)
+  if (!descriptor) throw new Error(`Project not found: ${relativePath}`)
+  return loadProject(descriptor)
 }
 
 export function projectSummary(p: CircuitProject) {
@@ -169,6 +199,8 @@ export function projectSummary(p: CircuitProject) {
     path: p.relativePath,
     directory: p.absolutePath,
     built: p.hasCircuitJson,
+    artifactStatus: p.artifactStatus,
+    artifactError: p.artifactError,
     hasSchematicSvg: p.hasSchematicSvg,
     hasPcbSvg: p.hasPcbSvg,
     hasGerbersZip: p.hasGerbersZip,

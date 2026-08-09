@@ -18,8 +18,8 @@ bun run test:browser:install                      # once: Playwright Chromium fo
 bun run test:package                              # pack + verify shipped files
 bun run test:browser                              # HTTP + Chromium layout/CSS smoke (needs dist/ui)
 bun run dev:ui                                    # Vite :5173 (UI only)
-# CLI (after build/global): status | repair | remove | upgrade
-# Studio host: started by the ensure-host companion when `opencode serve` starts
+# CLI (after build/global): up | status | repair | remove | upgrade
+# Preferred: opencode-studio up  (supervises OpenCode + Studio host)
 ```
 
 CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` → `bun install --frozen-lockfile` → `bun run release:check`. Bun ≥ 1.3, Python 3.12 + uv for forge/MCP.
@@ -51,7 +51,7 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 - `opencode-studio repair` and `PUT /api/config` re-run the same install (loopback + CSRF). Restart **OpenCode** after install so plugins/skills load.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
 - Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` **uninstalls** managed plugins/skills/MCP from OpenCode home (not the npm package).
-- **OpenCode-first host:** lifecycle is owned by `opencode serve`. Studio host starts via (1) `opencode-studio ensure-host` companion (PATH wrapper `~/.local/bin/opencode` installed on repair so `opencode serve` auto-starts host) and/or (2) plugin bootstrap when OpenCode loads the package. Studio Home is **`$HOME`** for the serve lifetime (explicit `OPENCODE_STUDIO_WORKSPACE` override); it never rebinds from sessions/directories. Agent proxy prefers client directory and falls back to fixed Studio Home. Studio **never** spawns OpenCode. Bind follows parent / `OPENCODE_STUDIO_*`; port `OPENCODE_STUDIO_PORT` (default 4173; busy fails, no ephemeral). Opt out: `OPENCODE_STUDIO_AUTOSTART=0`.
+- **OpenCode runtime + Studio host:** preferred entry is `opencode-studio up` — attaches to a healthy OpenCode API or **spawns** `opencode serve` on loopback (auto-restart watchdog when spawned), then starts the Studio host (default port **4173**). Browser uses Studio only; native Agent panel (no iframe, no assistant-ui) talks to OpenCode via same-origin proxy. Optional OpenCode web UI: same origin `/` or `/opencode`. Status page: Repair + Restart agent (supervised only). `repair`/`remove` strip any legacy PATH wrapper. Legacy CLI: `ensure-host`. Opt out of spawn: `OPENCODE_STUDIO_NO_SUPERVISE=1` (+ `OPENCODE_URL`). Opt out of host: `OPENCODE_STUDIO_AUTOSTART=0`. Studio Home is **`$HOME`** (or `OPENCODE_STUDIO_WORKSPACE`); agent directory follows the open CAD/PCB project via `x-opencode-directory`. See `INTENT-AGENT-PANEL.md`.
 
 ## Hard rules
 

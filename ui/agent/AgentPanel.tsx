@@ -1,0 +1,1038 @@
+import type { FileDiff, Part, Permission, Session } from "@opencode-ai/sdk/client"
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { getAgentContextDirectory, setAgentContextDirectory, subscribeAgentContext } from "../agent-context"
+import { subscribeAgentHandoff } from "../agent-handoff"
+import { type AgentStatus, agentStatusDotClass, deriveAgentStatus } from "../agent-status"
+import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, clampAgentWidth, readAgentWidth, viewportAgentWidthMax, writeAgentWidth } from "../agent-width"
+import { Button } from "../components/button"
+import { useFocusTrap } from "../lib/focus-trap"
+import { resolveAgentDirectory } from "../native-agent-url"
+import { publishAgentFileEvent } from "./agent-file-events"
+import {
+  type AgentMessage,
+  abortSession,
+  createSession,
+  listMessages,
+  listProviders,
+  listSessions,
+  probeAgentHealth,
+  promptSessionAsync,
+  replyPermission,
+  sessionDiff,
+  subscribeAgentEvents,
+} from "./client"
+import { Markdown } from "./markdown"
+import { summarizePart, textFromParts, toolDetail, toolLabel, toolPreview, toolStatus } from "./part-text"
+import { sessionLabel, sessionOptionLabels } from "./session-label"
+
+type ModelRef = { providerID: string; modelID: string }
+
+type ComposerChip = {
+  id: string
+  kind: "path" | "annotation"
+  value: string
+  label: string
+}
+
+type ComposerState = {
+  draft: string
+  chips: ComposerChip[]
+}
+
+type PopoverKind = "session" | "model" | null
+
+const SESSION_UI_LIMIT = 40
+const MODEL_UI_LIMIT = 80
+
+function useMdUp() {
+  const [mdUp, setMdUp] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true))
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)")
+    const onChange = () => setMdUp(mq.matches)
+    onChange()
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+  return mdUp
+}
+
+function prefsKey(directory: string) {
+  return `osc-agent-prefs:${directory}`
+}
+
+function readPrefs(directory: string): { model?: ModelRef } {
+  try {
+    const raw = localStorage.getItem(prefsKey(directory))
+    if (!raw) return {}
+    return JSON.parse(raw) as { model?: ModelRef }
+  } catch {
+    return {}
+  }
+}
+
+function writePrefs(directory: string, prefs: { model?: ModelRef }) {
+  try {
+    localStorage.setItem(prefsKey(directory), JSON.stringify(prefs))
+  } catch {
+    // ignore
+  }
+}
+
+function modelKey(model: ModelRef) {
+  return `${model.providerID}/${model.modelID}`
+}
+
+function modelLabel(model: ModelRef) {
+  return model.modelID
+}
+
+function roleOf(info: AgentMessage["info"]): "user" | "assistant" | "other" {
+  const role = "role" in info ? String(info.role) : ""
+  if (role === "user") return "user"
+  if (role === "assistant") return "assistant"
+  return "other"
+}
+
+type AssistantBlock = { id: string; kind: "tools"; parts: Part[] } | { id: string; kind: "text"; text: string }
+
+/** Chronological blocks: consecutive tool parts group into one quiet list, text parts render as markdown. */
+function assistantBlocks(parts: Part[]): AssistantBlock[] {
+  const blocks: AssistantBlock[] = []
+  for (const part of parts) {
+    if (part.type === "tool") {
+      const last = blocks[blocks.length - 1]
+      if (last?.kind === "tools") last.parts.push(part)
+      else blocks.push({ id: part.id, kind: "tools", parts: [part] })
+      continue
+    }
+    if (part.type === "text" && typeof (part as { text?: string }).text === "string") {
+      const text = (part as { text: string }).text.trim()
+      if (!text) continue
+      const last = blocks[blocks.length - 1]
+      if (last?.kind === "text") last.text = `${last.text}\n\n${text}`
+      else blocks.push({ id: part.id, kind: "text", text })
+    }
+  }
+  return blocks
+}
+
+function MessageBubble({ message }: { message: AgentMessage }) {
+  const role = roleOf(message.info)
+  const text = textFromParts(message.parts)
+  if (role === "user") {
+    return (
+      <div className="oc-msg oc-msg--user">
+        <div className="oc-msg__bubble">{text || "…"}</div>
+      </div>
+    )
+  }
+  const blocks = assistantBlocks(message.parts)
+  const summaries = message.parts.map(summarizePart).filter((summary): summary is string => Boolean(summary))
+  if (blocks.length === 0 && summaries.length === 0) return null
+  return (
+    <div className="oc-msg oc-msg--assistant">
+      {blocks.map((block) =>
+        block.kind === "tools" ? (
+          <div key={block.id} className="oc-msg__tools">
+            {block.parts.map((part) => (
+              <ToolCard key={part.id} part={part} />
+            ))}
+          </div>
+        ) : (
+          <Markdown key={block.id} text={block.text} />
+        ),
+      )}
+      {blocks.length === 0
+        ? summaries.map((summary, index) => (
+            <p key={`${message.info.id}:summary:${index}`} className="oc-msg__meta">
+              {summary}
+            </p>
+          ))
+        : null}
+    </div>
+  )
+}
+
+function ToolCard({ part }: { part: Part }) {
+  const label = toolLabel(part) ?? "tool"
+  const status = toolStatus(part)
+  const detail = toolDetail(part)
+  const preview = toolPreview(part)
+  const statusClass = status === "error" ? " is-error" : status === "running" || status === "pending" ? " is-live" : ""
+  const inner = (
+    <>
+      <span className="oc-tool__icon" aria-hidden>
+        <ToolIcon tool={label} />
+      </span>
+      <span className="oc-tool__name">{label}</span>
+      {preview ? <span className="oc-tool__preview">{preview}</span> : null}
+      {status ? <span className={`oc-tool__status${statusClass}`}>{status}</span> : null}
+    </>
+  )
+  if (!detail) {
+    return <div className="oc-tool oc-tool--static">{inner}</div>
+  }
+  return (
+    <details className={`oc-tool${status === "error" ? " oc-tool--error" : ""}`}>
+      <summary>
+        {inner}
+        <span className="oc-tool__chevron" aria-hidden>
+          <IconChevron />
+        </span>
+      </summary>
+      <pre className="oc-tool__detail">{detail}</pre>
+    </details>
+  )
+}
+
+function ToolIcon({ tool }: { tool: string }) {
+  const path =
+    tool === "bash" ? (
+      <path d="M4 5.5 7.5 8 4 10.5M9 10.5h4" />
+    ) : tool === "read" || tool === "glob" ? (
+      <>
+        <path d="M5 3h4.5L12 5.5V13H5z" />
+        <path d="M9.5 3v2.5H12" />
+      </>
+    ) : tool === "edit" || tool === "write" ? (
+      <path d="M10.8 3.6 12.4 5.2M3.5 12.5l.6-2.2L11 3.4l1.6 1.6-6.9 6.9z" />
+    ) : tool === "grep" || tool === "websearch" ? (
+      <>
+        <circle cx="7" cy="7" r="3.5" />
+        <path d="m9.8 9.8 3 3" />
+      </>
+    ) : tool === "webfetch" ? (
+      <>
+        <circle cx="8" cy="8" r="5" />
+        <path d="M3 8h10M8 3c-1.6 1.6-2.4 3.2-2.4 5s.8 3.4 2.4 5c1.6-1.6 2.4-3.2 2.4-5S9.6 4.6 8 3z" />
+      </>
+    ) : tool === "task" || tool === "todowrite" || tool === "todoread" ? (
+      <path d="M3.5 4.5h9M3.5 8h9M3.5 11.5h5.5" />
+    ) : (
+      <>
+        <circle cx="8" cy="8" r="1.75" />
+        <path d="M8 2.5v2M8 11.5v2M2.5 8h2M11.5 8h2" />
+      </>
+    )
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {path}
+    </svg>
+  )
+}
+
+function IconPlus() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 3.5v9M3.5 8h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IconClose() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="m4.5 4.5 7 7m0-7-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IconSend() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 12.5V3.5M8 3.5L4 7.5M8 3.5L12 7.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconStop() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" />
+    </svg>
+  )
+}
+
+function IconChevron() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function AgentPanel({
+  studioRoot,
+  available,
+  open,
+  onClose,
+  onStatusChange,
+  fullPage = false,
+}: {
+  studioRoot: string
+  available: boolean
+  open: boolean
+  onClose: () => void
+  onStatusChange?: (status: AgentStatus) => void
+  fullPage?: boolean
+}) {
+  const asideRef = useRef<HTMLElement>(null)
+  const widthRef = useRef(readAgentWidth())
+  const listRef = useRef<HTMLDivElement>(null)
+  const stickToBottom = useRef(true)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  const mdUp = useMdUp()
+  const [width, setWidth] = useState(() => readAgentWidth())
+  const [dragging, setDragging] = useState(false)
+  const [viewportMax, setViewportMax] = useState(() =>
+    typeof window !== "undefined" ? viewportAgentWidthMax(window.innerWidth) : AGENT_WIDTH_MAX,
+  )
+  const [contextDirectory, setContextDirectory] = useState(getAgentContextDirectory)
+  const directory = resolveAgentDirectory(contextDirectory, studioRoot)
+
+  const [healthOk, setHealthOk] = useState(available)
+  const [healthError, setHealthError] = useState<string | undefined>()
+  const [sseState, setSseState] = useState<"open" | "retry" | "closed">("closed")
+  const [loading, setLoading] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | undefined>()
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [sessionID, setSessionID] = useState<string | undefined>()
+  const [messages, setMessages] = useState<AgentMessage[]>([])
+  const [draft, setDraft] = useState("")
+  const [chips, setChips] = useState<ComposerChip[]>([])
+  const composersBySession = useRef(new Map<string, ComposerState>())
+  const [permission, setPermission] = useState<Permission | null>(null)
+  const [files, setFiles] = useState<FileDiff[]>([])
+  const [modelOptions, setModelOptions] = useState<ModelRef[]>([])
+  const [model, setModel] = useState<ModelRef | undefined>()
+  const [popover, setPopover] = useState<PopoverKind>(null)
+  const [sessionQuery, setSessionQuery] = useState("")
+  const [modelQuery, setModelQuery] = useState("")
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  useEffect(() => subscribeAgentContext(() => setContextDirectory(getAgentContextDirectory())), [])
+  useEffect(() => {
+    widthRef.current = width
+  }, [width])
+
+  useEffect(() => {
+    const onResize = () => {
+      const max = viewportAgentWidthMax(window.innerWidth)
+      setViewportMax(max)
+      setWidth((current) => {
+        const next = clampAgentWidth(current, window.innerWidth)
+        widthRef.current = next
+        return next
+      })
+    }
+    window.addEventListener("resize", onResize)
+    onResize()
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
+
+  useEffect(() => {
+    if (!popover) return
+    const onDoc = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest("[data-oc-popover]") || target?.closest("[data-oc-popover-trigger]")) return
+      setPopover(null)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPopover(null)
+    }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [popover])
+
+  const refreshHealth = useCallback(async () => {
+    if (!available) {
+      setHealthOk(false)
+      return
+    }
+    const health = await probeAgentHealth()
+    setHealthOk(health.ok)
+    setHealthError(health.error)
+  }, [available])
+
+  const refreshSessions = useCallback(async () => {
+    if (!healthOk) return
+    const rows = await listSessions(directory)
+    setSessions(rows)
+    setSessionID((current) => {
+      if (current && rows.some((s) => s.id === current)) return current
+      return rows[0]?.id
+    })
+  }, [directory, healthOk])
+
+  const refreshCatalog = useCallback(async () => {
+    if (!healthOk) return
+    const providerData = await listProviders(directory)
+    const options: ModelRef[] = []
+    const connected = (providerData?.providers ?? []).filter((p) => Boolean(p.key) || p.source === "env" || p.source === "api")
+    const source = connected.length ? connected : (providerData?.providers ?? [])
+    for (const provider of source) {
+      for (const modelID of Object.keys(provider.models ?? {})) {
+        options.push({ providerID: provider.id, modelID })
+      }
+    }
+    setModelOptions(options)
+    const prefs = readPrefs(directory)
+    const defaultProviderModel = providerData?.default
+      ? Object.entries(providerData.default).map(([providerID, modelID]) => ({ providerID, modelID }))[0]
+      : undefined
+    setModel((current) => {
+      const valid = (m?: ModelRef) => Boolean(m && options.some((o) => o.providerID === m.providerID && o.modelID === m.modelID))
+      if (valid(current)) return current
+      if (valid(prefs.model)) return prefs.model
+      if (valid(defaultProviderModel)) return defaultProviderModel
+      return options[0]
+    })
+  }, [directory, healthOk])
+
+  const refreshMessages = useCallback(
+    async (id: string) => {
+      const rows = await listMessages(id, directory)
+      setMessages(rows)
+      try {
+        const diff = await sessionDiff(id, directory)
+        setFiles(diff as FileDiff[])
+      } catch {
+        setFiles([])
+      }
+    },
+    [directory],
+  )
+
+  const scheduleMessageRefresh = useCallback(
+    (id: string) => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current)
+      refreshTimer.current = setTimeout(() => {
+        void refreshMessages(id).catch(() => {})
+      }, 120)
+    },
+    [refreshMessages],
+  )
+
+  useEffect(() => {
+    if (!open) return
+    void refreshHealth()
+  }, [open, refreshHealth])
+
+  useEffect(() => {
+    if (!open || !healthOk) return
+    setLoading(true)
+    setError(undefined)
+    void Promise.all([refreshSessions(), refreshCatalog()])
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false))
+  }, [open, healthOk, refreshSessions, refreshCatalog])
+
+  useEffect(() => {
+    if (!open || !sessionID || !healthOk) {
+      setMessages([])
+      setFiles([])
+      return
+    }
+    void refreshMessages(sessionID).catch((err) => setError(err instanceof Error ? err.message : String(err)))
+  }, [open, sessionID, healthOk, refreshMessages])
+
+  useEffect(() => {
+    if (!open || !healthOk) return
+    return subscribeAgentEvents(
+      directory,
+      (event) => {
+        if (event.type === "studio.sse.retry") {
+          // reconnect quietly — do not mark API dead
+          return
+        }
+        if (event.type === "permission.updated") {
+          setPermission(event.properties as Permission)
+          return
+        }
+        if (event.type === "permission.replied") {
+          setPermission(null)
+          return
+        }
+        if (event.type === "session.status") {
+          const props = event.properties as { sessionID?: string; status?: { type?: string } }
+          if (props.sessionID && props.sessionID === sessionID) {
+            setBusy(props.status?.type === "busy" || props.status?.type === "retry")
+          }
+          return
+        }
+        if (event.type === "session.idle") {
+          const props = event.properties as { sessionID?: string }
+          if (!props.sessionID || props.sessionID === sessionID) setBusy(false)
+          if (sessionID) scheduleMessageRefresh(sessionID)
+          return
+        }
+        if (event.type === "file.edited") {
+          const props = event.properties as { file?: string; path?: string }
+          const p = props.file || props.path
+          if (p) publishAgentFileEvent({ paths: [p], sessionID })
+        }
+        if (event.type === "session.diff") {
+          const props = event.properties as { sessionID?: string; diff?: FileDiff[] }
+          if (props.diff?.length) {
+            publishAgentFileEvent({
+              paths: props.diff.map((d) => d.file).filter(Boolean),
+              sessionID: props.sessionID,
+            })
+          }
+        }
+        if (
+          event.type === "message.updated" ||
+          event.type === "message.part.updated" ||
+          event.type === "session.updated" ||
+          event.type === "session.diff" ||
+          event.type === "file.edited"
+        ) {
+          if (sessionID) scheduleMessageRefresh(sessionID)
+          if (event.type === "session.updated") void refreshSessions().catch(() => {})
+        }
+      },
+      { onConnectionChange: setSseState },
+    )
+  }, [open, healthOk, directory, sessionID, scheduleMessageRefresh, refreshSessions])
+
+  useEffect(() => {
+    return subscribeAgentHandoff((request) => {
+      if (request.open === false) return
+      if (request.directory?.trim()) setAgentContextDirectory(request.directory.trim())
+      const nextChips: ComposerChip[] = []
+      for (const p of request.paths ?? []) {
+        nextChips.push({ id: `path:${p}`, kind: "path", value: p, label: p.split("/").pop() || p })
+      }
+      if (request.annotation?.trim()) {
+        const ann = request.annotation.trim()
+        nextChips.push({
+          id: `ann:${ann.slice(0, 48)}`,
+          kind: "annotation",
+          value: ann,
+          label: ann.length > 36 ? `${ann.slice(0, 36)}…` : ann,
+        })
+      }
+      if (nextChips.length) setChips(nextChips)
+      if (request.text.trim()) {
+        setDraft((prev) => (prev.trim() ? `${prev.trim()}\n\n${request.text.trim()}` : request.text.trim()))
+      }
+      requestAnimationFrame(() => composerRef.current?.focus())
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!open || !mdUp || fullPage) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[role="dialog"][aria-modal="true"]')) return
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return
+      if (popover) {
+        setPopover(null)
+        return
+      }
+      event.preventDefault()
+      onClose()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [open, mdUp, fullPage, onClose, popover])
+
+  useFocusTrap(open && !mdUp && !fullPage, asideRef, onClose)
+
+  // Auto-scroll only when the user is already at (near) the bottom — never yank mid-read.
+  useEffect(() => {
+    const el = listRef.current
+    if (!el || !stickToBottom.current) return
+    el.scrollTop = el.scrollHeight
+  })
+
+  const onThreadScroll = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64
+  }, [])
+
+  const status = deriveAgentStatus({
+    open,
+    available: available && healthOk,
+    loading: open && available && loading,
+    error: open && available && Boolean(error || (!healthOk && healthError)),
+  })
+
+  useEffect(() => {
+    onStatusChange?.(status)
+  }, [onStatusChange, status])
+
+  useEffect(() => {
+    if (!directory) return
+    writePrefs(directory, { model })
+  }, [directory, model])
+
+  const switchSession = useCallback(
+    (nextSessionID: string, empty = false) => {
+      if (sessionID) composersBySession.current.set(sessionID, { draft, chips })
+      const nextComposer = empty ? undefined : composersBySession.current.get(nextSessionID)
+      setSessionID(nextSessionID)
+      setDraft(nextComposer?.draft ?? "")
+      setChips(nextComposer?.chips ?? [])
+    },
+    [sessionID, draft, chips],
+  )
+
+  const ensureSession = useCallback(async () => {
+    if (sessionID) return sessionID
+    const created = await createSession(directory)
+    setSessions((prev) => [created, ...prev])
+    setSessionID(created.id)
+    return created.id
+  }, [sessionID, directory])
+
+  const composeOutbound = () => {
+    const pieces: string[] = []
+    for (const chip of chips) {
+      if (chip.kind === "path") pieces.push(`@${chip.value}`)
+      else pieces.push(chip.value)
+    }
+    if (draft.trim()) pieces.push(draft.trim())
+    return pieces.join("\n\n")
+  }
+
+  const onSend = async () => {
+    const text = composeOutbound()
+    if (!text || busy) return
+    setError(undefined)
+    setBusy(true)
+    stickToBottom.current = true
+    try {
+      const id = await ensureSession()
+      await promptSessionAsync({
+        sessionID: id,
+        text,
+        directory,
+        model,
+      })
+      setDraft("")
+      setChips([])
+      await refreshMessages(id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setBusy(false)
+    }
+  }
+
+  const onNewSession = async () => {
+    setError(undefined)
+    setPopover(null)
+    try {
+      const created = await createSession(directory)
+      setSessions((prev) => [created, ...prev])
+      switchSession(created.id, true)
+      setMessages([])
+      setFiles([])
+      composerRef.current?.focus()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const onAbort = async () => {
+    if (!sessionID) return
+    try {
+      await abortSession(sessionID, directory)
+      setBusy(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const onPermission = async (response: "once" | "always" | "reject") => {
+    if (!permission) return
+    try {
+      await replyPermission({
+        sessionID: permission.sessionID,
+        permissionID: permission.id,
+        response,
+        directory,
+      })
+      setPermission(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const beginResize = (event: ReactPointerEvent<HTMLElement>) => {
+    const target = event.currentTarget
+    const startX = event.clientX
+    const startW = widthRef.current
+    setDragging(true)
+    try {
+      target.setPointerCapture(event.pointerId)
+    } catch {
+      // optional
+    }
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = clampAgentWidth(startW + (moveEvent.clientX - startX), window.innerWidth)
+      widthRef.current = next
+      setWidth(next)
+    }
+    const onUp = (upEvent: PointerEvent) => {
+      setDragging(false)
+      writeAgentWidth(widthRef.current)
+      try {
+        target.releasePointerCapture(upEvent.pointerId)
+      } catch {
+        // ignore
+      }
+      target.removeEventListener("pointermove", onMove)
+      target.removeEventListener("pointerup", onUp)
+      target.removeEventListener("pointercancel", onUp)
+    }
+    target.addEventListener("pointermove", onMove)
+    target.addEventListener("pointerup", onUp)
+    target.addEventListener("pointercancel", onUp)
+  }
+
+  const shellClass = fullPage
+    ? "oc-panel oc-panel--page flex min-h-0 flex-1 flex-col"
+    : `${open ? "flex" : "hidden"} oc-panel absolute inset-0 z-30 min-h-0 w-full flex-col md:static md:inset-auto md:shrink-0 ${dragging ? "select-none" : ""}`
+
+  const activeSession = sessions.find((s) => s.id === sessionID)
+  const sessionTitle = activeSession ? sessionLabel(activeSession) : sessionID ? sessionID.slice(0, 8) : "New session"
+  const optionLabels = useMemo(() => sessionOptionLabels(sessions), [sessions])
+
+  const filteredSessions = useMemo(() => {
+    const q = sessionQuery.trim().toLowerCase()
+    const rows = q
+      ? sessions.filter((s) => (s.title || s.id).toLowerCase().includes(q) || optionLabels.get(s.id)?.toLowerCase().includes(q))
+      : sessions
+    return rows.slice(0, SESSION_UI_LIMIT)
+  }, [sessions, sessionQuery, optionLabels])
+
+  const filteredModels = useMemo(() => {
+    const q = modelQuery.trim().toLowerCase()
+    const rows = q ? modelOptions.filter((m) => modelKey(m).toLowerCase().includes(q) || m.modelID.toLowerCase().includes(q)) : modelOptions
+    return rows.slice(0, MODEL_UI_LIMIT)
+  }, [modelOptions, modelQuery])
+
+  const filePaths = useMemo(() => {
+    const paths = new Set<string>()
+    for (const d of files) if (d.file) paths.add(d.file)
+    return [...paths]
+  }, [files])
+
+  const canSend = Boolean(composeOutbound()) && !busy
+  const statusLabel =
+    !available || !healthOk
+      ? healthError || "Unavailable"
+      : busy
+        ? "Working"
+        : sseState === "retry"
+          ? "Reconnecting…"
+          : loading
+            ? "Loading…"
+            : "Ready"
+
+  return (
+    <aside
+      ref={asideRef}
+      aria-label="Agent"
+      data-agent-open={open || fullPage ? "true" : "false"}
+      data-agent-width={width}
+      className={shellClass}
+      style={!fullPage && open && mdUp ? { width, minWidth: AGENT_WIDTH_MIN, maxWidth: viewportMax } : undefined}
+    >
+      <header className="oc-panel__header">
+        <span className={`oc-panel__dot ${agentStatusDotClass(status)}`} aria-hidden />
+        <div className="oc-panel__title-wrap">
+          <button
+            type="button"
+            data-oc-popover-trigger
+            className="oc-panel__session-btn"
+            onClick={() => setPopover((p) => (p === "session" ? null : "session"))}
+            aria-expanded={popover === "session"}
+            title={sessionTitle}
+          >
+            <span className="oc-panel__session-title">{sessionTitle}</span>
+            <IconChevron />
+          </button>
+          <p className="oc-panel__sub" title={directory}>
+            {statusLabel}
+          </p>
+        </div>
+        <button type="button" className="oc-icon-btn" onClick={() => void onNewSession()} aria-label="New session" title="New session">
+          <IconPlus />
+        </button>
+        {sessionID && busy ? (
+          <button type="button" className="oc-icon-btn oc-icon-btn--warn" onClick={() => void onAbort()} aria-label="Stop" title="Stop">
+            <IconStop />
+          </button>
+        ) : null}
+        {!fullPage ? (
+          <button type="button" data-autofocus className="oc-icon-btn" onClick={onClose} aria-label="Close agent" title="Close">
+            <IconClose />
+          </button>
+        ) : null}
+      </header>
+
+      {popover === "session" ? (
+        <div className="oc-popover oc-popover--session" data-oc-popover role="listbox" aria-label="Sessions">
+          <input
+            className="oc-popover__search"
+            placeholder="Search sessions…"
+            value={sessionQuery}
+            onChange={(e) => setSessionQuery(e.target.value)}
+          />
+          <div className="oc-popover__list">
+            {filteredSessions.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                role="option"
+                aria-selected={s.id === sessionID}
+                className={`oc-popover__item ${s.id === sessionID ? "is-active" : ""}`}
+                onClick={() => {
+                  switchSession(s.id)
+                  setPopover(null)
+                  setSessionQuery("")
+                }}
+              >
+                <span className="truncate">{optionLabels.get(s.id) ?? sessionLabel(s)}</span>
+              </button>
+            ))}
+            {filteredSessions.length === 0 ? <p className="oc-popover__empty">No sessions</p> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {!available || !healthOk ? (
+        <div className="oc-panel__empty">
+          <p className="oc-panel__empty-title">Agent API unavailable</p>
+          <p className="oc-panel__empty-body">
+            Start with <code>opencode-studio up</code>. {healthError ? <span className="font-mono text-[11px]">{healthError}</span> : null}
+          </p>
+          <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => void refreshHealth()}>
+            Retry
+          </Button>
+        </div>
+      ) : (
+        <div className="oc-panel__body">
+          {filePaths.length > 0 ? (
+            <div className="oc-files">
+              <span className="oc-files__label">Files</span>
+              {filePaths.map((path) => (
+                <button
+                  key={path}
+                  type="button"
+                  className="oc-chip"
+                  title={path}
+                  onClick={() => {
+                    setChips((prev) =>
+                      prev.some((c) => c.kind === "path" && c.value === path)
+                        ? prev
+                        : [...prev, { id: `path:${path}`, kind: "path", value: path, label: path.split("/").pop() || path }],
+                    )
+                  }}
+                >
+                  {path.split("/").pop() || path}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div ref={listRef} className="oc-thread" onScroll={onThreadScroll}>
+            <div className="oc-thread__inner">
+              {loading ? <p className="oc-thread__hint">Loading…</p> : null}
+              {!loading && messages.length === 0 ? (
+                <div className="oc-thread__welcome">
+                  <h2>{sessionTitle === "New session" || !activeSession ? "New session" : sessionTitle}</h2>
+                  <p>Ask anything. Studio handoffs land in the composer below.</p>
+                </div>
+              ) : null}
+              {messages.map((message) => (
+                <MessageBubble key={message.info.id} message={message} />
+              ))}
+            </div>
+          </div>
+
+          {permission ? (
+            <div className="oc-permission" role="alertdialog" aria-label="Permission request">
+              <p className="oc-permission__title">{permission.title || permission.type}</p>
+              <p className="oc-permission__meta">{permission.type}</p>
+              <div className="oc-permission__actions">
+                <button type="button" className="oc-chip" onClick={() => void onPermission("once")}>
+                  Allow once
+                </button>
+                <button type="button" className="oc-chip" onClick={() => void onPermission("always")}>
+                  Always
+                </button>
+                <button type="button" className="oc-chip" onClick={() => void onPermission("reject")}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="oc-error" role="alert">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="oc-composer-wrap">
+            <div className="oc-composer-inner">
+              {chips.length > 0 ? (
+                <div className="oc-composer__chips">
+                  {chips.map((chip) => (
+                    <span key={chip.id} className={`oc-chip ${chip.kind === "annotation" ? "oc-chip--ann" : ""}`} title={chip.value}>
+                      {chip.kind === "annotation" ? "◎ " : "@"}
+                      {chip.label}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${chip.label}`}
+                        onClick={() => setChips((prev) => prev.filter((c) => c.id !== chip.id))}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              <form
+                className="oc-dock"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (busy) {
+                    void onAbort()
+                    return
+                  }
+                  void onSend()
+                }}
+              >
+                <textarea
+                  ref={composerRef}
+                  className="oc-dock__input"
+                  placeholder="Ask anything…"
+                  value={draft}
+                  disabled={busy}
+                  rows={2}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault()
+                      void onSend()
+                    }
+                  }}
+                />
+                <div className="oc-dock__bar">
+                  <div className="oc-dock__left">
+                    <button
+                      type="button"
+                      data-oc-popover-trigger
+                      className="oc-dock__model"
+                      onClick={() => setPopover((p) => (p === "model" ? null : "model"))}
+                      aria-expanded={popover === "model"}
+                      title={model ? modelKey(model) : "Model"}
+                    >
+                      <span className="truncate">{model ? modelLabel(model) : "Model"}</span>
+                      <IconChevron />
+                    </button>
+                    {popover === "model" ? (
+                      <div className="oc-popover oc-popover--model" data-oc-popover role="listbox" aria-label="Models">
+                        <input
+                          className="oc-popover__search"
+                          placeholder="Search models…"
+                          value={modelQuery}
+                          onChange={(e) => setModelQuery(e.target.value)}
+                        />
+                        <div className="oc-popover__list">
+                          {filteredModels.map((m) => (
+                            <button
+                              key={modelKey(m)}
+                              type="button"
+                              role="option"
+                              aria-selected={model ? modelKey(model) === modelKey(m) : false}
+                              className={`oc-popover__item ${model && modelKey(model) === modelKey(m) ? "is-active" : ""}`}
+                              onClick={() => {
+                                setModel(m)
+                                setPopover(null)
+                                setModelQuery("")
+                              }}
+                            >
+                              <span className="truncate font-medium">{m.modelID}</span>
+                              <span className="oc-popover__meta">{m.providerID}</span>
+                            </button>
+                          ))}
+                          {filteredModels.length === 0 ? <p className="oc-popover__empty">No models</p> : null}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <button type="submit" className="oc-dock__send" disabled={!canSend && !busy} aria-label={busy ? "Stop" : "Send"}>
+                    {busy ? <IconStop /> : <IconSend />}
+                  </button>
+                </div>
+              </form>
+              <p className="oc-dock__dir" title={directory}>
+                {directory}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!fullPage && open && mdUp ? (
+        // biome-ignore lint/a11y/useSemanticElements: vertical drag handle
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize agent panel"
+          aria-valuenow={width}
+          aria-valuemin={AGENT_WIDTH_MIN}
+          aria-valuemax={viewportMax}
+          tabIndex={0}
+          className="oc-panel__resize"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            beginResize(event)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault()
+              const next = clampAgentWidth(width - 16, window.innerWidth)
+              setWidth(next)
+              writeAgentWidth(next)
+            } else if (event.key === "ArrowRight") {
+              event.preventDefault()
+              const next = clampAgentWidth(width + 16, window.innerWidth)
+              setWidth(next)
+              writeAgentWidth(next)
+            }
+          }}
+        />
+      ) : null}
+    </aside>
+  )
+}

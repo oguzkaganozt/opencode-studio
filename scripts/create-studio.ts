@@ -9,6 +9,13 @@ if (!id || !/^[a-z][a-z0-9-]*$/.test(id)) {
 
 const root = path.resolve(import.meta.dir, "..")
 const dir = path.join(root, "studios", id)
+try {
+  await mkdir(dir)
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+  console.error(`Refusing to overwrite existing directory: studios/${id}`)
+  process.exit(1)
+}
 await mkdir(path.join(dir, "skill"), { recursive: true })
 await mkdir(path.join(dir, "viewer", "src"), { recursive: true })
 await mkdir(path.join(dir, "test"), { recursive: true })

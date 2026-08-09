@@ -23,7 +23,28 @@ function hasPartIdentity(entry: BomEntry) {
   return Boolean(entry.mpn || supplierIdentity(entry))
 }
 
-function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEntry) => void }) {
+function formatBomAnnotation(entry: BomEntry) {
+  return [
+    entry.mpn ? `mpn=${entry.mpn}` : null,
+    `refdes=${entry.refdes.join(",")}`,
+    `qty=${entry.quantity}`,
+    entry.manufacturer ? `manufacturer=${entry.manufacturer}` : null,
+    entry.description ? `description=${entry.description}` : null,
+    supplierIdentity(entry) ? `supplier=${supplierIdentity(entry)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ")
+}
+
+function BomRow({
+  entry,
+  onSelect,
+  onSend,
+}: {
+  entry: BomEntry
+  onSelect?: (entry: BomEntry) => void
+  onSend?: (entry: BomEntry) => void
+}) {
   const clickable = Boolean(entry.mpn && onSelect)
   const refdes = summarizeRefdes(entry.refdes, 8)
   const supplierPartNumber = supplierIdentity(entry)
@@ -49,13 +70,28 @@ function BomRow({ entry, onSelect }: { entry: BomEntry; onSelect?: (entry: BomEn
         {entry.description ?? "—"}
       </td>
       <td className="px-4 py-2.5 text-sm">
-        <DatasheetLink href={entry.datasheet} />
+        <div className="flex items-center gap-2">
+          <DatasheetLink href={entry.datasheet} />
+          {onSend ? (
+            <button type="button" className="pcb-chip px-1.5 py-0.5 text-[10px]" onClick={() => onSend(entry)}>
+              Agent
+            </button>
+          ) : null}
+        </div>
       </td>
     </tr>
   )
 }
 
-function BomCard({ entry, onSelect }: { entry: BomEntry; onSelect: (entry: BomEntry) => void }) {
+function BomCard({
+  entry,
+  onSelect,
+  onSend,
+}: {
+  entry: BomEntry
+  onSelect: (entry: BomEntry) => void
+  onSend?: (entry: BomEntry) => void
+}) {
   const supplierPartNumber = supplierIdentity(entry)
   const identified = hasPartIdentity(entry)
   return (
@@ -80,7 +116,14 @@ function BomCard({ entry, onSelect }: { entry: BomEntry; onSelect: (entry: BomEn
           {[entry.manufacturer, entry.description].filter(Boolean).join(" · ")}
         </p>
       ) : null}
-      <DatasheetLink href={entry.datasheet} className="mt-3 inline-flex text-xs text-[var(--osc-accent)]" />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <DatasheetLink href={entry.datasheet} className="inline-flex text-xs text-[var(--osc-accent)]" />
+        {onSend ? (
+          <button type="button" className="pcb-chip px-1.5 py-0.5 text-[10px]" onClick={() => onSend(entry)}>
+            Send to agent
+          </button>
+        ) : null}
+      </div>
     </article>
   )
 }
@@ -133,6 +176,19 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
       text: `PCB project ${projectId} has ${data.unlistedCount} components without assembly identities. Identify verified manufacturer part numbers for these references, update the circuit source, rebuild, and regenerate the BOM: ${missing.join(", ")}`,
       source: "pcb",
       directory,
+      paths: [directory],
+      open: true,
+      copyFallback: true,
+    })
+  }
+
+  const sendEntry = (entry: BomEntry) => {
+    requestAgentHandoff({
+      text: `Inspect BOM line in PCB project ${projectId} (${entry.refdes.join(", ") || "no refdes"}).`,
+      source: "pcb",
+      directory,
+      paths: [directory],
+      annotation: formatBomAnnotation(entry),
       open: true,
       copyFallback: true,
     })
@@ -188,14 +244,24 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
           </thead>
           <tbody>
             {data.entries.map((entry, index) => (
-              <BomRow key={entry.mpn ?? supplierIdentity(entry) ?? `unlisted-${index}`} entry={entry} onSelect={setSelected} />
+              <BomRow
+                key={entry.mpn ?? supplierIdentity(entry) ?? `unlisted-${index}`}
+                entry={entry}
+                onSelect={setSelected}
+                onSend={sendEntry}
+              />
             ))}
           </tbody>
         </table>
       </div>
       <div className="pcb-mobile-list">
         {data.entries.map((entry, index) => (
-          <BomCard key={entry.mpn ?? supplierIdentity(entry) ?? `unlisted-${index}`} entry={entry} onSelect={setSelected} />
+          <BomCard
+            key={entry.mpn ?? supplierIdentity(entry) ?? `unlisted-${index}`}
+            entry={entry}
+            onSelect={setSelected}
+            onSend={sendEntry}
+          />
         ))}
       </div>
       {selected?.mpn && <PartDetailModal mpn={selected.mpn} fallback={selected} onClose={() => setSelected(null)} />}

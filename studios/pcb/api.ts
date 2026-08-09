@@ -2,13 +2,13 @@ import { Hono } from "hono"
 import { readRegularFileAt } from "../../src/core/paths"
 import { safeContentDisposition } from "../../src/core/security"
 import { createSseResponse } from "../../src/core/sse"
-import { generatePickAndPlace, toCplCsv } from "./assembly"
+import { toCplCsv } from "./assembly"
 import { generateBom, toBomCsv } from "./bom"
 import { filterCatalogParts, getCatalogPart, loadCatalogParts, partSummary } from "./catalog"
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
 import { ensureWatching, onProjectEvent } from "./watcher"
-import { type CircuitProject, discoverProjects, projectDetail, projectSummary, resolveProject } from "./workspace"
+import { type CircuitProject, discoverProjectDescriptors, loadProjects, projectDetail, projectSummary, resolveProject } from "./workspace"
 
 function integerQuery(value: string | undefined, fallback: number, min: number, max: number) {
   if (value === undefined) return fallback
@@ -33,6 +33,7 @@ async function requireProject(workspaceRoot: string, id: string): Promise<Circui
 
 async function requireBuiltProject(workspaceRoot: string, id: string): Promise<CircuitProject & { circuitJsonPath: string }> {
   const project = await requireProject(workspaceRoot, id)
+  if (project.artifactError) throw new ApiError(409, project.artifactError)
   if (!project.circuitJsonPath) throw new ApiError(404, "Circuit JSON not built yet. Run pcb_circuit_build first.")
   return project as CircuitProject & { circuitJsonPath: string }
 }
@@ -63,16 +64,16 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/workspace", async (ctx) => {
-    const projects = await discoverProjects(workspaceRoot)
+    const projects = await discoverProjectDescriptors(workspaceRoot)
     return ctx.json({ root: workspaceRoot, projectCount: projects.length })
   })
 
   app.get("/projects", async (ctx) => {
-    const projects = await discoverProjects(workspaceRoot)
+    const descriptors = await discoverProjectDescriptors(workspaceRoot)
     const limit = integerQuery(ctx.req.query("limit"), 50, 1, 200) ?? 50
     const offset = integerQuery(ctx.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER) ?? 0
-    const page = projects.slice(offset, offset + limit)
-    return ctx.json({ projects: page.map(projectSummary), total: projects.length, hasMore: offset + limit < projects.length })
+    const page = await loadProjects(descriptors.slice(offset, offset + limit))
+    return ctx.json({ projects: page.map(projectSummary), total: descriptors.length, hasMore: offset + limit < descriptors.length })
   })
 
   app.get("/projects/:id", async (ctx) => {
@@ -129,7 +130,7 @@ export function createPcbApi(workspaceRoot: string) {
         409,
       )
     }
-    const result = generatePickAndPlace(json)
+    const result = readiness.placement
     const csv = toCplCsv(result.entries)
     return new Response(csv, {
       headers: {
@@ -142,18 +143,21 @@ export function createPcbApi(workspaceRoot: string) {
 
   app.get("/projects/:id/schematic.svg", async (ctx) => {
     const project = await requireProject(workspaceRoot, ctx.req.param("id"))
+    if (project.artifactError) return ctx.json({ error: project.artifactError }, 409)
     if (!project.schematicSvgPath) return ctx.json({ error: "Schematic SVG not built yet. Run pcb_circuit_export first." }, 404)
     return serveWorkspaceFile(workspaceRoot, project.schematicSvgPath, "image/svg+xml")
   })
 
   app.get("/projects/:id/pcb.svg", async (ctx) => {
     const project = await requireProject(workspaceRoot, ctx.req.param("id"))
+    if (project.artifactError) return ctx.json({ error: project.artifactError }, 409)
     if (!project.pcbSvgPath) return ctx.json({ error: "PCB SVG not built yet. Run pcb_circuit_export first." }, 404)
     return serveWorkspaceFile(workspaceRoot, project.pcbSvgPath, "image/svg+xml")
   })
 
   app.get("/projects/:id/gerbers.zip", async (ctx) => {
     const project = await requireProject(workspaceRoot, ctx.req.param("id"))
+    if (project.artifactError) return ctx.json({ error: project.artifactError }, 409)
     if (!project.gerbersZipPath) return ctx.json({ error: "Gerbers not exported yet. Run pcb_circuit_export with format 'gerber'." }, 404)
     if (!project.circuitJsonPath) {
       return ctx.json({ error: "Circuit JSON missing; rebuild before downloading Gerbers." }, 404)

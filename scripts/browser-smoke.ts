@@ -73,7 +73,8 @@ async function assertTailwindUtilities(page: Page) {
 async function assertShellFillsViewport(page: Page, studioId: string) {
   const metrics = await page.evaluate((id) => {
     const shell = document.querySelector(`.studio-shell[data-studio="${id}"]`) as HTMLElement | null
-    const viewer = document.querySelector(`.studio-shell [data-studio="${id}"]`) as HTMLElement | null
+    const viewer = (document.querySelector(`.studio-shell [data-studio="${id}"]`) ??
+      document.querySelector('[data-testid="studio-main"]')) as HTMLElement | null
     const shellRect = shell?.getBoundingClientRect()
     const viewerRect = viewer?.getBoundingClientRect()
     const fileInputs = Array.from(document.querySelectorAll('input[type="file"]')).map((el) => {
@@ -124,7 +125,7 @@ async function assertThemeTokens(page: Page) {
 
 async function assertAgentClosedLayout(page: Page, studioId: string) {
   const metrics = await page.evaluate(() => {
-    const agent = document.querySelector('[aria-label="OpenCode agent"]') as HTMLElement | null
+    const agent = document.querySelector('[aria-label="Agent"]') as HTMLElement | null
     const main = document.querySelector('[data-testid="studio-main"]') as HTMLElement | null
     return {
       agentOpen: agent?.getAttribute("data-agent-open") ?? null,
@@ -160,12 +161,14 @@ async function browserSmoke(base: string) {
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 
-    await page.goto(`${base}/studio`, { waitUntil: "networkidle" })
-    await page.waitForSelector("text=OpenCode")
-    await page.locator('iframe[title="OpenCode"]').waitFor({ state: "attached", timeout: 15_000 })
+    await page.goto(`${base}/studio`, { waitUntil: "domcontentloaded" })
+    await page.getByRole("heading", { name: "Agent", exact: true }).waitFor()
+    await page.locator('[aria-label="Agent"][data-agent-open="true"]').waitFor({ state: "visible", timeout: 15_000 })
+    await page.getByRole("textbox", { name: "Ask anything…" }).waitFor()
     await page.getByRole("button", { name: "Open menu" }).click()
-    await page.getByRole("link", { name: /OpenCode/ }).waitFor()
+    await page.getByRole("link", { name: /Agent/ }).waitFor()
     await page.getByRole("link", { name: /Files/ }).waitFor()
+    await page.getByRole("link", { name: /Status/ }).waitFor()
     await page.getByRole("link", { name: /CAD Studio|CAD/ }).waitFor()
     await page.getByRole("link", { name: /PCB Studio|PCB/ }).waitFor()
     await page.getByRole("button", { name: "Close menu" }).click()
@@ -176,7 +179,28 @@ async function browserSmoke(base: string) {
     await assertTailwindUtilities(page)
     await assertThemeTokens(page)
     await assertShellFillsViewport(page, "opencode")
-    console.log("opencode home ok")
+
+    const skipLink = page.getByRole("link", { name: "Skip to main content" })
+    await skipLink.focus()
+    const skipLinkColors = await skipLink.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { background: style.backgroundColor, color: style.color }
+    })
+    assert(skipLinkColors.background !== skipLinkColors.color, `skip link text is unreadable: ${JSON.stringify(skipLinkColors)}`)
+
+    const sessionButton = page.locator(".oc-panel__session-btn")
+    const generatedLabel = (await sessionButton.innerText()).trim()
+    assert(generatedLabel.startsWith("New session"), `generated session label missing: ${generatedLabel}`)
+    assert(!generatedLabel.includes("T08:32:31.853Z"), `generated session label exposes raw ISO time: ${generatedLabel}`)
+    const composer = page.getByRole("textbox", { name: "Ask anything…" })
+    await composer.fill("Draft for generated session")
+    await sessionButton.click()
+    await page.getByRole("option", { name: "Existing session" }).click()
+    assert((await composer.inputValue()) === "", "composer draft leaked into another session")
+    await sessionButton.click()
+    await page.getByRole("option", { name: /^New session/ }).click()
+    assert((await composer.inputValue()) === "Draft for generated session", "composer draft was not restored with its session")
+    console.log("agent home ok")
 
     const studioChecks: Record<string, { wait: string; extra?: (p: Page) => Promise<void> }> = {
       cad: {
@@ -203,7 +227,7 @@ async function browserSmoke(base: string) {
       // CAD/PCB open long-lived SSE; networkidle never settles.
       await page.goto(`${base}/studio/studios/${id}`, { waitUntil: "domcontentloaded" })
       await page.waitForSelector(`text=${check.wait}`, { timeout: 15_000 })
-      await page.getByLabel("OpenCode agent").waitFor({ state: "attached" })
+      await page.getByLabel("Agent", { exact: true }).waitFor({ state: "attached" })
       await page.getByRole("button", { name: /^Agent/ }).waitFor()
       await assertAgentClosedLayout(page, id)
       const uiBase = await page.evaluate(() => (window as any).__OPENCODE_STUDIO__?.uiBase)
@@ -228,9 +252,9 @@ async function browserSmoke(base: string) {
     await page.keyboard.press("Enter")
     await page.getByText("README.md", { exact: true }).last().waitFor()
     const filesAgentButtons = await page.getByRole("button", { name: /^Agent/ }).count()
-    const filesAgentFrames = await page.locator('[aria-label="OpenCode agent"]').count()
+    const filesAgentFrames = await page.locator('[aria-label="Agent"]').count()
     assert(filesAgentButtons === 0, `files: agent button should not render, got ${filesAgentButtons}`)
-    assert(filesAgentFrames === 0, `files: agent frame should not mount, got ${filesAgentFrames}`)
+    assert(filesAgentFrames === 0, `files: agent panel should not mount, got ${filesAgentFrames}`)
     await assertShellFillsViewport(page, "files")
     assert((await page.title()) === "Files · OpenCode Studio", `files: unexpected document title ${await page.title()}`)
     await assertNoHorizontalScroll(page, "1280 files")
@@ -245,9 +269,9 @@ async function browserSmoke(base: string) {
     assert(mobileDrawerWidth >= 359, `360 menu: drawer should be full width, got ${mobileDrawerWidth}`)
     await assertNoHorizontalScroll(page, "360 menu")
     await page.getByRole("button", { name: "Close menu" }).click()
-    await page.goto(`${base}/studio`, { waitUntil: "networkidle" })
-    await page.waitForSelector("text=OpenCode")
-    await assertNoHorizontalScroll(page, "360 opencode")
+    await page.goto(`${base}/studio`, { waitUntil: "domcontentloaded" })
+    await page.getByRole("heading", { name: "Agent", exact: true }).waitFor()
+    await assertNoHorizontalScroll(page, "360 agent")
     await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
     await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
     await page.getByRole("heading", { name: "Designs", exact: true }).waitFor()
@@ -283,41 +307,48 @@ async function browserSmoke(base: string) {
 
     await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
     await page.getByRole("button", { name: /^Agent/ }).click()
-    const mobileAgentFrame = page.locator('iframe[title="OpenCode agent"]')
-    await mobileAgentFrame.waitFor({ state: "attached", timeout: 30_000 })
+    const mobileAgentPanel = page.locator('[aria-label="Agent"][data-agent-open="true"]')
+    await mobileAgentPanel.waitFor({ state: "visible", timeout: 30_000 })
     const mobileAgentClose = page.getByRole("button", { name: "Close agent" })
     await mobileAgentClose.focus()
     await page.keyboard.press("Tab")
     const mobileAgentFocus = await page.evaluate(() => ({
       tag: document.activeElement?.tagName,
-      title: document.activeElement?.getAttribute("title"),
+      insidePanel: Boolean(document.querySelector('[aria-label="Agent"]')?.contains(document.activeElement)),
     }))
     assert(
-      mobileAgentFocus.tag === "IFRAME" && mobileAgentFocus.title === "OpenCode agent",
-      `360 agent: Tab from Close should enter iframe, got ${JSON.stringify(mobileAgentFocus)}`,
+      mobileAgentFocus.insidePanel && mobileAgentFocus.tag !== "BODY",
+      `360 agent: focus should stay in the native panel, got ${JSON.stringify(mobileAgentFocus)}`,
     )
     await mobileAgentClose.click()
     console.log("360 agent focus ok")
 
-    // Native agent iframe: closed by default; open once and confirm same-origin frame
+    // Native agent panel: closed by default; open once and confirm bounded composer.
     await page.setViewportSize({ width: 1280, height: 800 })
     await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
     await page.waitForSelector("text=CAD Studio", { timeout: 15_000 })
     await assertAgentClosedLayout(page, "cad-pre-open")
     const iframeBefore = await page.locator('iframe[title="OpenCode agent"]').count()
-    assert(iframeBefore === 0, `agent iframe should not mount while closed, got ${iframeBefore}`)
+    assert(iframeBefore === 0, `native agent must not render an iframe, got ${iframeBefore}`)
     await page.getByRole("button", { name: /^Agent/ }).click()
-    await page.waitForSelector('[data-agent-open="true"]', { timeout: 10_000 })
-    const frame = page.frameLocator('iframe[title="OpenCode agent"]')
-    await frame.locator("body").waitFor({ timeout: 30_000 })
-    const frameUrl = await page.locator('iframe[title="OpenCode agent"]').getAttribute("src")
-    assert(frameUrl === "/" || frameUrl?.startsWith("/"), `unexpected agent iframe src=${String(frameUrl)}`)
+    const nativePanel = page.locator('[aria-label="Agent"][data-agent-open="true"]')
+    await nativePanel.waitFor({ state: "visible", timeout: 10_000 })
+    const nativeMetrics = await nativePanel.evaluate((panel) => {
+      const dock = panel.querySelector(".oc-dock")?.getBoundingClientRect()
+      return {
+        panelBottom: panel.getBoundingClientRect().bottom,
+        dockBottom: dock?.bottom ?? Number.POSITIVE_INFINITY,
+        vh: window.innerHeight,
+      }
+    })
+    assert(nativeMetrics.panelBottom <= nativeMetrics.vh + 1, `agent panel exceeds viewport: ${JSON.stringify(nativeMetrics)}`)
+    assert(nativeMetrics.dockBottom <= nativeMetrics.vh + 1, `agent composer is clipped: ${JSON.stringify(nativeMetrics)}`)
     await page.getByRole("button", { name: "Close agent" }).click()
     await page.waitForSelector('[data-agent-open="false"]', { state: "attached", timeout: 5_000 })
     await assertAgentClosedLayout(page, "cad-post-close")
-    const iframeAfterClose = await page.locator('iframe[title="OpenCode agent"]').count()
-    assert(iframeAfterClose === 1, `agent iframe should stay mounted after close, got ${iframeAfterClose}`)
-    console.log("native agent iframe ok")
+    const panelAfterClose = await page.locator('[aria-label="Agent"]').count()
+    assert(panelAfterClose === 1, `agent panel should stay mounted after close, got ${panelAfterClose}`)
+    console.log("native agent panel ok")
   } finally {
     await browser.close()
   }
@@ -359,10 +390,35 @@ try {
   const port = await freePort()
   const parent = Bun.serve({
     port: 0,
-    fetch: () =>
-      new Response("<!doctype html><title>OpenCode</title><div id='root'>stub parent</div>", {
+    fetch(request) {
+      const pathname = new URL(request.url).pathname
+      if (pathname === "/global/health") return Response.json({ healthy: true, version: "smoke" })
+      if (pathname === "/session") {
+        return Response.json([
+          {
+            id: "session-generated",
+            title: "New session - 2026-08-09T08:32:31.853Z",
+            time: { created: 1_786_264_351_853, updated: 1_786_264_351_853 },
+          },
+          {
+            id: "session-existing",
+            title: "Existing session",
+            time: { created: 1_786_264_300_000, updated: 1_786_264_300_000 },
+          },
+        ])
+      }
+      if (/^\/session\/[^/]+\/(?:message|diff)$/.test(pathname)) return Response.json([])
+      if (pathname === "/config/providers") {
+        return Response.json({
+          providers: [{ id: "smoke", key: "test", source: "api", models: { "smoke-model": {} } }],
+          default: { smoke: "smoke-model" },
+        })
+      }
+      if (pathname === "/event") return new Response("", { headers: { "Content-Type": "text/event-stream" } })
+      return new Response("<!doctype html><title>OpenCode</title><div id='root'>stub parent</div>", {
         headers: { "Content-Type": "text/html; charset=utf-8" },
-      }),
+      })
+    },
   })
   const { url, stop } = await startHost({
     studioRoot: domain,

@@ -125,6 +125,27 @@ describe("configureStudios", () => {
 
     expect(await Bun.file(legacyPath).exists()).toBe(true)
     expect(await Bun.file(path.join(ctx.studioConfigHome, "studio.json")).exists()).toBe(false)
+    expect(await Bun.file(ctx.openCodeHome).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.workspace, "studio")).exists()).toBe(false)
+  })
+
+  test("failed repeat configure preserves unchanged managed skills", async () => {
+    const ctx = await isolated()
+    await configureStudios({ ...ctx, validateOpenCode: false })
+    const skillFiles = ["studio-media", "studio-cad", "studio-pcb"].map((name) => path.join(ctx.openCodeHome, "skills", name, "SKILL.md"))
+    const before = await Promise.all(skillFiles.map((file) => readFile(file, "utf8")))
+
+    await rm(ctx.studioConfigHome, { recursive: true, force: true })
+    await writeFile(ctx.studioConfigHome, "blocks studio.json creation")
+
+    await expect(configureStudios({ ...ctx, validateOpenCode: false })).rejects.toThrow()
+    await expect(Promise.all(skillFiles.map((file) => readFile(file, "utf8")))).resolves.toEqual(before)
+  })
+
+  test("isolated configure does not install the real-home serve wrapper", async () => {
+    const ctx = await isolated()
+    const result = await configureStudios({ ...ctx, validateOpenCode: false })
+    expect(result.serveWrapper).toBeUndefined()
   })
 
   test("remove uninstalls managed skills and plugins", async () => {
@@ -170,6 +191,15 @@ describe("configureStudios", () => {
       expect(mediaGo?.status).toBe("fail")
       expect(result.ok).toBe(false)
     }
+  })
+
+  test("status fails root checks when resolution fails but a display path is available", async () => {
+    const ctx = await isolated()
+    const status = await statusStudios(ctx)
+    const cad = status.studios.find((studio) => studio.id === "cad")
+    expect(cad?.root).toBe(path.join(ctx.workspace, "studio", "designs"))
+    expect(cad?.rootError).toContain("does not exist")
+    expect(status.checks.find((check) => check.id === "root:cad")?.status).toBe("fail")
   })
 
   test("configure scrubs legacy project-local managed files", async () => {

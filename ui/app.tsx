@@ -2,13 +2,13 @@ import { useQuery } from "@tanstack/react-query"
 import { Component, lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router"
 import { assertCatalogComplete, isStudioId, type StudioId } from "../src/core/registry"
+import { AgentPanel } from "./agent/AgentPanel"
 import { Button } from "./components/button"
 import { ErrorState } from "./components/error-state"
 import { FilesExplorer } from "./files-explorer"
 import { fetchJson } from "./lib/fetch-json"
 import { useFocusTrap } from "./lib/focus-trap"
-import { NativeAgentFrame } from "./native-agent-frame"
-import { NativeOpenCodePane } from "./native-opencode-pane"
+import { StatusPage } from "./status-page"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 import { readThemePreference, setThemePreference, type ThemePreference } from "./theme"
 import { useStudioChrome } from "./use-studio-chrome"
@@ -189,7 +189,7 @@ function SideDrawer({ open, onClose, studioId }: { open: boolean; onClose: () =>
         <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-2 pb-4" aria-label="Studios">
           <div className="flex flex-col gap-0.5">
             <p className="osc-drawer-label px-2.5 pt-1.5 pb-1">Home</p>
-            <DrawerNavLink to="/" active={!studioId} onNavigate={onClose} title="OpenCode" blurb="Agent & sessions" />
+            <DrawerNavLink to="/" active={!studioId || studioId === "home"} onNavigate={onClose} title="Agent" blurb="Sessions & chat" />
             <DrawerNavLink
               to="/files"
               active={studioId === "files"}
@@ -198,6 +198,7 @@ function SideDrawer({ open, onClose, studioId }: { open: boolean; onClose: () =>
               blurb="Home browser"
               accent="files"
             />
+            <DrawerNavLink to="/status" active={studioId === "status"} onNavigate={onClose} title="Status" blurb="Health & repair" />
           </div>
           <div className="flex flex-col gap-0.5">
             <p className="osc-drawer-label px-2.5 pt-0.5 pb-1">Studios</p>
@@ -288,9 +289,9 @@ function OpenCodeFrame() {
   return (
     <div data-studio="opencode" className="studio-shell flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--osc-bg)]">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" inert={chrome.drawerOpen ? true : undefined}>
-        <TopBar studioLabel="OpenCode" menuOpen={chrome.drawerOpen} onMenu={chrome.openDrawer} edge="flush" />
-        <main id="main-content" data-testid="studio-main" className="relative min-h-0 min-w-0 flex-1 overflow-hidden" tabIndex={-1}>
-          <h1 className="sr-only">OpenCode</h1>
+        <TopBar studioLabel="Agent" menuOpen={chrome.drawerOpen} onMenu={chrome.openDrawer} edge="flush" />
+        <main id="main-content" data-testid="studio-main" className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden" tabIndex={-1}>
+          <h1 className="sr-only">Agent</h1>
           {studiosQuery.isLoading ? (
             <div className="flex h-full flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
               <span className="sr-only">Loading OpenCode…</span>
@@ -310,7 +311,7 @@ function OpenCodeFrame() {
               />
             </div>
           ) : (
-            <NativeOpenCodePane available={available} />
+            <AgentPanel studioRoot={studiosQuery.data?.studioRoot ?? ""} available={available} open fullPage onClose={() => {}} />
           )}
         </main>
       </div>
@@ -438,7 +439,7 @@ function StudioFrame() {
             <button
               type="button"
               onClick={chrome.toggleAgent}
-              className="osc-chip"
+              className="osc-chip osc-agent-chip"
               aria-pressed={chrome.agentOpen}
               aria-label={chrome.agentStatusLabel}
               title={chrome.agentStatusLabel}
@@ -448,8 +449,8 @@ function StudioFrame() {
             </button>
           }
         />
-        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          <NativeAgentFrame
+        <div className="relative flex max-h-[calc(100dvh-var(--osc-chrome-h)-env(safe-area-inset-top,0px))] min-h-0 min-w-0 flex-1 overflow-hidden">
+          <AgentPanel
             studioRoot={studioRoot}
             available={nativeAvailable}
             open={chrome.agentOpen}
@@ -478,7 +479,7 @@ function SkipLink() {
   return (
     <a
       href="#main-content"
-      className="absolute top-0 left-3 z-[100] -translate-y-full rounded-[var(--osc-radius-md)] bg-[var(--osc-primary)] px-3 py-2 text-[12px] font-medium text-[var(--osc-primary-fg)] shadow-[var(--osc-shadow)] transition-transform duration-[var(--osc-motion-duration)] focus:translate-y-3 focus:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
+      className="osc-skip-link absolute top-0 left-3 z-[100] -translate-y-full rounded-[var(--osc-radius-md)] bg-[var(--osc-primary)] px-3 py-2 text-[12px] font-medium shadow-[var(--osc-shadow)] transition-transform duration-[var(--osc-motion-duration)] focus:translate-y-3 focus:outline-none focus-visible:shadow-[var(--osc-focus-ring)]"
     >
       Skip to main content
     </a>
@@ -489,8 +490,8 @@ function FilesFrame() {
   const chrome = useStudioChrome()
 
   return (
-    <div data-studio="files" className="studio-shell flex min-h-dvh flex-col bg-[var(--osc-bg)]">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={chrome.drawerOpen ? true : undefined}>
+    <div data-studio="files" className="studio-shell flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--osc-bg)]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" inert={chrome.drawerOpen ? true : undefined}>
         <TopBar studioLabel="Files" studioId="files" menuOpen={chrome.drawerOpen} onMenu={chrome.openDrawer} edge="flush" />
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <main id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
@@ -504,6 +505,21 @@ function FilesFrame() {
   )
 }
 
+function StatusFrame() {
+  const chrome = useStudioChrome()
+  return (
+    <div className="studio-shell flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--osc-bg)]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" inert={chrome.drawerOpen ? true : undefined}>
+        <TopBar studioLabel="Status" menuOpen={chrome.drawerOpen} onMenu={chrome.openDrawer} edge="flush" />
+        <main id="main-content" className="min-h-0 flex-1 overflow-y-auto" tabIndex={-1}>
+          <StatusPage />
+        </main>
+      </div>
+      <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} studioId="status" />
+    </div>
+  )
+}
+
 export function App() {
   const location = useLocation()
 
@@ -511,9 +527,11 @@ export function App() {
     const studioMatch = location.pathname.match(/^\/studios\/([^/]+)/)
     const title = location.pathname.startsWith("/files")
       ? "Files"
-      : studioMatch
-        ? (STUDIO_META[studioMatch[1]]?.short ?? studioMatch[1])
-        : "OpenCode"
+      : location.pathname.startsWith("/status")
+        ? "Status"
+        : studioMatch
+          ? (STUDIO_META[studioMatch[1]]?.short ?? studioMatch[1])
+          : "Agent"
     document.title = `${title} · OpenCode Studio`
   }, [location.pathname])
 
@@ -523,6 +541,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<OpenCodeFrame />} />
         <Route path="/files/*" element={<FilesFrame />} />
+        <Route path="/status" element={<StatusFrame />} />
         <Route path="/studios/:studioId/*" element={<StudioFrame />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

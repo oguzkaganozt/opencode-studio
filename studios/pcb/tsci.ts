@@ -1,7 +1,8 @@
-import { mkdir, rm, stat } from "node:fs/promises"
+import { mkdir, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { engineCommand, resolveTsci } from "../../src/core/engines"
+import { artifactFreshness, buildInputDigest, clearBuildInputStamp, staleArtifactMessage, writeBuildInputStamp } from "./artifact-freshness"
 import {
   type CircuitInspection,
   inspectCircuitJson,
@@ -108,14 +109,13 @@ function artifactPaths(projectDir: string): BuildArtifacts {
 async function clearGeneratedArtifacts(projectDir: string): Promise<void> {
   const paths = Object.values(artifactPaths(projectDir)).filter((filePath): filePath is string => filePath !== null)
   await Promise.all(paths.map((filePath) => rm(filePath, { force: true })))
+  await clearBuildInputStamp(projectDir)
 }
 
 async function assertFreshCircuitJson(projectDir: string, circuitJsonPath: string): Promise<void> {
-  const sourcePath = path.join(projectDir, "src", "circuit.tsx")
-  const [sourceInfo, circuitInfo] = await Promise.all([stat(sourcePath), stat(circuitJsonPath)])
-  if (circuitInfo.mtimeMs < sourceInfo.mtimeMs) {
-    throw new Error("Circuit JSON is older than src/circuit.tsx. Run pcb_circuit_build before exporting.")
-  }
+  await readCircuitJson(projectDir, circuitJsonPath)
+  const freshness = await artifactFreshness(projectDir)
+  if (!freshness.fresh) throw new Error(staleArtifactMessage(freshness.reason))
 }
 
 async function runCommand(command: string[], cwd: string, signal?: AbortSignal): Promise<TsciResult> {
@@ -428,7 +428,7 @@ export async function searchComponents(
  * Run `tsci build src/circuit.tsx` in the project directory.
  * Produces dist/src/circuit/circuit.json.
  */
-async function finalizeBuild(result: TsciResult, projectDir: string): Promise<CircuitBuildResult> {
+async function finalizeBuild(result: TsciResult, projectDir: string, inputDigest: string): Promise<CircuitBuildResult> {
   const emptyArtifacts: BuildArtifacts = {
     circuitJsonPath: null,
     schematicSvgPath: null,
@@ -440,6 +440,10 @@ async function finalizeBuild(result: TsciResult, projectDir: string): Promise<Ci
   const circuitJsonPath = path.join(projectDir, "dist", "src", "circuit", "circuit.json")
   try {
     const inspection = inspectCircuitJson(await readCircuitJson(projectDir, circuitJsonPath))
+    if ((await buildInputDigest(projectDir)) !== inputDigest) {
+      throw new Error("Project inputs changed while the build was running. Run pcb_circuit_build again.")
+    }
+    await writeBuildInputStamp(projectDir, inputDigest)
     return {
       ...result,
       success: inspection.designValid,
@@ -462,8 +466,9 @@ async function finalizeBuild(result: TsciResult, projectDir: string): Promise<Ci
 
 export async function buildCircuit(projectDir: string, signal?: AbortSignal): Promise<CircuitBuildResult> {
   await clearGeneratedArtifacts(projectDir)
+  const inputDigest = await buildInputDigest(projectDir)
   const result = await run(["build", "src/circuit.tsx"], projectDir, signal)
-  return finalizeBuild(result, projectDir)
+  return finalizeBuild(result, projectDir, inputDigest)
 }
 
 /**
@@ -554,6 +559,7 @@ export async function runProjectBuild(
     signalOrOptions instanceof AbortSignal || signalOrOptions === undefined ? { signal: signalOrOptions } : signalOrOptions
   const signal = options.signal
   await clearGeneratedArtifacts(projectDir)
+  const inputDigest = await buildInputDigest(projectDir)
   const npmPath = options.npmPath !== undefined ? options.npmPath : Bun.which("npm")
   if (!npmPath) {
     return buildCircuit(projectDir, signal)
@@ -578,7 +584,7 @@ export async function runProjectBuild(
       return buildCircuit(projectDir, signal)
     }
 
-    return finalizeBuild({ success: exitCode === 0, stdout, stderr, exitCode }, projectDir)
+    return finalizeBuild({ success: exitCode === 0, stdout, stderr, exitCode }, projectDir, inputDigest)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (/ENOENT|not found|No such file/i.test(message)) {

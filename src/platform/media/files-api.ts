@@ -127,21 +127,25 @@ async function detectMime(filePath: string, size: number): Promise<string | unde
   }
 }
 
-export function parseRange(header: string | undefined, size: number): { start: number; end: number } | null {
-  if (!header?.startsWith("bytes=")) return null
-  const spec = header.slice("bytes=".length).split(",")[0]?.trim()
-  if (!spec) return null
-  const [startRaw, endRaw] = spec.split("-")
-  let start = startRaw === "" ? Number.NaN : Number(startRaw)
-  let end = endRaw === "" || endRaw === undefined ? Number.NaN : Number(endRaw)
-  if (Number.isNaN(start) && Number.isNaN(end)) return null
-  if (Number.isNaN(start)) {
-    start = Math.max(0, size - end)
-    end = size - 1
-  } else if (Number.isNaN(end)) {
-    end = size - 1
+export function parseRange(header: string | undefined, size: number): { start: number; end: number } | null | undefined {
+  if (header === undefined) return undefined
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header)
+  if (!match || (!match[1] && !match[2]) || size === 0) return null
+
+  const startRaw = match[1]
+  const endRaw = match[2]
+  if (!startRaw) {
+    const suffix = Number(endRaw)
+    if (!Number.isSafeInteger(suffix) || suffix <= 0) return null
+    return { start: Math.max(0, size - suffix), end: size - 1 }
   }
-  if (start < 0 || end < start || start >= size) return null
+
+  const start = Number(startRaw)
+  if (!Number.isSafeInteger(start) || start >= size) return null
+  if (!endRaw) return { start, end: size - 1 }
+
+  const end = Number(endRaw)
+  if (!Number.isSafeInteger(end) || end < start) return null
   return { start, end: Math.min(end, size - 1) }
 }
 
@@ -265,6 +269,11 @@ export async function createFilesApi(workspaceRoot: string) {
     }
     if (download) {
       headers["Content-Disposition"] = safeContentDisposition(path.basename(relative))
+    }
+
+    if (range === null) {
+      headers["Content-Range"] = `bytes */${size}`
+      return new Response(null, { status: 416, headers })
     }
 
     if (range) {

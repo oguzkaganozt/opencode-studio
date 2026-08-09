@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import trimesh
 from build123d import Box
-from forge_cli import build_design
+from forge_cli import build_design, export_part
 
 
 class BuildDesignTest(unittest.TestCase):
@@ -87,6 +87,59 @@ class BuildDesignTest(unittest.TestCase):
             )
             self.assertEqual((design / ".artifacts" / "current").readlink(), first_generation)
             self.assertTrue((design / "step" / "body.step").is_file())
+
+    def test_input_mutation_during_build_is_not_published(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            design = self._make_design(
+                Path(tmp),
+                "from build123d import Box\n"
+                "from params import SIZE\n\n"
+                "def build():\n"
+                "    return Box(SIZE, SIZE, SIZE)\n",
+            )
+            build_design(str(design))
+            first_generation = (design / ".artifacts" / "current").readlink()
+            first_manifest = (design / "manifest.json").read_text(encoding="utf-8")
+
+            def export_then_mutate(*args, **kwargs):
+                result = export_part(*args, **kwargs)
+                (design / "params.py").write_text("SIZE = 20.0\n", encoding="utf-8")
+                return result
+
+            with patch("forge_cli.export_part", side_effect=export_then_mutate):
+                with self.assertRaisesRegex(ValueError, "inputs changed during build"):
+                    build_design(str(design))
+
+            self.assertEqual((design / ".artifacts" / "current").readlink(), first_generation)
+            self.assertEqual((design / "manifest.json").read_text(encoding="utf-8"), first_manifest)
+            generations = [
+                path
+                for path in (design / ".artifacts").iterdir()
+                if path.is_dir() and not path.is_symlink()
+            ]
+            self.assertEqual(generations, [design / ".artifacts" / first_generation])
+
+    def test_successful_builds_retain_only_current_and_previous_generations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            design = self._make_design(
+                Path(tmp),
+                "from build123d import Box\n"
+                "from params import SIZE\n\n"
+                "def build():\n"
+                "    return Box(SIZE, SIZE, SIZE)\n",
+            )
+            generations = []
+            for _ in range(4):
+                build_design(str(design))
+                generations.append((design / ".artifacts" / "current").readlink())
+
+            retained = {
+                path.name
+                for path in (design / ".artifacts").iterdir()
+                if path.is_dir() and not path.is_symlink()
+            }
+            self.assertEqual(retained, {str(generation) for generation in generations[-2:]})
+            self.assertTrue((design / ".artifacts" / "current").resolve().is_dir())
 
     def test_rejects_disconnected_source_shape(self):
         with tempfile.TemporaryDirectory() as tmp:

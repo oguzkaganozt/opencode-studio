@@ -39,7 +39,7 @@ export function agentStatusLabel(status: AgentStatus): string {
     case "ready":
       return "Agent ready"
     case "unavailable":
-      return "Native OpenCode unavailable"
+      return "Agent unavailable"
     case "error":
       return "Agent error"
   }

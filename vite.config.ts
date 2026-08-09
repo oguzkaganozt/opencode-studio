@@ -30,6 +30,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), localOcctCdn()],
   resolve: {
     alias: {
+      // Bare `@opencode-ai/sdk` re-exports server/spawn — pin browser to client entry only.
+      "@opencode-ai/sdk/client": path.resolve(import.meta.dirname, "node_modules/@opencode-ai/sdk/dist/client.js"),
+      "@opencode-ai/sdk": path.resolve(import.meta.dirname, "node_modules/@opencode-ai/sdk/dist/client.js"),
       "@studios": path.resolve(import.meta.dirname, "studios"),
       "@ui": path.resolve(import.meta.dirname, "ui"),
     },
@@ -46,6 +49,10 @@ export default defineConfig({
     proxy: {
       "/api": "http://127.0.0.1:4173",
       "/studio-api": "http://127.0.0.1:4173",
+      // OpenCode API (the host catch-all proxies these to the supervised instance).
+      // Without this the Agent panel cannot run under dev:ui.
+      "^/(global|event|session|config|app|doc|file|find|path|vcs|pty|mcp|tui|auth|provider|skill|command|instance|project|lsp|formatter)(/|\\?|$)":
+        "http://127.0.0.1:4173",
     },
   },
 })

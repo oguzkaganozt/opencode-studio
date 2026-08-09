@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises"
 import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
-import { generatePickAndPlace, toCplCsv } from "./assembly"
-import { filterCatalogParts, getCatalogPart, inspectCatalog, loadCatalogParts, partSummary } from "./catalog"
+import { toCplCsv } from "./assembly"
+import { filterCatalogParts, findCatalogPart, inspectCatalog, loadCatalogParts, partSummary } from "./catalog"
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
@@ -31,6 +31,7 @@ async function readProjectSvg(
     kind === "schematic"
       ? `Schematic SVG not found for project '${project.name}'. Run pcb_circuit_export with format 'schematic'.`
       : `PCB SVG not found for project '${project.name}'. Run pcb_circuit_export with format 'pcb'.`
+  if (project.artifactError) throw new Error(project.artifactError)
   if (!svgPath) throw new Error(missing)
   const svg = await readFile(svgPath, "utf8")
   return {
@@ -146,7 +147,8 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             mpn: tool.schema.string().describe("Manufacturer part number, e.g. ESP32-S3-WROOM-1-N8R8"),
           },
           async execute(args) {
-            const [catalog, part] = await Promise.all([inspectCatalog(workspaceRoot), getCatalogPart(workspaceRoot, args.mpn)])
+            const catalog = await inspectCatalog(workspaceRoot)
+            const part = findCatalogPart(catalog.parts, args.mpn)
             return formatToolJSON({
               available: catalog.available,
               scope: catalog.scope,
@@ -198,7 +200,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
             const readiness = circuit
               ? circuitReadiness(circuit, { inspection: result.inspection ?? undefined })
-              : { fabricationReady: false, assemblyReady: false, manufacturingBlockers: [] as const }
+              : { fabricationReady: false, assemblyReady: false, manufacturingBlockers: [] as const, assemblyBlockers: [] as const }
             const fabricationReady = result.inspection !== null && readiness.fabricationReady
             return formatToolJSON({
               projectId: args.projectId,
@@ -211,6 +213,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               assemblyReady: fabricationReady && readiness.assemblyReady,
               debugOnly: result.inspection ? !result.inspection.designValid : false,
               manufacturingBlockers: readiness.manufacturingBlockers,
+              assemblyBlockers: readiness.assemblyBlockers,
               diagnostics: result.inspection,
               artifacts: result.artifacts,
               stdout: result.stdout.slice(0, 8000),
@@ -234,8 +237,9 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const formats = args.formats as Array<"schematic" | "pcb" | "gerber">
             const result = await exportCircuit(project.absolutePath, formats, ctx.abort)
             const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
+            const readiness = circuit ? circuitReadiness(circuit) : null
             const fabricationReady = result.manufacturingBlockers.length === 0
-            const assemblyReady = fabricationReady && circuit !== null && circuitReadiness(circuit).assemblyReady
+            const assemblyReady = fabricationReady && readiness?.assemblyReady === true
             return formatToolJSON({
               projectId: args.projectId,
               name: project.name,
@@ -250,6 +254,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               generatedFormats: result.generatedFormats,
               blockedFormats: result.blockedFormats,
               manufacturingBlockers: result.manufacturingBlockers,
+              assemblyBlockers: readiness?.assemblyBlockers ?? [],
               diagnostics: result.inspection,
               artifacts: result.artifacts,
               stdout: result.stdout.slice(0, 8000),
@@ -268,7 +273,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
           async execute(args) {
             const project = await resolveProject(workspaceRoot, args.projectId)
             if (!project.circuitJsonPath) {
-              throw new Error(`Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
+              throw new Error(project.artifactError ?? `Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
@@ -283,6 +288,8 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               fabricationReady: readiness.fabricationReady,
               assemblyReady: readiness.assemblyReady,
               debugOnly: false,
+              manufacturingBlockers: readiness.manufacturingBlockers,
+              assemblyBlockers: readiness.assemblyBlockers,
               ...readiness.bom,
             })
           },
@@ -291,14 +298,14 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
         // ── Assembly (Pick & Place) ────────────────────────────────────────
         pcb_assembly_export: tool({
           description:
-            "Generate Pick & Place (CPL) CSV from a built project's Circuit JSON. Blocked by fabrication issues or BOM entries without manufacturer or supplier part identities.",
+            "Generate Pick & Place (CPL) CSV from a built project's Circuit JSON. Blocked by fabrication issues, incomplete BOM identity, missing or malformed placements, and unknown source mappings; intentional do_not_place components are reported separately.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
           },
           async execute(args) {
             const project = await resolveProject(workspaceRoot, args.projectId)
             if (!project.circuitJsonPath) {
-              throw new Error(`Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
+              throw new Error(project.artifactError ?? `Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
@@ -320,7 +327,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
                 diagnostics: inspection,
               })
             }
-            const result = generatePickAndPlace(json)
+            const result = readiness.placement
             const csv = toCplCsv(result.entries)
             return formatToolJSON({
               projectId: args.projectId,
@@ -330,7 +337,6 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               artifactGenerationSucceeded: true,
               designValid: inspection.designValid,
               fabricationReady: true,
-              assemblyReady: true,
               debugOnly: false,
               manufacturingBlockers: [],
               assemblyBlockers: [],
@@ -354,7 +360,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
           async execute(args) {
             const project = await resolveProject(workspaceRoot, args.projectId)
             if (!project.circuitJsonPath) {
-              throw new Error(`Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
+              throw new Error(project.artifactError ?? `Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             return formatToolJSON({

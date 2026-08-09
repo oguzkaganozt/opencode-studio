@@ -1,6 +1,7 @@
 import path from "node:path"
 import { packageRootFrom } from "./core/paths"
 import { autostartDisabled, ensureStudioHost, probeParentOpenCode } from "./host-ensure"
+import { ensureOpenCodeServer, stopOwnedOpenCode } from "./opencode-supervisor"
 
 const g = globalThis as typeof globalThis & { __opencodeStudioBootstrap?: boolean }
 
@@ -18,7 +19,7 @@ export function defaultStudioRoot(env: NodeJS.ProcessEnv = process.env): string 
 
 /** Parent URL for ensure: inherit public bind when OpenCode password is set. */
 export function defaultParentOpenCodeUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const fromEnv = env.OPENCODE_STUDIO_PARENT?.trim() || env.OPENCODE_SERVER_URL?.trim()
+  const fromEnv = env.OPENCODE_STUDIO_PARENT?.trim() || env.OPENCODE_SERVER_URL?.trim() || env.OPENCODE_URL?.trim()
   if (fromEnv) return fromEnv.replace(/\/$/, "")
   const port = env.OPENCODE_PORT?.trim() || env.OPENCODE_SERVER_PORT?.trim() || "4096"
   const publicBind = Boolean(env.OPENCODE_SERVER_PASSWORD || env.OPENCODE_STUDIO_PASSWORD || env.OPENCODE_STUDIO_BIND)
@@ -27,8 +28,48 @@ export function defaultParentOpenCodeUrl(env: NodeJS.ProcessEnv = process.env): 
 }
 
 /**
+ * Ensure OpenCode API (attach or spawn), then Studio host.
+ * Primary product entry for supervised mode.
+ */
+export async function runStudioUp(options?: {
+  packageRoot?: string
+  env?: NodeJS.ProcessEnv
+  pollMs?: number
+}): Promise<{ ok: true; studioUrl: string; parentUrl: string } | { ok: false; reason: string }> {
+  const env = options?.env ?? process.env
+  if (autostartDisabled(env.OPENCODE_STUDIO_AUTOSTART)) {
+    return { ok: false, reason: "OPENCODE_STUDIO_AUTOSTART disabled" }
+  }
+  const packageRoot = options?.packageRoot ?? packageRootFrom(import.meta.dir)
+  const studioRoot = defaultStudioRoot(env)
+
+  const supervised = await ensureOpenCodeServer(env)
+  if (!supervised.ok) return { ok: false, reason: supervised.reason }
+  const parent = supervised.baseUrl
+  if (supervised.spawned) {
+    console.error(`[opencode-studio] OpenCode API supervised at ${parent} (pid ${supervised.pid ?? "?"})`)
+  } else {
+    console.error(`[opencode-studio] OpenCode API attached at ${parent}`)
+  }
+  // Watchdog starts inside ensure when we spawn; no-op for attach-only.
+
+  const ensured = await ensureStudioHost({
+    parentOpenCodeUrl: parent,
+    studioRoot,
+    packageRoot,
+    env,
+  })
+  if (!ensured.ok) {
+    stopOwnedOpenCode({ permanent: true })
+    return { ok: false, reason: ensured.reason }
+  }
+  console.error(`[opencode-studio] Studio ready: ${ensured.studioUrl} studioRoot=${ensured.studioRoot}`)
+  return { ok: true, studioUrl: ensured.studioUrl, parentUrl: parent }
+}
+
+/**
  * Start a fixed-root Studio host as soon as parent OpenCode is reachable.
- * OpenCode sessions choose their own request directory; they never change Studio Home.
+ * Tries supervised spawn when parent is missing (unless OPENCODE_STUDIO_NO_SUPERVISE).
  */
 export async function runEnsureHostLoop(options?: {
   packageRoot?: string
@@ -46,17 +87,25 @@ export async function runEnsureHostLoop(options?: {
   const packageRoot = options?.packageRoot ?? packageRootFrom(import.meta.dir)
   const pollMs = options?.pollMs ?? 2_000
   const exitWhenParentDown = options?.exitWhenParentDown !== false
-  const parent = defaultParentOpenCodeUrl(env)
+  let parent = defaultParentOpenCodeUrl(env)
   const studioRoot = defaultStudioRoot(env)
 
-  // Wait for parent
-  for (let i = 0; i < 100; i++) {
-    if (await probeParentOpenCode(parent, env)) break
-    if (i === 99) {
-      console.error(`[opencode-studio] ensure-host: parent not reachable at ${parent}`)
-      return
+  if (!(await probeParentOpenCode(parent, env))) {
+    const supervised = await ensureOpenCodeServer(env)
+    if (supervised.ok) {
+      parent = supervised.baseUrl
+      console.error(`[opencode-studio] OpenCode ${supervised.spawned ? "spawned" : "attached"} at ${parent}`)
+    } else {
+      // Wait for external parent
+      for (let i = 0; i < 100; i++) {
+        if (await probeParentOpenCode(parent, env)) break
+        if (i === 99) {
+          console.error(`[opencode-studio] ensure-host: parent not reachable at ${parent} (${supervised.reason})`)
+          return
+        }
+        await sleep(200)
+      }
     }
-    await sleep(200)
   }
 
   const ensured = await ensureStudioHost({
@@ -71,12 +120,12 @@ export async function runEnsureHostLoop(options?: {
   }
   console.error(`[opencode-studio] Studio host ready: ${ensured.studioUrl} studioRoot=${ensured.studioRoot}`)
 
-  // Keep the companion alive only while its parent serve remains reachable.
   while (true) {
     await sleep(pollMs)
     if (!(await probeParentOpenCode(parent, env))) {
       if (exitWhenParentDown) {
         console.error("[opencode-studio] parent OpenCode gone; ensure-host exiting")
+        stopOwnedOpenCode({ permanent: true })
         return
       }
     }

@@ -14,6 +14,8 @@ export type ProjectSummary = {
   path: string
   directory: string
   built: boolean
+  artifactStatus: "missing" | "fresh" | "stale"
+  artifactError: string | null
   hasSchematicSvg: boolean
   hasPcbSvg: boolean
   hasGerbersZip: boolean

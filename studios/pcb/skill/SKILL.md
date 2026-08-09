@@ -57,7 +57,8 @@ rebuild (and re-export if needed) before asserting readiness.
    placement DRC.
 7. Use schematic and PCB SVG exports to debug incomplete designs. Gerber and
    CPL are blocked while placeholders, unverified complex part identities,
-   supplier footprint mismatches, or unconnected non-`noConnect` pins remain.
+   supplier footprint mismatches, unconnected non-`noConnect` pins, incomplete
+   BOM identity, or missing/malformed placements remain.
 
 ## Worked micro-flow (first board)
 
@@ -68,7 +69,8 @@ Typical loop for a new project (names are illustrative):
    `src/circuit.tsx` (board outline, nets, power, then MCU). Skip create if the
    project already exists.
 3. `pcb_circuit_build` with the project id → read `success`, `designValid`,
-   `fabricationReady`, `assemblyReady`, and `manufacturingBlockers`.
+   `fabricationReady`, `assemblyReady`, `manufacturingBlockers`, and
+   `assemblyBlockers`.
 4. If errors: `pcb_circuit_read` filtered by error `types` → targeted TSX edit →
    rebuild. Prefer one stage at a time over a full rewrite.
 5. When `designValid` is true but fab/assembly is false, clear blockers (placeholders,
@@ -88,13 +90,15 @@ Tools return separate axes. Never collapse them into a single “done”.
 | `designValid` | Circuit JSON has zero design errors | Hard incomplete; fix diagnostics first |
 | `errorCount` / `warningCount` | Compact diagnostic totals | Errors block validity; warnings need explicit callout |
 | `fabricationReady` | No manufacturing blockers (placeholders, identity, fab pins, etc.) | Do not claim Gerber/fab readiness |
-| `assemblyReady` | Fab-ready **and** BOM complete (MPN coverage) | Do not claim pick-and-place / assembly readiness |
+| `assemblyReady` | Fab-ready, BOM complete, and all non-DNP parts have valid placements | Do not claim pick-and-place / assembly readiness |
 | `manufacturingBlockers` | Why fab is blocked | Quote these; do not invent clearance |
+| `assemblyBlockers` | Why assembly is blocked (fab, BOM, and placement blockers) | Clear every blocker before CPL/assembly claims |
 | `debugOnly` | Build useful for debug only (invalid design) | Never present as production-ready |
 | `bomComplete` (BOM tools) | Every BOM line has an MPN where required | Blocks `assemblyReady` |
 
 Stop claiming X when Y is false: good build needs `success`+`designValid`; fab needs
-`fabricationReady`; assembly needs `assemblyReady`. Quote `manufacturingBlockers`.
+`fabricationReady`; assembly needs `assemblyReady`. Quote `manufacturingBlockers`
+and `assemblyBlockers`.
 
 Honesty rules:
 
