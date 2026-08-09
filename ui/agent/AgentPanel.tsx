@@ -1,4 +1,4 @@
-import type { Agent, Part, PermissionRequest, Session, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
+import type { Part, PermissionRequest, Session, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { getAgentContextDirectory, setAgentContextDirectory, subscribeAgentContext } from "../agent-context"
 import { subscribeAgentHandoff } from "../agent-handoff"
@@ -11,7 +11,6 @@ import {
   type AgentMessage,
   abortSession,
   createSession,
-  listAgents,
   listMessages,
   listPendingPermissions,
   listProviders,
@@ -24,11 +23,14 @@ import {
   subscribeAgentEvents,
 } from "./client"
 import { Markdown } from "./markdown"
+import { availableModelVariants, modelVariantLabel } from "./model-variant"
 import { summarizePart, textFromParts, toolDetail, toolLabel, toolPreview, toolStatus } from "./part-text"
 import { resolveAgentDirectory } from "./resolve-directory"
 import { sessionLabel, sessionOptionLabels } from "./session-label"
 
-type ModelRef = { providerID: string; modelID: string }
+type ModelPreference = { providerID: string; modelID: string }
+type ModelRef = ModelPreference & { variants: string[] }
+type AgentPrefs = { model?: ModelPreference; variants?: Record<string, string> }
 
 type ComposerChip = {
   id: string
@@ -42,7 +44,7 @@ type ComposerState = {
   chips: ComposerChip[]
 }
 
-type PopoverKind = "session" | "model" | "agent" | null
+type PopoverKind = "session" | "model" | "variant" | null
 
 const SESSION_UI_LIMIT = 40
 const MODEL_UI_LIMIT = 80
@@ -63,17 +65,17 @@ function prefsKey(directory: string) {
   return `osc-agent-prefs:${directory}`
 }
 
-function readPrefs(directory: string): { model?: ModelRef; agent?: string } {
+function readPrefs(directory: string): AgentPrefs {
   try {
     const raw = localStorage.getItem(prefsKey(directory))
     if (!raw) return {}
-    return JSON.parse(raw) as { model?: ModelRef; agent?: string }
+    return JSON.parse(raw) as AgentPrefs
   } catch {
     return {}
   }
 }
 
-function writePrefs(directory: string, prefs: { model?: ModelRef; agent?: string }) {
+function writePrefs(directory: string, prefs: AgentPrefs) {
   try {
     localStorage.setItem(prefsKey(directory), JSON.stringify(prefs))
   } catch {
@@ -326,8 +328,8 @@ export function AgentPanel({
   const [files, setFiles] = useState<SnapshotFileDiff[]>([])
   const [modelOptions, setModelOptions] = useState<ModelRef[]>([])
   const [model, setModel] = useState<ModelRef | undefined>()
-  const [agentOptions, setAgentOptions] = useState<Agent[]>([])
-  const [agent, setAgent] = useState<string | undefined>()
+  const [variantsByModel, setVariantsByModel] = useState<Record<string, string>>({})
+  const [catalogDirectory, setCatalogDirectory] = useState<string | undefined>()
   const [popover, setPopover] = useState<PopoverKind>(null)
   const [sessionQuery, setSessionQuery] = useState("")
   const [modelQuery, setModelQuery] = useState("")
@@ -337,6 +339,9 @@ export function AgentPanel({
   const busy =
     sending || Boolean(sessionID && (sessionStatuses[sessionID]?.type === "busy" || sessionStatuses[sessionID]?.type === "retry"))
   const permission = permissions.find((item) => item.sessionID === sessionID) ?? null
+  const modelVariants = model?.variants ?? []
+  const selectedVariant = model ? variantsByModel[modelKey(model)] : undefined
+  const variant = selectedVariant && modelVariants.includes(selectedVariant) ? selectedVariant : undefined
 
   useEffect(() => subscribeAgentContext(() => setContextDirectory(getAgentContextDirectory())), [])
   useEffect(() => {
@@ -404,34 +409,29 @@ export function AgentPanel({
 
   const refreshCatalog = useCallback(async () => {
     if (!healthOk) return
-    const [providerData, agents] = await Promise.all([listProviders(directory), listAgents(directory)])
+    const prefs = readPrefs(directory)
+    const providerData = await listProviders(directory)
     const options: ModelRef[] = []
-    const connected = (providerData?.providers ?? []).filter((p) => Boolean(p.key) || p.source === "env" || p.source === "api")
-    const source = connected.length ? connected : (providerData?.providers ?? [])
-    for (const provider of source) {
-      for (const modelID of Object.keys(provider.models ?? {})) {
-        options.push({ providerID: provider.id, modelID })
+    for (const provider of providerData?.providers ?? []) {
+      for (const [modelID, config] of Object.entries(provider.models ?? {})) {
+        options.push({ providerID: provider.id, modelID, variants: availableModelVariants(config.variants) })
       }
     }
     setModelOptions(options)
-    const visibleAgents = agents.filter((item) => !item.hidden && item.mode !== "subagent")
-    setAgentOptions(visibleAgents)
-    const prefs = readPrefs(directory)
     const defaultProviderModel = providerData?.default
       ? Object.entries(providerData.default).map(([providerID, modelID]) => ({ providerID, modelID }))[0]
       : undefined
-    setModel((current) => {
-      const valid = (m?: ModelRef) => Boolean(m && options.some((o) => o.providerID === m.providerID && o.modelID === m.modelID))
-      if (valid(current)) return current
-      if (valid(prefs.model)) return prefs.model
-      if (valid(defaultProviderModel)) return defaultProviderModel
-      return options[0]
-    })
-    setAgent((current) => {
-      if (current && visibleAgents.some((item) => item.name === current)) return current
-      if (prefs.agent && visibleAgents.some((item) => item.name === prefs.agent)) return prefs.agent
-      return undefined
-    })
+    const findModel = (candidate?: ModelPreference) =>
+      candidate ? options.find((option) => option.providerID === candidate.providerID && option.modelID === candidate.modelID) : undefined
+    setModel(findModel(prefs.model) ?? findModel(defaultProviderModel) ?? options[0])
+    setVariantsByModel(
+      Object.fromEntries(
+        Object.entries(prefs.variants ?? {}).filter(([key, value]) =>
+          options.some((option) => modelKey(option) === key && option.variants.includes(value)),
+        ),
+      ),
+    )
+    setCatalogDirectory(directory)
   }, [directory, healthOk])
 
   const refreshMessages = useCallback(
@@ -648,9 +648,12 @@ export function AgentPanel({
   }, [onStatusChange, status])
 
   useEffect(() => {
-    if (!directory) return
-    writePrefs(directory, { model, agent })
-  }, [directory, model, agent])
+    if (!directory || catalogDirectory !== directory) return
+    writePrefs(directory, {
+      model: model ? { providerID: model.providerID, modelID: model.modelID } : undefined,
+      variants: variantsByModel,
+    })
+  }, [directory, catalogDirectory, model, variantsByModel])
 
   const switchSession = useCallback(
     (nextSessionID: string, empty = false) => {
@@ -695,8 +698,8 @@ export function AgentPanel({
         sessionID: activeID,
         text,
         directory,
-        agent,
         model,
+        variant,
       })
       setDraft("")
       setChips([])
@@ -1018,7 +1021,7 @@ export function AgentPanel({
                     <button
                       type="button"
                       data-oc-popover-trigger
-                      className="oc-dock__model"
+                      className="oc-dock__model oc-dock__model--primary"
                       onClick={() => setPopover((p) => (p === "model" ? null : "model"))}
                       aria-expanded={popover === "model"}
                       title={model ? modelKey(model) : "Model"}
@@ -1056,47 +1059,53 @@ export function AgentPanel({
                         </div>
                       </div>
                     ) : null}
-                    <button
-                      type="button"
-                      data-oc-popover-trigger
-                      className="oc-dock__model"
-                      onClick={() => setPopover((p) => (p === "agent" ? null : "agent"))}
-                      aria-expanded={popover === "agent"}
-                      title={agent || "Default agent"}
-                    >
-                      <span className="truncate">{agent || "Default agent"}</span>
-                      <IconChevron />
-                    </button>
-                    {popover === "agent" ? (
-                      <div className="oc-popover oc-popover--model" data-oc-popover role="listbox" aria-label="Agents">
+                    {modelVariants.length > 0 ? (
+                      <button
+                        type="button"
+                        data-oc-popover-trigger
+                        className="oc-dock__model oc-dock__model--variant"
+                        onClick={() => setPopover((p) => (p === "variant" ? null : "variant"))}
+                        aria-expanded={popover === "variant"}
+                        aria-label={`Reasoning effort: ${modelVariantLabel(variant ?? "")}`}
+                        title={`Reasoning effort: ${modelVariantLabel(variant ?? "")}`}
+                      >
+                        <span className="truncate">{modelVariantLabel(variant ?? "")}</span>
+                        <IconChevron />
+                      </button>
+                    ) : null}
+                    {popover === "variant" && model ? (
+                      <div className="oc-popover oc-popover--model" data-oc-popover role="listbox" aria-label="Reasoning effort">
                         <div className="oc-popover__list">
                           <button
                             type="button"
                             role="option"
-                            aria-selected={!agent}
-                            className={`oc-popover__item ${!agent ? "is-active" : ""}`}
+                            aria-selected={!variant}
+                            className={`oc-popover__item ${!variant ? "is-active" : ""}`}
                             onClick={() => {
-                              setAgent(undefined)
+                              setVariantsByModel((current) => {
+                                const next = { ...current }
+                                delete next[modelKey(model)]
+                                return next
+                              })
                               setPopover(null)
                             }}
                           >
-                            <span className="truncate font-medium">Default agent</span>
-                            <span className="oc-popover__meta">OpenCode default</span>
+                            <span className="truncate font-medium">Default</span>
+                            <span className="oc-popover__meta">Model default</span>
                           </button>
-                          {agentOptions.map((option) => (
+                          {modelVariants.map((option) => (
                             <button
-                              key={option.name}
+                              key={option}
                               type="button"
                               role="option"
-                              aria-selected={agent === option.name}
-                              className={`oc-popover__item ${agent === option.name ? "is-active" : ""}`}
+                              aria-selected={variant === option}
+                              className={`oc-popover__item ${variant === option ? "is-active" : ""}`}
                               onClick={() => {
-                                setAgent(option.name)
+                                setVariantsByModel((current) => ({ ...current, [modelKey(model)]: option }))
                                 setPopover(null)
                               }}
                             >
-                              <span className="truncate font-medium">{option.name}</span>
-                              <span className="oc-popover__meta">{option.description || option.mode}</span>
+                              <span className="truncate font-medium">{modelVariantLabel(option)}</span>
                             </button>
                           ))}
                         </div>

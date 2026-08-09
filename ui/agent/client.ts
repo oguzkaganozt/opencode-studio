@@ -1,5 +1,4 @@
 import {
-  type Agent,
   createOpencodeClient,
   type Message,
   type OpencodeClient,
@@ -76,15 +75,16 @@ export async function promptSessionAsync(input: {
   sessionID: string
   text: string
   directory?: string
-  agent?: string
   model?: { providerID: string; modelID: string }
+  variant?: string
 }): Promise<void> {
   const client = createAgentClient(input.directory)
   const result = await client.session.promptAsync({
     sessionID: input.sessionID,
     directory: input.directory,
-    agent: input.agent,
-    model: input.model,
+    agent: "build",
+    model: input.model ? { providerID: input.model.providerID, modelID: input.model.modelID } : undefined,
+    variant: input.variant,
     parts: [{ type: "text", text: input.text }],
   })
   if (result.error) throw new Error(formatSdkError(result.error))
@@ -109,13 +109,6 @@ export async function replyPermission(input: {
 export async function sessionDiff(sessionID: string, directory?: string): Promise<SnapshotFileDiff[]> {
   const client = createAgentClient(directory)
   const result = await client.session.diff({ sessionID, directory })
-  if (result.error) throw new Error(formatSdkError(result.error))
-  return result.data ?? []
-}
-
-export async function listAgents(directory?: string): Promise<Agent[]> {
-  const client = createAgentClient(directory)
-  const result = await client.app.agents(directory ? { directory } : undefined)
   if (result.error) throw new Error(formatSdkError(result.error))
   return result.data ?? []
 }

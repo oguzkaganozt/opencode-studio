@@ -13,6 +13,7 @@ import { startHost } from "../src/server"
 const root = path.resolve(import.meta.dir, "..")
 const uiDirectory = path.join(root, "dist/ui")
 const workspace = await mkdtemp(path.join(tmpdir(), "osc-browser-"))
+const promptBodies: Array<Record<string, unknown>> = []
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message)
@@ -193,6 +194,12 @@ async function browserSmoke(base: string) {
     assert(generatedLabel.startsWith("New session"), `generated session label missing: ${generatedLabel}`)
     assert(!generatedLabel.includes("T08:32:31.853Z"), `generated session label exposes raw ISO time: ${generatedLabel}`)
     const composer = page.getByRole("textbox", { name: "Ask anything…" })
+    const effortButton = page.getByRole("button", { name: "Reasoning effort: Default" })
+    await effortButton.waitFor()
+    assert((await page.getByText("Default agent", { exact: true }).count()) === 0, "agent picker should not render")
+    await effortButton.click()
+    await page.getByRole("option", { name: "Medium", exact: true }).click()
+    await page.getByRole("button", { name: "Reasoning effort: Medium" }).waitFor()
     await composer.fill("Draft for generated session")
     await sessionButton.click()
     await page.getByRole("option", { name: "Existing session" }).click()
@@ -200,6 +207,11 @@ async function browserSmoke(base: string) {
     await sessionButton.click()
     await page.getByRole("option", { name: /^New session/ }).click()
     assert((await composer.inputValue()) === "Draft for generated session", "composer draft was not restored with its session")
+    await page.getByRole("button", { name: "Send" }).click()
+    for (let attempt = 0; attempt < 50 && promptBodies.length === 0; attempt += 1) await Bun.sleep(20)
+    assert(promptBodies.length === 1, "agent prompt did not reach OpenCode")
+    assert(promptBodies[0]?.agent === "build", `prompt agent should be build, got ${String(promptBodies[0]?.agent)}`)
+    assert(promptBodies[0]?.variant === "medium", `prompt variant should be medium, got ${String(promptBodies[0]?.variant)}`)
     console.log("agent home ok")
 
     const studioChecks: Record<string, { wait: string; extra?: (p: Page) => Promise<void> }> = {
@@ -408,7 +420,7 @@ try {
   const port = await freePort()
   const parent = Bun.serve({
     port: 0,
-    fetch(request) {
+    async fetch(request) {
       const pathname = new URL(request.url).pathname
       if (pathname === "/global/health") return Response.json({ healthy: true, version: "smoke" })
       if (pathname === "/session") {
@@ -425,15 +437,22 @@ try {
           },
         ])
       }
+      if (/^\/session\/[^/]+\/prompt_async$/.test(pathname) && request.method === "POST") {
+        promptBodies.push((await request.json()) as Record<string, unknown>)
+        return new Response(null, { status: 204 })
+      }
       if (/^\/session\/[^/]+\/(?:message|diff)$/.test(pathname)) return Response.json([])
       if (pathname === "/config/providers") {
         return Response.json({
-          providers: [{ id: "smoke", key: "test", source: "api", models: { "smoke-model": {} } }],
+          providers: [
+            {
+              id: "smoke",
+              source: "custom",
+              models: { "smoke-model": { variants: { low: {}, medium: {}, high: {}, max: {} } } },
+            },
+          ],
           default: { smoke: "smoke-model" },
         })
-      }
-      if (pathname === "/app/agents") {
-        return Response.json([{ name: "build", mode: "primary", permission: [], options: {} }])
       }
       if (pathname === "/session/status") return Response.json({})
       if (pathname === "/permission") return Response.json([])

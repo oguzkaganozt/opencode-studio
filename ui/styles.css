@@ -1548,6 +1548,16 @@ button:disabled {
   box-shadow: var(--osc-focus-ring);
 }
 
+.oc-dock__model--primary {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.oc-dock__model--variant {
+  max-width: 7rem;
+  flex-shrink: 0;
+}
+
 .oc-dock__send {
   display: inline-flex;
   width: 30px;

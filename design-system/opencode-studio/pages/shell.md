@@ -9,7 +9,7 @@ Studio is the chrome; OpenCode remains the runtime behind the native Agent surfa
 
 ## Agent home (`/`)
 - Full-bleed native `AgentPanel`; no iframe and no nested side panel.
-- TopBar label “Agent”. Sessions, messages, permissions, model/agent selection, and abort use the same-origin OpenCode API/SSE proxy.
+- TopBar label “Agent”. Sessions, messages, permissions, model/reasoning-effort selection, and abort use the same-origin OpenCode API/SSE proxy; prompts always use the `build` agent.
 - Loading: skeleton chrome and thread status; error/unavailable: `ErrorState` or inline recovery with Retry.
 - API and SSE state determine health. Never infer health from rendered DOM.
 
