@@ -1,4 +1,4 @@
-import type { Session } from "@opencode-ai/sdk/client"
+import type { Session } from "@opencode-ai/sdk/v2/client"
 
 const GENERATED_SESSION_TITLE = /^New session - (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)$/
 

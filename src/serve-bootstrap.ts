@@ -60,7 +60,7 @@ export async function runStudioUp(options?: {
     env,
   })
   if (!ensured.ok) {
-    stopOwnedOpenCode({ permanent: true })
+    await stopOwnedOpenCode({ permanent: true })
     return { ok: false, reason: ensured.reason }
   }
   console.error(`[opencode-studio] Studio ready: ${ensured.studioUrl} studioRoot=${ensured.studioRoot}`)
@@ -125,7 +125,7 @@ export async function runEnsureHostLoop(options?: {
     if (!(await probeParentOpenCode(parent, env))) {
       if (exitWhenParentDown) {
         console.error("[opencode-studio] parent OpenCode gone; ensure-host exiting")
-        stopOwnedOpenCode({ permanent: true })
+        await stopOwnedOpenCode({ permanent: true })
         return
       }
     }

@@ -1112,7 +1112,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
   checks.push({
     id: "studio-host",
     status: host.ok ? "pass" : "warn",
-    message: host.ok ? `Studio host up at ${host.url}` : `Studio host not reachable at ${host.url} (start opencode serve)`,
+    message: host.ok ? `Studio host up at ${host.url}` : `Studio host not reachable at ${host.url} (run opencode-studio up)`,
   })
 
   const failed = checks.some((check) => check.status === "fail")

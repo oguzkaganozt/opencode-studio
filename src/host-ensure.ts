@@ -160,12 +160,16 @@ async function readStudioHostRoot(localUrl: string): Promise<string | undefined>
   return path.resolve(health.studioRoot)
 }
 
-export function resetStudioHostEnsureForTests() {
+export function stopOwnedStudioHost() {
   try {
     state?.handle.stop()
   } catch {
     // ignore
   }
   state = undefined
+}
+
+export function resetStudioHostEnsureForTests() {
+  stopOwnedStudioHost()
   starting = undefined
 }

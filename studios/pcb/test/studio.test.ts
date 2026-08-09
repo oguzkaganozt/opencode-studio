@@ -279,7 +279,7 @@ describe("pcb studio smoke", () => {
     )
   })
 
-  test("projects endpoint inspects only the requested page and workspace counting stays cheap", async () => {
+  test("projects endpoint supports paged and single-snapshot complete lists", async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), "pcb-pagination-"))
     temps.push(workspace)
     for (const name of ["a-board", "b-board"]) {
@@ -288,10 +288,13 @@ describe("pcb studio smoke", () => {
       await writeFile(path.join(projectDir, "src", "circuit.tsx"), "export {}\n")
     }
     const app = createPcbApi(workspace)
-    expect(await (await app.request("/workspace")).json()).toEqual({ root: workspace, projectCount: 2 })
+    expect(await (await app.request("/workspace")).json()).toEqual({ root: workspace })
     const page = (await (await app.request("/projects?offset=1&limit=1")).json()) as any
     expect(page.total).toBe(2)
     expect(page.projects.map((project: { name: string }) => project.name)).toEqual(["b-board"])
+    const all = (await (await app.request("/projects?all=1")).json()) as any
+    expect(all.hasMore).toBe(false)
+    expect(all.projects.map((project: { name: string }) => project.name)).toEqual(["a-board", "b-board"])
   })
 
   test("runProjectBuild falls back to bundled tsci when npm is unavailable", async () => {

@@ -19,7 +19,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function httpSmoke(base: string) {
-  const core = [`${base}/studio-api/health`, `${base}/studio`, `${base}/api/studios`]
+  const core = [`${base}/studio-api/health`, `${base}/studio`, `${base}/api/studios`, `${base}/api/status`]
   for (const url of core) {
     const res = await fetch(url)
     assert(res.ok, `${url} -> ${res.status}`)
@@ -258,7 +258,23 @@ async function browserSmoke(base: string) {
     await assertShellFillsViewport(page, "files")
     assert((await page.title()) === "Files · OpenCode Studio", `files: unexpected document title ${await page.title()}`)
     await assertNoHorizontalScroll(page, "1280 files")
+    await page.getByRole("button", { name: "Use in Agent" }).click()
+    await page.waitForURL((url) => url.pathname === "/studio" || url.pathname === "/studio/")
+    const fileChip = page.locator(".oc-composer__chips .oc-chip")
+    await fileChip.waitFor()
+    assert(
+      (await fileChip.innerText()).includes("README.md"),
+      `files: selected path did not reach Agent composer (${await fileChip.innerText()})`,
+    )
     console.log("files explorer ok")
+
+    await page.goto(`${base}/studio/status`, { waitUntil: "domcontentloaded" })
+    await page.getByRole("heading", { name: "Status", exact: true }).waitFor()
+    await page.getByText("OpenCode smoke", { exact: true }).waitFor()
+    for (const label of ["OpenCode Studio", "media-go", "CAD · studio-cad", "PCB · studio-pcb", "Media · studio-media", "build123d"]) {
+      await page.getByText(label, { exact: true }).waitFor()
+    }
+    console.log("status page ok")
 
     // Phone posture: no forced horizontal page scroll on home + one studio
     await page.setViewportSize({ width: 360, height: 640 })
@@ -295,6 +311,7 @@ async function browserSmoke(base: string) {
     await assertNoHorizontalScroll(page, "360 pcb")
     console.log("360 smoke ok")
 
+    await page.setViewportSize({ width: 1280, height: 800 })
     await page.goto(`${base}/studio/studios/pcb/catalog`, { waitUntil: "domcontentloaded" })
     await page.getByRole("button", { name: "TEST-1" }).click()
     await page.getByRole("dialog").waitFor()
@@ -305,6 +322,7 @@ async function browserSmoke(base: string) {
     assert((await page.getByRole("dialog").count()) === 0, "catalog: Back should not reopen the closed part modal")
     console.log("catalog history ok")
 
+    await page.setViewportSize({ width: 360, height: 640 })
     await page.goto(`${base}/studio/studios/cad`, { waitUntil: "domcontentloaded" })
     await page.getByRole("button", { name: /^Agent/ }).click()
     const mobileAgentPanel = page.locator('[aria-label="Agent"][data-agent-open="true"]')
@@ -414,6 +432,11 @@ try {
           default: { smoke: "smoke-model" },
         })
       }
+      if (pathname === "/app/agents") {
+        return Response.json([{ name: "build", mode: "primary", permission: [], options: {} }])
+      }
+      if (pathname === "/session/status") return Response.json({})
+      if (pathname === "/permission") return Response.json([])
       if (pathname === "/event") return new Response("", { headers: { "Content-Type": "text/event-stream" } })
       return new Response("<!doctype html><title>OpenCode</title><div id='root'>stub parent</div>", {
         headers: { "Content-Type": "text/html; charset=utf-8" },

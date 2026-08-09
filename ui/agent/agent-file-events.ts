@@ -2,6 +2,7 @@
 
 export type AgentFileEvent = {
   paths: string[]
+  directory?: string
   sessionID?: string
 }
 

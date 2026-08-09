@@ -20,7 +20,7 @@ import {
 } from "./core/security"
 import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
 import { pickUserPaths, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
-import { configureStudios } from "./lifecycle"
+import { configureStudios, statusStudios } from "./lifecycle"
 import { createOpenCodeBridge, normalizeParentOpenCodeUrl, type OpenCodeBridge } from "./opencode-bridge"
 import { restartOwnedOpenCode, supervisorStatus } from "./opencode-supervisor"
 import { STUDIO_HOST_PORT } from "./studio-host-bind"
@@ -246,6 +246,20 @@ export async function createHostApp(input: HostInput) {
       hostHotReload: true,
       nativeOpenCodeAvailable,
     })
+  })
+
+  app.get("/api/status", async (ctx) => {
+    try {
+      return ctx.json(
+        await statusStudios({
+          workspace: domain.studioRoot,
+          packageRoot,
+          ...userPaths,
+        }),
+      )
+    } catch (error) {
+      return ctx.json(errorBody("status_failed", error instanceof Error ? error.message : String(error)), 500)
+    }
   })
 
   app.get("/api/update", async (ctx) => {

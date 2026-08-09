@@ -1,12 +1,18 @@
 import { PCBViewer } from "@tscircuit/pcb-viewer"
+import { requestAgentHandoff } from "@ui/agent-handoff"
+import { useEffect, useState } from "react"
+import { AgentSelectionBar } from "./agent-selection-bar"
+import { createPcbSelectionHandoff, type PcbAgentSelection, pickPcbRegion } from "./agent-selection"
 import { api } from "./api"
 import { ViewerErrorBoundary } from "./error-boundary"
 import { SvgViewer } from "./svg-viewer"
 import { useCircuitJson } from "./use-circuit-json"
 import { ViewerFrame } from "./viewer-frame"
 
-export default function PcbTab({ projectId }: { projectId: string }) {
+export default function PcbTab({ projectId, directory }: { projectId: string; directory: string }) {
   const { data, dataUpdatedAt, isLoading, error, refetch } = useCircuitJson(projectId)
+  const [selection, setSelection] = useState<PcbAgentSelection | null>(null)
+  useEffect(() => setSelection(null), [projectId, dataUpdatedAt])
   const fallback = (
     <SvgViewer
       url={api.pcbSvgUrl(projectId)}
@@ -28,12 +34,25 @@ export default function PcbTab({ projectId }: { projectId: string }) {
   if (error) return fallback
 
   return (
-    <ViewerFrame label="Interactive PCB layout">
-      {({ height }) => (
-        <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
-          <PCBViewer circuitJson={data} height={Math.max(1, Math.floor(height))} />
-        </ViewerErrorBoundary>
-      )}
-    </ViewerFrame>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AgentSelectionBar
+        selection={selection}
+        emptyText="Use the Bounds tool to draw a layout region"
+        onClear={() => setSelection(null)}
+        onSend={() => selection && requestAgentHandoff(createPcbSelectionHandoff(projectId, directory, selection))}
+      />
+      <ViewerFrame label="Interactive PCB layout">
+        {({ height }) => (
+          <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
+            <PCBViewer
+              circuitJson={data}
+              height={Math.max(1, Math.floor(height))}
+              allowEditing={false}
+              onBoundsSelected={(bounds) => setSelection(pickPcbRegion(bounds))}
+            />
+          </ViewerErrorBoundary>
+        )}
+      </ViewerFrame>
+    </div>
   )
 }

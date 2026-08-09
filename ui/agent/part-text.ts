@@ -1,4 +1,4 @@
-import type { Part } from "@opencode-ai/sdk/client"
+import type { Part } from "@opencode-ai/sdk/v2/client"
 
 export function textFromParts(parts: Part[]): string {
   return parts

@@ -12,7 +12,7 @@ Settings drawer and Files Agent behavior were explicitly unlocked and overhauled
 | --- | --- |
 | Tokens / global | `ui/tokens.css`, `ui/styles.css` |
 | Primitives | `ui/components/*` |
-| Shell | `ui/app.tsx`, `ui/native-agent-frame.tsx`, `ui/native-opencode-pane.tsx` |
+| Shell | `ui/app.tsx`, `ui/agent/AgentPanel.tsx`, `ui/status-page.tsx` |
 | Spec | `MASTER.md`, `pages/shell.md` |
 
 Shipped **v0.5.5**. IA update (OpenCode home replaces hub cards; no leave-shell OpenCode chip) — still shell surface.
@@ -41,7 +41,7 @@ QA: projects list; built project schematic/PCB/BOM tabs; diagnostics; catalog em
 | --- | --- |
 | Tokens / global | `ui/tokens.css`, `ui/styles.css` |
 | Primitives | `ui/components/*` |
-| Shell | `ui/app.tsx`, `ui/native-agent-frame.tsx`, `ui/native-opencode-pane.tsx` |
+| Shell | `ui/app.tsx`, `ui/agent/AgentPanel.tsx`, `ui/status-page.tsx` |
 | Files | `ui/files-explorer.tsx` |
 | CAD viewer | `studios/cad/viewer/src/app.tsx`, `styles.css` |
 | PCB viewer | `studios/pcb/viewer/src/*` |

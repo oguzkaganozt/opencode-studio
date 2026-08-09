@@ -175,6 +175,13 @@ describe("configureStudios", () => {
     })
     const result = await statusStudios(ctx)
     expect(result.packageVersion).toBeTruthy()
+    const managedIds = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "mcp-build123d"]
+    expect(
+      result.checks
+        .map((check) => check.id)
+        .filter((id) => managedIds.includes(id))
+        .sort(),
+    ).toEqual([...managedIds].sort())
     expect(result.checks.some((c) => c.id === "skill:pcb" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "skill:cad" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "skill:media" && c.status === "pass")).toBe(true)

@@ -1,17 +1,17 @@
 # Page override — Host shell
 
-Overrides MASTER for TopBar, SideDrawer, OpenCode home, Agent chrome.
+Overrides MASTER for TopBar, SideDrawer, Agent home, Agent chrome, and Status.
 
 ## Intent
 Calm companion chrome. Studio work (viewers) stays quiet behind the shell; chrome never competes with canvas.
 Mobile is first-class for shell chrome (safe areas, ≥40px icon targets, compact chips).
-Studio is the chrome; OpenCode is a first-class surface (not a leave-studio escape hatch).
+Studio is the chrome; OpenCode remains the runtime behind the native Agent surface.
 
-## OpenCode home (`/`)
-- Full-bleed same-origin iframe of parent OpenCode (`src="/"` via host reverse proxy).
-- TopBar label “OpenCode”; **no** Agent side panel (avoids nested OpenCode iframes).
-- Loading: skeleton chrome; error: `ErrorState` + Retry; unavailable: short recovery copy.
-- Title on iframe: `OpenCode` (distinct from Agent panel title `OpenCode agent`).
+## Agent home (`/`)
+- Full-bleed native `AgentPanel`; no iframe and no nested side panel.
+- TopBar label “Agent”. Sessions, messages, permissions, model/agent selection, and abort use the same-origin OpenCode API/SSE proxy.
+- Loading: skeleton chrome and thread status; error/unavailable: `ErrorState` or inline recovery with Retry.
+- API and SSE state determine health. Never infer health from rendered DOM.
 
 ## TopBar / Agent actions
 - `.osc-topbar-inner` / `.osc-topbar-actions`; safe-area top padding.
@@ -20,21 +20,25 @@ Studio is the chrome; OpenCode is a first-class surface (not a leave-studio esca
 - Theme control: compact `.osc-segmented.osc-theme-toggle` (System | Light | Dark) in the top-right actions.
 - Agent toggle (CAD/PCB only): status dot + “Agent”; `aria-pressed` + `aria-label` with status.
 - **No** Settings gear or settings drawer.
-- **No** TopBar “OpenCode” / leave-shell link — use drawer → OpenCode.
+- **No** TopBar leave-shell link. Optional OpenCode web access lives on Status.
 
 ## Drawer
 - Full-bleed on phones; 22rem max from `sm`.
-- Nav only: Home (**OpenCode**, Files) + Studios (CAD, PCB); `.osc-nav-item` + accent rail/dot; `aria-current="page"`.
-- No Navigate/Settings tabs; no health/repair UI in the drawer (CLI: `opencode-studio repair`).
-- OpenCode iframe error: banner + Retry (reload frame).
+- Nav only: Home (**Agent**, Files, Status) + Studios (CAD, PCB); `.osc-nav-item` + accent rail/dot; `aria-current="page"`.
+- No Navigate/Settings tabs; health, repair, and supervised restart live on Status rather than in the drawer.
 
 ## Agent chrome (side panel on CAD/PCB)
-- `.osc-agent-header`: status + dual-line label; Close chip only (no pop-out Open).
-- Loading overlay (pulse dot) while iframe connects; error banner retained.
-- Unavailable copy kept; slightly larger type on mobile.
-- Files does not mount Agent chrome; it remains a focused read-only explorer.
+- `.oc-panel__header`: API status, session selector, new-session/stop actions, and Close.
+- Native thread and composer stay mounted while the panel is hidden so API/SSE status and pending permissions remain current.
+- Mobile uses the existing focus-trapped panel; desktop keeps the bounded resize handle.
+- Files does not mount Agent chrome. “Use in Agent” queues selected-file context, then navigates to Agent home.
+
+## Status (`/status`)
+- Show OpenCode API version/health and supervised versus attached process state.
+- Show a fixed managed inventory: primary plugin, media-go, CAD/PCB/media skills, and build123d MCP.
+- Repair uses the existing guarded configure endpoint; restart is available only for the supervised child.
 
 ## Do not
 - Add marketing hero imagery or extra CTAs.
 - Restyle Files / CAD / PCB viewer interiors (locked).
-- Nest Agent panel on the OpenCode home route.
+- Nest a second Agent panel on Agent home.

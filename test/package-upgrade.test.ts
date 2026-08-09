@@ -5,6 +5,7 @@ import {
   parseOpenCodeServePids,
   parsePidsFromSs,
   parseProcEnviron,
+  parseStudioHostPids,
   resolveUpgradeBinds,
   selectOwnedStackPids,
 } from "../src/package-upgrade"
@@ -21,6 +22,20 @@ describe("parseOpenCodeServePids", () => {
 `
     expect(parseOpenCodeServePids(ps, 999)).toEqual([100, 101, 104])
     expect(parseOpenCodeServePids(ps, 100)).toEqual([101, 104])
+  })
+})
+
+describe("parseStudioHostPids", () => {
+  test("matches primary up forms but not one-shot commands", () => {
+    const ps = `
+  100 opencode-studio up
+  101 opencode-studio
+  102 bun /pkg/dist/cli.js up
+  103 bun /pkg/dist/cli.js
+  104 opencode-studio status
+  105 opencode-studio upgrade
+`
+    expect(parseStudioHostPids(ps, 999)).toEqual([100, 101, 102, 103])
   })
 })
 
@@ -52,6 +67,8 @@ describe("parseProcEnviron", () => {
       "OPENCODE_STUDIO_WORKSPACE=/srv/studio",
       "OPENCODE_STUDIO_CONFIG_HOME=/srv/config/studio",
       "OPENCODE_CONFIG_HOME=/srv/config/opencode",
+      "OPENCODE_URL=http://127.0.0.1:4400",
+      "OPENCODE_STUDIO_NO_SUPERVISE=1",
       "FOO=bar",
       "",
     ].join("\0")
@@ -61,6 +78,8 @@ describe("parseProcEnviron", () => {
       OPENCODE_STUDIO_WORKSPACE: "/srv/studio",
       OPENCODE_STUDIO_CONFIG_HOME: "/srv/config/studio",
       OPENCODE_CONFIG_HOME: "/srv/config/opencode",
+      OPENCODE_URL: "http://127.0.0.1:4400",
+      OPENCODE_STUDIO_NO_SUPERVISE: "1",
     })
   })
 })
@@ -71,13 +90,13 @@ describe("upgrade stack bind and ownership", () => {
     expect(resolveUpgradeBinds(env).studio.localUrl).toBe("http://127.0.0.1:5317")
 
     const ps = `
-  100 /usr/bin/bun /pkg/dist/studio-host.mjs
-  101 /usr/bin/python unrelated-server.py
-  102 /usr/bin/opencode serve --port 4096
+  100 1 /usr/bin/bun /pkg/dist/cli.js up
+  101 1 /usr/bin/python unrelated-server.py
+  102 100 /usr/bin/opencode serve --port 4096
 `
     const ss = `LISTEN 0 512 127.0.0.1:5317 0.0.0.0:* users:(("bun",pid=100,fd=18),("python",pid=101,fd=19))`
     expect(selectOwnedStackPids(ps, ss, env, 999)).toEqual({
-      pids: [102, 100],
+      pids: [100, 102],
       studioPort: 5317,
       ownedListeners: [100],
     })

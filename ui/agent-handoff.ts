@@ -15,12 +15,15 @@ export type AgentHandoffRequest = {
   copyFallback?: boolean
 }
 
-type Listener = (request: AgentHandoffRequest) => void
+type Listener = (request: AgentHandoffRequest) => boolean | undefined
 
-const listeners = new Set<Listener>()
+const listeners = new Map<Listener, boolean>()
+let pending: AgentHandoffRequest | undefined
 
-export function subscribeAgentHandoff(listener: Listener): () => void {
-  listeners.add(listener)
+export function subscribeAgentHandoff(listener: Listener, options?: { consumer?: boolean }): () => void {
+  const consumer = Boolean(options?.consumer)
+  listeners.set(listener, consumer)
+  if (consumer && pending && listener(pending) === true) pending = undefined
   return () => {
     listeners.delete(listener)
   }
@@ -41,10 +44,19 @@ export function requestAgentHandoff(request: AgentHandoffRequest): void {
     copyFallback: Boolean(request.copyFallback),
   }
 
+  let handled = false
+  for (const [listener, consumer] of listeners) {
+    if (listener(normalized) === true && consumer) handled = true
+  }
+  if (!handled) pending = normalized
+
   const clipboard = text || annotation || paths.join("\n")
-  if (normalized.copyFallback && clipboard && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+  if (!handled && normalized.copyFallback && clipboard && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     void navigator.clipboard.writeText(clipboard).catch(() => {})
   }
+}
 
-  for (const listener of listeners) listener(normalized)
+export function resetAgentHandoffForTests() {
+  listeners.clear()
+  pending = undefined
 }

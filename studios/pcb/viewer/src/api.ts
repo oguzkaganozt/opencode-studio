@@ -101,14 +101,14 @@ export type BomResponse = {
 
 export type WorkspaceInfo = {
   root: string
-  projectCount: number
 }
 
 export const api = {
   workspace: (): Promise<WorkspaceInfo> => fetchJson(apiPath("/workspace")),
 
-  projects: (params?: { limit?: number; offset?: number }): Promise<ProjectsResponse> => {
+  projects: (params?: { all?: boolean; limit?: number; offset?: number }): Promise<ProjectsResponse> => {
     const q = new URLSearchParams()
+    if (params?.all) q.set("all", "1")
     if (params?.limit !== undefined) q.set("limit", String(params.limit))
     if (params?.offset !== undefined) q.set("offset", String(params.offset))
     return fetchJson(apiPath(`/projects?${q}`))

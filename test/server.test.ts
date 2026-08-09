@@ -71,6 +71,21 @@ describe("host server", () => {
     expect(body.csrfRequired).toBe(true)
   })
 
+  test("live status exposes every managed plugin, skill, and MCP check", async () => {
+    const ctx = await isolatedHost()
+    const { app } = await hostApp(ctx)
+    const response = await app.request("http://127.0.0.1:4173/api/status", { headers: { host: "127.0.0.1:4173" } })
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    const expected = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "mcp-build123d"]
+    expect(
+      body.checks
+        .map((check: { id: string }) => check.id)
+        .filter((id: string) => expected.includes(id))
+        .sort(),
+    ).toEqual(expected.sort())
+  }, 30_000)
+
   test("rejects bad host", async () => {
     const ctx = await isolatedHost()
     const { app } = await hostApp(ctx)
@@ -207,6 +222,10 @@ describe("host server", () => {
       headers: { host: "192.168.1.20:4173" },
     })
     expect(studios.status).toBe(503)
+    const status = await app.request("http://192.168.1.20:4173/api/status", {
+      headers: { host: "192.168.1.20:4173" },
+    })
+    expect(status.status).toBe(503)
 
     const health = await app.request("http://192.168.1.20:4173/studio-api/health", {
       headers: { host: "192.168.1.20:4173" },
@@ -222,6 +241,10 @@ describe("host server", () => {
       headers: { host: "192.168.1.20:4173", authorization: auth },
     })
     expect(okStudios.status).toBe(200)
+    const okStatus = await secured.request("http://192.168.1.20:4173/api/status", {
+      headers: { host: "192.168.1.20:4173", authorization: auth },
+    })
+    expect(okStatus.status).toBe(200)
 
     const config = await secured.request("http://192.168.1.20:4173/api/config", {
       method: "PUT",

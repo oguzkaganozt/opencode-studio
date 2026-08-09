@@ -1515,6 +1515,8 @@ button:disabled {
 
 .oc-dock__left {
   position: relative;
+  display: inline-flex;
+  align-items: center;
   min-width: 0;
   pointer-events: auto;
 }

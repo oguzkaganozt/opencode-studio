@@ -1,6 +1,6 @@
 import { existsSync, type FSWatcher, watch } from "node:fs"
 import path from "node:path"
-import { type CircuitProject, discoverProjects } from "./workspace"
+import { type CircuitProjectDescriptor, discoverProjectDescriptors } from "./workspace"
 
 /**
  * Observation-only Companion events. Rebuild orchestration belongs to agent
@@ -75,10 +75,10 @@ export function closeAllProjectWatchers() {
   listeners.clear()
 }
 
-function watchDist(project: CircuitProject) {
+function watchDist(project: CircuitProjectDescriptor) {
   const distDir = path.join(project.absolutePath, "dist")
   watchPath(
-    `dist:${project.id}`,
+    `dist:${project.absolutePath}`,
     distDir,
     () => true,
     () => {
@@ -87,11 +87,11 @@ function watchDist(project: CircuitProject) {
   )
 }
 
-function watchProject(project: CircuitProject) {
+function watchProject(project: CircuitProjectDescriptor) {
   const sourceDir = path.dirname(project.circuitSource)
   const sourceFile = path.basename(project.circuitSource)
   watchPath(
-    `source:${project.id}`,
+    `source:${project.absolutePath}`,
     sourceDir,
     (filename) => filename === sourceFile,
     () => {
@@ -101,7 +101,7 @@ function watchProject(project: CircuitProject) {
 
   // Watch project root so a newly created dist/ can be attached later.
   watchPath(
-    `root:${project.id}`,
+    `root:${project.absolutePath}`,
     project.absolutePath,
     (filename) => filename === "dist",
     () => {
@@ -118,7 +118,7 @@ function watchProject(project: CircuitProject) {
  */
 export async function ensureWatching(workspaceRoot: string): Promise<void> {
   try {
-    const projects = await discoverProjects(workspaceRoot)
+    const projects = await discoverProjectDescriptors(workspaceRoot)
     for (const project of projects) watchProject(project)
   } catch {
     // discovery failed — watching disabled

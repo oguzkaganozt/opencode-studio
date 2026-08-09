@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 import { createInterface } from "node:readline"
 import { type ParseArgsConfig, parseArgs } from "node:util"
+import { normalizeCliArgs } from "./cli-args"
 import { loadPackageMeta } from "./core/package-meta"
-import { resetStudioHostEnsureForTests } from "./host-ensure"
+import { stopOwnedStudioHost } from "./host-ensure"
 import { configureStudios, getPackageRoot, removeStudios, statusStudios } from "./lifecycle"
 import { stopOwnedOpenCode } from "./opencode-supervisor"
 import { checkPackageUpgrade, upgradeAndRestart } from "./package-upgrade"
@@ -53,6 +54,7 @@ Flags:
   -v, --version
 
 Examples:
+  opencode-studio         # same as up
   opencode-studio up      # → http://127.0.0.1:4173/studio
   opencode-studio repair
   opencode-studio status
@@ -100,8 +102,8 @@ Options:
 `,
     upgrade: `opencode-studio upgrade [options]
 
-If a newer version is on npm: ask, then stop serve+host, install @latest,
-repair plugins/skills/MCP, and start serve + Studio host fresh.
+If a newer version is on npm: ask, then stop the owned Studio stack, install @latest,
+repair plugins/skills/MCP, and restart opencode-studio up.
 
 Options:
   --check              Report only (exit 1 if update available, 2 on error)
@@ -153,17 +155,18 @@ function askYesNo(prompt: string): Promise<boolean> {
 }
 
 async function main(argv: string[]) {
-  if (argv.length === 0 || (argv.length === 1 && wantsHelp(argv))) {
+  const args = normalizeCliArgs(argv)
+  if (args.length === 1 && wantsHelp(args)) {
     printHelp()
     return 0
   }
-  if (wantsVersion(argv)) {
+  if (wantsVersion(args)) {
     const meta = await loadPackageMeta(getPackageRoot())
     console.log(meta.version)
     return 0
   }
 
-  const [command, ...rest] = argv
+  const [command, ...rest] = args
   if (wantsHelp(rest)) {
     printCommandHelp(command)
     return 0
@@ -236,10 +239,17 @@ async function main(argv: string[]) {
   }
 
   if (command === "up") {
+    const parsed = parseCmd(command, rest, {})
+    if (!parsed.ok) return parsed.code
+    let stopping = false
     const stop = () => {
-      resetStudioHostEnsureForTests()
-      stopOwnedOpenCode({ permanent: true })
-      process.exit(0)
+      if (stopping) return
+      stopping = true
+      void (async () => {
+        stopOwnedStudioHost()
+        await stopOwnedOpenCode({ permanent: true })
+        process.exit(0)
+      })()
     }
     process.on("SIGINT", stop)
     process.on("SIGTERM", stop)
@@ -247,7 +257,7 @@ async function main(argv: string[]) {
       const result = await runStudioUp({ packageRoot })
       if (!result.ok) {
         console.error(result.reason)
-        stopOwnedOpenCode({ permanent: true })
+        await stopOwnedOpenCode({ permanent: true })
         return 1
       }
       console.log(result.studioUrl)
@@ -256,29 +266,36 @@ async function main(argv: string[]) {
       return 0
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
-      resetStudioHostEnsureForTests()
-      stopOwnedOpenCode({ permanent: true })
+      stopOwnedStudioHost()
+      await stopOwnedOpenCode({ permanent: true })
       return 1
     }
   }
 
   if (command === "ensure-host") {
+    const parsed = parseCmd(command, rest, {})
+    if (!parsed.ok) return parsed.code
+    let stopping = false
     const stop = () => {
-      resetStudioHostEnsureForTests()
-      stopOwnedOpenCode({ permanent: true })
-      process.exit(0)
+      if (stopping) return
+      stopping = true
+      void (async () => {
+        stopOwnedStudioHost()
+        await stopOwnedOpenCode({ permanent: true })
+        process.exit(0)
+      })()
     }
     process.on("SIGINT", stop)
     process.on("SIGTERM", stop)
     try {
       await runEnsureHostLoop({ packageRoot })
-      resetStudioHostEnsureForTests()
-      stopOwnedOpenCode({ permanent: true })
+      stopOwnedStudioHost()
+      await stopOwnedOpenCode({ permanent: true })
       return 0
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
-      resetStudioHostEnsureForTests()
-      stopOwnedOpenCode({ permanent: true })
+      stopOwnedStudioHost()
+      await stopOwnedOpenCode({ permanent: true })
       return 1
     }
   }
@@ -323,8 +340,8 @@ async function main(argv: string[]) {
 
       if (!values.yes) {
         console.error(`Update available: ${check.current} → ${check.latest}`)
-        console.error("This will stop opencode serve and the Studio host, install the new package,")
-        console.error("repair plugins/skills/MCP, then start serve + Studio host fresh.")
+        console.error("This will stop the owned OpenCode Studio stack, install the new package,")
+        console.error("repair plugins/skills/MCP, then restart opencode-studio up.")
         if (!process.stdin.isTTY) {
           console.error("Non-interactive shell: re-run with --yes to confirm.")
           return 2

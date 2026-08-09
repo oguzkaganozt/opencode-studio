@@ -1,4 +1,4 @@
-const COMMANDS = ["status", "repair", "ensure-host", "remove", "upgrade"] as const
+const COMMANDS = ["up", "status", "repair", "ensure-host", "remove", "upgrade"] as const
 
 function shellIdent(binName: string) {
   return binName.replaceAll("-", "_")
@@ -19,13 +19,14 @@ export function bashCompletionScript(binName = "opencode-studio") {
     `    esac`,
     `  done`,
     `  if [[ -z "$cmd" ]]; then`,
-    `    COMPREPLY=($(compgen -W "$commands" -- "$cur"))`,
+    `    COMPREPLY=($(compgen -W "$commands --help -h --version -v" -- "$cur"))`,
     `    return`,
     `  fi`,
     `  case "$cmd" in`,
+    `    up|ensure-host) COMPREPLY=($(compgen -W "--help -h" -- "$cur")) ;;`,
     `    status|remove) COMPREPLY=($(compgen -W "$common" -- "$cur")) ;;`,
     `    repair) COMPREPLY=($(compgen -W "$common --dry-run" -- "$cur")) ;;`,
-    `    upgrade) COMPREPLY=($(compgen -W "--check --json --help -h" -- "$cur")) ;;`,
+    `    upgrade) COMPREPLY=($(compgen -W "--check --yes -y --json --help -h" -- "$cur")) ;;`,
     `  esac`,
     `}`,
     `complete -F _${id}_completion ${binName}`,
@@ -42,15 +43,19 @@ export function zshCompletionScript(binName = "opencode-studio") {
     `  local -a commands`,
     `  commands=(${commandWords})`,
     `  _arguments -C \\`,
+    `    '(-h --help)'{-h,--help} \\`,
+    `    '(-v --version)'{-v,--version} \\`,
     `    '1:command:($commands)' \\`,
     `    '*::arg:->args'`,
     `  case $words[1] in`,
+    `    up|ensure-host)`,
+    `      _arguments '(-h --help)'{-h,--help} ;;`,
     `    status|remove)`,
     `      _arguments '--workspace[Domain data root]:path:_files -/' '--json' '(-h --help)'{-h,--help} ;;`,
     `    repair)`,
     `      _arguments '--workspace[Domain data root]:path:_files -/' '--dry-run' '--json' '(-h --help)'{-h,--help} ;;`,
     `    upgrade)`,
-    `      _arguments '--check' '--json' '(-h --help)'{-h,--help} ;;`,
+    `      _arguments '--check' '(-y --yes)'{-y,--yes} '--json' '(-h --help)'{-h,--help} ;;`,
     `  esac`,
     `}`,
     `_${id}`,

@@ -64,12 +64,18 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/workspace", async (ctx) => {
-    const projects = await discoverProjectDescriptors(workspaceRoot)
-    return ctx.json({ root: workspaceRoot, projectCount: projects.length })
+    return ctx.json({ root: workspaceRoot })
   })
 
   app.get("/projects", async (ctx) => {
     const descriptors = await discoverProjectDescriptors(workspaceRoot)
+    if (ctx.req.query("all") === "1") {
+      const projects: CircuitProject[] = []
+      for (let offset = 0; offset < descriptors.length; offset += 50) {
+        projects.push(...(await loadProjects(descriptors.slice(offset, offset + 50))))
+      }
+      return ctx.json({ projects: projects.map(projectSummary), total: descriptors.length, hasMore: false })
+    }
     const limit = integerQuery(ctx.req.query("limit"), 50, 1, 200) ?? 50
     const offset = integerQuery(ctx.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER) ?? 0
     const page = await loadProjects(descriptors.slice(offset, offset + limit))

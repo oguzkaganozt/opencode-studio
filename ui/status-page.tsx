@@ -22,6 +22,28 @@ type SupervisorResponse = {
   restartsInWindow: number
 }
 
+type DoctorCheck = {
+  id: string
+  status: "pass" | "warn" | "fail"
+  message: string
+  repair?: string
+}
+
+type LifecycleStatusResponse = {
+  packageVersion: string
+  workspace: string
+  checks: DoctorCheck[]
+}
+
+const MANAGED_ROWS = [
+  { group: "Plugins", id: "plugin-registration", label: "OpenCode Studio" },
+  { group: "Plugins", id: "plugin-media-go", label: "media-go" },
+  { group: "Skills", id: "skill:cad", label: "CAD · studio-cad" },
+  { group: "Skills", id: "skill:pcb", label: "PCB · studio-pcb" },
+  { group: "Skills", id: "skill:media", label: "Media · studio-media" },
+  { group: "MCP", id: "mcp-build123d", label: "build123d" },
+] as const
+
 export function StatusPage() {
   const [busy, setBusy] = useState<"repair" | "restart" | undefined>()
   const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" } | undefined>()
@@ -33,6 +55,10 @@ export function StatusPage() {
     queryKey: ["agent", "health"],
     queryFn: probeAgentHealth,
     refetchInterval: 10_000,
+  })
+  const statusQuery = useQuery({
+    queryKey: ["host", "lifecycle-status"],
+    queryFn: () => fetchJson<LifecycleStatusResponse>("/api/status"),
   })
   const supervisorQuery = useQuery({
     queryKey: ["agent", "supervisor"],
@@ -62,6 +88,7 @@ export function StatusPage() {
       const body = await withCsrf("/api/config", { method: "PUT", body: "{}" })
       setNotice({ text: body?.message || "Repair complete. Restart agent if plugins did not reload.", tone: "success" })
       void studiosQuery.refetch()
+      void statusQuery.refetch()
     } catch (error) {
       setNotice({ text: error instanceof Error ? error.message : String(error), tone: "error" })
     } finally {
@@ -94,9 +121,17 @@ export function StatusPage() {
 
   const data = studiosQuery.data
   const supervisor = supervisorQuery.data
-  const missingSkills = (data?.studios ?? []).filter((studio) => !studio.skillInstalled)
+  const checks = new Map((statusQuery.data?.checks ?? []).map((check) => [check.id, check]))
+  const managedChecks = MANAGED_ROWS.map((row) => ({ ...row, check: checks.get(row.id) }))
+  const needsRepair = managedChecks.some(({ check }) => check?.status !== "pass")
   const healthStatus = healthQuery.isLoading ? undefined : healthQuery.data?.ok ? "pass" : "fail"
-  const studioStatus = data ? (missingSkills.length ? "warn" : "pass") : undefined
+  const studioStatus = statusQuery.isLoading
+    ? undefined
+    : managedChecks.some(({ check }) => !check || check.status === "fail") || statusQuery.isError
+      ? "fail"
+      : managedChecks.some(({ check }) => check?.status === "warn")
+        ? "warn"
+        : "pass"
   const connectionLabel = supervisor
     ? supervisor.supervised
       ? `Supervised${supervisor.pid ? ` · PID ${supervisor.pid}` : ""}`
@@ -121,7 +156,7 @@ export function StatusPage() {
                 {healthQuery.isLoading ? "Checking…" : healthQuery.data?.ok ? "Healthy" : "Unavailable"}
               </h2>
               <p className="mt-0.5 font-mono text-[11px] text-[var(--osc-text-muted)]">
-                {healthQuery.data?.version
+                {healthQuery.data?.ok && healthQuery.data.version
                   ? `OpenCode ${healthQuery.data.version}`
                   : healthQuery.data?.error || "Waiting for health response"}
               </p>
@@ -144,19 +179,30 @@ export function StatusPage() {
             <span className="osc-status-dot" data-status={studioStatus} aria-hidden />
             <div className="min-w-0 flex-1">
               <p className="osc-drawer-label">Studio</p>
-              <h2 className="mt-1 font-mono text-[14px] font-medium text-[var(--osc-text)]">v{data?.packageVersion ?? "…"}</h2>
-              <p className="mt-0.5 truncate font-mono text-[10px] text-[var(--osc-text-muted)]" title={data?.studioRoot}>
-                {data?.studioRoot ?? "Resolving Studio Home…"}
+              <h2 className="mt-1 font-mono text-[14px] font-medium text-[var(--osc-text)]">
+                v{statusQuery.data?.packageVersion ?? data?.packageVersion ?? "…"}
+              </h2>
+              <p
+                className="mt-0.5 truncate font-mono text-[10px] text-[var(--osc-text-muted)]"
+                title={statusQuery.data?.workspace ?? data?.studioRoot}
+              >
+                {statusQuery.data?.workspace ?? data?.studioRoot ?? "Resolving Studio Home…"}
               </p>
             </div>
           </div>
-          <ul className="mt-4 grid gap-2 border-t border-[var(--osc-border)] pt-3 text-[11px]">
-            {(data?.studios ?? []).map((studio) => (
-              <li key={studio.id} className="flex items-center justify-between gap-3">
-                <span className="font-medium text-[var(--osc-text)] uppercase">{studio.id}</span>
-                <span className="flex items-center gap-1.5 text-[var(--osc-text-muted)]">
-                  <span className="osc-status-dot !m-0 !size-1.5" data-status={studio.skillInstalled ? "pass" : "warn"} aria-hidden />
-                  Skill {studio.skillInstalled ? "installed" : "missing"}
+          <ul className="mt-4 grid gap-3 border-t border-[var(--osc-border)] pt-3 text-[11px]">
+            {managedChecks.map(({ group, id, label, check }) => (
+              <li key={id} className="flex items-start gap-2">
+                <span className="osc-status-dot !mt-1 !size-1.5" data-status={check?.status ?? "fail"} aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="font-medium text-[var(--osc-text)]">{label}</span>
+                    <span className="shrink-0 text-[9px] tracking-[0.08em] text-[var(--osc-text-faint)] uppercase">{group}</span>
+                  </span>
+                  <span className="mt-0.5 block text-[var(--osc-text-muted)]">{check?.message ?? "Status check unavailable"}</span>
+                  {check?.repair && check.status !== "pass" ? (
+                    <span className="mt-0.5 block text-[var(--osc-text-faint)]">{check.repair}</span>
+                  ) : null}
                 </span>
               </li>
             ))}
@@ -174,7 +220,7 @@ export function StatusPage() {
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             type="button"
-            variant={missingSkills.length ? "default" : "outline"}
+            variant={needsRepair ? "default" : "outline"}
             size="sm"
             disabled={Boolean(busy)}
             onClick={() => void repair()}
@@ -191,8 +237,17 @@ export function StatusPage() {
           >
             {busy === "restart" ? "Restarting…" : "Restart agent"}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => void healthQuery.refetch()}>
-            Recheck agent
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void healthQuery.refetch()
+              void supervisorQuery.refetch()
+              void statusQuery.refetch()
+            }}
+          >
+            Recheck status
           </Button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--osc-border)] pt-3">

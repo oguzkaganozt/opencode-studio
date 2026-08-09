@@ -7,7 +7,7 @@ import { composeStudioPlugins, type StudioPluginContribution } from "./core/plug
 import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
-import { ensureStudioHost } from "./host-ensure"
+import { autostartDisabled, ensureStudioHost } from "./host-ensure"
 import { defaultStudioRoot } from "./serve-bootstrap"
 import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
 
@@ -77,7 +77,8 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
 
     let hostUrl = pickString(rawOptions?.hostUrl, defaults.hostUrl)?.replace(/\/$/, "")
 
-    const shouldEnsure = defaults.ensureHost !== false && rawOptions?.ensureHost !== false
+    const shouldEnsure =
+      defaults.ensureHost !== false && rawOptions?.ensureHost !== false && !autostartDisabled(process.env.OPENCODE_STUDIO_AUTOSTART)
     if (!hostUrl && shouldEnsure) {
       const parent = parentServerUrl(context)
       if (parent) {

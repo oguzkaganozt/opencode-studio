@@ -1,4 +1,4 @@
-import type { FileDiff, Part, Permission, Session } from "@opencode-ai/sdk/client"
+import type { Agent, Part, PermissionRequest, Session, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { getAgentContextDirectory, setAgentContextDirectory, subscribeAgentContext } from "../agent-context"
 import { subscribeAgentHandoff } from "../agent-handoff"
@@ -6,14 +6,16 @@ import { type AgentStatus, agentStatusDotClass, deriveAgentStatus } from "../age
 import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, clampAgentWidth, readAgentWidth, viewportAgentWidthMax, writeAgentWidth } from "../agent-width"
 import { Button } from "../components/button"
 import { useFocusTrap } from "../lib/focus-trap"
-import { resolveAgentDirectory } from "../native-agent-url"
 import { publishAgentFileEvent } from "./agent-file-events"
 import {
   type AgentMessage,
   abortSession,
   createSession,
+  listAgents,
   listMessages,
+  listPendingPermissions,
   listProviders,
+  listSessionStatuses,
   listSessions,
   probeAgentHealth,
   promptSessionAsync,
@@ -23,6 +25,7 @@ import {
 } from "./client"
 import { Markdown } from "./markdown"
 import { summarizePart, textFromParts, toolDetail, toolLabel, toolPreview, toolStatus } from "./part-text"
+import { resolveAgentDirectory } from "./resolve-directory"
 import { sessionLabel, sessionOptionLabels } from "./session-label"
 
 type ModelRef = { providerID: string; modelID: string }
@@ -39,7 +42,7 @@ type ComposerState = {
   chips: ComposerChip[]
 }
 
-type PopoverKind = "session" | "model" | null
+type PopoverKind = "session" | "model" | "agent" | null
 
 const SESSION_UI_LIMIT = 40
 const MODEL_UI_LIMIT = 80
@@ -60,17 +63,17 @@ function prefsKey(directory: string) {
   return `osc-agent-prefs:${directory}`
 }
 
-function readPrefs(directory: string): { model?: ModelRef } {
+function readPrefs(directory: string): { model?: ModelRef; agent?: string } {
   try {
     const raw = localStorage.getItem(prefsKey(directory))
     if (!raw) return {}
-    return JSON.parse(raw) as { model?: ModelRef }
+    return JSON.parse(raw) as { model?: ModelRef; agent?: string }
   } catch {
     return {}
   }
 }
 
-function writePrefs(directory: string, prefs: { model?: ModelRef }) {
+function writePrefs(directory: string, prefs: { model?: ModelRef; agent?: string }) {
   try {
     localStorage.setItem(prefsKey(directory), JSON.stringify(prefs))
   } catch {
@@ -310,7 +313,7 @@ export function AgentPanel({
   const [healthError, setHealthError] = useState<string | undefined>()
   const [sseState, setSseState] = useState<"open" | "retry" | "closed">("closed")
   const [loading, setLoading] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const [sessions, setSessions] = useState<Session[]>([])
   const [sessionID, setSessionID] = useState<string | undefined>()
@@ -318,19 +321,33 @@ export function AgentPanel({
   const [draft, setDraft] = useState("")
   const [chips, setChips] = useState<ComposerChip[]>([])
   const composersBySession = useRef(new Map<string, ComposerState>())
-  const [permission, setPermission] = useState<Permission | null>(null)
-  const [files, setFiles] = useState<FileDiff[]>([])
+  const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>({})
+  const [permissions, setPermissions] = useState<PermissionRequest[]>([])
+  const [files, setFiles] = useState<SnapshotFileDiff[]>([])
   const [modelOptions, setModelOptions] = useState<ModelRef[]>([])
   const [model, setModel] = useState<ModelRef | undefined>()
+  const [agentOptions, setAgentOptions] = useState<Agent[]>([])
+  const [agent, setAgent] = useState<string | undefined>()
   const [popover, setPopover] = useState<PopoverKind>(null)
   const [sessionQuery, setSessionQuery] = useState("")
   const [modelQuery, setModelQuery] = useState("")
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const sessionIDRef = useRef(sessionID)
+  const openRef = useRef(open)
+  const busy =
+    sending || Boolean(sessionID && (sessionStatuses[sessionID]?.type === "busy" || sessionStatuses[sessionID]?.type === "retry"))
+  const permission = permissions.find((item) => item.sessionID === sessionID) ?? null
 
   useEffect(() => subscribeAgentContext(() => setContextDirectory(getAgentContextDirectory())), [])
   useEffect(() => {
     widthRef.current = width
   }, [width])
+  useEffect(() => {
+    sessionIDRef.current = sessionID
+  }, [sessionID])
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
 
   useEffect(() => {
     const onResize = () => {
@@ -387,7 +404,7 @@ export function AgentPanel({
 
   const refreshCatalog = useCallback(async () => {
     if (!healthOk) return
-    const providerData = await listProviders(directory)
+    const [providerData, agents] = await Promise.all([listProviders(directory), listAgents(directory)])
     const options: ModelRef[] = []
     const connected = (providerData?.providers ?? []).filter((p) => Boolean(p.key) || p.source === "env" || p.source === "api")
     const source = connected.length ? connected : (providerData?.providers ?? [])
@@ -397,6 +414,8 @@ export function AgentPanel({
       }
     }
     setModelOptions(options)
+    const visibleAgents = agents.filter((item) => !item.hidden && item.mode !== "subagent")
+    setAgentOptions(visibleAgents)
     const prefs = readPrefs(directory)
     const defaultProviderModel = providerData?.default
       ? Object.entries(providerData.default).map(([providerID, modelID]) => ({ providerID, modelID }))[0]
@@ -408,36 +427,57 @@ export function AgentPanel({
       if (valid(defaultProviderModel)) return defaultProviderModel
       return options[0]
     })
+    setAgent((current) => {
+      if (current && visibleAgents.some((item) => item.name === current)) return current
+      if (prefs.agent && visibleAgents.some((item) => item.name === prefs.agent)) return prefs.agent
+      return undefined
+    })
   }, [directory, healthOk])
 
   const refreshMessages = useCallback(
     async (id: string) => {
       const rows = await listMessages(id, directory)
+      if (sessionIDRef.current !== id) return
       setMessages(rows)
+    },
+    [directory],
+  )
+
+  const refreshDiff = useCallback(
+    async (id: string) => {
       try {
         const diff = await sessionDiff(id, directory)
-        setFiles(diff as FileDiff[])
+        if (sessionIDRef.current === id) setFiles(diff)
       } catch {
-        setFiles([])
+        if (sessionIDRef.current === id) setFiles([])
       }
     },
     [directory],
   )
 
+  const refreshRuntimeState = useCallback(async () => {
+    if (!healthOk) return
+    const [statuses, pending] = await Promise.all([listSessionStatuses(directory), listPendingPermissions(directory)])
+    setSessionStatuses(statuses)
+    setPermissions(pending)
+  }, [directory, healthOk])
+
   const scheduleMessageRefresh = useCallback(
     (id: string) => {
-      if (refreshTimer.current) clearTimeout(refreshTimer.current)
+      if (refreshTimer.current) return
       refreshTimer.current = setTimeout(() => {
+        refreshTimer.current = undefined
         void refreshMessages(id).catch(() => {})
-      }, 120)
+      }, 300)
     },
     [refreshMessages],
   )
 
   useEffect(() => {
-    if (!open) return
     void refreshHealth()
-  }, [open, refreshHealth])
+    const timer = setInterval(() => void refreshHealth(), 10_000)
+    return () => clearInterval(timer)
+  }, [refreshHealth])
 
   useEffect(() => {
     if (!open || !healthOk) return
@@ -449,96 +489,118 @@ export function AgentPanel({
   }, [open, healthOk, refreshSessions, refreshCatalog])
 
   useEffect(() => {
+    if (!healthOk) return
+    void refreshRuntimeState().catch((err) => setError(err instanceof Error ? err.message : String(err)))
+  }, [healthOk, refreshRuntimeState])
+
+  useEffect(() => {
     if (!open || !sessionID || !healthOk) {
       setMessages([])
       setFiles([])
       return
     }
-    void refreshMessages(sessionID).catch((err) => setError(err instanceof Error ? err.message : String(err)))
-  }, [open, sessionID, healthOk, refreshMessages])
+    void Promise.all([refreshMessages(sessionID), refreshDiff(sessionID)]).catch((err) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    )
+  }, [open, sessionID, healthOk, refreshMessages, refreshDiff])
 
   useEffect(() => {
-    if (!open || !healthOk) return
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!healthOk) return
     return subscribeAgentEvents(
       directory,
       (event) => {
+        const activeSessionID = sessionIDRef.current
         if (event.type === "studio.sse.retry") {
-          // reconnect quietly — do not mark API dead
           return
         }
-        if (event.type === "permission.updated") {
-          setPermission(event.properties as Permission)
+        if (event.type === "permission.asked") {
+          const next = event.properties as PermissionRequest
+          setPermissions((current) => [...current.filter((item) => item.id !== next.id), next])
           return
         }
         if (event.type === "permission.replied") {
-          setPermission(null)
+          const props = event.properties as { requestID?: string; permissionID?: string }
+          const id = props.requestID || props.permissionID
+          if (id) setPermissions((current) => current.filter((item) => item.id !== id))
           return
         }
         if (event.type === "session.status") {
-          const props = event.properties as { sessionID?: string; status?: { type?: string } }
-          if (props.sessionID && props.sessionID === sessionID) {
-            setBusy(props.status?.type === "busy" || props.status?.type === "retry")
-          }
+          const props = event.properties as { sessionID?: string; status?: SessionStatus }
+          if (props.sessionID && props.status) setSessionStatuses((current) => ({ ...current, [props.sessionID!]: props.status! }))
           return
         }
         if (event.type === "session.idle") {
           const props = event.properties as { sessionID?: string }
-          if (!props.sessionID || props.sessionID === sessionID) setBusy(false)
-          if (sessionID) scheduleMessageRefresh(sessionID)
+          if (props.sessionID) setSessionStatuses((current) => ({ ...current, [props.sessionID!]: { type: "idle" } }))
+          if (props.sessionID && props.sessionID === activeSessionID && openRef.current) {
+            void Promise.all([refreshMessages(props.sessionID), refreshDiff(props.sessionID)]).catch(() => {})
+          }
           return
         }
         if (event.type === "file.edited") {
           const props = event.properties as { file?: string; path?: string }
           const p = props.file || props.path
-          if (p) publishAgentFileEvent({ paths: [p], sessionID })
+          if (p) publishAgentFileEvent({ paths: [p], directory, sessionID: activeSessionID })
+          return
         }
         if (event.type === "session.diff") {
-          const props = event.properties as { sessionID?: string; diff?: FileDiff[] }
-          if (props.diff?.length) {
-            publishAgentFileEvent({
-              paths: props.diff.map((d) => d.file).filter(Boolean),
-              sessionID: props.sessionID,
-            })
-          }
+          const props = event.properties as { sessionID?: string; diff?: SnapshotFileDiff[] }
+          const diff = props.diff ?? []
+          if (props.sessionID === activeSessionID) setFiles(diff)
+          const paths = diff.map((item) => item.file).filter((file): file is string => Boolean(file))
+          if (paths.length) publishAgentFileEvent({ paths, directory, sessionID: props.sessionID })
+          return
         }
-        if (
-          event.type === "message.updated" ||
-          event.type === "message.part.updated" ||
-          event.type === "session.updated" ||
-          event.type === "session.diff" ||
-          event.type === "file.edited"
-        ) {
-          if (sessionID) scheduleMessageRefresh(sessionID)
-          if (event.type === "session.updated") void refreshSessions().catch(() => {})
+        if (event.type === "message.updated" || event.type === "message.part.updated" || event.type === "message.part.delta") {
+          const props = event.properties as { info?: { sessionID?: string }; part?: { sessionID?: string } }
+          const eventSessionID = props.info?.sessionID || props.part?.sessionID
+          if (openRef.current && activeSessionID && (!eventSessionID || eventSessionID === activeSessionID))
+            scheduleMessageRefresh(activeSessionID)
+          return
         }
+        if (event.type === "session.updated") void refreshSessions().catch(() => {})
       },
-      { onConnectionChange: setSseState },
+      {
+        onConnectionChange: (state) => {
+          setSseState(state)
+          if (state === "open") void refreshRuntimeState().catch(() => {})
+        },
+      },
     )
-  }, [open, healthOk, directory, sessionID, scheduleMessageRefresh, refreshSessions])
+  }, [healthOk, directory, scheduleMessageRefresh, refreshSessions, refreshRuntimeState, refreshMessages, refreshDiff])
 
   useEffect(() => {
-    return subscribeAgentHandoff((request) => {
-      if (request.open === false) return
-      if (request.directory?.trim()) setAgentContextDirectory(request.directory.trim())
-      const nextChips: ComposerChip[] = []
-      for (const p of request.paths ?? []) {
-        nextChips.push({ id: `path:${p}`, kind: "path", value: p, label: p.split("/").pop() || p })
-      }
-      if (request.annotation?.trim()) {
-        const ann = request.annotation.trim()
-        nextChips.push({
-          id: `ann:${ann.slice(0, 48)}`,
-          kind: "annotation",
-          value: ann,
-          label: ann.length > 36 ? `${ann.slice(0, 36)}…` : ann,
-        })
-      }
-      if (nextChips.length) setChips(nextChips)
-      if (request.text.trim()) {
-        setDraft((prev) => (prev.trim() ? `${prev.trim()}\n\n${request.text.trim()}` : request.text.trim()))
-      }
-      requestAnimationFrame(() => composerRef.current?.focus())
-    })
+    return subscribeAgentHandoff(
+      (request) => {
+        if (request.directory?.trim()) setAgentContextDirectory(request.directory.trim())
+        const nextChips: ComposerChip[] = []
+        for (const p of request.paths ?? []) {
+          nextChips.push({ id: `path:${p}`, kind: "path", value: p, label: p.split("/").pop() || p })
+        }
+        if (request.annotation?.trim()) {
+          const ann = request.annotation.trim()
+          nextChips.push({
+            id: `ann:${ann.slice(0, 48)}`,
+            kind: "annotation",
+            value: ann,
+            label: ann.length > 36 ? `${ann.slice(0, 36)}…` : ann,
+          })
+        }
+        setChips(nextChips)
+        if (request.text.trim()) {
+          setDraft((prev) => (prev.trim() ? `${prev.trim()}\n\n${request.text.trim()}` : request.text.trim()))
+        }
+        requestAnimationFrame(() => composerRef.current?.focus())
+        return true
+      },
+      { consumer: true },
+    )
   }, [])
 
   useEffect(() => {
@@ -587,8 +649,8 @@ export function AgentPanel({
 
   useEffect(() => {
     if (!directory) return
-    writePrefs(directory, { model })
-  }, [directory, model])
+    writePrefs(directory, { model, agent })
+  }, [directory, model, agent])
 
   const switchSession = useCallback(
     (nextSessionID: string, empty = false) => {
@@ -623,22 +685,27 @@ export function AgentPanel({
     const text = composeOutbound()
     if (!text || busy) return
     setError(undefined)
-    setBusy(true)
+    setSending(true)
     stickToBottom.current = true
+    let activeID = sessionID
     try {
-      const id = await ensureSession()
+      activeID = await ensureSession()
+      setSessionStatuses((current) => ({ ...current, [activeID!]: { type: "busy" } }))
       await promptSessionAsync({
-        sessionID: id,
+        sessionID: activeID,
         text,
         directory,
+        agent,
         model,
       })
       setDraft("")
       setChips([])
-      await refreshMessages(id)
+      await refreshMessages(activeID)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
-      setBusy(false)
+      if (activeID) setSessionStatuses((current) => ({ ...current, [activeID!]: { type: "idle" } }))
+    } finally {
+      setSending(false)
     }
   }
 
@@ -661,7 +728,8 @@ export function AgentPanel({
     if (!sessionID) return
     try {
       await abortSession(sessionID, directory)
-      setBusy(false)
+      setSending(false)
+      setSessionStatuses((current) => ({ ...current, [sessionID]: { type: "idle" } }))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -671,12 +739,11 @@ export function AgentPanel({
     if (!permission) return
     try {
       await replyPermission({
-        sessionID: permission.sessionID,
-        permissionID: permission.id,
-        response,
+        requestID: permission.id,
+        reply: response,
         directory,
       })
-      setPermission(null)
+      setPermissions((current) => current.filter((item) => item.id !== permission.id))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -878,8 +945,8 @@ export function AgentPanel({
 
           {permission ? (
             <div className="oc-permission" role="alertdialog" aria-label="Permission request">
-              <p className="oc-permission__title">{permission.title || permission.type}</p>
-              <p className="oc-permission__meta">{permission.type}</p>
+              <p className="oc-permission__title">{permission.permission}</p>
+              <p className="oc-permission__meta">{permission.patterns.join(", ") || "OpenCode requests permission to continue."}</p>
               <div className="oc-permission__actions">
                 <button type="button" className="oc-chip" onClick={() => void onPermission("once")}>
                   Allow once
@@ -986,6 +1053,52 @@ export function AgentPanel({
                             </button>
                           ))}
                           {filteredModels.length === 0 ? <p className="oc-popover__empty">No models</p> : null}
+                        </div>
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      data-oc-popover-trigger
+                      className="oc-dock__model"
+                      onClick={() => setPopover((p) => (p === "agent" ? null : "agent"))}
+                      aria-expanded={popover === "agent"}
+                      title={agent || "Default agent"}
+                    >
+                      <span className="truncate">{agent || "Default agent"}</span>
+                      <IconChevron />
+                    </button>
+                    {popover === "agent" ? (
+                      <div className="oc-popover oc-popover--model" data-oc-popover role="listbox" aria-label="Agents">
+                        <div className="oc-popover__list">
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={!agent}
+                            className={`oc-popover__item ${!agent ? "is-active" : ""}`}
+                            onClick={() => {
+                              setAgent(undefined)
+                              setPopover(null)
+                            }}
+                          >
+                            <span className="truncate font-medium">Default agent</span>
+                            <span className="oc-popover__meta">OpenCode default</span>
+                          </button>
+                          {agentOptions.map((option) => (
+                            <button
+                              key={option.name}
+                              type="button"
+                              role="option"
+                              aria-selected={agent === option.name}
+                              className={`oc-popover__item ${agent === option.name ? "is-active" : ""}`}
+                              onClick={() => {
+                                setAgent(option.name)
+                                setPopover(null)
+                              }}
+                            >
+                              <span className="truncate font-medium">{option.name}</span>
+                              <span className="oc-popover__meta">{option.description || option.mode}</span>
+                            </button>
+                          ))}
                         </div>
                       </div>
                     ) : null}

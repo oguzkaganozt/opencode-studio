@@ -3,7 +3,7 @@ import { subscribeAgentHandoff } from "./agent-handoff"
 import { readAgentOpen, writeAgentOpen } from "./agent-open"
 import { type AgentStatus, agentStatusDotClass, agentStatusLabel } from "./agent-status"
 
-export function useStudioChrome() {
+export function useStudioChrome(options?: { openAgentOnHandoff?: boolean }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [agentOpen, setAgentOpen] = useState(() => readAgentOpen())
   const [agentStatus, setAgentStatus] = useState<AgentStatus>(() => (agentOpen ? "loading" : "closed"))
@@ -17,10 +17,12 @@ export function useStudioChrome() {
   }, [agentOpen])
 
   useEffect(() => {
+    if (!options?.openAgentOnHandoff) return
     return subscribeAgentHandoff((request) => {
       if (request.open) setAgentOpen(true)
+      return undefined
     })
-  }, [])
+  }, [options?.openAgentOnHandoff])
 
   const toggleAgent = useCallback(() => {
     setAgentOpen((value) => !value)

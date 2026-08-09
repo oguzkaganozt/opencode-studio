@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
 import { Component, lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
-import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router"
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router"
 import { assertCatalogComplete, isStudioId, type StudioId } from "../src/core/registry"
 import { AgentPanel } from "./agent/AgentPanel"
+import { requestAgentHandoff } from "./agent-handoff"
 import { Button } from "./components/button"
 import { ErrorState } from "./components/error-state"
 import { FilesExplorer } from "./files-explorer"
@@ -362,7 +363,7 @@ class ViewerRouteBoundary extends Component<{ children: React.ReactNode; studioL
 function StudioFrame() {
   const { studioId = "" } = useParams()
   const studiosQuery = useStudios()
-  const chrome = useStudioChrome()
+  const chrome = useStudioChrome({ openAgentOnHandoff: true })
 
   const uiBasePath = `/studios/${studioId}`
   const apiBasePath = `/api/studios/${studioId}`
@@ -488,6 +489,15 @@ function SkipLink() {
 
 function FilesFrame() {
   const chrome = useStudioChrome()
+  const studiosQuery = useStudios()
+  const navigate = useNavigate()
+
+  const requestFileAgent = (path: string) => {
+    const directory = studiosQuery.data?.studioRoot
+    if (!directory) return
+    requestAgentHandoff({ text: "", source: "files", directory, paths: [path], open: true })
+    navigate("/")
+  }
 
   return (
     <div data-studio="files" className="studio-shell flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--osc-bg)]">
@@ -496,7 +506,7 @@ function FilesFrame() {
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <main id="main-content" data-testid="studio-main" className="flex min-h-0 min-w-0 flex-1 flex-col" tabIndex={-1}>
             <h1 className="sr-only">Files</h1>
-            <FilesExplorer />
+            <FilesExplorer onRequestAgent={studiosQuery.data?.studioRoot ? requestFileAgent : undefined} />
           </main>
         </div>
       </div>

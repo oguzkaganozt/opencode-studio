@@ -383,18 +383,7 @@ function DiagnosticsPanel({
 }
 
 async function loadAllProjects() {
-  const projects: ProjectSummary[] = []
-  const limit = 200
-  let offset = 0
-
-  while (true) {
-    const page = await api.projects({ limit, offset })
-    projects.push(...page.projects)
-    if (!page.hasMore || page.projects.length === 0) {
-      return { projects, total: page.total, hasMore: false }
-    }
-    offset += page.projects.length
-  }
+  return api.projects({ all: true })
 }
 
 function ProjectsPage() {
@@ -892,12 +881,12 @@ function ProjectPage() {
           >
             {tab === "schematic" && id && (
               <Suspense fallback={<LoadingState label="Loading schematic viewer…" />}>
-                <SchematicTab projectId={id} />
+                <SchematicTab projectId={id} directory={project.directory} />
               </Suspense>
             )}
             {tab === "pcb" && id && (
               <Suspense fallback={<LoadingState label="Loading PCB viewer…" />}>
-                <PcbTab projectId={id} />
+                <PcbTab projectId={id} directory={project.directory} />
               </Suspense>
             )}
             {tab === "3d" && id && (

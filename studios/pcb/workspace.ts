@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs"
 import { lstat, readdir, realpath } from "node:fs/promises"
 import path from "node:path"
 import { isInside } from "../../src/core/paths"
@@ -48,9 +49,9 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
   const base = path.basename(dir)
   if (base.startsWith(".") || SKIP_DIRS.has(base)) return
 
-  let entries: string[]
+  let entries: Dirent[]
   try {
-    entries = await readdir(dir)
+    entries = await readdir(dir, { withFileTypes: true })
   } catch {
     return
   }
@@ -62,18 +63,7 @@ async function walkDir(workspaceRoot: string, dir: string, projects: CircuitProj
     return
   }
 
-  const children = await Promise.all(
-    entries.map(async (entry) => {
-      const entryPath = path.join(dir, entry)
-      try {
-        const info = await lstat(entryPath)
-        if (info.isSymbolicLink() || !info.isDirectory()) return null
-        return entryPath
-      } catch {
-        return null
-      }
-    }),
-  )
+  const children = entries.filter((entry) => !entry.isSymbolicLink() && entry.isDirectory()).map((entry) => path.join(dir, entry.name))
   for (const child of children) {
     if (child) await walkDir(workspaceRoot, child, projects, depth + 1)
   }

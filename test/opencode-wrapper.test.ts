@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { opencodeWrapperPath, opencodeWrapperScript, removeOpencodeServeWrapper } from "../src/opencode-wrapper"
+import { opencodeWrapperPath, removeOpencodeServeWrapper } from "../src/opencode-wrapper"
 
 describe("opencode wrapper removal", () => {
   let home = ""
@@ -16,7 +16,7 @@ describe("opencode wrapper removal", () => {
     home = await mkdtemp(path.join(tmpdir(), "osc-wrap-"))
     const target = opencodeWrapperPath(home)
     await mkdir(path.dirname(target), { recursive: true })
-    await writeFile(target, opencodeWrapperScript(), { mode: 0o755 })
+    await writeFile(target, "#!/bin/sh\n# opencode-studio ensure-host wrapper\n", { mode: 0o755 })
 
     const removed = await removeOpencodeServeWrapper(home)
     expect(removed.removed).toBe(true)

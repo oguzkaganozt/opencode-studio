@@ -70,7 +70,7 @@ No oversized “fashion” display type. No Inter swap.
 ## Spacing & density (mid)
 
 Base unit 4px. Chrome height **48px** (`h-12`) for TopBar and drawer header; agent chrome header matches.  
-OpenCode home is full-bleed under TopBar (no content max-width). Viewer pages fill remaining height.  
+Agent home is full-bleed under TopBar (no content max-width). Viewer pages fill remaining height.
 Touch targets: interactive chrome ≥36px (prefer 36–40); icon-only ≥36×36.
 
 ---
@@ -113,18 +113,19 @@ Touch targets: interactive chrome ≥36px (prefer 36–40); icon-only ≥36×36.
 
 ### SideDrawer
 - Full-width on phones, 22rem max from `sm`; focus trap + Escape; nav only (no settings).
-- Nav: OpenCode + Files + domain studios.
+- Nav: Agent + Files + Status + domain studios.
 - Active item: surface fill + 2px accent rail.
 
 ### Agent chrome
 - Header aligns with TopBar rhythm (h-12, same border language).
-- Status dot + label; Close chip only.
+- Status dot + session selector; new-session, stop, and Close controls remain compact.
 - Resize handle: visible on hover/focus only.
-- Not shown on OpenCode home route (full-pane OpenCode instead).
-- Not mounted on Files (the surface is only a file explorer).
+- The `/` route renders the same native Agent as a full-page surface, without a nested side panel.
+- Not mounted on Files; the selected-file action hands context to the full-page Agent.
 
-### OpenCode home pane
-- Same-origin iframe of parent UI; loading pulse + broken-frame detection shared with Agent.
+### Agent home
+- Native `AgentPanel` backed by the same-origin OpenCode API and SSE proxy.
+- API health, session loading, reconnecting, permissions, and unavailable states are explicit; no iframe or DOM health heuristics.
 
 ---
 
@@ -146,7 +147,7 @@ Touch targets: interactive chrome ≥36px (prefer 36–40); icon-only ≥36×36.
 | --- | --- | --- |
 | 0 Foundation | tokens + global styles | `ui/tokens.css`, `ui/styles.css` |
 | 1 Primitives | button, badge, empty, error, dialog | `ui/components/*` |
-| 2 Shell | TopBar, drawer, home, agent actions, agent header | `ui/app.tsx`, `ui/native-agent-frame.tsx` |
+| 2 Shell | TopBar, drawer, Agent home, status, agent actions | `ui/app.tsx`, `ui/agent/AgentPanel.tsx`, `ui/status-page.tsx` |
 | 3 Files | keyboard model, preview states, responsive crumbs | `ui/files-explorer.tsx` |
 | 4 Studios | CAD inspection + PCB project workflows | `studios/*/viewer/src/*` |
 | 5 Pass | a11y + motion + visual QA | browser smoke + screenshots |
@@ -163,4 +164,4 @@ The 2026-07-29 comprehensive pass covered the shared shell, Files, CAD, and PCB 
 - [ ] Loading / error / empty on touched flows  
 - [ ] No glass/neon regression  
 - [ ] Behavior and routes unchanged  
-- [ ] `bun run check` (or typecheck + lint + ui tests) green  
+- [ ] `bun run check` green

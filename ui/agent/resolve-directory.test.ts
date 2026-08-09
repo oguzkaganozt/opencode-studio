@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { resolveAgentDirectory } from "../native-agent-url"
+import { resolveAgentDirectory } from "./resolve-directory"
 
 describe("resolveAgentDirectory", () => {
   test("prefers explicit project directory", () => {

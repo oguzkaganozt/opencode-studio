@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { loadPackageMeta } from "./core/package-meta"
 import { packageRootFrom } from "./core/paths"
 import { checkNpmUpdate } from "./core/update-check"
@@ -23,6 +23,10 @@ const SNAPSHOT_ENV_KEYS = [
   "OPENCODE_STUDIO_WORKSPACE",
   "OPENCODE_STUDIO_CONFIG_HOME",
   "OPENCODE_CONFIG_HOME",
+  "OPENCODE_URL",
+  "OPENCODE_PARENT_URL",
+  "OPENCODE_STUDIO_NO_SUPERVISE",
+  "OPENCODE_BIN",
 ] as const
 
 export type UpgradeOptions = {
@@ -134,9 +138,32 @@ export function parseStudioHostPids(psOutput: string, selfPid = process.pid): nu
     const pid = Number(line.slice(0, space))
     if (!Number.isInteger(pid) || pid <= 0 || pid === selfPid) continue
     const args = line.slice(space).trim()
-    if (/opencode-studio\s+ensure-host/.test(args) || /(?:^|[/\s])studio-host\.mjs(?:\s|$)/.test(args)) pids.push(pid)
+    if (isStudioLifecycleArgs(args) || /(?:^|[/\s])studio-host\.mjs(?:\s|$)/.test(args)) pids.push(pid)
   }
   return pids
+}
+
+function isStudioLifecycleArgs(args: string): boolean {
+  if (/opencode-studio\s+(?:up|ensure-host)(?:\s|$)/.test(args)) return true
+  if (/(?:^|\s)opencode-studio\s*$/.test(args)) return true
+  const cli = args.match(/(?:^|\s)(?:\S*\/)?dist\/cli\.js(?:\s+(.*))?$/)
+  if (!cli) return false
+  const tail = cli[1]?.trim()
+  return !tail || tail === "up" || tail === "ensure-host"
+}
+
+type ProcessRow = { pid: number; ppid?: number; args: string }
+
+function parseProcessRows(psOutput: string, selfPid = process.pid): ProcessRow[] {
+  const rows: ProcessRow[] = []
+  for (const raw of psOutput.split("\n")) {
+    const match = raw.trim().match(/^(\d+)\s+(?:(\d+)\s+)?(.+)$/)
+    if (!match) continue
+    const pid = Number(match[1])
+    if (!Number.isInteger(pid) || pid <= 0 || pid === selfPid) continue
+    rows.push({ pid, ppid: match[2] ? Number(match[2]) : undefined, args: match[3] })
+  }
+  return rows
 }
 
 /** Parse `ss -tlnp` / `lsof` style `pid=123` tokens. */
@@ -247,7 +274,7 @@ async function readSs(): Promise<string> {
 }
 
 async function readPs(): Promise<string> {
-  const ps = Bun.spawn(["ps", "-eo", "pid=,args="], { stdout: "pipe", stderr: "pipe" })
+  const ps = Bun.spawn(["ps", "-eo", "pid=,ppid=,args="], { stdout: "pipe", stderr: "pipe" })
   const out = await new Response(ps.stdout).text()
   await ps.exited
   return out
@@ -284,9 +311,24 @@ export function selectOwnedStackPids(
       selfPid,
     ),
   )
-  const serve = parseOpenCodeServePids(psOutput, selfPid)
+  const rows = parseProcessRows(psOutput, selfPid)
   const hosts = parseStudioHostPids(psOutput, selfPid)
-  const pids = [...new Set([...serve, ...hosts])]
+  const owners = new Set(hosts)
+  const byPid = new Map(rows.map((row) => [row.pid, row]))
+  const belongsToOwner = (row: ProcessRow) => {
+    let parent = row.ppid
+    const seen = new Set<number>()
+    while (parent && !seen.has(parent)) {
+      if (owners.has(parent)) return true
+      seen.add(parent)
+      parent = byPid.get(parent)?.ppid
+    }
+    return false
+  }
+  const serve = rows
+    .filter((row) => /(?:^|[/\s])opencode(?:\.exe)?\s+serve(?:\s|$)/.test(row.args) && belongsToOwner(row))
+    .map((row) => row.pid)
+  const pids = [...new Set([...hosts, ...serve])]
   return { pids, studioPort: studio.port, ownedListeners: pids.filter((pid) => listeners.has(pid)) }
 }
 
@@ -296,11 +338,11 @@ export async function captureStackSnapshot(
   callerEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<StackSnapshot | null> {
   const [ssOut, psOut] = await Promise.all([readSs(), readPs()])
-  const servePids = parseOpenCodeServePids(psOut, selfPid)
   const hostPids = parseStudioHostPids(psOut, selfPid)
+  const owned = selectOwnedStackPids(psOut, ssOut, callerEnv, selfPid).pids
 
   const env: Record<string, string> = {}
-  for (const pid of [...servePids, ...hostPids]) {
+  for (const pid of [...new Set([...owned, ...hostPids])]) {
     for (const [key, value] of Object.entries(readProcEnviron(pid))) {
       if (!env[key] && value) env[key] = value
     }
@@ -331,7 +373,7 @@ export async function captureStackSnapshot(
   }
 }
 
-/** Stop Studio host + ensure-host companions + `opencode serve`. Leaves interactive TUI sessions alone. */
+/** Stop only lifecycle owners and their OpenCode children. Leaves external OpenCode processes alone. */
 export async function stopOpenCodeStudioStack(selfPid = process.pid, env: NodeJS.ProcessEnv = process.env): Promise<{ killed: number[] }> {
   const [psOut, ssOut] = await Promise.all([readPs(), readSs()])
   const killed = new Set(selectOwnedStackPids(psOut, ssOut, env, selfPid).pids)
@@ -373,19 +415,7 @@ function resolveServeBind(env: NodeJS.ProcessEnv): { hostname: string; port: str
   return { hostname, port }
 }
 
-function resolveOpencodeBin(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.OPENCODE_BIN?.trim()) return env.OPENCODE_BIN.trim()
-  const home = env.HOME?.trim()
-  if (home) {
-    const managed = `${home}/.opencode/bin/opencode`
-    if (existsSync(managed)) return managed
-  }
-  const onPath = Bun.which("opencode")
-  if (!onPath) throw new Error("opencode not found on PATH (needed to restart serve after upgrade)")
-  return onPath
-}
-
-/** Detached `opencode serve` + Studio via `opencode-studio up` path. Waits for Studio health. */
+/** Detached `opencode-studio up`. Waits for Studio health. */
 export async function startOpenCodeStudioStack(
   env: NodeJS.ProcessEnv = process.env,
   onProgress?: (line: string) => void,
@@ -422,11 +452,12 @@ export async function startOpenCodeStudioStack(
     )
   }
 
-  logProgress(onProgress, `Starting opencode serve on ${hostname}:${port}…`)
-  const opencode = resolveOpencodeBin(env)
-  const logPath = `${env.TMPDIR?.trim() || "/tmp"}/opencode-studio-upgrade-serve.log`
+  logProgress(onProgress, "Starting opencode-studio up…")
+  const cli = Bun.which("opencode-studio")
+  if (!cli) throw new Error("opencode-studio not on PATH after install")
+  const logPath = `${env.TMPDIR?.trim() || "/tmp"}/opencode-studio-upgrade.log`
   const log = Bun.file(logPath)
-  const child = Bun.spawn([opencode, "serve", "--hostname", hostname, "--port", port], {
+  const child = Bun.spawn([cli, "up"], {
     env: childEnv,
     cwd: env.HOME?.trim() || process.cwd(),
     stdin: "ignore",
@@ -434,19 +465,24 @@ export async function startOpenCodeStudioStack(
     stderr: log,
     detached: true,
   })
-  child.unref()
-
   const studioHealth = `${studio.localUrl}/studio-api/health`
   logProgress(onProgress, "Waiting for Studio host…")
-  const ok = await waitHttpOk(studioHealth, 45_000)
+  const ok = await Promise.race([waitHttpOk(studioHealth, 45_000), child.exited.then(() => false)])
   if (!ok) {
+    try {
+      child.kill("SIGTERM")
+    } catch {
+      // already gone
+    }
     throw new Error(
-      `Studio host did not become ready at ${studioHealth} within 45s (serve log: ${logPath}). Check OPENCODE_* / OPENCODE_STUDIO_* bind and password env.`,
+      `Studio host did not become ready at ${studioHealth} within 45s (log: ${logPath}). Check OPENCODE_* / OPENCODE_STUDIO_* bind and password env.`,
     )
   }
+  child.unref()
   logProgress(onProgress, "Studio host ready.")
+  const explicit = env.OPENCODE_URL?.trim() || env.OPENCODE_PARENT_URL?.trim()
   return {
-    serveUrl: `http://${hostname === "0.0.0.0" ? "127.0.0.1" : hostname}:${port}`,
+    serveUrl: explicit || `http://${hostname === "0.0.0.0" ? "127.0.0.1" : hostname}:${port}`,
     studioUrl: `${studio.localUrl}/studio`,
     hostname,
     port,

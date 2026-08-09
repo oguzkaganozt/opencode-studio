@@ -1,4 +1,14 @@
-import { createOpencodeClient, type Message, type OpencodeClient, type Part, type Session } from "@opencode-ai/sdk/client"
+import {
+  type Agent,
+  createOpencodeClient,
+  type Message,
+  type OpencodeClient,
+  type Part,
+  type PermissionRequest,
+  type Session,
+  type SessionStatus,
+  type SnapshotFileDiff,
+} from "@opencode-ai/sdk/v2/client"
 
 export type AgentMessage = {
   info: Message
@@ -30,8 +40,11 @@ export async function probeAgentHealth(): Promise<AgentHealth> {
       signal: AbortSignal.timeout(3_000),
     })
     if (!response.ok) return { ok: false, error: `HTTP ${response.status}` }
-    const data = (await response.json().catch(() => null)) as { healthy?: boolean; version?: string } | null
-    return { ok: data?.healthy !== false, version: data?.version }
+    const data = (await response.json().catch(() => null)) as { healthy?: unknown; version?: unknown } | null
+    if (data?.healthy !== true || typeof data.version !== "string") {
+      return { ok: false, error: "Invalid OpenCode health response" }
+    }
+    return { ok: true, version: data.version }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
@@ -39,7 +52,7 @@ export async function probeAgentHealth(): Promise<AgentHealth> {
 
 export async function listSessions(directory?: string): Promise<Session[]> {
   const client = createAgentClient(directory)
-  const result = await client.session.list({ query: directory ? { directory } : undefined })
+  const result = await client.session.list(directory ? { directory } : undefined)
   if (result.error) throw new Error(formatSdkError(result.error))
   const rows = result.data ?? []
   return [...rows].sort((a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0))
@@ -47,20 +60,14 @@ export async function listSessions(directory?: string): Promise<Session[]> {
 
 export async function createSession(directory?: string, title?: string): Promise<Session> {
   const client = createAgentClient(directory)
-  const result = await client.session.create({
-    query: directory ? { directory } : undefined,
-    body: title ? { title } : undefined,
-  })
+  const result = await client.session.create({ directory, title })
   if (result.error || !result.data) throw new Error(formatSdkError(result.error) || "create session failed")
   return result.data
 }
 
 export async function listMessages(sessionID: string, directory?: string): Promise<AgentMessage[]> {
   const client = createAgentClient(directory)
-  const result = await client.session.messages({
-    path: { id: sessionID },
-    query: directory ? { directory } : undefined,
-  })
+  const result = await client.session.messages({ sessionID, directory })
   if (result.error) throw new Error(formatSdkError(result.error))
   return (result.data ?? []) as AgentMessage[]
 }
@@ -74,63 +81,64 @@ export async function promptSessionAsync(input: {
 }): Promise<void> {
   const client = createAgentClient(input.directory)
   const result = await client.session.promptAsync({
-    path: { id: input.sessionID },
-    query: input.directory ? { directory: input.directory } : undefined,
-    body: {
-      agent: input.agent,
-      model: input.model,
-      parts: [{ type: "text", text: input.text }],
-    },
+    sessionID: input.sessionID,
+    directory: input.directory,
+    agent: input.agent,
+    model: input.model,
+    parts: [{ type: "text", text: input.text }],
   })
   if (result.error) throw new Error(formatSdkError(result.error))
 }
 
 export async function abortSession(sessionID: string, directory?: string): Promise<void> {
   const client = createAgentClient(directory)
-  const result = await client.session.abort({
-    path: { id: sessionID },
-    query: directory ? { directory } : undefined,
-  })
+  const result = await client.session.abort({ sessionID, directory })
   if (result.error) throw new Error(formatSdkError(result.error))
 }
 
 export async function replyPermission(input: {
-  sessionID: string
-  permissionID: string
-  response: "once" | "always" | "reject"
+  requestID: string
+  reply: "once" | "always" | "reject"
   directory?: string
 }): Promise<void> {
   const client = createAgentClient(input.directory)
-  const result = await client.postSessionIdPermissionsPermissionId({
-    path: { id: input.sessionID, permissionID: input.permissionID },
-    query: input.directory ? { directory: input.directory } : undefined,
-    body: { response: input.response },
-  })
+  const result = await client.permission.reply({ requestID: input.requestID, directory: input.directory, reply: input.reply })
   if (result.error) throw new Error(formatSdkError(result.error))
 }
 
-export async function sessionDiff(sessionID: string, directory?: string) {
+export async function sessionDiff(sessionID: string, directory?: string): Promise<SnapshotFileDiff[]> {
   const client = createAgentClient(directory)
-  const result = await client.session.diff({
-    path: { id: sessionID },
-    query: directory ? { directory } : undefined,
-  })
+  const result = await client.session.diff({ sessionID, directory })
   if (result.error) throw new Error(formatSdkError(result.error))
   return result.data ?? []
 }
 
-export async function listAgents(directory?: string) {
+export async function listAgents(directory?: string): Promise<Agent[]> {
   const client = createAgentClient(directory)
-  const result = await client.app.agents({ query: directory ? { directory } : undefined })
+  const result = await client.app.agents(directory ? { directory } : undefined)
   if (result.error) throw new Error(formatSdkError(result.error))
   return result.data ?? []
 }
 
 export async function listProviders(directory?: string) {
   const client = createAgentClient(directory)
-  const result = await client.config.providers({ query: directory ? { directory } : undefined })
+  const result = await client.config.providers(directory ? { directory } : undefined)
   if (result.error) throw new Error(formatSdkError(result.error))
   return result.data
+}
+
+export async function listSessionStatuses(directory?: string): Promise<Record<string, SessionStatus>> {
+  const client = createAgentClient(directory)
+  const result = await client.session.status(directory ? { directory } : undefined)
+  if (result.error) throw new Error(formatSdkError(result.error))
+  return result.data ?? {}
+}
+
+export async function listPendingPermissions(directory?: string): Promise<PermissionRequest[]> {
+  const client = createAgentClient(directory)
+  const result = await client.permission.list(directory ? { directory } : undefined)
+  if (result.error) throw new Error(formatSdkError(result.error))
+  return result.data ?? []
 }
 
 export type EventHandler = (event: { type: string; properties?: unknown }) => void

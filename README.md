@@ -8,7 +8,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 
 ## Prerequisites
 
-1. **[OpenCode](https://opencode.ai)** ≥ 1.18.2 — authenticate your model providers.
+1. **[OpenCode](https://opencode.ai)** ≥ 1.18.15 — authenticate your model providers.
 2. **Bun ≥ 1.3** on PATH (install channel + CLI runtime).
 3. **Node + npm** recommended for PCB project scripts (if missing, build falls back to bundled `tsci`).
 4. Restart OpenCode after install/repair so plugins and skills load.

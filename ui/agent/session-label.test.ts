@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { Session } from "@opencode-ai/sdk/client"
+import type { Session } from "@opencode-ai/sdk/v2/client"
 import { sessionLabel, sessionOptionLabels } from "./session-label"
 
 const session = (title: string) => ({ id: "session-id", title }) as Session

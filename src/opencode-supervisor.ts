@@ -1,7 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process"
-import { createWriteStream, mkdirSync } from "node:fs"
+import { createWriteStream, mkdirSync, type WriteStream } from "node:fs"
 import path from "node:path"
 import { normalizeParentOpenCodeUrl, openCodeBasicAuthHeaders } from "./opencode-bridge"
+import { resolveStudioBind } from "./studio-host-bind"
 
 export type SuperviseResult = { ok: true; baseUrl: string; spawned: boolean; pid?: number } | { ok: false; reason: string }
 
@@ -17,6 +18,9 @@ type OwnedState = {
   child: ChildProcess
   baseUrl: string
   port: number
+  log: WriteStream
+  closed: Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>
+  logClosed: boolean
 }
 
 const WATCH_MS = 5_000
@@ -29,6 +33,8 @@ let ownSupervision = false
 let watchEnv: NodeJS.ProcessEnv = process.env
 let watchdogTimer: ReturnType<typeof setInterval> | undefined
 let restartTimestamps: number[] = []
+let restartFlight: Promise<SuperviseResult> | undefined
+let supervisionGeneration = 0
 
 function envFlag(value: string | undefined) {
   if (!value) return false
@@ -70,6 +76,14 @@ function logPath(env: NodeJS.ProcessEnv): string {
   return path.join(dir, "opencode-serve.log")
 }
 
+export function supervisedChildEnv(baseUrl: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    OPENCODE_STUDIO_AUTOSTART: "0",
+    OPENCODE_STUDIO_URL: env.OPENCODE_STUDIO_URL?.trim() || resolveStudioBind(baseUrl, env).localUrl,
+  }
+}
+
 function pruneRestarts(now = Date.now()) {
   restartTimestamps = restartTimestamps.filter((t) => now - t < RESTART_WINDOW_MS)
 }
@@ -103,14 +117,8 @@ function clearWatchdog() {
 async function tickWatchdog() {
   if (!ownSupervision) return
   if (owned && (await healthOk(owned.baseUrl, watchEnv))) return
-  if (!canRestart()) {
-    console.error("[opencode-studio] OpenCode restart budget exhausted (5 / 5min); fix manually or restart host")
-    return
-  }
-  noteRestart()
   console.error("[opencode-studio] OpenCode unhealthy or exited; restarting…")
-  killOwnedChild()
-  const result = await spawnOpenCode(watchEnv)
+  const result = await restartOpenCode(watchEnv)
   if (!result.ok) {
     console.error(`[opencode-studio] OpenCode restart failed: ${result.reason}`)
   } else {
@@ -132,15 +140,39 @@ export function stopOpenCodeWatchdog() {
   clearWatchdog()
 }
 
-function killOwnedChild() {
-  if (!owned) return
-  const { child } = owned
-  owned = undefined
+function closeLog(state: OwnedState) {
+  if (state.logClosed) return
+  state.logClosed = true
+  state.child.stdout?.unpipe(state.log)
+  state.child.stderr?.unpipe(state.log)
+  state.log.end()
+}
+
+async function waitForClose(state: OwnedState, timeoutMs: number) {
+  return Promise.race([state.closed.then(() => true), Bun.sleep(timeoutMs).then(() => false)])
+}
+
+async function terminateOwnedState(state: OwnedState) {
+  if (owned === state) owned = undefined
   try {
-    if (!child.killed) child.kill("SIGTERM")
+    if (state.child.exitCode === null && !state.child.killed) state.child.kill("SIGTERM")
   } catch {
-    // ignore
+    // already gone
   }
+  if (!(await waitForClose(state, 2_000))) {
+    try {
+      state.child.kill("SIGKILL")
+    } catch {
+      // already gone
+    }
+    await waitForClose(state, 1_000)
+  }
+  closeLog(state)
+}
+
+async function killOwnedChild() {
+  const state = owned
+  if (state) await terminateOwnedState(state)
 }
 
 async function spawnOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
@@ -156,7 +188,7 @@ async function spawnOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
   let child: ChildProcess
   try {
     child = spawn(bin, args, {
-      env: { ...env },
+      env: supervisedChildEnv(baseUrl, env),
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
     })
@@ -164,30 +196,47 @@ async function spawnOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }
 
+  let settle: ((value: { code: number | null; signal: NodeJS.Signals | null; error?: Error }) => void) | undefined
+  const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
+    settle = resolve
+  })
+  let settled = false
+  const finish = (value: { code: number | null; signal: NodeJS.Signals | null; error?: Error }) => {
+    if (settled) return
+    settled = true
+    settle?.(value)
+  }
+  child.once("error", (error) => finish({ code: null, signal: null, error }))
+  child.once("close", (code, signal) => finish({ code, signal }))
+
+  const state: OwnedState = { child, baseUrl, port, log: out, closed, logClosed: false }
+  owned = state
   child.stdout?.pipe(out, { end: false })
   child.stderr?.pipe(out, { end: false })
-  child.on("exit", () => {
-    if (owned?.child === child) owned = undefined
+  void closed.then(() => {
+    if (owned === state) owned = undefined
+    closeLog(state)
   })
 
   const deadline = Date.now() + 20_000
+  let terminal: Awaited<typeof closed> | undefined
+  void closed.then((value) => {
+    terminal = value
+  })
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      return { ok: false, reason: `opencode serve exited early (code ${child.exitCode}); see ${outPath}` }
+    if (terminal) {
+      await terminateOwnedState(state)
+      const detail = terminal.error?.message || `code ${terminal.code}${terminal.signal ? `, signal ${terminal.signal}` : ""}`
+      return { ok: false, reason: `opencode serve exited early (${detail}); see ${outPath}` }
     }
     if (await healthOk(baseUrl, env)) {
-      owned = { child, baseUrl, port }
       ownSupervision = true
       return { ok: true, baseUrl, spawned: true, pid: child.pid }
     }
     await Bun.sleep(300)
   }
 
-  try {
-    child.kill("SIGTERM")
-  } catch {
-    // ignore
-  }
+  await terminateOwnedState(state)
   return { ok: false, reason: `opencode serve did not become healthy at ${baseUrl}; see ${outPath}` }
 }
 
@@ -208,9 +257,10 @@ export async function ensureOpenCodeServer(env: NodeJS.ProcessEnv = process.env)
   if (explicit) {
     const baseUrl = normalizeParentOpenCodeUrl(explicit)
     if (await healthOk(baseUrl, env)) return { ok: true, baseUrl, spawned: false }
+    if (env.OPENCODE_URL?.trim()) return { ok: false, reason: `OPENCODE_URL not healthy: ${baseUrl}` }
   }
 
-  for (const candidate of [`http://127.0.0.1:${resolvePort(env)}`, "http://127.0.0.1:4096"]) {
+  for (const candidate of [`http://127.0.0.1:${resolvePort(env)}`]) {
     if (await healthOk(candidate, env)) {
       return { ok: true, baseUrl: normalizeParentOpenCodeUrl(candidate), spawned: false }
     }
@@ -218,7 +268,7 @@ export async function ensureOpenCodeServer(env: NodeJS.ProcessEnv = process.env)
 
   if (owned?.child && !owned.child.killed) {
     if (await healthOk(owned.baseUrl, env)) return { ok: true, baseUrl: owned.baseUrl, spawned: true, pid: owned.child.pid }
-    killOwnedChild()
+    await killOwnedChild()
   }
 
   const result = await spawnOpenCode(env)
@@ -234,32 +284,47 @@ export async function restartOwnedOpenCode(env: NodeJS.ProcessEnv = process.env)
   if (!ownSupervision && !owned) {
     return { ok: false, reason: "OpenCode is not supervised by this host (attached external process)" }
   }
-  if (!canRestart()) {
-    return { ok: false, reason: "OpenCode restart budget exhausted (5 / 5min)" }
-  }
+  return restartOpenCode(env)
+}
+
+async function restartOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
+  if (restartFlight) return restartFlight
+  if (!canRestart()) return { ok: false, reason: "OpenCode restart budget exhausted (5 / 5min)" }
   noteRestart()
-  killOwnedChild()
-  const result = await spawnOpenCode(env)
-  if (result.ok && result.spawned) startOpenCodeWatchdog(env)
-  return result
+  const generation = supervisionGeneration
+  const flight: Promise<SuperviseResult> = (async () => {
+    await killOwnedChild()
+    if (!ownSupervision || generation !== supervisionGeneration) return { ok: false as const, reason: "OpenCode supervision stopped" }
+    const result = await spawnOpenCode(env)
+    if (result.ok && result.spawned) startOpenCodeWatchdog(env)
+    return result
+  })()
+  restartFlight = flight.finally(() => {
+    restartFlight = undefined
+  })
+  return restartFlight
 }
 
 /** Stop only a server this supervisor started. Pass permanent to drop supervision. */
-export function stopOwnedOpenCode(options?: { permanent?: boolean }): void {
+export async function stopOwnedOpenCode(options?: { permanent?: boolean }): Promise<void> {
   if (options?.permanent) {
+    supervisionGeneration += 1
     ownSupervision = false
     stopOpenCodeWatchdog()
   }
-  killOwnedChild()
+  await killOwnedChild()
+  if (restartFlight) await restartFlight.catch(() => {})
+  await killOwnedChild()
 }
 
 export function ownedOpenCodeBaseUrl(): string | undefined {
   return owned?.baseUrl
 }
 
-export function resetOpenCodeSupervisorForTests() {
+export async function resetOpenCodeSupervisorForTests() {
   ownSupervision = false
+  supervisionGeneration += 1
   restartTimestamps = []
   stopOpenCodeWatchdog()
-  killOwnedChild()
+  await killOwnedChild()
 }

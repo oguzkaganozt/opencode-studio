@@ -118,7 +118,33 @@ function PreviewChrome({
   )
 }
 
-function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry | null; selectedPath: string | null; onBack?: () => void }) {
+function PreviewActions({ selected, onRequestAgent }: { selected: FileEntry; onRequestAgent?: (path: string) => void }) {
+  const downloadHref = `/api/files/raw?path=${encodeURIComponent(selected.path)}&download=1`
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      {onRequestAgent ? (
+        <button type="button" className="osc-chip h-10 px-2.5 text-[11px] sm:h-8" onClick={() => onRequestAgent(selected.path)}>
+          Use in Agent
+        </button>
+      ) : null}
+      <a href={downloadHref} className="osc-chip h-10 px-2.5 text-[11px] sm:h-8">
+        Download
+      </a>
+    </div>
+  )
+}
+
+function PreviewPane({
+  selected,
+  selectedPath,
+  onBack,
+  onRequestAgent,
+}: {
+  selected: FileEntry | null
+  selectedPath: string | null
+  onBack?: () => void
+  onRequestAgent?: (path: string) => void
+}) {
   const [mediaError, setMediaError] = useState(false)
   const contentQuery = useQuery({
     queryKey: ["files", "content", selected?.path],
@@ -156,7 +182,7 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]" role="status" aria-busy="true">
         <span className="sr-only">Loading preview…</span>
-        <PreviewChrome onBack={onBack} tall>
+        <PreviewChrome onBack={onBack} tall trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} />}>
           <div className="osc-skeleton h-4 w-40" />
         </PreviewChrome>
         <div className="flex-1 p-4">
@@ -168,7 +194,7 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
   if (contentQuery.error) {
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]">
-        <PreviewChrome onBack={onBack} />
+        <PreviewChrome onBack={onBack} trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} />} />
         <ErrorState
           className="m-4 flex-1 border-0 py-12"
           title="Preview failed"
@@ -190,14 +216,7 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]">
-      <PreviewChrome
-        onBack={onBack}
-        trailing={
-          <a href={downloadHref} className="osc-chip h-10 shrink-0 px-2.5 text-[11px] sm:h-8">
-            Download
-          </a>
-        }
-      >
+      <PreviewChrome onBack={onBack} trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} />}>
         <div className="min-w-0">
           <p className="truncate text-[13px] font-medium text-[var(--osc-text)]">{selected.name}</p>
           <p className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]">
@@ -263,7 +282,7 @@ function PreviewPane({ selected, selectedPath, onBack }: { selected: FileEntry |
   )
 }
 
-export function FilesExplorer() {
+export function FilesExplorer({ onRequestAgent }: { onRequestAgent?: (path: string) => void }) {
   const [dirPath, setDirPath] = useState("")
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [filter, setFilter] = useState("")
@@ -587,6 +606,7 @@ export function FilesExplorer() {
             selected={selected}
             selectedPath={selectedPath}
             onBack={selectedPath ? () => setSelectedPath(null) : undefined}
+            onRequestAgent={onRequestAgent}
           />
         </div>
       </div>
