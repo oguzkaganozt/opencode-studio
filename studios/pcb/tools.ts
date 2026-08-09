@@ -1,17 +1,27 @@
 import { readFile } from "node:fs/promises"
+import path from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
+import { formatToolJson } from "../../src/core/format-tool-json"
+import { canonicalExistingDirectory } from "../../src/core/paths"
 import { toCplCsv } from "./assembly"
 import { filterCatalogParts, findCatalogPart, inspectCatalog, loadCatalogParts, partSummary } from "./catalog"
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
-import { canonicalWorkspaceRoot } from "./studio-path"
 import { exportCircuit, runProjectBuild, searchComponents } from "./tsci"
 import { discoverProjects, encodeProjectId, projectSummary, resolveProject } from "./workspace"
 
-function formatToolJSON(value: unknown): string {
-  return JSON.stringify(value, null, 2)
+async function canonicalWorkspaceRoot(rawPath: string): Promise<string> {
+  if (!path.isAbsolute(rawPath)) throw new Error(`workspaceRoot must be an absolute path: ${rawPath}`)
+  try {
+    return await canonicalExistingDirectory(rawPath, "workspaceRoot")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes("does not exist")) throw new Error(`workspaceRoot does not exist: ${rawPath}`)
+    if (message.includes("not a directory")) throw new Error(`workspaceRoot is not a directory: ${rawPath}`)
+    throw new Error(message)
+  }
 }
 
 async function readProjectSvg(
@@ -62,7 +72,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
           args: {},
           async execute() {
             const projects = await discoverProjects(workspaceRoot)
-            return formatToolJSON({
+            return formatToolJson({
               workspaceRoot,
               projects: projects.map(projectSummary),
               total: projects.length,
@@ -87,7 +97,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const projectId = encodeProjectId(result.relativePath)
 
             if (args.install === false) {
-              return formatToolJSON({
+              return formatToolJson({
                 ...result,
                 projectId,
                 install: "skipped",
@@ -97,7 +107,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
 
             const install = await installProjectDeps(result.absolutePath, ctx.abort)
             if (!install.success) {
-              return formatToolJSON({
+              return formatToolJson({
                 ...result,
                 projectId,
                 install: { success: false, exitCode: install.exitCode, stderr: install.stderr.slice(0, 4000) },
@@ -105,7 +115,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               })
             }
 
-            return formatToolJSON({
+            return formatToolJson({
               ...result,
               projectId,
               install: { success: true },
@@ -128,7 +138,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
           async execute(args) {
             const catalog = await inspectCatalog(workspaceRoot)
             const filtered = filterCatalogParts(catalog.parts, args.query)
-            return formatToolJSON({
+            return formatToolJson({
               available: catalog.available,
               scope: catalog.scope,
               catalogPath: catalog.catalogPath,
@@ -149,7 +159,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
           async execute(args) {
             const catalog = await inspectCatalog(workspaceRoot)
             const part = findCatalogPart(catalog.parts, args.mpn)
-            return formatToolJSON({
+            return formatToolJson({
               available: catalog.available,
               scope: catalog.scope,
               catalogPath: catalog.catalogPath,
@@ -170,7 +180,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
           },
           async execute(args, ctx) {
             const result = await searchComponents(args.query, args.source ?? "all", ctx.abort)
-            return formatToolJSON({
+            return formatToolJson({
               query: result.query,
               resolvedQuery: result.resolvedQuery,
               attemptedQueries: result.attemptedQueries,
@@ -202,7 +212,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               ? circuitReadiness(circuit, { inspection: result.inspection ?? undefined })
               : { fabricationReady: false, assemblyReady: false, manufacturingBlockers: [] as const, assemblyBlockers: [] as const }
             const fabricationReady = result.inspection !== null && readiness.fabricationReady
-            return formatToolJSON({
+            return formatToolJson({
               projectId: args.projectId,
               name: project.name,
               success: result.success,
@@ -240,7 +250,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const readiness = circuit ? circuitReadiness(circuit) : null
             const fabricationReady = result.manufacturingBlockers.length === 0
             const assemblyReady = fabricationReady && readiness?.assemblyReady === true
-            return formatToolJSON({
+            return formatToolJson({
               projectId: args.projectId,
               name: project.name,
               success: result.success,
@@ -279,7 +289,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const inspection = inspectCircuitJson(json)
             const catalogParts = await loadCatalogParts(workspaceRoot)
             const readiness = circuitReadiness(json, { inspection, catalogParts })
-            return formatToolJSON({
+            return formatToolJson({
               projectId: args.projectId,
               name: project.name,
               success: true,
@@ -311,7 +321,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const inspection = inspectCircuitJson(json)
             const readiness = circuitReadiness(json, { inspection })
             if (readiness.assemblyBlockers.length > 0) {
-              return formatToolJSON({
+              return formatToolJson({
                 projectId: args.projectId,
                 name: project.name,
                 format: "cpl",
@@ -329,7 +339,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             }
             const result = readiness.placement
             const csv = toCplCsv(result.entries)
-            return formatToolJSON({
+            return formatToolJson({
               projectId: args.projectId,
               name: project.name,
               format: "cpl",
@@ -363,7 +373,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               throw new Error(project.artifactError ?? `Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
-            return formatToolJSON({
+            return formatToolJson({
               projectId: args.projectId,
               name: project.name,
               circuitJsonPath: project.circuitJsonPath,

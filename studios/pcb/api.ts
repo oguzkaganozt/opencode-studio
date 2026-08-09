@@ -46,6 +46,30 @@ async function requireBuiltProject(workspaceRoot: string, id: string): Promise<C
   return project as CircuitProject & { circuitJsonPath: string }
 }
 
+async function loadProjectBom(workspaceRoot: string, id: string) {
+  const project = await requireBuiltProject(workspaceRoot, id)
+  const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
+  const catalogParts = await loadCatalogParts(workspaceRoot)
+  const bom = generateBom(json, catalogParts)
+  return { project, bom }
+}
+
+async function serveProjectSvg(workspaceRoot: string, id: string, pathKey: "schematicSvgPath" | "pcbSvgPath", missingMessage: string) {
+  const project = await requireProject(workspaceRoot, id)
+  if (project.artifactError)
+    return new Response(JSON.stringify({ error: project.artifactError }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    })
+  const svgPath = project[pathKey]
+  if (!svgPath)
+    return new Response(JSON.stringify({ error: missingMessage }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    })
+  return serveWorkspaceFile(workspaceRoot, svgPath, "image/svg+xml")
+}
+
 async function serveWorkspaceFile(workspaceRoot: string, filePath: string, contentType: string, downloadName?: string): Promise<Response> {
   let content: Buffer
   try {
@@ -108,10 +132,7 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/projects/:id/bom", async (ctx) => {
-    const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
-    const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
-    const catalogParts = await loadCatalogParts(workspaceRoot)
-    const bom = generateBom(json, catalogParts)
+    const { project, bom } = await loadProjectBom(workspaceRoot, ctx.req.param("id"))
     return ctx.json({
       projectId: ctx.req.param("id"),
       name: project.name,
@@ -122,10 +143,7 @@ export function createPcbApi(workspaceRoot: string) {
   })
 
   app.get("/projects/:id/bom.csv", async (ctx) => {
-    const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
-    const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
-    const catalogParts = await loadCatalogParts(workspaceRoot)
-    const bom = generateBom(json, catalogParts)
+    const { project, bom } = await loadProjectBom(workspaceRoot, ctx.req.param("id"))
     const csv = toBomCsv(bom.entries)
     return new Response(csv, {
       headers: {
@@ -162,19 +180,13 @@ export function createPcbApi(workspaceRoot: string) {
     })
   })
 
-  app.get("/projects/:id/schematic.svg", async (ctx) => {
-    const project = await requireProject(workspaceRoot, ctx.req.param("id"))
-    if (project.artifactError) return ctx.json({ error: project.artifactError }, 409)
-    if (!project.schematicSvgPath) return ctx.json({ error: "Schematic SVG not built yet. Run pcb_circuit_export first." }, 404)
-    return serveWorkspaceFile(workspaceRoot, project.schematicSvgPath, "image/svg+xml")
-  })
+  app.get("/projects/:id/schematic.svg", async (ctx) =>
+    serveProjectSvg(workspaceRoot, ctx.req.param("id"), "schematicSvgPath", "Schematic SVG not built yet. Run pcb_circuit_export first."),
+  )
 
-  app.get("/projects/:id/pcb.svg", async (ctx) => {
-    const project = await requireProject(workspaceRoot, ctx.req.param("id"))
-    if (project.artifactError) return ctx.json({ error: project.artifactError }, 409)
-    if (!project.pcbSvgPath) return ctx.json({ error: "PCB SVG not built yet. Run pcb_circuit_export first." }, 404)
-    return serveWorkspaceFile(workspaceRoot, project.pcbSvgPath, "image/svg+xml")
-  })
+  app.get("/projects/:id/pcb.svg", async (ctx) =>
+    serveProjectSvg(workspaceRoot, ctx.req.param("id"), "pcbSvgPath", "PCB SVG not built yet. Run pcb_circuit_export first."),
+  )
 
   app.get("/projects/:id/gerbers.zip", async (ctx) => {
     const project = await requireProject(workspaceRoot, ctx.req.param("id"))

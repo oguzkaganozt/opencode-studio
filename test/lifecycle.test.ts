@@ -142,12 +142,6 @@ describe("configureStudios", () => {
     await expect(Promise.all(skillFiles.map((file) => readFile(file, "utf8")))).resolves.toEqual(before)
   })
 
-  test("isolated configure does not install the real-home serve wrapper", async () => {
-    const ctx = await isolated()
-    const result = await configureStudios({ ...ctx, validateOpenCode: false })
-    expect(result.serveWrapper).toBeUndefined()
-  })
-
   test("remove uninstalls managed skills and plugins", async () => {
     const ctx = await isolated()
     await configureStudios({

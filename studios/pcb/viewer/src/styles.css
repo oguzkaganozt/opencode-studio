@@ -26,78 +26,7 @@
   box-shadow: var(--osc-focus-ring);
 }
 
-[data-studio="pcb"] .pcb-input {
-  min-height: 2.5rem;
-  border-radius: var(--osc-radius-md);
-  border: 1px solid var(--osc-border-strong);
-  background: var(--osc-surface);
-  color: var(--osc-text);
-  font-size: 13px;
-  transition:
-    border-color var(--osc-motion-duration) ease,
-    box-shadow var(--osc-motion-duration) ease;
-}
-
-@media (min-width: 640px) {
-  [data-studio="pcb"] .pcb-input {
-    min-height: 2.25rem;
-  }
-}
-
-[data-studio="pcb"] .pcb-input::placeholder {
-  color: var(--osc-text-faint);
-}
-
-[data-studio="pcb"] .pcb-input:focus {
-  outline: none;
-  border-color: var(--osc-border-strong);
-  box-shadow: var(--osc-focus-ring);
-}
-
-[data-studio="pcb"] .pcb-chip {
-  display: inline-flex;
-  height: 2.25rem;
-  min-height: 2.25rem;
-  align-items: center;
-  gap: 0.375rem;
-  border-radius: var(--osc-radius-md);
-  border: 1px solid var(--osc-border-strong);
-  background: transparent;
-  padding: 0 0.625rem;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--osc-text-muted);
-  cursor: pointer;
-  touch-action: manipulation;
-  transition:
-    background-color var(--osc-motion-duration) ease,
-    border-color var(--osc-motion-duration) ease,
-    color var(--osc-motion-duration) ease,
-    transform 140ms ease-out;
-}
-
-[data-studio="pcb"] .pcb-chip:hover {
-  border-color: var(--osc-text-faint);
-  background: var(--osc-surface-hover);
-  color: var(--osc-text);
-}
-
-[data-studio="pcb"] .pcb-chip:active {
-  transform: translateY(1px);
-}
-
-[data-studio="pcb"] .pcb-chip:focus-visible {
-  outline: none;
-  box-shadow: var(--osc-focus-ring);
-}
-
-[data-studio="pcb"] .pcb-chip--primary {
-  border-color: color-mix(in srgb, var(--osc-accent) 55%, var(--osc-border-strong));
-  background: color-mix(in srgb, var(--osc-accent) 12%, transparent);
-  color: var(--osc-text);
-}
+/* Home input/chip/card/tools live in ui/styles.css (shared with CAD). */
 
 [data-studio="pcb"] .pcb-table-wrap {
   overflow-x: auto;
@@ -178,64 +107,6 @@
   font-family: var(--osc-font-mono);
   font-size: 10px;
   color: var(--osc-text-muted);
-}
-
-[data-studio="pcb"] .pcb-card {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  border-radius: var(--osc-radius-lg);
-  border: 1px solid var(--osc-border);
-  background: var(--osc-bg-elevated);
-  padding: 1.15rem;
-  box-shadow: var(--osc-shadow);
-  touch-action: manipulation;
-  transition:
-    border-color var(--osc-motion-duration) ease,
-    box-shadow var(--osc-motion-duration) ease;
-}
-
-@media (min-width: 640px) {
-  [data-studio="pcb"] .pcb-card {
-    padding: 1.25rem;
-  }
-}
-
-[data-studio="pcb"] .pcb-card:hover {
-  border-color: var(--osc-border-strong);
-  box-shadow: var(--osc-shadow-md);
-}
-
-[data-studio="pcb"] .pcb-card:focus-visible {
-  outline: none;
-  box-shadow: var(--osc-focus-ring);
-}
-
-[data-studio="pcb"] .pcb-card__rail {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: 2px;
-  background: var(--osc-accent);
-  opacity: 0.72;
-  transition: opacity var(--osc-motion-duration) ease;
-}
-
-[data-studio="pcb"] .pcb-card[data-tone="success"] .pcb-card__rail {
-  background: var(--osc-success);
-}
-
-[data-studio="pcb"] .pcb-card[data-tone="warning"] .pcb-card__rail {
-  background: var(--osc-warning);
-}
-
-[data-studio="pcb"] .pcb-card[data-tone="error"] .pcb-card__rail {
-  background: var(--osc-error);
-}
-
-[data-studio="pcb"] .pcb-card:hover .pcb-card__rail,
-[data-studio="pcb"] .pcb-card:focus-visible .pcb-card__rail {
-  opacity: 1;
 }
 
 [data-studio="pcb"] .pcb-card__artifacts {
@@ -347,64 +218,6 @@
 [data-studio="pcb"] .pcb-readiness__item strong {
   font-weight: 500;
   color: var(--osc-text);
-}
-
-[data-studio="pcb"] .pcb-project-tools {
-  display: grid;
-  gap: 0.65rem;
-  margin-bottom: 1rem;
-}
-
-[data-studio="pcb"] .pcb-project-filters {
-  display: flex;
-  gap: 0.35rem;
-  overflow-x: auto;
-  padding: 1px;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-
-[data-studio="pcb"] .pcb-project-filters::-webkit-scrollbar {
-  display: none;
-}
-
-[data-studio="pcb"] .pcb-filter {
-  display: inline-flex;
-  min-height: 2.25rem;
-  flex: 0 0 auto;
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--osc-radius-md);
-  padding: 0 0.65rem;
-  background: transparent;
-  color: var(--osc-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  touch-action: manipulation;
-  transition:
-    background-color var(--osc-motion-duration) ease,
-    border-color var(--osc-motion-duration) ease,
-    color var(--osc-motion-duration) ease;
-}
-
-[data-studio="pcb"] .pcb-filter:hover {
-  background: var(--osc-surface-hover);
-  color: var(--osc-text);
-}
-
-[data-studio="pcb"] .pcb-filter[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--osc-accent) 42%, var(--osc-border));
-  background: color-mix(in srgb, var(--osc-accent) 10%, var(--osc-surface));
-  color: var(--osc-text);
-}
-
-@media (min-width: 768px) {
-  [data-studio="pcb"] .pcb-project-tools {
-    grid-template-columns: minmax(12rem, 1fr) auto;
-    align-items: center;
-  }
 }
 
 [data-studio="pcb"] .pcb-bom-overview {
@@ -544,11 +357,6 @@
   font-weight: 600;
 }
 
-[data-studio="pcb"] .pcb-skeleton {
-  border-radius: var(--osc-radius-md);
-  background: var(--osc-surface);
-  animation: pcb-pulse 1.4s ease-in-out infinite;
-}
 
 [data-studio="pcb"] .pcb-workspace-badge {
   display: none;
@@ -1032,16 +840,6 @@
   text-align: center;
 }
 
-@keyframes pcb-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
-}
-
 @media (hover: none) {
   [data-studio="pcb"] .pcb-chip:hover {
     border-color: var(--osc-border-strong);
@@ -1077,10 +875,6 @@
   [data-studio="pcb"] *::after {
     animation-duration: 0ms !important;
     transition-duration: 0ms !important;
-  }
-
-  [data-studio="pcb"] .pcb-skeleton {
-    animation: none;
   }
 
   [data-studio="pcb"] .pcb-chip:active {

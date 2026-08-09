@@ -90,7 +90,7 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
   if (!manifoldReady || isLoading) {
     return (
       <div className="pcb-viewer-empty" role="status" aria-busy="true">
-        <div className="pcb-skeleton h-48 w-72 max-w-[80%]" aria-hidden />
+        <div className="osc-skeleton h-48 w-72 max-w-[80%]" aria-hidden />
         <p className="text-[12px] text-[var(--osc-text-faint)]">Preparing 3D engine and models…</p>
       </div>
     )

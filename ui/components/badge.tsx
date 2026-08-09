@@ -10,15 +10,31 @@ const toneClass: Record<BadgeTone, string> = {
   fail: "border-[var(--osc-error)]/30 bg-[var(--osc-error-bg)] text-[var(--osc-error)]",
 }
 
-export function Badge({ className, tone = "neutral", ...props }: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {
+const dotClass: Record<BadgeTone, string> = {
+  neutral: "bg-[var(--osc-text-faint)]",
+  ok: "bg-[var(--osc-success)]",
+  warn: "bg-[var(--osc-warning)]",
+  fail: "bg-[var(--osc-error)]",
+}
+
+export function Badge({
+  className,
+  tone = "neutral",
+  dot = false,
+  children,
+  ...props
+}: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone; dot?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase",
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium tracking-wide uppercase",
         toneClass[tone],
         className,
       )}
       {...props}
-    />
+    >
+      {dot ? <span className={cn("size-1.5 rounded-full", dotClass[tone])} aria-hidden /> : null}
+      {children}
+    </span>
   )
 }

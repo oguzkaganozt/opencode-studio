@@ -1,4 +1,4 @@
-import type { Part, PermissionRequest, Session, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
+import type { PermissionRequest, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -9,15 +9,37 @@ import {
   useRef,
   useState,
 } from "react"
-import { Link } from "react-router"
-import type { StudioSessionContext, StudioSessionHistoryItem } from "../../src/core/session-history"
+import type { StudioSessionHistoryItem } from "../../src/core/session-history"
 import { type AgentContext, getAgentContext, homeAgentContext, subscribeAgentContext } from "../agent-context"
 import { type AgentHandoffRequest, subscribeAgentHandoff } from "../agent-handoff"
-import { type AgentStatus, agentStatusDotClass, deriveAgentStatus } from "../agent-status"
+import { type AgentStatus, deriveAgentStatus } from "../agent-status"
 import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, clampAgentWidth, readAgentWidth, viewportAgentWidthMax, writeAgentWidth } from "../agent-width"
 import { Button } from "../components/button"
 import { useFocusTrap } from "../lib/focus-trap"
+import { AgentComposer } from "./agent-composer"
 import { publishAgentFileEvent } from "./agent-file-events"
+import { MessageBubble } from "./agent-messages"
+import { AgentPanelHeader } from "./agent-panel-header"
+import {
+  type ComposerChip,
+  type ComposerState,
+  checkingContext,
+  composeOutbound,
+  composerKey,
+  contextLink,
+  contextMetadata,
+  handoffChips,
+  historyItem,
+  MODEL_UI_LIMIT,
+  type ModelPreference,
+  type ModelRef,
+  modelKey,
+  type PendingSession,
+  type PopoverKind,
+  readPrefs,
+  sameContext,
+  writePrefs,
+} from "./agent-types"
 import {
   type AgentMessage,
   abortSession,
@@ -33,108 +55,10 @@ import {
   sessionDiff,
   subscribeAgentEvents,
 } from "./client"
-import { Markdown } from "./markdown"
-import { availableModelVariants, modelVariantLabel } from "./model-variant"
-import { summarizePart, textFromParts, toolDetail, toolLabel, toolPreview, toolStatus } from "./part-text"
+import { availableModelVariants } from "./model-variant"
+import { PermissionRequestBar } from "./permission-request"
+import { SessionHistoryPopover } from "./session-history-popover"
 import { sessionGroupsByLastMessage, sessionLabel, sessionOptionLabels } from "./session-label"
-
-type ModelPreference = { providerID: string; modelID: string }
-type ModelRef = ModelPreference & { variants: string[] }
-type AgentPrefs = { model?: ModelPreference; variants?: Record<string, string> }
-
-type ComposerChip = {
-  id: string
-  kind: "path" | "annotation"
-  value: string
-  label: string
-}
-
-type ComposerState = {
-  draft: string
-  chips: ComposerChip[]
-}
-
-type PendingSession = { id: string; directory: string }
-
-function checkingContext(): AgentContext {
-  return { key: "route", kind: "home", label: "Loading context…", status: "checking" }
-}
-
-function contextFromHistory(context: StudioSessionContext): AgentContext {
-  return context
-}
-
-function contextMetadata(context: AgentContext): StudioSessionContext {
-  if (!context.directory) throw new Error("Agent context directory is unavailable")
-  return {
-    schema: 1,
-    key: context.key,
-    kind: context.kind,
-    label: context.label,
-    studioId: context.studioId,
-    projectId: context.projectId,
-    relativePath: context.relativePath,
-    directory: context.directory,
-    historicalDirectory: context.historicalDirectory ?? context.directory,
-    status: context.status === "checking" ? "missing" : context.status,
-  }
-}
-
-function contextLink(context: AgentContext): { href: string; label: string } | undefined {
-  if (!context.projectId) return undefined
-  const id = encodeURIComponent(context.projectId)
-  if (context.kind === "cad-project") return { href: `/studios/cad/designs/${id}`, label: "Open design" }
-  if (context.kind === "pcb-project") return { href: `/studios/pcb/projects/${id}/schematic`, label: "Open project" }
-  return undefined
-}
-
-function sameContext(left: AgentContext, right: AgentContext): boolean {
-  return (
-    left.key === right.key &&
-    left.directory === right.directory &&
-    left.historicalDirectory === right.historicalDirectory &&
-    left.label === right.label &&
-    left.relativePath === right.relativePath &&
-    left.status === right.status
-  )
-}
-
-function handoffChips(handoff: AgentHandoffRequest): ComposerChip[] {
-  const chips: ComposerChip[] = []
-  for (const value of handoff.paths ?? []) {
-    chips.push({ id: `path:${value}`, kind: "path", value, label: value.split("/").pop() || value })
-  }
-  if (handoff.annotation?.trim()) {
-    const value = handoff.annotation.trim()
-    chips.push({
-      id: `ann:${value.slice(0, 48)}`,
-      kind: "annotation",
-      value,
-      label: value.length > 36 ? `${value.slice(0, 36)}…` : value,
-    })
-  }
-  return chips
-}
-
-function historyItem(session: Session, context: AgentContext): StudioSessionHistoryItem {
-  return {
-    id: session.id,
-    title: session.title,
-    directory: session.directory,
-    parentID: session.parentID,
-    model: session.model,
-    time: session.time,
-    context: contextMetadata(context),
-  }
-}
-
-function composerKey(contextKey: string, directory: string, sessionID?: string): string {
-  return `${contextKey}\0${directory}\0${sessionID ?? "new"}`
-}
-
-type PopoverKind = "session" | "model" | "variant" | null
-
-const MODEL_UI_LIMIT = 80
 
 function useMdUp() {
   const [mdUp, setMdUp] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true))
@@ -146,235 +70,6 @@ function useMdUp() {
     return () => mq.removeEventListener("change", onChange)
   }, [])
   return mdUp
-}
-
-function prefsKey(directory: string) {
-  return `osc-agent-prefs:${directory}`
-}
-
-function readPrefs(directory: string): AgentPrefs {
-  try {
-    const raw = localStorage.getItem(prefsKey(directory))
-    if (!raw) return {}
-    return JSON.parse(raw) as AgentPrefs
-  } catch {
-    return {}
-  }
-}
-
-function writePrefs(directory: string, prefs: AgentPrefs) {
-  try {
-    localStorage.setItem(prefsKey(directory), JSON.stringify(prefs))
-  } catch {
-    // ignore
-  }
-}
-
-function modelKey(model: ModelRef) {
-  return `${model.providerID}/${model.modelID}`
-}
-
-function modelLabel(model: ModelRef) {
-  return model.modelID
-}
-
-function roleOf(info: AgentMessage["info"]): "user" | "assistant" | "other" {
-  const role = "role" in info ? String(info.role) : ""
-  if (role === "user") return "user"
-  if (role === "assistant") return "assistant"
-  return "other"
-}
-
-type AssistantBlock = { id: string; kind: "tools"; parts: Part[] } | { id: string; kind: "text"; text: string }
-
-/** Chronological blocks: consecutive tool parts group into one quiet list, text parts render as markdown. */
-function assistantBlocks(parts: Part[]): AssistantBlock[] {
-  const blocks: AssistantBlock[] = []
-  for (const part of parts) {
-    if (part.type === "tool") {
-      const last = blocks[blocks.length - 1]
-      if (last?.kind === "tools") last.parts.push(part)
-      else blocks.push({ id: part.id, kind: "tools", parts: [part] })
-      continue
-    }
-    if (part.type === "text" && typeof (part as { text?: string }).text === "string") {
-      const text = (part as { text: string }).text.trim()
-      if (!text) continue
-      const last = blocks[blocks.length - 1]
-      if (last?.kind === "text") last.text = `${last.text}\n\n${text}`
-      else blocks.push({ id: part.id, kind: "text", text })
-    }
-  }
-  return blocks
-}
-
-function MessageBubble({ message }: { message: AgentMessage }) {
-  const role = roleOf(message.info)
-  const text = textFromParts(message.parts)
-  if (role === "user") {
-    return (
-      <div className="oc-msg oc-msg--user">
-        <div className="oc-msg__bubble">{text || "…"}</div>
-      </div>
-    )
-  }
-  const blocks = assistantBlocks(message.parts)
-  const summaries = message.parts.map(summarizePart).filter((summary): summary is string => Boolean(summary))
-  if (blocks.length === 0 && summaries.length === 0) return null
-  return (
-    <div className="oc-msg oc-msg--assistant">
-      {blocks.map((block) =>
-        block.kind === "tools" ? (
-          <div key={block.id} className="oc-msg__tools">
-            {block.parts.map((part) => (
-              <ToolCard key={part.id} part={part} />
-            ))}
-          </div>
-        ) : (
-          <Markdown key={block.id} text={block.text} />
-        ),
-      )}
-      {blocks.length === 0
-        ? summaries.map((summary, index) => (
-            <p key={`${message.info.id}:summary:${index}`} className="oc-msg__meta">
-              {summary}
-            </p>
-          ))
-        : null}
-    </div>
-  )
-}
-
-function ToolCard({ part }: { part: Part }) {
-  const label = toolLabel(part) ?? "tool"
-  const status = toolStatus(part)
-  const detail = toolDetail(part)
-  const preview = toolPreview(part)
-  const statusClass = status === "error" ? " is-error" : status === "running" || status === "pending" ? " is-live" : ""
-  const inner = (
-    <>
-      <span className="oc-tool__icon" aria-hidden>
-        <ToolIcon tool={label} />
-      </span>
-      <span className="oc-tool__name">{label}</span>
-      {preview ? <span className="oc-tool__preview">{preview}</span> : null}
-      {status ? <span className={`oc-tool__status${statusClass}`}>{status}</span> : null}
-    </>
-  )
-  if (!detail) {
-    return <div className="oc-tool oc-tool--static">{inner}</div>
-  }
-  return (
-    <details className={`oc-tool${status === "error" ? " oc-tool--error" : ""}`}>
-      <summary>
-        {inner}
-        <span className="oc-tool__chevron" aria-hidden>
-          <IconChevron />
-        </span>
-      </summary>
-      <pre className="oc-tool__detail">{detail}</pre>
-    </details>
-  )
-}
-
-function ToolIcon({ tool }: { tool: string }) {
-  const path =
-    tool === "bash" ? (
-      <path d="M4 5.5 7.5 8 4 10.5M9 10.5h4" />
-    ) : tool === "read" || tool === "glob" ? (
-      <>
-        <path d="M5 3h4.5L12 5.5V13H5z" />
-        <path d="M9.5 3v2.5H12" />
-      </>
-    ) : tool === "edit" || tool === "write" ? (
-      <path d="M10.8 3.6 12.4 5.2M3.5 12.5l.6-2.2L11 3.4l1.6 1.6-6.9 6.9z" />
-    ) : tool === "grep" || tool === "websearch" ? (
-      <>
-        <circle cx="7" cy="7" r="3.5" />
-        <path d="m9.8 9.8 3 3" />
-      </>
-    ) : tool === "webfetch" ? (
-      <>
-        <circle cx="8" cy="8" r="5" />
-        <path d="M3 8h10M8 3c-1.6 1.6-2.4 3.2-2.4 5s.8 3.4 2.4 5c1.6-1.6 2.4-3.2 2.4-5S9.6 4.6 8 3z" />
-      </>
-    ) : tool === "task" || tool === "todowrite" || tool === "todoread" ? (
-      <path d="M3.5 4.5h9M3.5 8h9M3.5 11.5h5.5" />
-    ) : (
-      <>
-        <circle cx="8" cy="8" r="1.75" />
-        <path d="M8 2.5v2M8 11.5v2M2.5 8h2M11.5 8h2" />
-      </>
-    )
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {path}
-    </svg>
-  )
-}
-
-function IconPlus() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M8 3.5v9M3.5 8h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function IconClose() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="m4.5 4.5 7 7m0-7-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function IconHome() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path d="M2 6.25 7 2l5 4.25v5.25H8.75V8.25h-3.5v3.25H2V6.25Z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function IconSend() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 12.5V3.5M8 3.5L4 7.5M8 3.5L12 7.5"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function IconStop() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" />
-    </svg>
-  )
-}
-
-function IconChevron() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
 }
 
 export function AgentPanel({
@@ -610,7 +305,7 @@ export function AgentPanel({
     const selectedID = sessionIDRef.current
     const selected = selectedID ? rows.find((session) => session.id === selectedID) : undefined
     if (selected) {
-      const nextContext = contextFromHistory(selected.context)
+      const nextContext = selected.context as AgentContext
       if (!sameContext(activeContextRef.current, nextContext)) {
         transitionContext(nextContext, { id: selected.id, directory: selected.context.directory })
         return
@@ -874,7 +569,7 @@ export function AgentPanel({
             : claimed && claimed.directory === requestedDirectory
               ? claimed
               : fromHistory
-                ? contextFromHistory(fromHistory)
+                ? (fromHistory as AgentContext)
                 : activeContext
         if (sameContext(activeContextRef.current, next)) {
           saveComposer()
@@ -968,18 +663,8 @@ export function AgentPanel({
     return created.id
   }, [activeContext, contextWritable, directory, sessionID])
 
-  const composeOutbound = () => {
-    const pieces: string[] = []
-    for (const chip of chips) {
-      if (chip.kind === "path") pieces.push(`@${chip.value}`)
-      else pieces.push(chip.value)
-    }
-    if (draft.trim()) pieces.push(draft.trim())
-    return pieces.join("\n\n")
-  }
-
   const onSend = async () => {
-    const text = composeOutbound()
+    const text = composeOutbound(chips, draft)
     const sendDirectory = directory
     if (!text || busy || !contextWritable || !sendDirectory) return
     const epoch = contextEpoch.current
@@ -1129,7 +814,7 @@ export function AgentPanel({
   }, [files])
 
   const activeContextLink = contextLink(activeContext)
-  const canSend = Boolean(composeOutbound()) && !busy && contextWritable
+  const canSend = Boolean(composeOutbound(chips, draft)) && !busy && contextWritable
   const statusLabel =
     !available || !healthOk
       ? healthError || "Unavailable"
@@ -1152,114 +837,44 @@ export function AgentPanel({
       className={shellClass}
       style={!fullPage && open && mdUp ? { width, minWidth: AGENT_WIDTH_MIN, maxWidth: viewportMax } : undefined}
     >
-      <header className="oc-panel__header">
-        <span className={`oc-panel__dot ${agentStatusDotClass(status)}`} aria-hidden />
-        <div className="oc-panel__title-wrap">
-          <button
-            type="button"
-            data-oc-popover-trigger
-            className="oc-panel__session-btn"
-            onClick={() => setPopover((p) => (p === "session" ? null : "session"))}
-            aria-expanded={popover === "session"}
-            title={sessionTitle}
-          >
-            <span className="oc-panel__session-title">{sessionTitle}</span>
-            <IconChevron />
-          </button>
-          <p className="oc-panel__sub" title={directory}>
-            {activeContext.label} ·{" "}
-            {activeContext.status === "checking"
-              ? "Loading…"
-              : activeContext.status === "missing"
-                ? "Unavailable"
-                : activeContext.status === "moved"
-                  ? `Moved · ${statusLabel}`
-                  : statusLabel}
-          </p>
-        </div>
-        {fullPage && activeContextLink ? (
-          <Link className="oc-context-link" to={activeContextLink.href}>
-            {activeContextLink.label}
-          </Link>
-        ) : null}
-        {fullPage && activeContext.key !== "home" ? (
-          <button
-            type="button"
-            className="oc-icon-btn"
-            onClick={() => transitionContext(homeContext)}
-            aria-label="Return to Studio Home"
-            title="Return to Studio Home"
-          >
-            <IconHome />
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="oc-icon-btn"
-          onClick={() => void onNewSession()}
-          aria-label="New session"
-          title="New session"
-          disabled={!contextWritable}
-        >
-          <IconPlus />
-        </button>
-        {sessionID && busy ? (
-          <button type="button" className="oc-icon-btn oc-icon-btn--warn" onClick={() => void onAbort()} aria-label="Stop" title="Stop">
-            <IconStop />
-          </button>
-        ) : null}
-        {!fullPage ? (
-          <button type="button" data-autofocus className="oc-icon-btn" onClick={onClose} aria-label="Close agent" title="Close">
-            <IconClose />
-          </button>
-        ) : null}
-      </header>
+      <AgentPanelHeader
+        status={status}
+        sessionTitle={sessionTitle}
+        directory={directory}
+        activeContext={activeContext}
+        statusLabel={statusLabel}
+        activeContextLink={activeContextLink}
+        fullPage={fullPage}
+        contextWritable={contextWritable}
+        sessionID={sessionID}
+        busy={busy}
+        popoverSessionOpen={popover === "session"}
+        onToggleSessionPopover={() => setPopover((p) => (p === "session" ? null : "session"))}
+        onHome={() => transitionContext(homeContext)}
+        onNewSession={() => void onNewSession()}
+        onAbort={() => void onAbort()}
+        onClose={onClose}
+      />
 
       {popover === "session" ? (
-        <div className="oc-popover oc-popover--session" data-oc-popover role="listbox" aria-label="Sessions">
-          <input
-            className="oc-popover__search"
-            placeholder="Search sessions…"
-            value={sessionQuery}
-            onChange={(e) => setSessionQuery(e.target.value)}
-          />
-          <div className="oc-popover__list">
-            {sessionGroups.map((group) => (
-              <fieldset key={group.key} className="oc-popover__group">
-                <legend className="oc-popover__group-label">{group.label}</legend>
-                {group.sessions.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    role="option"
-                    aria-selected={s.id === sessionID}
-                    className={`oc-popover__item ${s.id === sessionID ? "is-active" : ""}`}
-                    onClick={() => {
-                      const nextContext = contextFromHistory(s.context)
-                      if (historyScope === "studio" && !sameContext(nextContext, activeContextRef.current)) {
-                        transitionContext(nextContext, { id: s.id, directory: s.context.directory })
-                      } else {
-                        switchSession(s.id)
-                      }
-                      setPopover(null)
-                      setSessionQuery("")
-                    }}
-                  >
-                    <span className="truncate">{optionLabels.get(s.id) ?? sessionLabel(s)}</span>
-                    {historyScope === "studio" ? (
-                      <span className="oc-popover__meta">
-                        {s.context.label}
-                        {s.context.relativePath && s.context.relativePath !== s.context.projectId ? ` · ${s.context.relativePath}` : ""}
-                        {s.context.status === "missing" ? " · unavailable" : s.context.status === "moved" ? " · moved" : ""}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
-              </fieldset>
-            ))}
-            {filteredSessions.length === 0 ? <p className="oc-popover__empty">No sessions</p> : null}
-          </div>
-        </div>
+        <SessionHistoryPopover
+          sessionGroups={sessionGroups}
+          optionLabels={optionLabels}
+          sessionID={sessionID}
+          sessionQuery={sessionQuery}
+          onQueryChange={setSessionQuery}
+          historyScope={historyScope}
+          onSelect={(s) => {
+            const nextContext = s.context as AgentContext
+            if (historyScope === "studio" && !sameContext(nextContext, activeContextRef.current)) {
+              transitionContext(nextContext, { id: s.id, directory: s.context.directory })
+            } else {
+              switchSession(s.id)
+            }
+            setPopover(null)
+            setSessionQuery("")
+          }}
+        />
       ) : null}
 
       {!available || !healthOk ? (
@@ -1312,23 +927,7 @@ export function AgentPanel({
             </div>
           </div>
 
-          {permission ? (
-            <div className="oc-permission" role="alertdialog" aria-label="Permission request">
-              <p className="oc-permission__title">{permission.permission}</p>
-              <p className="oc-permission__meta">{permission.patterns.join(", ") || "OpenCode requests permission to continue."}</p>
-              <div className="oc-permission__actions">
-                <button type="button" className="oc-chip" onClick={() => void onPermission("once")}>
-                  Allow once
-                </button>
-                <button type="button" className="oc-chip" onClick={() => void onPermission("always")}>
-                  Always
-                </button>
-                <button type="button" className="oc-chip" onClick={() => void onPermission("reject")}>
-                  Reject
-                </button>
-              </div>
-            </div>
-          ) : null}
+          {permission ? <PermissionRequestBar permission={permission} onReply={(reply) => void onPermission(reply)} /> : null}
 
           {error ? (
             <div className="oc-error" role="alert">
@@ -1349,160 +948,46 @@ export function AgentPanel({
             </div>
           ) : null}
 
-          <div className="oc-composer-wrap">
-            <div className="oc-composer-inner">
-              {chips.length > 0 ? (
-                <div className="oc-composer__chips">
-                  {chips.map((chip) => (
-                    <span key={chip.id} className={`oc-chip ${chip.kind === "annotation" ? "oc-chip--ann" : ""}`} title={chip.value}>
-                      {chip.kind === "annotation" ? "◎ " : "@"}
-                      {chip.label}
-                      <button
-                        type="button"
-                        aria-label={`Remove ${chip.label}`}
-                        onClick={() => setChips((prev) => prev.filter((c) => c.id !== chip.id))}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-
-              <form
-                className="oc-dock"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  if (busy) {
-                    void onAbort()
-                    return
-                  }
-                  void onSend()
-                }}
-              >
-                <textarea
-                  ref={composerRef}
-                  className="oc-dock__input"
-                  placeholder="Ask anything…"
-                  value={draft}
-                  disabled={busy || !contextWritable}
-                  rows={2}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault()
-                      void onSend()
-                    }
-                  }}
-                />
-                <div className="oc-dock__bar">
-                  <div className="oc-dock__left">
-                    <button
-                      type="button"
-                      data-oc-popover-trigger
-                      className="oc-dock__model oc-dock__model--primary"
-                      disabled={!contextWritable}
-                      onClick={() => setPopover((p) => (p === "model" ? null : "model"))}
-                      aria-expanded={popover === "model"}
-                      title={model ? modelKey(model) : "Model"}
-                    >
-                      <span className="truncate">{model ? modelLabel(model) : "Model"}</span>
-                      <IconChevron />
-                    </button>
-                    {popover === "model" ? (
-                      <div className="oc-popover oc-popover--model" data-oc-popover role="listbox" aria-label="Models">
-                        <input
-                          className="oc-popover__search"
-                          placeholder="Search models…"
-                          value={modelQuery}
-                          onChange={(e) => setModelQuery(e.target.value)}
-                        />
-                        <div className="oc-popover__list">
-                          {filteredModels.map((m) => (
-                            <button
-                              key={modelKey(m)}
-                              type="button"
-                              role="option"
-                              aria-selected={model ? modelKey(model) === modelKey(m) : false}
-                              className={`oc-popover__item ${model && modelKey(model) === modelKey(m) ? "is-active" : ""}`}
-                              onClick={() => {
-                                setModel(m)
-                                setPopover(null)
-                                setModelQuery("")
-                              }}
-                            >
-                              <span className="truncate font-medium">{m.modelID}</span>
-                              <span className="oc-popover__meta">{m.providerID}</span>
-                            </button>
-                          ))}
-                          {filteredModels.length === 0 ? <p className="oc-popover__empty">No models</p> : null}
-                        </div>
-                      </div>
-                    ) : null}
-                    {modelVariants.length > 0 ? (
-                      <button
-                        type="button"
-                        data-oc-popover-trigger
-                        className="oc-dock__model oc-dock__model--variant"
-                        disabled={!contextWritable}
-                        onClick={() => setPopover((p) => (p === "variant" ? null : "variant"))}
-                        aria-expanded={popover === "variant"}
-                        aria-label={`Reasoning effort: ${modelVariantLabel(variant ?? "")}`}
-                        title={`Reasoning effort: ${modelVariantLabel(variant ?? "")}`}
-                      >
-                        <span className="truncate">{modelVariantLabel(variant ?? "")}</span>
-                        <IconChevron />
-                      </button>
-                    ) : null}
-                    {popover === "variant" && model ? (
-                      <div className="oc-popover oc-popover--model" data-oc-popover role="listbox" aria-label="Reasoning effort">
-                        <div className="oc-popover__list">
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={!variant}
-                            className={`oc-popover__item ${!variant ? "is-active" : ""}`}
-                            onClick={() => {
-                              setVariantsByModel((current) => {
-                                const next = { ...current }
-                                delete next[modelKey(model)]
-                                return next
-                              })
-                              setPopover(null)
-                            }}
-                          >
-                            <span className="truncate font-medium">Default</span>
-                            <span className="oc-popover__meta">Model default</span>
-                          </button>
-                          {modelVariants.map((option) => (
-                            <button
-                              key={option}
-                              type="button"
-                              role="option"
-                              aria-selected={variant === option}
-                              className={`oc-popover__item ${variant === option ? "is-active" : ""}`}
-                              onClick={() => {
-                                setVariantsByModel((current) => ({ ...current, [modelKey(model)]: option }))
-                                setPopover(null)
-                              }}
-                            >
-                              <span className="truncate font-medium">{modelVariantLabel(option)}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                  <button type="submit" className="oc-dock__send" disabled={!canSend && !busy} aria-label={busy ? "Stop" : "Send"}>
-                    {busy ? <IconStop /> : <IconSend />}
-                  </button>
-                </div>
-              </form>
-              <p className="oc-dock__dir" title={directory}>
-                {directory ?? "Resolving context…"}
-              </p>
-            </div>
-          </div>
+          <AgentComposer
+            composerRef={composerRef}
+            draft={draft}
+            onDraftChange={setDraft}
+            chips={chips}
+            onRemoveChip={(id) => setChips((prev) => prev.filter((c) => c.id !== id))}
+            busy={busy}
+            contextWritable={contextWritable}
+            canSend={canSend}
+            directory={directory}
+            model={model}
+            modelOptions={filteredModels}
+            modelQuery={modelQuery}
+            onModelQueryChange={setModelQuery}
+            modelVariants={modelVariants}
+            variant={variant}
+            popover={popover}
+            onPopoverChange={setPopover}
+            onSelectModel={(m) => {
+              setModel(m)
+              setPopover(null)
+              setModelQuery("")
+            }}
+            onSelectVariant={(option) => {
+              if (!model) return
+              setVariantsByModel((current) => ({ ...current, [modelKey(model)]: option }))
+              setPopover(null)
+            }}
+            onClearVariant={() => {
+              if (!model) return
+              setVariantsByModel((current) => {
+                const next = { ...current }
+                delete next[modelKey(model)]
+                return next
+              })
+              setPopover(null)
+            }}
+            onSend={() => void onSend()}
+            onAbort={() => void onAbort()}
+          />
         </div>
       )}
 

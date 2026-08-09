@@ -36,7 +36,7 @@ export function SvgViewer({ url, label, notice, onRetry }: { url: string; label:
         {!loaded && !error && (
           <div className="flex flex-col items-center gap-3 py-16" role="status" aria-busy="true">
             <span className="sr-only">Loading {label}…</span>
-            <div className="pcb-skeleton h-48 w-64 max-w-[80%]" aria-hidden />
+            <div className="osc-skeleton h-48 w-64 max-w-[80%]" aria-hidden />
           </div>
         )}
         {error && (

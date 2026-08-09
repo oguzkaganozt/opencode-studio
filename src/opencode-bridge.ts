@@ -31,6 +31,20 @@ export function openCodeBasicAuthHeaders(env: NodeJS.ProcessEnv = process.env): 
   return { Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` }
 }
 
+/** GET /global/health on parent OpenCode (2s timeout). */
+export async function probeParentOpenCode(baseUrl: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  const url = normalizeParentOpenCodeUrl(baseUrl)
+  try {
+    const response = await fetch(new URL("/global/health", `${url}/`), {
+      headers: openCodeBasicAuthHeaders(env),
+      signal: AbortSignal.timeout(2_000),
+    })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
 function absoluteDirectory(raw: string | null | undefined): string | null {
   if (!raw || typeof raw !== "string") return null
   let value = raw.trim()

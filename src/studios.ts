@@ -1,8 +1,6 @@
 import { cadStudio } from "../studios/cad/studio"
 import { pcbStudio } from "../studios/pcb/studio"
-import { assertCatalogComplete, STUDIO_IDS, type StudioDefinition, type StudioId } from "./core/registry"
-
-export { assertCatalogComplete }
+import { STUDIO_IDS, type StudioDefinition, type StudioId } from "./core/registry"
 
 const CATALOG: Record<StudioId, StudioDefinition> = {
   cad: cadStudio,

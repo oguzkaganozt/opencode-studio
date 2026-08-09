@@ -31,7 +31,7 @@ export function ViewerFrame({
       ) : (
         <div className="flex flex-1 items-center justify-center" role="status" aria-busy="true">
           <span className="sr-only">Preparing viewer…</span>
-          <div className="pcb-skeleton h-32 w-48 max-w-[70%]" aria-hidden />
+          <div className="osc-skeleton h-32 w-48 max-w-[70%]" aria-hidden />
         </div>
       )}
     </div>

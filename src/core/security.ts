@@ -22,29 +22,6 @@ export function isLoopbackHost(hostname: string) {
   return false
 }
 
-/** CLI bind modes: local (loopback) or web (all interfaces). */
-export type BindMode = "local" | "web"
-
-export const BIND_MODE_HOST: Record<BindMode, string> = {
-  local: "127.0.0.1",
-  web: "0.0.0.0",
-}
-
-/**
- * Resolve mutually exclusive `--local` / `--web` flags.
- * Default is local when neither is set.
- */
-export function resolveBindMode(flags: { local?: boolean; web?: boolean }): BindMode {
-  const local = Boolean(flags.local)
-  const web = Boolean(flags.web)
-  if (local && web) throw new Error("Use either --local or --web, not both")
-  return web ? "web" : "local"
-}
-
-export function hostnameForBindMode(mode: BindMode): string {
-  return BIND_MODE_HOST[mode]
-}
-
 export const DEFAULT_BASIC_USERNAME = "opencode-studio"
 
 /** OPENCODE_STUDIO_PASSWORD or OPENCODE_SERVER_PASSWORD. */
@@ -62,16 +39,24 @@ export function resolveBasicUsername(env: NodeJS.ProcessEnv = process.env): stri
   )
 }
 
-export function assertWebPassword(mode: BindMode, env: NodeJS.ProcessEnv = process.env) {
-  if (mode === "web" && !resolveEdgePassword(env)) {
-    throw new Error("web mode requires OPENCODE_STUDIO_PASSWORD or OPENCODE_SERVER_PASSWORD")
-  }
-}
-
 export function assertNonLoopbackPassword(hostname: string, env: NodeJS.ProcessEnv = process.env) {
   if (!isLoopbackHost(hostname) && !resolveEdgePassword(env)) {
     throw new Error("non-loopback bind requires OPENCODE_STUDIO_PASSWORD or OPENCODE_SERVER_PASSWORD")
   }
+}
+
+/** True for 1/true/yes/on (case-insensitive). */
+export function envTruthy(value: string | undefined): boolean {
+  if (!value) return false
+  const v = value.trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
+/** True for 0/false/no/off (case-insensitive). */
+export function envFalsy(value: string | undefined): boolean {
+  if (!value) return false
+  const v = value.trim().toLowerCase()
+  return v === "0" || v === "false" || v === "no" || v === "off"
 }
 
 /** Host allowlist derived from the actual bind address (plus paired loopback names when binding loopback). */

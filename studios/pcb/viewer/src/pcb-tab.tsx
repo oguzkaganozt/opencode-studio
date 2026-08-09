@@ -26,7 +26,7 @@ export default function PcbTab({ projectId, directory }: { projectId: string; di
     return (
       <div className="pcb-viewer-empty" role="status" aria-busy="true">
         <span className="sr-only">Loading PCB layout…</span>
-        <div className="pcb-skeleton h-40 w-64 max-w-[85%]" aria-hidden />
+        <div className="osc-skeleton h-40 w-64 max-w-[85%]" aria-hidden />
         <p className="text-[12px] text-[var(--osc-text-faint)]">Loading PCB layout…</p>
       </div>
     )

@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs"
+import { resolveReportedServeUrl, resolveServeBind } from "./core/opencode-bind"
 import { loadPackageMeta } from "./core/package-meta"
 import { packageRootFrom } from "./core/paths"
+import { resolveEdgePassword } from "./core/security"
 import { checkNpmUpdate } from "./core/update-check"
 import { resolveStudioBind } from "./studio-host-bind"
 
@@ -80,7 +82,7 @@ export async function checkPackageUpgrade(options: UpgradeOptions = {}) {
 }
 
 /** bun add -g @latest only (no restart). */
-export async function upgradePackage(options: UpgradeOptions = {}): Promise<{
+async function upgradePackage(options: UpgradeOptions = {}): Promise<{
   action: "upgrade"
   packageName: string
   installOutput: string
@@ -103,28 +105,8 @@ export async function upgradePackage(options: UpgradeOptions = {}): Promise<{
   }
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 function logProgress(onProgress: ((line: string) => void) | undefined, line: string) {
   ;(onProgress ?? ((msg) => console.error(msg)))(line)
-}
-
-/** Parse `ps -eo pid=,args=` lines for `opencode serve` PIDs (never self). */
-export function parseOpenCodeServePids(psOutput: string, selfPid = process.pid): number[] {
-  const pids: number[] = []
-  for (const raw of psOutput.split("\n")) {
-    const line = raw.trim()
-    if (!line) continue
-    const space = line.search(/\s/)
-    if (space <= 0) continue
-    const pid = Number(line.slice(0, space))
-    if (!Number.isInteger(pid) || pid <= 0 || pid === selfPid) continue
-    const args = line.slice(space).trim()
-    if (/(?:^|[/\s])opencode(?:\.exe)?\s+serve(?:\s|$)/.test(args)) pids.push(pid)
-  }
-  return pids
 }
 
 /** Parse process identities owned by the Studio host lifecycle (never arbitrary listeners). */
@@ -333,10 +315,7 @@ export function selectOwnedStackPids(
 }
 
 /** Capture bind + OPENCODE_* from the live stack before stop (gap-fill only). */
-export async function captureStackSnapshot(
-  selfPid = process.pid,
-  callerEnv: NodeJS.ProcessEnv = process.env,
-): Promise<StackSnapshot | null> {
+async function captureStackSnapshot(selfPid = process.pid, callerEnv: NodeJS.ProcessEnv = process.env): Promise<StackSnapshot | null> {
   const [ssOut, psOut] = await Promise.all([readSs(), readPs()])
   const hostPids = parseStudioHostPids(psOut, selfPid)
   const owned = selectOwnedStackPids(psOut, ssOut, callerEnv, selfPid).pids
@@ -374,12 +353,12 @@ export async function captureStackSnapshot(
 }
 
 /** Stop only lifecycle owners and their OpenCode children. Leaves external OpenCode processes alone. */
-export async function stopOpenCodeStudioStack(selfPid = process.pid, env: NodeJS.ProcessEnv = process.env): Promise<{ killed: number[] }> {
+async function stopOpenCodeStudioStack(selfPid = process.pid, env: NodeJS.ProcessEnv = process.env): Promise<{ killed: number[] }> {
   const [psOut, ssOut] = await Promise.all([readPs(), readSs()])
   const killed = new Set(selectOwnedStackPids(psOut, ssOut, env, selfPid).pids)
 
   await signalPids([...killed], "SIGTERM")
-  await sleep(800)
+  await Bun.sleep(800)
   const [remainingPs, remainingSs] = await Promise.all([readPs(), readSs()])
   const remaining = new Set(selectOwnedStackPids(remainingPs, remainingSs, env, selfPid).pids)
   for (const pid of killed) {
@@ -390,7 +369,7 @@ export async function stopOpenCodeStudioStack(selfPid = process.pid, env: NodeJS
       // gone
     }
   }
-  await sleep(200)
+  await Bun.sleep(200)
   return { killed: [...killed] }
 }
 
@@ -403,20 +382,13 @@ async function waitHttpOk(url: string, timeoutMs: number, headers?: Record<strin
     } catch {
       // retry
     }
-    await sleep(400)
+    await Bun.sleep(400)
   }
   return false
 }
 
-function resolveServeBind(env: NodeJS.ProcessEnv): { hostname: string; port: string } {
-  const password = env.OPENCODE_STUDIO_PASSWORD?.trim() || env.OPENCODE_SERVER_PASSWORD?.trim()
-  const hostname = env.OPENCODE_HOSTNAME?.trim() || env.OPENCODE_SERVER_HOSTNAME?.trim() || (password ? "0.0.0.0" : "127.0.0.1")
-  const port = env.OPENCODE_PORT?.trim() || env.OPENCODE_SERVER_PORT?.trim() || "4096"
-  return { hostname, port }
-}
-
 /** Detached `opencode-studio up`. Waits for Studio health. */
-export async function startOpenCodeStudioStack(
+async function startOpenCodeStudioStack(
   env: NodeJS.ProcessEnv = process.env,
   onProgress?: (line: string) => void,
 ): Promise<{
@@ -429,7 +401,7 @@ export async function startOpenCodeStudioStack(
     serve: { hostname, port },
     studio,
   } = resolveUpgradeBinds(env)
-  const password = env.OPENCODE_STUDIO_PASSWORD?.trim() || env.OPENCODE_SERVER_PASSWORD?.trim()
+  const password = resolveEdgePassword(env)
   const childEnv: NodeJS.ProcessEnv = {
     ...env,
     OPENCODE_STUDIO_AUTOSTART: "1",
@@ -480,9 +452,8 @@ export async function startOpenCodeStudioStack(
   }
   child.unref()
   logProgress(onProgress, "Studio host ready.")
-  const explicit = env.OPENCODE_URL?.trim() || env.OPENCODE_PARENT_URL?.trim()
   return {
-    serveUrl: explicit || `http://${hostname === "0.0.0.0" ? "127.0.0.1" : hostname}:${port}`,
+    serveUrl: resolveReportedServeUrl(env, { hostname, port }),
     studioUrl: `${studio.localUrl}/studio`,
     hostname,
     port,

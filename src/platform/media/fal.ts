@@ -1,4 +1,5 @@
 import { createFalClient } from "@fal-ai/client"
+import { formatToolJson } from "../../core/format-tool-json"
 
 const ENDPOINT_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._/-]+$/
 const PLATFORM_URL = "https://api.fal.ai/v1"
@@ -64,7 +65,8 @@ export async function falPlatformGet(
 }
 
 export function formatToolJSON(value: unknown, maxBytes = 60_000) {
-  const output = JSON.stringify(value, null, 2)
-  if (output.length <= maxBytes) return output
-  return `${output.slice(0, maxBytes)}\n... truncated by opencode-studio media (${output.length - maxBytes} characters omitted)`
+  return formatToolJson(value, {
+    maxBytes,
+    truncateSuffix: (omitted) => `\n... truncated by opencode-studio media (${omitted} characters omitted)`,
+  })
 }

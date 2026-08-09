@@ -60,7 +60,7 @@ type StudioMountState = {
   studios: Hono
 }
 
-export type StudioCardMeta = {
+type StudioCardMeta = {
   id: string
   label: string
   description: string

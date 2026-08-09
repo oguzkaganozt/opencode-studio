@@ -1,7 +1,14 @@
 import { type ChildProcess, spawn } from "node:child_process"
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs"
 import path from "node:path"
-import { normalizeParentOpenCodeUrl, openCodeBasicAuthHeaders } from "./opencode-bridge"
+import {
+  defaultLoopbackParentCandidates,
+  isHardParentUrl,
+  resolveExplicitParentOpenCode,
+  resolveSuperviseSpawnBind,
+} from "./core/opencode-bind"
+import { envTruthy } from "./core/security"
+import { normalizeParentOpenCodeUrl, probeParentOpenCode } from "./opencode-bridge"
 import { resolveStudioBind } from "./studio-host-bind"
 
 export type SuperviseResult = { ok: true; baseUrl: string; spawned: boolean; pid?: number } | { ok: false; reason: string }
@@ -36,37 +43,12 @@ let restartTimestamps: number[] = []
 let restartFlight: Promise<SuperviseResult> | undefined
 let supervisionGeneration = 0
 
-function envFlag(value: string | undefined) {
-  if (!value) return false
-  const v = value.trim().toLowerCase()
-  return v === "1" || v === "true" || v === "yes" || v === "on"
-}
-
 export function superviseDisabled(env: NodeJS.ProcessEnv = process.env) {
-  return envFlag(env.OPENCODE_STUDIO_NO_SUPERVISE)
-}
-
-async function healthOk(baseUrl: string, env: NodeJS.ProcessEnv): Promise<boolean> {
-  const url = normalizeParentOpenCodeUrl(baseUrl)
-  try {
-    const response = await fetch(new URL("/global/health", `${url}/`), {
-      headers: openCodeBasicAuthHeaders(env),
-      signal: AbortSignal.timeout(2_000),
-    })
-    return response.ok
-  } catch {
-    return false
-  }
+  return envTruthy(env.OPENCODE_STUDIO_NO_SUPERVISE)
 }
 
 function resolveBinary(env: NodeJS.ProcessEnv): string {
   return env.OPENCODE_BIN?.trim() || "opencode"
-}
-
-function resolvePort(env: NodeJS.ProcessEnv): number {
-  const raw = env.OPENCODE_PORT?.trim() || env.OPENCODE_SERVER_PORT?.trim()
-  if (raw && /^\d+$/.test(raw)) return Number(raw)
-  return 4096
 }
 
 function logPath(env: NodeJS.ProcessEnv): string {
@@ -116,7 +98,7 @@ function clearWatchdog() {
 
 async function tickWatchdog() {
   if (!ownSupervision) return
-  if (owned && (await healthOk(owned.baseUrl, watchEnv))) return
+  if (owned && (await probeParentOpenCode(owned.baseUrl, watchEnv))) return
   console.error("[opencode-studio] OpenCode unhealthy or exited; restarting…")
   const result = await restartOpenCode(watchEnv)
   if (!result.ok) {
@@ -176,9 +158,7 @@ async function killOwnedChild() {
 }
 
 async function spawnOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
-  const port = resolvePort(env)
-  const hostname = "127.0.0.1"
-  const baseUrl = `http://${hostname}:${port}`
+  const { hostname, port, baseUrl } = resolveSuperviseSpawnBind(env)
   const bin = resolveBinary(env)
   const args = ["serve", "--hostname", hostname, "--port", String(port)]
   const outPath = logPath(env)
@@ -229,7 +209,7 @@ async function spawnOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
       const detail = terminal.error?.message || `code ${terminal.code}${terminal.signal ? `, signal ${terminal.signal}` : ""}`
       return { ok: false, reason: `opencode serve exited early (${detail}); see ${outPath}` }
     }
-    if (await healthOk(baseUrl, env)) {
+    if (await probeParentOpenCode(baseUrl, env)) {
       ownSupervision = true
       return { ok: true, baseUrl, spawned: true, pid: child.pid }
     }
@@ -244,30 +224,30 @@ async function spawnOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
 export async function ensureOpenCodeServer(env: NodeJS.ProcessEnv = process.env): Promise<SuperviseResult> {
   watchEnv = env
   if (superviseDisabled(env)) {
-    const explicit = env.OPENCODE_URL?.trim()
+    const explicit = resolveExplicitParentOpenCode(env, "supervisor-no-supervise")
     if (explicit) {
-      const baseUrl = normalizeParentOpenCodeUrl(explicit)
-      if (await healthOk(baseUrl, env)) return { ok: true, baseUrl, spawned: false }
+      const baseUrl = normalizeParentOpenCodeUrl(explicit.raw)
+      if (await probeParentOpenCode(baseUrl, env)) return { ok: true, baseUrl, spawned: false }
       return { ok: false, reason: `OPENCODE_URL not healthy: ${baseUrl}` }
     }
     return { ok: false, reason: "OPENCODE_STUDIO_NO_SUPERVISE set and no OPENCODE_URL" }
   }
 
-  const explicit = env.OPENCODE_URL?.trim() || env.OPENCODE_PARENT_URL?.trim()
+  const explicit = resolveExplicitParentOpenCode(env, "supervisor-attach")
   if (explicit) {
-    const baseUrl = normalizeParentOpenCodeUrl(explicit)
-    if (await healthOk(baseUrl, env)) return { ok: true, baseUrl, spawned: false }
-    if (env.OPENCODE_URL?.trim()) return { ok: false, reason: `OPENCODE_URL not healthy: ${baseUrl}` }
+    const baseUrl = normalizeParentOpenCodeUrl(explicit.raw)
+    if (await probeParentOpenCode(baseUrl, env)) return { ok: true, baseUrl, spawned: false }
+    if (isHardParentUrl(explicit.source)) return { ok: false, reason: `OPENCODE_URL not healthy: ${baseUrl}` }
   }
 
-  for (const candidate of [`http://127.0.0.1:${resolvePort(env)}`]) {
-    if (await healthOk(candidate, env)) {
+  for (const candidate of defaultLoopbackParentCandidates(env)) {
+    if (await probeParentOpenCode(candidate, env)) {
       return { ok: true, baseUrl: normalizeParentOpenCodeUrl(candidate), spawned: false }
     }
   }
 
   if (owned?.child && !owned.child.killed) {
-    if (await healthOk(owned.baseUrl, env)) return { ok: true, baseUrl: owned.baseUrl, spawned: true, pid: owned.child.pid }
+    if (await probeParentOpenCode(owned.baseUrl, env)) return { ok: true, baseUrl: owned.baseUrl, spawned: true, pid: owned.child.pid }
     await killOwnedChild()
   }
 
@@ -315,10 +295,6 @@ export async function stopOwnedOpenCode(options?: { permanent?: boolean }): Prom
   await killOwnedChild()
   if (restartFlight) await restartFlight.catch(() => {})
   await killOwnedChild()
-}
-
-export function ownedOpenCodeBaseUrl(): string | undefined {
-  return owned?.baseUrl
 }
 
 export async function resetOpenCodeSupervisorForTests() {

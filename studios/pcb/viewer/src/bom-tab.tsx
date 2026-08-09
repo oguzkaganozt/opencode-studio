@@ -139,9 +139,9 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
     return (
       <div className="space-y-2 py-8" role="status" aria-busy="true">
         <span className="sr-only">Loading BOM…</span>
-        <div className="pcb-skeleton h-10 w-full" aria-hidden />
-        <div className="pcb-skeleton h-10 w-full" aria-hidden />
-        <div className="pcb-skeleton h-10 w-2/3" aria-hidden />
+        <div className="osc-skeleton h-10 w-full" aria-hidden />
+        <div className="osc-skeleton h-10 w-full" aria-hidden />
+        <div className="osc-skeleton h-10 w-2/3" aria-hidden />
       </div>
     )
   }

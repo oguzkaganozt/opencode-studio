@@ -2,6 +2,7 @@ import path from "node:path"
 import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import manifest from "../../package.json" with { type: "json" }
+import { formatToolJson } from "../../src/core/format-tool-json"
 import { buildDesign, defaultForgeRunner, type ForgeRunner, scaffoldDesign } from "./forge"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "./library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
@@ -28,13 +29,13 @@ type Options = {
   companionUrl?: string
 }
 
+function asJson(value: unknown) {
+  return formatToolJson(value, { maxBytes: MAX_TOOL_OUTPUT_BYTES })
+}
+
 function truncate(value: string, max = MAX_TOOL_OUTPUT_BYTES) {
   if (value.length <= max) return value
   return `${value.slice(0, max)}\n\n[truncated at ${max} bytes]`
-}
-
-function asJson(value: unknown) {
-  return truncate(JSON.stringify(value, null, 2))
 }
 
 async function companionReachable(companionUrl: string) {

@@ -2,28 +2,12 @@ import { describe, expect, test } from "bun:test"
 import {
   mergeRestartEnv,
   parseListenHostPort,
-  parseOpenCodeServePids,
   parsePidsFromSs,
   parseProcEnviron,
   parseStudioHostPids,
   resolveUpgradeBinds,
   selectOwnedStackPids,
 } from "../src/package-upgrade"
-
-describe("parseOpenCodeServePids", () => {
-  test("matches real and wrapper serve lines, skips self and TUI", () => {
-    const ps = `
-  100 /home/u/.opencode/bin/opencode serve --hostname 0.0.0.0 --port 4096
-  101 /home/u/.local/bin/opencode serve --port 4096
-  102 opencode --continue
-  103 opencode-studio ensure-host
-  104 /usr/bin/opencode serve
-  105 bun /tmp/studio-host.mjs
-`
-    expect(parseOpenCodeServePids(ps, 999)).toEqual([100, 101, 104])
-    expect(parseOpenCodeServePids(ps, 100)).toEqual([101, 104])
-  })
-})
 
 describe("parseStudioHostPids", () => {
   test("matches primary up forms but not one-shot commands", () => {

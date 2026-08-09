@@ -18,6 +18,7 @@ import {
   configWithPlugins,
   LEGACY_PACKAGE_NAMES,
   mcpEntries,
+  type OpenCodeConfig,
   pluginBaseName,
   pluginEntries,
   pluginEntryMatches,
@@ -40,7 +41,7 @@ import {
   skillNameFor,
   skillSourcePath,
 } from "./core/package-meta"
-import { packageRootFrom, resolveWorkspace } from "./core/paths"
+import { atomicWriteJson, packageRootFrom, resolveWorkspace } from "./core/paths"
 import type { StudioDoctorCheck, StudioId } from "./core/registry"
 import { STUDIO_IDS } from "./core/registry"
 import { assertNotRoot } from "./core/security"
@@ -48,13 +49,13 @@ import { pickUserPaths, resolveOpenCodePluginsHome, resolveOpenCodeSkillsHome, t
 import { probeLocalStudioHost } from "./studio-host-bind"
 import { getStudioDefinition } from "./studios"
 
-export type ManagedMarker = {
+type ManagedMarker = {
   studioId: string
   packageVersion: string
   digest: string
 }
 
-export type LifecyclePaths = UserPathOptions & {
+type LifecyclePaths = UserPathOptions & {
   /** Domain data root (CAD/PCB). Defaults to cwd. Not used for enablement config. */
   workspace?: string
   packageRoot?: string
@@ -64,6 +65,23 @@ type SkillTarget = {
   id: string
   skillName: string
   sourceSkillFile: string
+}
+
+function withPlugins(openCode: OpenCodeConfig, plugins: unknown[]): OpenCodeConfig {
+  const text = configWithPlugins(openCode, plugins)
+  const value: Record<string, unknown> = { ...openCode.value }
+  if (plugins.length > 0) value.plugin = plugins
+  else delete value.plugin
+  return { ...openCode, text, value }
+}
+
+function withMcp(config: OpenCodeConfig, mcp: Record<string, unknown> | undefined): OpenCodeConfig {
+  const next = mcp && Object.keys(mcp).length > 0 ? mcp : undefined
+  const text = configWithMcp(config, next)
+  const value: Record<string, unknown> = { ...config.value }
+  if (next) value.mcp = next
+  else delete value.mcp
+  return { ...config, text, value }
 }
 
 async function readMarker(markerFile: string): Promise<ManagedMarker | null> {
@@ -183,7 +201,6 @@ async function writeManagedSkill(input: { target: SkillTarget; packageRoot: stri
   const previousMarker = marker ? await readFile(paths.markerFile) : null
   await mkdir(paths.skillDirectory, { recursive: true })
   const skillTmp = `${paths.skillFile}.${process.pid}.${randomUUID()}.tmp`
-  const markerTmp = `${paths.markerFile}.${process.pid}.${randomUUID()}.tmp`
   const nextMarker: ManagedMarker = {
     studioId: input.target.id,
     packageVersion: input.packageVersion,
@@ -191,13 +208,11 @@ async function writeManagedSkill(input: { target: SkillTarget; packageRoot: stri
   }
   try {
     await writeFile(skillTmp, skillContent, { mode: 0o644 })
-    await writeFile(markerTmp, `${JSON.stringify(nextMarker, null, 2)}\n`, { mode: 0o644 })
     await rename(skillTmp, paths.skillFile)
-    await rename(markerTmp, paths.markerFile)
+    await atomicWriteJson(paths.markerFile, nextMarker)
     return { paths, changed: true as const, previousSkill, previousMarker }
   } catch (error) {
     await rm(skillTmp, { force: true })
-    await rm(markerTmp, { force: true })
     await restoreFile(paths.skillFile, previousSkill)
     await restoreFile(paths.markerFile, previousMarker)
     throw error
@@ -442,25 +457,16 @@ async function scrubProjectLocalManagedState(input: {
   if (projectConfigPath) {
     const openCode = await readOpenCodeConfig(projectConfigPath)
     const plugins = pluginEntries(openCode).filter((entry) => !isManagedPackagePluginBase(pluginBaseName(entry), input.meta.name))
-    let nextText = configWithPlugins(openCode, plugins)
-    let workingValue: Record<string, unknown> = { ...openCode.value }
-    if (plugins.length > 0) workingValue.plugin = plugins
-    else delete workingValue.plugin
-    let working = { ...openCode, text: nextText, value: workingValue }
+    let working = withPlugins(openCode, plugins)
     const mcp = mcpEntries(working)
     if (mcp[MANAGED_MCP_KEY] && isManagedBuild123dEntry(mcp[MANAGED_MCP_KEY])) {
       delete mcp[MANAGED_MCP_KEY]
-      nextText = configWithMcp({ ...working, text: nextText }, Object.keys(mcp).length > 0 ? mcp : undefined)
-      if (Object.keys(mcp).length > 0) workingValue = { ...workingValue, mcp }
-      else {
-        delete workingValue.mcp
-      }
-      working = { ...working, text: nextText, value: workingValue }
+      working = withMcp(working, Object.keys(mcp).length > 0 ? mcp : undefined)
     }
     // If the file is only $schema, delete it entirely (project no longer needs a pin).
-    const remainingKeys = Object.keys(workingValue).filter((k) => {
+    const remainingKeys = Object.keys(working.value).filter((k) => {
       if (k === "$schema") return false
-      const v = workingValue[k]
+      const v = working.value[k]
       if (v === undefined) return false
       if (k === "mcp" && v && typeof v === "object" && !Array.isArray(v) && Object.keys(v as object).length === 0) return false
       if (k === "plugin" && Array.isArray(v) && v.length === 0) return false
@@ -469,8 +475,8 @@ async function scrubProjectLocalManagedState(input: {
     if (remainingKeys.length === 0) {
       await rm(projectConfigPath, { force: true })
       cleaned.push(projectConfigPath)
-    } else if (nextText !== openCode.text) {
-      await atomicWriteOpenCodeConfig(projectConfigPath, nextText, openCode.exists ? openCode.text : "", {
+    } else if (working.text !== openCode.text) {
+      await atomicWriteOpenCodeConfig(projectConfigPath, working.text, openCode.exists ? openCode.text : "", {
         validate: input.validateOpenCode !== false,
       })
       cleaned.push(projectConfigPath)
@@ -542,9 +548,7 @@ export async function configureStudios(
   plugins.push(meta.pluginSpecifier)
   plugins.push(mediaGoFile)
 
-  let nextText = configWithPlugins(openCode, plugins)
-  let workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
-  let working = { ...openCode, text: nextText, value: workingValue }
+  let working = withPlugins(openCode, plugins)
 
   const mcp = mcpEntries(working)
   const existingMcp = mcp[MANAGED_MCP_KEY]
@@ -554,9 +558,8 @@ export async function configureStudios(
   // Absolute uv path: OpenCode serve often lacks ~/.local/bin on PATH.
   const uv = input.dryRun ? resolveEngine("uv") : await ensureUv()
   mcp[MANAGED_MCP_KEY] = build123dMcpEntry(uv?.path ?? "uv")
-  nextText = configWithMcp({ ...working, text: nextText }, mcp)
-  workingValue = { ...workingValue, mcp }
-  working = { ...working, text: nextText, value: workingValue }
+  working = withMcp(working, mcp)
+  const nextText = working.text
 
   if (input.dryRun) {
     return {
@@ -659,7 +662,6 @@ export async function configureStudios(
       openCodeConfigPath: configPath,
       skillsHome: resolveOpenCodeSkillsHome(userPaths),
       projectScrubbed,
-      serveWrapper: undefined as string | undefined,
       wrapperRemoved,
       restartRequired: true,
       restartOpenCode: true,
@@ -704,9 +706,7 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
   const openCode = await readOpenCodeConfig(configPath)
   const plugins = stripManagedPlugins([...pluginEntries(openCode)], meta)
 
-  let nextText = configWithPlugins(openCode, plugins)
-  const workingValue: Record<string, unknown> = { ...openCode.value, plugin: plugins }
-  const working = { ...openCode, text: nextText, value: workingValue }
+  let working = withPlugins(openCode, plugins)
 
   const mcp = mcpEntries(working)
   const existingMcp = mcp[MANAGED_MCP_KEY]
@@ -716,7 +716,8 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     }
     delete mcp[MANAGED_MCP_KEY]
   }
-  nextText = configWithMcp({ ...working, text: nextText }, mcp)
+  working = withMcp(working, mcp)
+  const nextText = working.text
 
   await removeManagedMediaGoPluginFile(userPaths)
 

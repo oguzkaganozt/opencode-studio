@@ -1,16 +1,17 @@
 import { useViewerRefresh } from "@ui/agent/use-viewer-refresh"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router"
 import { claimAgentContext } from "@ui/agent-context"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { Badge } from "@ui/components/badge"
 import { Dialog, DialogHeader } from "@ui/components/dialog"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
+import { StudioHomeHeader, StudioHomeTools, patchSearchParams } from "@ui/components/studio-home"
+import { StudioNavLink, StudioShell } from "@ui/components/studio-shell"
 import { cn } from "@ui/lib/cn"
-import { useFocusTrap } from "@ui/lib/focus-trap"
-import { artifactUrl, type DesignSummary, eventsUrl, listDesigns, readDesign, readWorkspace, renderUrl, studioHref } from "./api"
+import { artifactUrl, type DesignSummary, listDesigns, readDesign, readWorkspace, studioHref } from "./api"
 import {
   type ClickInfo,
   type InteractionMode,
@@ -25,57 +26,46 @@ import {
   type SceneHandle,
 } from "./assembly-types"
 import { collectPinPairMeasures, formatMm } from "./measure-geometry"
+import {
+  CloseIcon,
+  DesignsPanel,
+  designStatus,
+  PartsPanel,
+  ReloadIcon,
+  sceneMessageTone,
+  type SheetPlacement,
+  SheetShell,
+  type Toast,
+  useCadDesignEvents,
+  useCadSpace,
+} from "./design-workspace-chrome"
 
 const AssemblyViewport = lazy(async () => {
   const module = await import("./assembly-viewport")
   return { default: module.AssemblyViewport }
 })
 
-function statusBadge(status: DesignSummary["buildStatus"]): { label: string; tone: "ok" | "warn" | "neutral" } {
-  if (status === "built") return { label: "built", tone: "ok" }
-  if (status === "stale") return { label: "stale", tone: "warn" }
-  return { label: "unbuilt", tone: "neutral" }
-}
-
-function designHealthTone(status: DesignSummary["buildStatus"]): "success" | "warning" | "neutral" {
-  if (status === "built") return "success"
-  if (status === "stale") return "warning"
-  return "neutral"
-}
-
 function Shell({ children, fill = false }: { children: React.ReactNode; fill?: boolean }) {
   return (
-    <div data-studio="cad" className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]">
-      <header className="studio-subnav">
-        <span className="sr-only">CAD Studio</span>
-        <nav className="flex items-center gap-0.5" aria-label="CAD sections">
-          <CadNavLink to={studioHref()} end>
-            Designs
-          </CadNavLink>
-        </nav>
-      </header>
-      <div className={cn("min-h-0 flex-1", fill ? "flex flex-col overflow-hidden" : "overflow-auto")}>{children}</div>
-    </div>
-  )
-}
-
-function CadNavLink({ to, children, end = false }: { to: string; children: React.ReactNode; end?: boolean }) {
-  const { pathname } = useLocation()
-  const path = pathname.replace(/\/$/, "") || "/"
-  const target = (to || "/").replace(/\/$/, "") || "/"
-  const active = end ? path === target || path.startsWith(`${target}/designs/`) : path === target || path.startsWith(`${target}/`)
-  return (
-    <Link to={to} aria-current={active ? "page" : undefined} className={cn(active && "font-medium")}>
+    <StudioShell
+      studioId="cad"
+      label="CAD"
+      fill={fill}
+      nav={
+        <StudioNavLink to={studioHref()} end endAlsoMatch={(path, target) => path.startsWith(`${target}/designs/`)}>
+          Designs
+        </StudioNavLink>
+      }
+    >
       {children}
-    </Link>
+    </StudioShell>
   )
 }
 
 function DesignCard({ design }: { design: DesignSummary }) {
-  const badge = statusBadge(design.buildStatus)
-  const tone = designHealthTone(design.buildStatus)
+  const status = designStatus(design.buildStatus)
   return (
-    <Link to={studioHref(`designs/${encodeURIComponent(design.id)}`)} className="cad-card group" data-tone={tone}>
+    <Link to={studioHref(`designs/${encodeURIComponent(design.id)}`)} className="cad-card group" data-tone={status.railTone}>
       <span className="cad-card__rail" aria-hidden />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -85,7 +75,7 @@ function DesignCard({ design }: { design: DesignSummary }) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Badge tone={badge.tone}>{badge.label}</Badge>
+          <Badge tone={status.badgeTone}>{status.label}</Badge>
           <svg
             className="mt-0.5 h-4 w-4 text-[var(--osc-text-faint)] transition-transform duration-[var(--osc-motion-duration)] group-hover:translate-x-0.5 group-hover:text-[var(--osc-text-muted)]"
             viewBox="0 0 24 24"
@@ -138,26 +128,19 @@ function DesignsPage() {
   })
 
   const updateFilter = (key: "q" | "status", value: string) => {
-    const next = new URLSearchParams(searchParams)
-    if (!value || value === "all") next.delete(key)
-    else next.set(key, value)
-    setSearchParams(next, { replace: true })
+    setSearchParams(patchSearchParams(searchParams, key, value), { replace: true })
   }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8 sm:py-10">
-      <div className="mb-6 flex items-end justify-between gap-4 sm:mb-8">
-        <div>
-          <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Studio Home</p>
-          <h1 className="text-pretty text-xl font-semibold tracking-tight text-[var(--osc-text)] sm:text-2xl">Designs</h1>
-        </div>
-        {data && (
-          <span className="font-mono text-[12px] text-[var(--osc-text-muted)] tabular-nums">
-            {filtered.length === designs.length ? designs.length : `${filtered.length} of ${designs.length}`} design
-            {designs.length !== 1 ? "s" : ""}
-          </span>
-        )}
-      </div>
+      <StudioHomeHeader
+        title="Designs"
+        count={
+          data
+            ? `${filtered.length === designs.length ? designs.length : `${filtered.length} of ${designs.length}`} design${designs.length !== 1 ? "s" : ""}`
+            : undefined
+        }
+      />
 
       {isLoading && (
         <div className="flex flex-col gap-3" role="status" aria-busy="true">
@@ -206,42 +189,26 @@ function DesignsPage() {
 
       {data && designs.length > 0 && (
         <>
-          <div className="cad-design-tools" role="search" aria-label="Filter designs">
-            <label className="sr-only" htmlFor="cad-design-search">
-              Filter designs by id or path
-            </label>
-            <input
-              id="cad-design-search"
-              type="search"
-              name="design-filter"
-              value={search}
-              onChange={(event) => updateFilter("q", event.target.value)}
-              placeholder="Filter designs…"
-              autoComplete="off"
-              spellCheck={false}
-              className="cad-home-input min-w-0 px-3"
-            />
-            <div className="cad-design-filters" aria-label="Build status">
-              {(
-                [
-                  ["all", "All"],
-                  ["built", "Built"],
-                  ["stale", "Stale"],
-                  ["unbuilt", "Unbuilt"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className="cad-filter"
-                  aria-pressed={filter === value}
-                  onClick={() => updateFilter("status", value)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <StudioHomeTools
+            searchId="cad-design-search"
+            searchLabel="Filter designs by id or path"
+            searchPlaceholder="Filter designs…"
+            search={search}
+            onSearch={(value) => updateFilter("q", value)}
+            filterAriaLabel="Build status"
+            filter={filter}
+            onFilter={(value) => updateFilter("status", value)}
+            filters={[
+              { value: "all", label: "All" },
+              { value: "built", label: "Built" },
+              { value: "stale", label: "Stale" },
+              { value: "unbuilt", label: "Unbuilt" },
+            ]}
+            toolsClassName="cad-design-tools"
+            filtersClassName="cad-design-filters"
+            searchClassName="cad-home-input min-w-0 px-3"
+            filterClassName="cad-filter"
+          />
 
           {filtered.length > 0 ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -265,331 +232,6 @@ function DesignsPage() {
       )}
     </div>
   )
-}
-
-const CAD_COMPACT_WIDTH = 1120
-const CAD_PHONE_WIDTH = 640
-
-type Toast = { message: string; tone: "info" | "success" | "error" }
-
-function sceneMessageTone(message: string): Toast["tone"] {
-  if (message === "Pair linked") return "success"
-  if (message.startsWith("Drag to snap") || message.startsWith("Link: tap")) return "info"
-  return "error"
-}
-
-function CloseIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function ReloadIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M13.5 8A5.5 5.5 0 1 1 11.2 3.4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <path d="M11 2.5v2.75h2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function useCadSpace() {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const [agentOpen, setAgentOpen] = useState(false)
-  // null = not measured yet → treat as compact to avoid docked-inspector flash
-  const [width, setWidth] = useState<number | null>(null)
-
-  useEffect(() => {
-    const el = rootRef.current
-    const shell = el?.closest(".studio-shell") ?? document.querySelector(".studio-shell")
-    const read = () => setAgentOpen(shell?.getAttribute("data-agent-open") === "true")
-    read()
-    if (!shell) return
-    const mo = new MutationObserver(read)
-    mo.observe(shell, { attributes: true, attributeFilter: ["data-agent-open"] })
-    return () => mo.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const el = rootRef.current
-    if (!el) return
-    const ro = new ResizeObserver((entries) => {
-      const next = entries[0]?.contentRect.width ?? 0
-      setWidth(next > 0 ? next : null)
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  const narrow = width === null || width < CAD_COMPACT_WIDTH
-  const phone = width === null || width < CAD_PHONE_WIDTH
-  return { rootRef, compact: agentOpen || narrow, phone, width }
-}
-
-type SheetPlacement = "side-left" | "side-right" | "bottom"
-
-function DesignsPanel({
-  designs,
-  selectedId,
-  listStatus = "ready",
-  listError,
-  onRetry,
-  onClose,
-  onSelect,
-  showClose,
-}: {
-  designs: DesignSummary[]
-  selectedId?: string
-  listStatus?: "loading" | "error" | "ready"
-  listError?: string
-  onRetry?: () => void
-  onClose?: () => void
-  onSelect: (id: string) => void
-  showClose?: boolean
-}) {
-  return (
-    <>
-      <div className="cad-rail-header">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="cad-rail-label">Server designs</span>
-          {listStatus === "ready" && designs.length > 0 ? (
-            <span className="cad-rail-meta" aria-hidden>
-              {designs.length}
-            </span>
-          ) : null}
-        </div>
-        {showClose && onClose ? (
-          <button type="button" data-autofocus className="osc-icon-btn size-10 text-[var(--osc-text-muted)]" aria-label="Close designs" onClick={onClose}>
-            <CloseIcon />
-          </button>
-        ) : null}
-      </div>
-      <nav className="cad-rail-scroll min-h-0 flex-1 overflow-auto overscroll-contain p-2" aria-label="Server designs">
-        {listStatus === "loading" ? (
-          <p className="cad-rail-empty" role="status">
-            Loading designs…
-          </p>
-        ) : listStatus === "error" ? (
-          <div className="cad-rail-empty" role="alert">
-            <p>Could not load designs.</p>
-            {listError ? <p className="mt-1 text-[12px] text-[var(--osc-text-muted)]">{listError}</p> : null}
-            {onRetry ? (
-              <button type="button" className="cad-rail-action mt-3" onClick={onRetry}>
-                Retry
-              </button>
-            ) : null}
-          </div>
-        ) : designs.length === 0 ? (
-          <p className="cad-rail-empty">
-            No server designs yet.
-            <span className="mt-1.5 block text-[12px] text-[var(--osc-text-muted)]">Build with the agent — finished designs show up here.</span>
-          </p>
-        ) : (
-          designs.map((design) => {
-            const active = design.id === selectedId
-            const badge = statusBadge(design.buildStatus)
-            return (
-              <button
-                key={design.id}
-                type="button"
-                data-active={active ? "true" : undefined}
-                aria-current={active ? "true" : undefined}
-                className={`cad-rail-link ${
-                  active ? "" : "text-[var(--osc-text-muted)] hover:bg-[var(--osc-surface-hover)] hover:text-[var(--osc-text)]"
-                }`}
-                onClick={() => onSelect(design.id)}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-left font-medium text-[var(--osc-text)]">{design.id}</span>
-                  <Badge tone={badge.tone} className="shrink-0">
-                    {badge.label}
-                  </Badge>
-                </div>
-                <div className="mono mt-0.5 text-left text-[10px] text-[var(--osc-text-faint)]">
-                  {design.partCount} {design.partCount === 1 ? "part" : "parts"}
-                </div>
-              </button>
-            )
-          })
-        )}
-      </nav>
-    </>
-  )
-}
-
-function PartsPanel({
-  parts,
-  highlightedPart,
-  renders,
-  showRenders,
-  designId,
-  onClose,
-  onTogglePart,
-  onSetAllVisible,
-  onOpenRender,
-  showClose,
-}: {
-  parts: Array<{ name: string; visible: boolean; color: number }>
-  highlightedPart: number
-  renders: string[]
-  showRenders: boolean
-  designId?: string
-  onClose?: () => void
-  onTogglePart: (index: number, visible: boolean) => void
-  onSetAllVisible: (visible: boolean) => void
-  onOpenRender: (url: string, label: string) => void
-  showClose?: boolean
-}) {
-  const allVisible = parts.length > 0 && parts.every((p) => p.visible)
-  const noneVisible = parts.length > 0 && parts.every((p) => !p.visible)
-
-  return (
-    <>
-      <div className="cad-rail-header">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="cad-rail-label">Parts</span>
-          {parts.length > 0 ? (
-            <span className="cad-rail-meta" aria-hidden>
-              {parts.filter((p) => p.visible).length}/{parts.length}
-            </span>
-          ) : null}
-        </div>
-        {showClose && onClose ? (
-          <button type="button" data-autofocus className="osc-icon-btn size-10 text-[var(--osc-text-muted)]" aria-label="Close parts" onClick={onClose}>
-            <CloseIcon />
-          </button>
-        ) : null}
-      </div>
-      {parts.length > 1 ? (
-        <div className="flex shrink-0 items-center justify-end gap-1 border-b border-[var(--osc-border)] px-2 py-1.5">
-          <button type="button" className="cad-ghost-btn" disabled={allVisible} onClick={() => onSetAllVisible(true)}>
-            Show all
-          </button>
-          <button type="button" className="cad-ghost-btn" disabled={noneVisible} onClick={() => onSetAllVisible(false)}>
-            Hide all
-          </button>
-        </div>
-      ) : null}
-      <ul className="cad-rail-scroll min-h-0 flex-1 overflow-auto overscroll-contain p-2">
-        {parts.length === 0 ? (
-          <li className="cad-rail-empty list-none">No parts loaded yet.</li>
-        ) : (
-          parts.map((part, index) => (
-            <li key={`${part.name}-${index}`}>
-              <button
-                type="button"
-                className={`cad-part-row hover:bg-[var(--osc-surface-hover)] ${
-                  highlightedPart === index ? "bg-[var(--osc-surface)] text-[var(--osc-accent)]" : "text-[var(--osc-text)]"
-                }`}
-                aria-pressed={part.visible}
-                aria-label={`${part.name} visibility`}
-                onClick={() => onTogglePart(index, !part.visible)}
-              >
-                <span className={`cad-part-check${part.visible ? " is-on" : ""}`} aria-hidden />
-                <span
-                  className="cad-part-swatch"
-                  style={{ background: `#${part.color.toString(16).padStart(6, "0")}` }}
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 truncate text-left">{part.name}</span>
-              </button>
-            </li>
-          ))
-        )}
-      </ul>
-      {showRenders ? (
-        <>
-          <div className="cad-section-label">
-            <span>Renders</span>
-            {renders.length > 0 ? <span className="cad-rail-meta normal-case tracking-normal">{renders.length}</span> : null}
-          </div>
-          {designId && renders.length > 0 ? (
-            <div className="cad-render-grid cad-rail-scroll">
-              {renders.map((file) => {
-                const label = file.replace(/\.png$/, "")
-                const url = renderUrl(designId, file)
-                return (
-                  <button key={file} type="button" title={label} className="cad-render-tile" onClick={() => onOpenRender(url, label)}>
-                    <img src={url} alt={label} loading="lazy" width={160} height={120} />
-                    <span className="cad-render-tile__label">{label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="cad-render-empty">No renders generated</p>
-          )}
-        </>
-      ) : null}
-    </>
-  )
-}
-
-function SheetShell({
-  open,
-  placement,
-  id,
-  label,
-  onClose,
-  children,
-}: {
-  open: boolean
-  placement: SheetPlacement
-  id: string
-  label: string
-  onClose: () => void
-  children: ReactNode
-}) {
-  const panelRef = useRef<HTMLElement>(null)
-  useFocusTrap(open, panelRef, onClose)
-
-  if (!open) return null
-
-  const sideClass =
-    placement === "side-left"
-      ? "cad-sheet cad-sheet-left cad-sheet--side cad-sheet--left"
-      : placement === "side-right"
-        ? "cad-sheet cad-sheet-right cad-sheet--side cad-sheet--right"
-        : "cad-sheet cad-sheet--bottom"
-
-  return (
-    <div className="cad-sheet-layer" role="presentation">
-      <button type="button" tabIndex={-1} aria-hidden="true" className="cad-scrim" onClick={onClose} />
-      <aside id={id} ref={panelRef} role="dialog" aria-modal="true" aria-label={label} className={`cad-rail ${sideClass}`}>
-        {placement === "bottom" ? <div className="cad-sheet-handle" aria-hidden /> : null}
-        {children}
-      </aside>
-    </div>
-  )
-}
-
-function useCadDesignEvents() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const es = new EventSource(eventsUrl())
-    es.onmessage = (msg) => {
-      try {
-        const event = JSON.parse(msg.data as string) as { type?: string; designId?: string }
-        if (event.type === "designs-changed") {
-          void queryClient.invalidateQueries({ queryKey: ["cad", "designs"] })
-        }
-        if (event.type === "design-changed" && event.designId) {
-          void queryClient.invalidateQueries({ queryKey: ["cad", "designs"] })
-          void queryClient.invalidateQueries({ queryKey: ["cad", "design", event.designId] })
-        }
-      } catch {
-        // malformed event — ignore
-      }
-    }
-    return () => es.close()
-  }, [queryClient])
 }
 
 function DesignWorkspace({ designId }: { designId: string }) {

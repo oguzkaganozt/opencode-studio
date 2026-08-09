@@ -1,20 +1,12 @@
 import path from "node:path"
 import { packageRootFrom } from "./core/paths"
-import { assertNonLoopbackPassword } from "./core/security"
-import { normalizeParentOpenCodeUrl, openCodeBasicAuthHeaders } from "./opencode-bridge"
+import { assertNonLoopbackPassword, envFalsy } from "./core/security"
+import { normalizeParentOpenCodeUrl, probeParentOpenCode } from "./opencode-bridge"
 import { type HostHandle, startHost } from "./server"
-import {
-  DEFAULT_STUDIO_HOST_URL,
-  fetchStudioHealth,
-  probeLocalStudioHost,
-  resolveStudioBind,
-  STUDIO_HOST_PORT,
-  type StudioBind,
-  studioHealthOk,
-} from "./studio-host-bind"
+import { fetchStudioHealth, resolveStudioBind, type StudioBind, studioHealthOk } from "./studio-host-bind"
 
 export type { StudioBind }
-export { DEFAULT_STUDIO_HOST_URL, probeLocalStudioHost, resolveStudioBind, STUDIO_HOST_PORT }
+export { probeParentOpenCode, resolveStudioBind }
 
 export type EnsureStudioHostInput = {
   parentOpenCodeUrl: string
@@ -34,23 +26,7 @@ let state: { bind: StudioBind; handle: HostHandle; studioRoot: string } | undefi
 let starting: Promise<EnsureStudioHostResult> | undefined
 
 export function autostartDisabled(value: string | undefined) {
-  if (!value) return false
-  const v = value.trim().toLowerCase()
-  return v === "0" || v === "false" || v === "no" || v === "off"
-}
-
-export async function probeParentOpenCode(baseUrl: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
-  const url = normalizeParentOpenCodeUrl(baseUrl)
-  const headers = new Headers(openCodeBasicAuthHeaders(env))
-  try {
-    const response = await fetch(new URL("/global/health", `${url}/`), {
-      headers,
-      signal: AbortSignal.timeout(2_000),
-    })
-    return response.ok
-  } catch {
-    return false
-  }
+  return envFalsy(value)
 }
 
 export async function ensureStudioHost(input: EnsureStudioHostInput): Promise<EnsureStudioHostResult> {

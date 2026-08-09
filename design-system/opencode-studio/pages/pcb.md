@@ -21,7 +21,7 @@ Mobile: touch tab strip, compact chips, dashed empty wells.
 - Active tab: accent underline + semibold text
 - MPN / datasheet links: `--osc-accent` (PCB cyan)
 - Empty/error: dashed `EmptyState` / `ErrorState` with short recovery copy
-- Loading: `.pcb-skeleton` + label; honor reduced-motion
+- Loading: `.osc-skeleton` + label; honor reduced-motion
 - Diagnostics: chevron summary; “Send to agent” chip
 - Warning counts live only in Design diagnostics; do not repeat them in detail readiness.
 - Keep routes, SSE stale, agent diagnostics handoff, downloads
