@@ -26,7 +26,9 @@ export function ViewerFrame({
         typeof children === "function" ? (
           children(size)
         ) : (
-          <div className="min-h-0 flex-1">{children}</div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&>*]:min-h-0 [&>*]:flex-1 [&>*]:h-full">
+            {children}
+          </div>
         )
       ) : (
         <div className="flex flex-1 items-center justify-center" role="status" aria-busy="true">

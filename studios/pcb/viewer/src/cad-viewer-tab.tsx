@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { CadViewer } from "@tscircuit/3d-viewer"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ErrorState } from "@ui/components/error-state"
 import { checkCadAssetHealth, preferKicadStepModels } from "./cad-models"
 import { ViewerErrorBoundary } from "./error-boundary"
@@ -42,6 +42,8 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
   const [manifoldError, setManifoldError] = useState<string | null>(null)
   const [manifoldAttempt, setManifoldAttempt] = useState(0)
   const { data, dataUpdatedAt, isLoading, error, refetch } = useCircuitJson(projectId)
+  // Stable reference — CadViewer JSON.stringifies circuitJson for its remount key.
+  const circuitJson = useMemo(() => preferKicadStepModels(data), [data])
   const { data: assetHealth, isLoading: isCheckingAssets } = useQuery({
     queryKey: ["pcb", "cadAssetHealth", projectId, dataUpdatedAt],
     queryFn: () => checkCadAssetHealth(data),
@@ -152,9 +154,16 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
         )}
       </div>
       <ViewerFrame label="Interactive PCB 3D view" className="bg-[var(--osc-canvas-bg)]">
-        <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
-          <CadViewer circuitJson={preferKicadStepModels(data)} />
-        </ViewerErrorBoundary>
+        {({ height }) => (
+          <ViewerErrorBoundary key={projectId} resetKey={dataUpdatedAt} fallback={fallback}>
+            <div
+              className="pcb-cad-host relative min-h-0 w-full overflow-hidden"
+              style={{ height: Math.max(1, Math.floor(height)) }}
+            >
+              <CadViewer circuitJson={circuitJson} />
+            </div>
+          </ViewerErrorBoundary>
+        )}
       </ViewerFrame>
     </div>
   )

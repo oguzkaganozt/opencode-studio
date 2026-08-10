@@ -9,7 +9,9 @@ export function useElementSize(ref: RefObject<HTMLElement | null>) {
     if (!el) return
 
     const update = () => {
-      setSize({ width: el.clientWidth, height: el.clientHeight })
+      const width = el.clientWidth
+      const height = el.clientHeight
+      setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }))
     }
     update()
 

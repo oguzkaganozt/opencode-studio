@@ -840,6 +840,14 @@
   text-align: center;
 }
 
+/* CadViewer uses height:100% internally — pin a real box so WebGL gets non-zero size. */
+[data-studio="pcb"] .pcb-cad-host,
+[data-studio="pcb"] .pcb-cad-host > div {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
 @media (hover: none) {
   [data-studio="pcb"] .pcb-chip:hover {
     border-color: var(--osc-border-strong);
