@@ -101,7 +101,7 @@
 
 [data-studio="pcb"] .pcb-data-card__tag {
   flex-shrink: 0;
-  border-radius: 999px;
+  border-radius: var(--osc-radius-sm);
   background: var(--osc-surface);
   padding: 0.2rem 0.45rem;
   font-family: var(--osc-font-mono);
@@ -118,7 +118,7 @@
 
 [data-studio="pcb"] .pcb-card__artifacts span {
   border: 1px solid var(--osc-border);
-  border-radius: 999px;
+  border-radius: var(--osc-radius-sm);
   padding: 0.15rem 0.4rem;
   font-family: var(--osc-font-mono);
   font-size: 10px;
@@ -139,6 +139,42 @@
 
 [data-studio="pcb"] .pcb-card__artifacts span[data-ready="true"]::before {
   content: "●";
+}
+
+[data-studio="pcb"] .pcb-project-header {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+}
+
+[data-studio="pcb"] .pcb-project-header__title {
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+[data-studio="pcb"] .pcb-project-header__meta {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 18rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  justify-content: flex-start;
+}
+
+@media (min-width: 900px) {
+  [data-studio="pcb"] .pcb-project-header__meta {
+    flex: 0 1 auto;
+    justify-content: flex-end;
+  }
+}
+
+/* Keep the canvas usable even when diagnostics expand. */
+[data-studio="pcb"] .pcb-project-view {
+  min-height: min(22rem, 48dvh);
 }
 
 [data-studio="pcb"] .pcb-readiness {
@@ -288,6 +324,11 @@
   gap: 0.65rem;
   font-size: 12px;
   font-weight: 500;
+  color: var(--osc-text);
+}
+
+[data-studio="pcb"] .pcb-bom-status > span {
+  min-width: 0;
 }
 
 @media (min-width: 768px) {
@@ -358,33 +399,15 @@
 }
 
 
-[data-studio="pcb"] .pcb-workspace-badge {
-  display: none;
-  margin-left: auto;
-  max-width: 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--osc-font-mono);
-  font-size: 10px;
-  color: var(--osc-text-muted);
-}
-
-@media (min-width: 768px) {
-  [data-studio="pcb"] .pcb-workspace-badge {
-    display: inline;
-    max-width: 20rem;
-  }
-}
-
 [data-studio="pcb"] .pcb-diag-summary {
   display: flex;
+  min-height: 2.5rem;
   cursor: pointer;
   list-style: none;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--osc-text);
 }
@@ -393,8 +416,13 @@
   display: none;
 }
 
+[data-studio="pcb"] .pcb-diag-title {
+  min-width: 0;
+}
+
 [data-studio="pcb"] .pcb-diag-chevron {
-  display: inline-block;
+  display: inline-flex;
+  flex: 0 0 auto;
   color: var(--osc-text-faint);
   transition: transform var(--osc-motion-duration) var(--osc-motion-ease);
 }
@@ -403,9 +431,66 @@
   transform: rotate(90deg);
 }
 
+/* Cap diagnostics so the schematic/PCB canvas keeps the majority of the column. */
 [data-studio="pcb"] .pcb-diag-content {
-  max-height: min(24rem, 42dvh);
+  max-height: min(11.5rem, 26dvh);
   scrollbar-gutter: stable;
+}
+
+@media (min-height: 900px) {
+  [data-studio="pcb"] .pcb-diag-content {
+    max-height: min(14rem, 28dvh);
+  }
+}
+
+[data-studio="pcb"] .pcb-selection-bar {
+  display: flex;
+  min-height: 2rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  border-bottom: 1px solid var(--osc-border);
+  background: var(--osc-bg-elevated);
+  padding: 0.35rem 0.7rem;
+  font-size: 12px;
+}
+
+[data-studio="pcb"] .pcb-selection-bar--active {
+  min-height: 2.5rem;
+  padding-block: 0.45rem;
+  background: color-mix(in srgb, var(--osc-accent) 6%, var(--osc-bg-elevated));
+}
+
+[data-studio="pcb"] .pcb-selection-bar__label {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--osc-text-faint);
+}
+
+[data-studio="pcb"] .pcb-selection-bar__value {
+  min-width: 0;
+  flex: 1 1 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--osc-text-muted);
+}
+
+[data-studio="pcb"] .pcb-selection-bar--active .pcb-selection-bar__value {
+  color: var(--osc-text);
+  font-weight: 500;
+}
+
+[data-studio="pcb"] .pcb-selection-bar__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 [data-studio="pcb"] .pcb-diag-section-heading {
@@ -483,7 +568,7 @@
 [data-studio="pcb"] .pcb-diag-group-count {
   min-width: 1.5rem;
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--osc-radius-sm);
   padding: 0.15rem 0.4rem;
   font-family: var(--osc-font-mono);
   font-size: 10px;
@@ -587,7 +672,7 @@
 
 [data-studio="pcb"] .pcb-asset-count {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--osc-radius-sm);
   background: var(--osc-warning-bg);
   padding: 0.15rem 0.4rem;
   font-family: var(--osc-font-mono);
@@ -756,9 +841,13 @@
   }
 
   [data-studio="pcb"] .pcb-project-page {
-    gap: 0.65rem;
+    gap: 0.55rem;
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+
+  [data-studio="pcb"] .pcb-project-view {
+    min-height: min(18rem, 42dvh);
   }
 
   [data-studio="pcb"] .pcb-tab {
@@ -768,12 +857,17 @@
 
   [data-studio="pcb"] .pcb-diag-summary {
     flex-wrap: wrap;
-    padding: 0.65rem 0.75rem;
+    padding: 0.55rem 0.7rem;
   }
 
   [data-studio="pcb"] .pcb-diag-content {
-    max-height: 38dvh;
-    padding-inline: 0.75rem;
+    max-height: min(10rem, 24dvh);
+    padding-inline: 0.7rem;
+  }
+
+  [data-studio="pcb"] .pcb-selection-bar {
+    gap: 0.3rem 0.45rem;
+    padding-inline: 0.55rem;
   }
 
   [data-studio="pcb"] .pcb-asset-bar {
@@ -840,12 +934,34 @@
   text-align: center;
 }
 
-/* CadViewer uses height:100% internally — pin a real box so WebGL gets non-zero size. */
-[data-studio="pcb"] .pcb-cad-host,
-[data-studio="pcb"] .pcb-cad-host > div {
+/* CadViewer needs a real sized host. Only size the outer wrappers — never force
+   nested absolute HUD/gizmo nodes to 100% (that froze orbit by covering the canvas). */
+[data-studio="pcb"] .pcb-cad-host {
   width: 100%;
   height: 100%;
   min-height: 0;
+  position: relative;
+}
+
+[data-studio="pcb"] .pcb-cad-host > div:first-child {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+[data-studio="pcb"] a.pcb-chip,
+[data-studio="pcb"] .pcb-chip--action {
+  color: var(--osc-text);
+  text-decoration: none;
+  background: var(--osc-surface);
+  border-color: var(--osc-border-strong);
+}
+
+[data-studio="pcb"] a.pcb-chip:hover,
+[data-studio="pcb"] .pcb-chip--action:hover {
+  color: var(--osc-text);
+  background: var(--osc-surface-hover);
+  border-color: var(--osc-text-faint);
 }
 
 @media (hover: none) {

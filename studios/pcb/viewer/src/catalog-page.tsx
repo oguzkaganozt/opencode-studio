@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router"
 import { claimAgentContext } from "@ui/agent-context"
 import { requestAgentHandoff } from "@ui/agent-handoff"
+import { StudioHomeHeader } from "@ui/components/studio-home"
 import { api, type PartSummary } from "./api"
 import { DatasheetLink } from "./datasheet-link"
 import { PartDetailModal } from "./part-detail"
@@ -105,18 +106,12 @@ export function CatalogPage() {
 
   return (
     <Shell>
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
-        <div className="mb-5 flex items-end justify-between gap-4 sm:mb-6">
-          <div>
-            <p className="mb-1 text-[11px] font-medium tracking-[0.14em] text-[var(--osc-text-faint)] uppercase">Library</p>
-            <h1 className="text-pretty text-xl font-semibold tracking-tight text-[var(--osc-text)] sm:text-2xl">Component Catalog</h1>
-          </div>
-          {data && (
-            <span className="font-mono text-[12px] text-[var(--osc-text-muted)] tabular-nums">
-              {data.total} part{data.total !== 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-10">
+        <StudioHomeHeader
+          title="Catalog"
+          eyebrow="Library"
+          count={data ? `${data.total} part${data.total !== 1 ? "s" : ""}` : undefined}
+        />
 
         <div className="mb-4">
           <label className="sr-only" htmlFor="pcb-catalog-search">

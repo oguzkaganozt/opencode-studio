@@ -12,20 +12,23 @@ export function AgentSelectionBar({
   onSend: () => void
 }) {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-3 py-2 text-[12px]">
-      <span className="font-medium text-[var(--osc-text)]">Selection</span>
-      <span className="min-w-0 flex-1 truncate text-[var(--osc-text-muted)]" role="status" aria-live="polite">
+    <div
+      className={`pcb-selection-bar${selection ? " pcb-selection-bar--active" : ""}`}
+      data-has-selection={selection ? "true" : undefined}
+    >
+      <span className="pcb-selection-bar__label">Selection</span>
+      <span className="pcb-selection-bar__value" role="status" aria-live="polite">
         {selection?.summary || emptyText}
       </span>
       {selection ? (
-        <>
+        <div className="pcb-selection-bar__actions">
           <button type="button" className="pcb-chip" onClick={onClear}>
             Clear
           </button>
           <button type="button" className="pcb-chip pcb-chip--primary" onClick={onSend}>
             Send selection
           </button>
-        </>
+        </div>
       ) : null}
     </div>
   )

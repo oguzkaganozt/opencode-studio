@@ -221,7 +221,7 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
                 Fix identities with agent
               </button>
             ) : null}
-            <a href={api.bomCsvUrl(projectId)} download className="pcb-chip">
+            <a href={api.bomCsvUrl(projectId)} download className="pcb-chip pcb-chip--action">
               Download CSV
             </a>
           </div>

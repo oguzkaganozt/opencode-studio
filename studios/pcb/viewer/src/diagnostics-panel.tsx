@@ -101,7 +101,7 @@ export function DiagnosticsPanel({
     <details
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
-      className="relative shrink-0 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow)]"
+      className="pcb-diag relative shrink-0 rounded-[var(--osc-radius-lg)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] shadow-[var(--osc-shadow)]"
       aria-label="Design diagnostics"
     >
       <summary className="pcb-diag-summary">
@@ -110,7 +110,7 @@ export function DiagnosticsPanel({
             <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </span>
-        Design diagnostics
+        <span className="pcb-diag-title">Design diagnostics</span>
         {diagnostics.errorCount > 0 && (
           <Badge tone="fail" dot>
             {diagnostics.errorCount} errors
@@ -122,11 +122,11 @@ export function DiagnosticsPanel({
           </Badge>
         )}
       </summary>
-      <div className="pcb-diag-content space-y-3 overflow-auto overscroll-contain border-t border-[var(--osc-border)] px-4 py-3">
+      <div className="pcb-diag-content space-y-3 overflow-auto overscroll-contain border-t border-[var(--osc-border)] px-3 py-2.5 sm:px-4 sm:py-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="pcb-chip"
+            className="pcb-chip pcb-chip--primary"
             onClick={() => {
               requestAgentHandoff({
                 text: formatDiagnosticsHandoff(projectId, projectName, diagnostics),

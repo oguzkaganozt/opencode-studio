@@ -414,51 +414,56 @@ function ProjectPage() {
   }
   const stale = project.artifactStatus === "stale" || buildState.status === "stale"
 
-  return (
-    <Shell fill>
-      <div className="pcb-project-page mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 py-3 sm:px-6 sm:py-4">
-        <div className="min-w-0 shrink-0 space-y-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <Link
-              to={studioHref()}
-              className="shrink-0 rounded-[var(--osc-radius-md)] px-1.5 py-1 text-sm text-[var(--osc-text-muted)] transition-colors hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]"
-            >
-              ← Projects
-            </Link>
-            <span className="shrink-0 text-[var(--osc-border-strong)]" aria-hidden>
-              /
-            </span>
-            <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-[var(--osc-text)] sm:text-lg">{project.name}</h1>
-          </div>
-          <p className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]" title={project.path}>
-            {project.path}
-          </p>
-        </div>
+  const showPath = Boolean(project.path && project.path !== project.name && project.path !== project.id)
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <DetailHealth project={project} />
-          {stale && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--osc-stale)]/30 bg-[var(--osc-stale-bg)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--osc-stale)]">
-              <span className="size-1.5 shrink-0 rounded-full bg-[var(--osc-stale)]" aria-hidden />
-              Artifacts stale — rebuild
-            </span>
-          )}
-          {(stale || !project.built) && (
-            <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestBuild}>
-              {stale ? "Draft rebuild request" : "Draft build request"}
-            </button>
-          )}
-          {project.hasGerbersZip && project.fabricationReady && id && (
-            <a href={api.gerbersZipUrl(id)} download className="pcb-chip">
-              Gerbers ↓
-            </a>
-          )}
-          {project.assemblyReady && id && (
-            <a href={api.assemblyCsvUrl(id)} download className="pcb-chip">
-              Pick & Place ↓
-            </a>
-          )}
-        </div>
+  return (
+    <Shell fill hideProjectsNav>
+      <div className="pcb-project-page mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 px-3 py-2.5 sm:gap-2.5 sm:px-6 sm:py-3">
+        <header className="pcb-project-header shrink-0">
+          <div className="pcb-project-header__title min-w-0">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Link
+                to={studioHref()}
+                className="shrink-0 rounded-[var(--osc-radius-md)] px-1.5 py-1 text-sm text-[var(--osc-text-muted)] transition-colors hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]"
+              >
+                ← Projects
+              </Link>
+              <span className="shrink-0 text-[var(--osc-border-strong)]" aria-hidden>
+                /
+              </span>
+              <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-[var(--osc-text)] sm:text-lg">{project.name}</h1>
+            </div>
+            {showPath ? (
+              <p className="truncate font-mono text-[11px] text-[var(--osc-text-muted)]" title={project.path}>
+                {project.path}
+              </p>
+            ) : null}
+          </div>
+          <div className="pcb-project-header__meta">
+            <DetailHealth project={project} />
+            {stale && (
+              <span className="inline-flex items-center gap-1.5 rounded-[var(--osc-radius-md)] border border-[var(--osc-stale)]/30 bg-[var(--osc-stale-bg)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--osc-stale)]">
+                <span className="size-1.5 shrink-0 rounded-full bg-[var(--osc-stale)]" aria-hidden />
+                Artifacts stale — rebuild
+              </span>
+            )}
+            {(stale || !project.built) && (
+              <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestBuild}>
+                {stale ? "Draft rebuild request" : "Draft build request"}
+              </button>
+            )}
+            {project.hasGerbersZip && project.fabricationReady && id && (
+              <a href={api.gerbersZipUrl(id)} download className="pcb-chip pcb-chip--action">
+                Gerbers ↓
+              </a>
+            )}
+            {project.assemblyReady && id && (
+              <a href={api.assemblyCsvUrl(id)} download className="pcb-chip pcb-chip--action">
+                Pick & Place ↓
+              </a>
+            )}
+          </div>
+        </header>
 
         {project.artifactStatus === "stale" && project.artifactError && (
           <p className="shrink-0 text-xs text-[var(--osc-error)]" role="status">
@@ -483,7 +488,7 @@ function ProjectPage() {
           ))}
         </nav>
 
-        <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label={`${tabLabel(tab)} view`}>
+        <section className="pcb-project-view flex min-h-0 flex-1 flex-col overflow-hidden" aria-label={`${tabLabel(tab)} view`}>
           <ViewerErrorBoundary
             resetKey={`${id}-${tab}`}
             fallback={
