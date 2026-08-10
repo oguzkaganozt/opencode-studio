@@ -1004,7 +1004,6 @@ export function AgentPanel({
       liveTps: busy ? liveTpsValue(streamSamples, usageClock) : undefined,
       finalTps: finalOutputTps(usageMessages, messageSamples),
       tokens: totals.tokens,
-      cost: totals.cost,
     })
   }, [busy, messageSamples, streamSamples, usageClock, usageMessages])
 

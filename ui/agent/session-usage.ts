@@ -149,21 +149,14 @@ export function formatTokenCount(value: number): string | undefined {
   return new Intl.NumberFormat("en-US").format(Math.round(value))
 }
 
-export function formatCost(value: number): string | undefined {
-  if (!(value > 0) || !Number.isFinite(value)) return undefined
-  if (value < 0.01) return `$${value.toFixed(4)}`
-  return `$${value.toFixed(2)}`
-}
-
 export type UsageLineInput = {
   busy: boolean
   liveTps?: number
   finalTps?: number
   tokens?: number
-  cost?: number
 }
 
-/** Footer line: `~42 TPS · 12,345 · $0.01` (live) or `38 TPS · 12,345 · $0.01` (final). */
+/** Footer line: `~42 TPS · 12,345 tokens` (live) or `38 TPS · 12,345 tokens` (final). */
 export function formatUsageLine(input: UsageLineInput): string | undefined {
   const tps =
     input.busy && input.liveTps !== undefined
@@ -171,6 +164,7 @@ export function formatUsageLine(input: UsageLineInput): string | undefined {
         ? `~${formatTps(input.liveTps)}`
         : undefined
       : formatTps(input.finalTps)
-  const parts = [tps, formatTokenCount(input.tokens ?? 0), formatCost(input.cost ?? 0)].filter(Boolean)
+  const tokenCount = formatTokenCount(input.tokens ?? 0)
+  const parts = [tps, tokenCount ? `${tokenCount} tokens` : undefined].filter(Boolean)
   return parts.length > 0 ? parts.join(" · ") : undefined
 }

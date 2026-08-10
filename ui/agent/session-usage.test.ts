@@ -6,7 +6,6 @@ import {
   estimateStreamTokens,
   exactTpsValue,
   finalOutputTps,
-  formatCost,
   formatTokenCount,
   formatTps,
   formatUsageLine,
@@ -196,12 +195,6 @@ describe("formatters", () => {
     expect(formatTokenCount(1_200_000)).toBe("1.2M")
   })
 
-  test("formatCost", () => {
-    expect(formatCost(0)).toBeUndefined()
-    expect(formatCost(0.0042)).toBe("$0.0042")
-    expect(formatCost(1.2)).toBe("$1.20")
-  })
-
   test("formatUsageLine live vs final", () => {
     expect(
       formatUsageLine({
@@ -209,9 +202,8 @@ describe("formatters", () => {
         liveTps: 42.5,
         finalTps: 30,
         tokens: 12_000,
-        cost: 0.05,
       }),
-    ).toBe("~42.5 TPS · 12.0k · $0.05")
+    ).toBe("~42.5 TPS · 12.0k tokens")
 
     expect(
       formatUsageLine({
@@ -219,8 +211,7 @@ describe("formatters", () => {
         liveTps: 42.5,
         finalTps: 30,
         tokens: 500,
-        cost: 0,
       }),
-    ).toBe("30.0 TPS · 500")
+    ).toBe("30.0 TPS · 500 tokens")
   })
 })

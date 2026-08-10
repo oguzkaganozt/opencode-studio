@@ -35,20 +35,19 @@ export function assistantBlocks(parts: Part[]): AssistantBlock[] {
 function renderBlocks(blocks: AssistantBlock[]) {
   return blocks.map((block) =>
     block.kind === "tools" ? (
-      <div key={block.id} className="oc-msg__tools">
-        {block.parts.map((part) => (
-          <ToolCard key={part.id} part={part} />
-        ))}
+      <div key={block.id} className="oc-msg__tool-block">
+        <div className="oc-msg__tools">
+          {block.parts.map((part) => (
+            <ToolCard key={part.id} part={part} />
+          ))}
+        </div>
       </div>
     ) : (
-      <Markdown key={block.id} text={block.text} />
+      <div key={block.id} className="oc-msg__surface">
+        <Markdown text={block.text} />
+      </div>
     ),
   )
-}
-
-/** True when the assistant message is only tool rows (no prose) — render as a quiet strip. */
-export function isToolsOnly(blocks: AssistantBlock[]): boolean {
-  return blocks.length > 0 && blocks.every((block) => block.kind === "tools")
 }
 
 export function MessageBubble({ message }: { message: AgentMessage }) {
@@ -61,22 +60,18 @@ export function MessageBubble({ message }: { message: AgentMessage }) {
   const summaries = message.parts.map(summarizePart).filter((summary): summary is string => Boolean(summary))
   if (blocks.length === 0 && summaries.length === 0) return null
 
-  // Tool-only turns are separate OpenCode messages; skip answer-card chrome.
-  if (isToolsOnly(blocks)) {
-    return <div className="oc-msg oc-msg--assistant oc-msg--tools-only">{renderBlocks(blocks)}</div>
+  if (blocks.length > 0) {
+    return <div className="oc-msg oc-msg--assistant oc-msg--flow">{renderBlocks(blocks)}</div>
   }
 
   return (
     <div className="oc-msg oc-msg--assistant">
       <div className="oc-msg__surface">
-        {renderBlocks(blocks)}
-        {blocks.length === 0
-          ? summaries.map((summary, index) => (
-              <p key={`${message.info.id}:summary:${index}`} className="oc-msg__meta">
-                {summary}
-              </p>
-            ))
-          : null}
+        {summaries.map((summary, index) => (
+          <p key={`${message.info.id}:summary:${index}`} className="oc-msg__meta">
+            {summary}
+          </p>
+        ))}
       </div>
     </div>
   )

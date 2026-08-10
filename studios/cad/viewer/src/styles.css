@@ -75,6 +75,110 @@
   display: none;
 }
 
+[data-studio="cad"] .cad-viewcube {
+  position: absolute;
+  top: 0.75rem;
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+  z-index: 10;
+  width: 4.75rem;
+  height: 5rem;
+  color: var(--cad-overlay-muted);
+  filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.32));
+}
+
+[data-studio="cad"] .cad-viewcube__cube {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.875rem;
+  width: 3rem;
+  height: 3rem;
+}
+
+[data-studio="cad"] .cad-viewcube__face {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  font-family: var(--osc-font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--cad-overlay-muted);
+  filter: drop-shadow(0 0 0.4px var(--cad-overlay-border-strong));
+  transition:
+    background-color var(--osc-motion-duration) ease,
+    color var(--osc-motion-duration) ease;
+}
+
+[data-studio="cad"] .cad-viewcube__face--front {
+  top: 0.75rem;
+  left: 0;
+  width: 1.5rem;
+  height: 2.25rem;
+  background: rgba(31, 32, 38, 0.96);
+  clip-path: polygon(0 0, 100% 33.333%, 100% 100%, 0 66.667%);
+}
+
+[data-studio="cad"] .cad-viewcube__face--right {
+  top: 0.75rem;
+  left: 1.5rem;
+  width: 1.5rem;
+  height: 2.25rem;
+  background: rgba(20, 21, 25, 0.96);
+  clip-path: polygon(0 33.333%, 100% 0, 100% 66.667%, 0 100%);
+}
+
+[data-studio="cad"] .cad-viewcube__face--top {
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 3rem;
+  height: 1.5rem;
+  background: rgba(42, 43, 50, 0.96);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+[data-studio="cad"] .cad-viewcube__face:hover,
+[data-studio="cad"] .cad-viewcube__face:focus-visible {
+  background: color-mix(in srgb, var(--osc-accent) 42%, rgba(26, 27, 32, 0.94));
+  color: #fff;
+}
+
+[data-studio="cad"] .cad-viewcube__face:focus-visible,
+[data-studio="cad"] .cad-viewcube__iso:focus-visible {
+  outline: 2px solid rgba(250, 250, 250, 0.75);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+[data-studio="cad"] .cad-viewcube__iso {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0;
+  display: grid;
+  min-width: 2.5rem;
+  min-height: 1.5rem;
+  place-items: center;
+  border: 1px solid var(--cad-overlay-border);
+  border-radius: var(--osc-radius-sm);
+  background: var(--cad-overlay-bg);
+  padding: 0 0.4rem;
+  font-family: var(--osc-font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--cad-overlay-muted);
+  transition:
+    background-color var(--osc-motion-duration) ease,
+    border-color var(--osc-motion-duration) ease,
+    color var(--osc-motion-duration) ease;
+}
+
+[data-studio="cad"] .cad-viewcube__iso:hover {
+  border-color: var(--cad-overlay-border-strong);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--cad-overlay-text);
+}
+
 
 [data-studio="cad"] .cad-sep {
   display: none;
@@ -227,19 +331,6 @@
   white-space: nowrap;
 }
 
-[data-studio="cad"] .cad-design-id--stale {
-  border-color: color-mix(in srgb, var(--osc-warning) 48%, var(--cad-overlay-border));
-}
-
-[data-studio="cad"] .cad-design-freshness {
-  flex-shrink: 0;
-  font-family: var(--osc-font-mono);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--osc-warning);
-}
-
 button.cad-design-id {
   cursor: pointer;
   touch-action: manipulation;
@@ -364,6 +455,17 @@ button.cad-design-id[aria-expanded="true"] {
 
 [data-studio="cad"] .cad-status-btn.cad-status-ok:active:not(:disabled) {
   background: color-mix(in srgb, var(--osc-success) 22%, transparent);
+}
+
+[data-studio="cad"] .cad-status-chevron {
+  flex-shrink: 0;
+  margin-right: -0.15rem;
+  opacity: 0.72;
+  transition: transform var(--osc-motion-duration) var(--osc-motion-ease);
+}
+
+[data-studio="cad"] .cad-status-btn[aria-expanded="true"] .cad-status-chevron {
+  transform: rotate(180deg);
 }
 
 [data-studio="cad"] .cad-hud {
@@ -1127,6 +1229,11 @@ html[data-theme="dark"] [data-studio="cad"] .cad-part-swatch {
     inset -12px 0 10px -11px color-mix(in srgb, var(--cad-overlay-muted) 70%, transparent);
   scrollbar-width: thin;
   scrollbar-color: var(--cad-overlay-border-strong) transparent;
+}
+
+[data-studio="cad"][data-cad-phone="true"] .cad-viewcube {
+  top: 4.75rem;
+  right: max(0.55rem, env(safe-area-inset-right, 0px));
 }
 
 [data-studio="cad"][data-cad-phone="true"] .cad-toolbar::-webkit-scrollbar {

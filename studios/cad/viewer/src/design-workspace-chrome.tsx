@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Badge } from "@ui/components/badge"
 import { useFocusTrap } from "@ui/lib/focus-trap"
 import { type DesignSummary, eventsUrl, renderUrl } from "./api"
+import type { CameraView } from "./assembly-types"
 
 export function designStatus(status: DesignSummary["buildStatus"]): {
   label: string
@@ -45,6 +46,45 @@ export function ReloadIcon() {
       />
       <path d="M11 2.5v2.75h2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  )
+}
+
+export function ViewCube({ onView }: { onView: (view: CameraView) => void }) {
+  return (
+    <div className="cad-viewcube" role="group" aria-label="Standard views" data-testid="cad-viewcube">
+      <div className="cad-viewcube__cube">
+        <button
+          type="button"
+          className="cad-viewcube__face cad-viewcube__face--top"
+          aria-label="Top view"
+          title="Top view"
+          onClick={() => onView("top")}
+        >
+          T
+        </button>
+        <button
+          type="button"
+          className="cad-viewcube__face cad-viewcube__face--front"
+          aria-label="Front view"
+          title="Front view"
+          onClick={() => onView("front")}
+        >
+          F
+        </button>
+        <button
+          type="button"
+          className="cad-viewcube__face cad-viewcube__face--right"
+          aria-label="Right view"
+          title="Right view"
+          onClick={() => onView("right")}
+        >
+          R
+        </button>
+      </div>
+      <button type="button" className="cad-viewcube__iso" aria-label="Isometric view" title="Isometric view" onClick={() => onView("iso")}>
+        ISO
+      </button>
+    </div>
   )
 }
 
@@ -339,4 +379,3 @@ export function useCadDesignEvents() {
     return () => es.close()
   }, [queryClient])
 }
-

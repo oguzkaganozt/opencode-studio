@@ -1293,38 +1293,38 @@ button:disabled {
   min-width: 0;
 }
 
-/* Tool-only assistant message: quiet activity strip — not a peer answer card */
-.oc-msg--tools-only {
+.oc-msg--flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Tool blocks always stay in the timeline, outside answer-card chrome. */
+.oc-msg__tool-block {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
 }
 
-.oc-msg--tools-only > .oc-msg__tools {
-  margin: 0;
-  border: 1px solid color-mix(in srgb, var(--osc-border) 88%, transparent);
-  border-radius: 8px;
-  /* Page-level fill (not elevated white) so tools read as chrome, answers as content */
-  background: transparent;
-  box-shadow: none;
+.oc-msg__tool-block .oc-tool summary,
+.oc-msg__tool-block .oc-tool--static {
+  min-height: 1.75rem;
+  border-radius: 6px;
+  padding: 0.25rem 0.2rem;
 }
 
-.oc-msg--tools-only .oc-tool summary,
-.oc-msg--tools-only .oc-tool--static {
-  padding: 0.32rem 0.55rem;
-}
-
-.oc-msg--tools-only .oc-tool__name {
+.oc-msg__tool-block .oc-tool__name {
+  font-size: 12px;
   font-weight: 500;
   color: var(--osc-text-muted);
 }
 
-.oc-msg--tools-only .oc-tool__preview,
-.oc-msg--tools-only .oc-tool__status {
+.oc-msg__tool-block .oc-tool__preview,
+.oc-msg__tool-block .oc-tool__status {
   color: var(--osc-text-faint);
 }
 
-.oc-msg--tools-only .oc-tool summary:hover {
+.oc-msg__tool-block .oc-tool summary:hover {
   background: color-mix(in srgb, var(--osc-surface) 55%, transparent);
 }
 
@@ -1342,13 +1342,11 @@ button:disabled {
 }
 
 .oc-msg__surface > .oc-md:first-child,
-.oc-msg__surface > .oc-msg__tools:first-child,
 .oc-msg__surface > .oc-msg__meta:first-child {
   margin-top: 0;
 }
 
 .oc-msg__surface > .oc-md:last-child,
-.oc-msg__surface > .oc-msg__tools:last-child,
 .oc-msg__surface > .oc-msg__meta:last-child {
   margin-bottom: 0;
 }
@@ -1359,22 +1357,13 @@ button:disabled {
   color: var(--osc-text-muted);
 }
 
-/* Tools nested inside an answer card — recessed inset, still below prose weight */
 .oc-msg__tools {
   overflow: hidden;
-  margin: 0.5rem 0;
-  border: 1px solid var(--osc-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--osc-bg) 82%, var(--osc-surface));
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
-}
-
-.oc-msg__surface .oc-msg__tools:first-child {
-  margin-top: 0;
-}
-
-.oc-msg__surface .oc-msg__tools:last-child {
-  margin-bottom: 0;
 }
 
 /* Tool rows — quiet list, not buttons */
@@ -1578,11 +1567,6 @@ html[data-theme="dark"] .oc-md code {
   border-color: color-mix(in srgb, var(--osc-border) 80%, transparent);
   background: color-mix(in srgb, var(--osc-surface) 45%, var(--osc-bg));
   color: var(--osc-text);
-}
-
-html[data-theme="dark"] .oc-msg--tools-only > .oc-msg__tools {
-  border-color: color-mix(in srgb, var(--osc-border) 70%, transparent);
-  background: transparent;
 }
 
 html[data-theme="dark"] .oc-msg__surface {

@@ -230,9 +230,9 @@ Call `design_view(id)` for the design URL and companion reachability. Prefer **`
 
 ### When the user sends viewer feedback (pins / regions / measures)
 
-Use this branch only when the prompt includes viewer annotation payload (`points`, `regions`, `measures`, or design/revision lines from **Prompt agent**).
+Use this branch only when the prompt includes viewer annotation payload (`points`, `regions`, `measures`, or design/revision lines from **Send to Agent**).
 
-Toolbar context (user-side): **Pick** (pins, snap, optional Link distances), **Region** (Face | Rect | Free on face-split GLB), **Select** (edit/delete). **Prompt agent** sends the **full** annotation state. Canvas edge-distance guides are viewer-only (not in the prompt).
+Toolbar context (user-side): **Pick** (pins, snap, optional Link distances), **Region** (Face | Rect | Free on face-split GLB), **Select** (edit/delete). **Send to Agent** sends the **full** annotation state. Canvas edge-distance guides are viewer-only (not in the prompt).
 
 **Payload shape** (decode keys; still not manufacturing truth):
 

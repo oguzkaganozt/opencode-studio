@@ -30,6 +30,7 @@ Studio is the chrome; OpenCode remains the runtime behind the native Agent surfa
 
 ## Agent chrome (side panel on CAD/PCB)
 - `.oc-panel__header`: API status, session selector, new-session/stop actions, and Close.
+- Tool calls remain chronological and always render outside answer cards as quiet, borderless rows with expandable details.
 - Native thread and composer stay mounted while the panel is hidden so API/SSE status and pending permissions remain current.
 - Mobile uses the existing focus-trapped panel; desktop keeps the bounded resize handle.
 - Files does not mount Agent chrome. “Use in Agent” queues selected-file context, then navigates to Agent home.

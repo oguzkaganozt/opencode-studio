@@ -169,7 +169,7 @@ async function browserSmoke(base: string) {
     await page.getByRole("button", { name: "Open menu" }).click()
     await page.getByRole("link", { name: /Agent/ }).waitFor()
     await page.getByRole("link", { name: /Files/ }).waitFor()
-    await page.getByRole("link", { name: /Status/ }).waitFor()
+    await page.getByRole("button", { name: "Status" }).waitFor()
     await page.getByRole("link", { name: /CAD Studio|CAD/ }).waitFor()
     await page.getByRole("link", { name: /PCB Studio|PCB/ }).waitFor()
     await page.getByRole("button", { name: "Close menu" }).click()
@@ -218,8 +218,8 @@ async function browserSmoke(base: string) {
       cad: {
         wait: "CAD Studio",
         extra: async (p) => {
-          await p.getByRole("navigation", { name: "CAD sections" }).getByRole("link", { name: "Designs", exact: true }).waitFor()
           await p.getByRole("heading", { name: "Designs", exact: true }).waitFor()
+          assert((await p.getByRole("navigation", { name: "CAD sections" }).count()) === 0, "cad: single-section subnav should not render")
           await p.waitForSelector("text=Studio Home")
           assert((await p.getByLabel("Open GLB file").count()) === 0, "cad: local GLB import must not be available")
           assert((await p.locator('input[type="file"]').count()) === 0, "cad: local file input must not be available")

@@ -8,6 +8,7 @@ Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. C
 
 ## Layout
 - Root: `flex-1 min-h-0` under host shell (never `h-full` / restyle `.studio-shell`)
+- CAD has one section, so it renders no studio subnav; the Designs page heading and workspace back/design controls provide navigation.
 - **Wide (main ≥960px, agent closed):** docked Designs rail + canvas + Parts/Renders
 - **Compact tablet (agent open OR main &lt;960, width ≥640):** side sheets (left Designs / right Parts)
 - **Phone (width &lt;640):** **bottom sheets** (thumb zone)
@@ -20,22 +21,24 @@ Read-only assembly inspection. Canvas is always dark; chrome is quiet tool UI. C
 
 ## Canvas chrome
 - Solid dark toolbar panel (`.cad-toolbar`) — no backdrop-blur
-- Compact: **server design name** · **`N parts`** · **Pick | Region | Select** · (**Face | Rect | Free** when Region) · **Fit** · reload
-- Wide docked: server design id · status · Pick|Region|Select · Face|Rect|Free · Fit · reload (Parts via right rail)
+- Compact: **server design name** · **`Built|Stale|Unbuilt · N parts`** · **Pick | Region | Select** · (**Face | Rect | Free** when Region) · **Fit** · reload
+- Wide docked: server design id · build health · Pick|Region|Select · Face|Rect|Free · Fit · reload (Parts via right rail)
 - No ⋯ overflow menu — all primary actions are direct toolbar controls
-- **Prompt only on surface HUD** when any annotation exists — never permanent toolbar chrome
+- **Send to Agent only on surface HUD** when any annotation exists — never permanent toolbar chrome
 - Empty: dashed well + Retry / Build with agent / Designs
-- HUD: pin + region counts · **Δ** · last detail + **Link** / **Clear / Prompt**; while drawing: loop/W×H hint only
+- HUD: pin + region counts · **Δ** · last detail + **Link** / **Clear / Send to Agent**; while drawing: loop/W×H hint only
 - **Pick**: multi-select (cap 8); mesh snap (`vertex|edge|midpoint|center`) + canvas edge-distance guides (viewer-only); **touch hold+drag** snap reticle; **Link** A→B (max 4); Clear = picks + links
 - Toolbar order is **Pin | Region | Select**; phone overflow keeps a visible thin scroll cue and coarse-pointer targets are 44px
 - **Region**: **Face** (default, tap whole face) | **Rect** (planar, live W×H on canvas) | **Free** (loop-close freehand); cap 5; face-split GLB; Clear = regions only
 - **Select**: tap pin or region (no draw); **Delete** = selected only; selected rect → HUD W/H; empty deselects; **Clear** = all annotations
-- Prompt = **full** annotation state (pins + regions + measures; `kind=face|rect|freehand`; rect includes `size_mm`/`frame=viewer-plane`)
+- Send to Agent = **full** annotation state (pins + regions + measures; `kind=face|rect|freehand`; rect includes `size_mm`/`frame=viewer-plane`)
 - Pins + region overlays stay visible together; faces amber; plane regions get fill+outline
 - Face data: forge multi-mesh GLB `face_<id>` + optional `topo/`; plane regions include boundary2d
 - Fit: resize + bounding-sphere framing; double-rAF after layout settles
+- Small ViewCube stays outside the toolbar: clickable **Top / Front / Right** faces plus **ISO**; each view reframes visible geometry.
+- Grid is a visual ground plane, not the world-origin plane: center it under the full assembly at `bbox.minY - epsilon` without moving geometry or annotation coordinates.
 - Scene loading and all-parts-hidden states stay explicit; Fit enables only after geometry loads
-- Prompt: `requestAgentHandoff({ copyFallback: true })` for iOS reliability
+- Send to Agent: `requestAgentHandoff({ copyFallback: true })` for iOS reliability
 
 ## Rails / sheets
 - Designs: **buttons** (not Links) → navigate + close sheet

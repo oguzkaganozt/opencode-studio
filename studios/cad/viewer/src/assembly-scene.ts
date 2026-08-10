@@ -6,6 +6,7 @@ import { LineGeometry } from "three/addons/lines/LineGeometry.js"
 import { LineMaterial } from "three/addons/lines/LineMaterial.js"
 import type {
   ClickInfo,
+  CameraView,
   InteractionMode,
   LinkedPinPair,
   LoadPart,
@@ -122,6 +123,7 @@ export class AssemblyScene {
   private readonly renderer: THREE.WebGLRenderer
   private readonly controls: OrbitControls
   private readonly loader = new GLTFLoader()
+  private readonly grid = new THREE.GridHelper(200, 20, 0x333344, 0x222233)
   private readonly raycaster = new THREE.Raycaster()
   private readonly pointer = new THREE.Vector2()
   private readonly container: HTMLElement
@@ -244,7 +246,14 @@ export class AssemblyScene {
     const rim = new THREE.DirectionalLight(0xffffff, 0.4)
     rim.position.set(0, -60, 100)
     this.scene.add(rim)
-    this.scene.add(new THREE.GridHelper(200, 20, 0x333344, 0x222233))
+    this.grid.visible = false
+    const gridMaterials = Array.isArray(this.grid.material) ? this.grid.material : [this.grid.material]
+    for (const material of gridMaterials) {
+      material.transparent = true
+      material.opacity = 0.5
+      material.depthWrite = false
+    }
+    this.scene.add(this.grid)
 
     this.regionOverlay.name = "__regions"
     this.regionOverlay.raycast = () => {}
@@ -330,6 +339,9 @@ export class AssemblyScene {
     this.disposePins()
     this.disposeRegionOverlays()
     this.disposeMeasureOverlays()
+    this.grid.geometry.dispose()
+    const gridMaterials = Array.isArray(this.grid.material) ? this.grid.material : [this.grid.material]
+    for (const material of gridMaterials) material.dispose()
     this.drawCanvas.remove()
     this.controls.dispose()
     this.renderer.dispose()
@@ -356,6 +368,7 @@ export class AssemblyScene {
       })
     }
     this.parts.length = 0
+    this.grid.visible = false
   }
 
   getPicks = () => this.picks.slice()
@@ -875,14 +888,49 @@ export class AssemblyScene {
     this.resize()
     this.scene.updateMatrixWorld(true)
 
+    const box = this.getBounds(true)
+    if (!box) return
+
+    let direction = this.camera.position.clone().sub(this.controls.target)
+    if (direction.lengthSq() < 1e-6) direction = new THREE.Vector3(0.75, 0.55, 1)
+    this.frameBounds(box, direction)
+  }
+
+  setView(view: CameraView) {
+    if (this.disposed) return
+    this.resize()
+    this.scene.updateMatrixWorld(true)
+    const box = this.getBounds(true)
+    if (!box) return
+
+    if (view === "top") {
+      this.camera.up.set(0, 0, -1)
+      this.frameBounds(box, new THREE.Vector3(0, 1, 0))
+      return
+    }
+
+    this.camera.up.set(0, 1, 0)
+    const direction =
+      view === "front"
+        ? new THREE.Vector3(0, 0, 1)
+        : view === "right"
+          ? new THREE.Vector3(1, 0, 0)
+          : new THREE.Vector3(1, 0.8, 1)
+    this.frameBounds(box, direction)
+  }
+
+  private getBounds(visibleOnly: boolean): THREE.Box3 | null {
     const box = new THREE.Box3()
     let hasGeo = false
     for (const part of this.parts) {
-      if (!part.visible) continue
+      if (visibleOnly && !part.visible) continue
       box.expandByObject(part.group)
       hasGeo = true
     }
-    if (!hasGeo || box.isEmpty()) return
+    return hasGeo && !box.isEmpty() ? box : null
+  }
+
+  private frameBounds(box: THREE.Box3, direction: THREE.Vector3) {
 
     const size = box.getSize(new THREE.Vector3())
     const center = box.getCenter(new THREE.Vector3())
@@ -898,9 +946,7 @@ export class AssemblyScene {
     distance = Math.max(distance, (radius * fitOffset) / Math.sin(hFov / 2))
     distance = Math.max(distance, maxDim * 1.1)
 
-    let dir = this.camera.position.clone().sub(this.controls.target)
-    if (dir.lengthSq() < 1e-6) dir.set(0.75, 0.55, 1)
-    dir.normalize()
+    const dir = direction.normalize()
 
     this.controls.target.copy(center)
     this.camera.position.copy(center).addScaledVector(dir, distance)
@@ -915,6 +961,23 @@ export class AssemblyScene {
     this.controls.update()
     this.controls.enableDamping = damping
     this.renderer.render(this.scene, this.camera)
+  }
+
+  private updateGroundGrid() {
+    this.scene.updateMatrixWorld(true)
+    const box = this.getBounds(false)
+    if (!box) {
+      this.grid.visible = false
+      return
+    }
+    const size = box.getSize(new THREE.Vector3())
+    const center = box.getCenter(new THREE.Vector3())
+    const maxDim = Math.max(size.x, size.y, size.z, 1)
+    const planarSize = Math.max(size.x, size.z, 1)
+    const scale = Math.max(planarSize / 100, 0.25)
+    this.grid.position.set(center.x, box.min.y - Math.max(maxDim * 0.003, 0.02), center.z)
+    this.grid.scale.setScalar(scale)
+    this.grid.visible = true
   }
 
   setPartVisible(index: number, visible: boolean) {
@@ -999,6 +1062,7 @@ export class AssemblyScene {
       this.parts.push(entry)
       loaded += 1
     }
+    this.updateGroundGrid()
     requestAnimationFrame(() => {
       if (generation !== this.loadGeneration || this.disposed) return
       this.fitCamera()

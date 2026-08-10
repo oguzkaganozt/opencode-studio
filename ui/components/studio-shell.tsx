@@ -12,20 +12,24 @@ export function StudioShell({
 }: {
   studioId: string
   label: string
-  nav: ReactNode
+  nav?: ReactNode
   trailing?: ReactNode
   fill?: boolean
   children: ReactNode
 }) {
   return (
     <div data-studio={studioId} className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)] text-[var(--osc-text)]">
-      <header className="studio-subnav">
-        <span className="sr-only">{label} Studio</span>
-        <nav className="flex items-center gap-0.5" aria-label={`${label} sections`}>
-          {nav}
-        </nav>
-        {trailing}
-      </header>
+      {nav || trailing ? (
+        <header className="studio-subnav">
+          <span className="sr-only">{label} Studio</span>
+          {nav ? (
+            <nav className="flex items-center gap-0.5" aria-label={`${label} sections`}>
+              {nav}
+            </nav>
+          ) : null}
+          {trailing}
+        </header>
+      ) : null}
       <div className={cn("min-h-0 flex-1", fill ? "flex flex-col overflow-hidden" : "overflow-auto")}>{children}</div>
     </div>
   )

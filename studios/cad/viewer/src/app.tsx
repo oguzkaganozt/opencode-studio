@@ -9,7 +9,7 @@ import { Dialog, DialogHeader } from "@ui/components/dialog"
 import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
 import { StudioHomeHeader, StudioHomeTools, patchSearchParams } from "@ui/components/studio-home"
-import { StudioNavLink, StudioShell } from "@ui/components/studio-shell"
+import { StudioShell } from "@ui/components/studio-shell"
 import { cn } from "@ui/lib/cn"
 import { artifactUrl, type DesignSummary, listDesigns, readDesign, readWorkspace, studioHref } from "./api"
 import {
@@ -38,6 +38,7 @@ import {
   type Toast,
   useCadDesignEvents,
   useCadSpace,
+  ViewCube,
 } from "./design-workspace-chrome"
 
 const AssemblyViewport = lazy(async () => {
@@ -47,16 +48,7 @@ const AssemblyViewport = lazy(async () => {
 
 function Shell({ children, fill = false }: { children: React.ReactNode; fill?: boolean }) {
   return (
-    <StudioShell
-      studioId="cad"
-      label="CAD"
-      fill={fill}
-      nav={
-        <StudioNavLink to={studioHref()} end endAlsoMatch={(path, target) => path.startsWith(`${target}/designs/`)}>
-          Designs
-        </StudioNavLink>
-      }
-    >
+    <StudioShell studioId="cad" label="CAD" fill={fill}>
       {children}
     </StudioShell>
   )
@@ -435,6 +427,20 @@ function DesignWorkspace({ designId }: { designId: string }) {
   const sheetOpen = compact && (designsOpen || inspectorOpen)
   const designsPlacement: SheetPlacement = phone ? "bottom" : "side-left"
   const partsPlacement: SheetPlacement = phone ? "bottom" : "side-right"
+  const buildStatus = designQuery.data?.buildStatus ?? selectedDesign?.buildStatus ?? "unbuilt"
+  const buildLabel = buildStatus === "built" ? "Built" : buildStatus === "stale" ? "Stale" : "Unbuilt"
+  const healthDetail =
+    statusTone === "waiting" ? status : partCount > 0 ? `${partCount} ${partCount === 1 ? "part" : "parts"}` : undefined
+  const buildHealthLabel = healthDetail ? `${buildLabel} · ${healthDetail}` : buildLabel
+  const buildHealthClass =
+    statusTone === "waiting"
+      ? "cad-status-wait"
+      : buildStatus === "built"
+        ? "cad-status-ok"
+        : buildStatus === "stale"
+          ? "cad-status-wait"
+          : "cad-status-idle"
+  const revisionLabel = designQuery.data?.revision ? `Revision ${designQuery.data.revision.slice(0, 12)}` : "No build revision"
 
   const emptyTitle = designQuery.isError
     ? "Could not load design"
@@ -549,7 +555,7 @@ function DesignWorkspace({ designId }: { designId: string }) {
     return blocks.join("\n")
   }
 
-  const promptClick = () => {
+  const sendToAgent = () => {
     const selectionOnly = interactionMode === "select" && Boolean(selectedPinId || selectedRegionId)
     if (!hasAnnotations && !selectionOnly) {
       showToast(
@@ -591,7 +597,7 @@ function DesignWorkspace({ designId }: { designId: string }) {
       open: true,
       copyFallback: true,
     })
-    showToast(selectionOnly ? "Selection sent to agent" : "Opened in agent")
+    showToast("Added to Agent composer")
   }
 
   const clearModeAnnotations = () => {
@@ -725,16 +731,12 @@ function DesignWorkspace({ designId }: { designId: string }) {
   }
 
   const designControlLabel = selectedDesign?.id ?? (designs.length ? "Server designs" : "No designs")
-  const staleBuild = selectedDesign?.buildStatus === "stale"
   const highlightedPart =
     interactionMode === "select"
       ? (selectedPin?.partIndex ?? selectedRegion?.partIndex ?? -1)
       : interactionMode === "region"
         ? (selectedRegion?.partIndex ?? partUi.findIndex((part) => part.name === regionDraft?.part))
         : (lastPick?.partIndex ?? -1)
-
-  const statusClass =
-    statusTone === "ok" ? "cad-status-ok" : statusTone === "waiting" ? "cad-status-wait" : "cad-status-idle"
 
   return (
     <div
@@ -781,40 +783,46 @@ function DesignWorkspace({ designId }: { designId: string }) {
             {compact ? (
               <button
                 type="button"
-                className={`cad-design-id${staleBuild ? " cad-design-id--stale" : ""}`}
+                className="cad-design-id"
                 aria-expanded={designsOpen}
                 aria-controls="cad-designs-sheet"
                 aria-haspopup="dialog"
-                aria-label={`Choose server design, current ${designControlLabel}${staleBuild ? ", stale build" : ""}`}
-                title={staleBuild ? "Change server design · build is stale" : "Change server design"}
+                aria-label={`Choose server design, current ${designControlLabel}`}
+                title="Change server design"
                 onClick={toggleDesigns}
               >
                 <span className="cad-design-name">{designControlLabel}</span>
-                {staleBuild ? <span className="cad-design-freshness">stale</span> : null}
               </button>
             ) : selectedDesign ? (
-              <span className={`cad-design-id${staleBuild ? " cad-design-id--stale" : ""}`} title={selectedDesign.id}>
+              <span className="cad-design-id" title={selectedDesign.id}>
                 <span className="cad-design-name">{selectedDesign.id}</span>
-                {staleBuild ? <span className="cad-design-freshness">stale</span> : null}
               </span>
             ) : null}
 
             {compact ? (
               <button
                 type="button"
-                className={`cad-status-btn ${statusClass}`}
+                className={`cad-status-btn ${buildHealthClass}`}
                 aria-expanded={inspectorOpen}
                 aria-controls="cad-parts-sheet"
                 aria-haspopup="dialog"
-                aria-label={canOpenParts ? `Parts and renders, ${partsLabel}${renderCount ? `, ${renderCount} renders` : ""}` : partsLabel}
+                aria-label={
+                  canOpenParts
+                    ? `Parts and renders, ${buildHealthLabel}, ${revisionLabel}${renderCount ? `, ${renderCount} renders` : ""}`
+                    : `${buildHealthLabel}, ${revisionLabel}`
+                }
+                title={revisionLabel}
                 disabled={statusTone === "waiting" && !canOpenParts}
                 onClick={toggleParts}
               >
-                {partsLabel}
+                {buildHealthLabel}
+                <svg className="cad-status-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="m3 4.5 3 3 3-3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
             ) : (
-              <span className={`cad-status ${statusClass}`} aria-live="polite">
-                {partsLabel}
+              <span className={`cad-status ${buildHealthClass}`} title={revisionLabel} aria-live="polite">
+                {buildHealthLabel}
               </span>
             )}
 
@@ -886,6 +894,8 @@ function DesignWorkspace({ designId }: { designId: string }) {
               <ReloadIcon />
             </button>
           </div>
+
+          {partCount > 0 ? <ViewCube onView={(view) => sceneRef.current?.setView(view)} /> : null}
 
           {!serverParts && (
             <div className="pointer-events-none absolute inset-0 z-[1] flex items-start justify-center px-4 pt-28 sm:items-center sm:pt-0">
@@ -1110,8 +1120,8 @@ function DesignWorkspace({ designId }: { designId: string }) {
                             : `Freehand on face · max ${MAX_REGIONS}${regions.length >= MAX_REGIONS ? " (full)" : ""}`}
                     {hasAnnotations
                       ? interactionMode === "select" && hasSelectTarget
-                        ? " · Prompt sends selection"
-                        : " · Prompt sends all annotations"
+                        ? " · Send includes selection"
+                        : " · Send includes all annotations"
                       : ""}
                   </div>
                   <div className="cad-hud__actions">
@@ -1207,8 +1217,8 @@ function DesignWorkspace({ designId }: { designId: string }) {
                           ? "Clear regions"
                           : "Clear all"}
                     </button>
-                    <button type="button" className="cad-chip cad-chip--accent" onClick={promptClick}>
-                      {interactionMode === "select" && hasSelectTarget ? "Send selection" : "Prompt agent"}
+                    <button type="button" className="cad-chip cad-chip--accent" onClick={sendToAgent}>
+                      Send to Agent
                     </button>
                   </div>
                 </>
@@ -1216,14 +1226,14 @@ function DesignWorkspace({ designId }: { designId: string }) {
                 <>
                   <div className="cad-hud__primary text-center text-[var(--cad-overlay-muted)]">
                     {interactionMode === "select"
-                      ? "Tap a pin or region to select it"
+                      ? "Select a pin or region to reference it in Agent"
                       : interactionMode === "region"
                         ? regionTool === "face"
-                          ? "Tap a face to mark it"
+                          ? "Mark a face to reference geometry in Agent"
                           : regionTool === "rect"
-                            ? "Drag a rectangle on a planar face"
-                            : "Tap a face, then draw a closed area"
-                        : "Tap surfaces to place pins"}
+                            ? "Mark an area to reference geometry in Agent"
+                            : "Draw an area to reference geometry in Agent"
+                        : "Place a pin to reference geometry in Agent"}
                   </div>
                   <div className="cad-hud__hint text-center">
                     {interactionMode === "select"

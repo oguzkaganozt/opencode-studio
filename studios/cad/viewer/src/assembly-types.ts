@@ -96,9 +96,12 @@ export type LoadPart = {
   topoUrl?: string
 }
 
+export type CameraView = "iso" | "top" | "front" | "right"
+
 export type SceneHandle = {
   parts: Array<{ name: string; visible: boolean; origColor: number }>
   fitCamera: () => void
+  setView: (view: CameraView) => void
   resize: () => void
   setPartVisible: (index: number, visible: boolean) => void
   setInteractionMode: (mode: InteractionMode) => void

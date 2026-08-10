@@ -26,6 +26,7 @@ Shipped **v0.5.5**. IA update (OpenCode home replaces hub cards; no leave-shell 
 Re-polished **2026-07-29** (toolbar; status pill; empty recovery).  
 **Mobile fix 2026-07-29:** sheets outside `inert` (iPhone freeze); phone bottom sheets; lean toolbar.  
 **Face pick 2026-07-29:** forge multi-mesh GLB `face_N` + `topo/*.json`; viewer face highlight + pin; structured Prompt. Prior ship **v0.5.6**.
+**Inspection polish 2026-08-11:** explicitly unlocked and re-locked after removing the single-section CAD subnav, adding build-health chrome, bbox ground grid, accessible Top/Front/Right/ISO ViewCube, concise Send to Agent copy, and quieter chronological Agent tool rows. Verified with `bun run check`, browser smoke, and live `wall-light` desktop/Agent-open screenshots.
 
 ### PCB lock addendum (this pass)
 | Surface | Paths |
