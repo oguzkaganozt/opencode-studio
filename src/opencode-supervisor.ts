@@ -31,6 +31,8 @@ type OwnedState = {
 }
 
 const WATCH_MS = 5_000
+/** Alive child must miss this many health probes before a restart (false blip guard). */
+const HEALTH_MISS_BEFORE_RESTART = 2
 const MAX_RESTARTS = 5
 const RESTART_WINDOW_MS = 5 * 60_000
 
@@ -42,6 +44,7 @@ let watchdogTimer: ReturnType<typeof setInterval> | undefined
 let restartTimestamps: number[] = []
 let restartFlight: Promise<SuperviseResult> | undefined
 let supervisionGeneration = 0
+let healthMisses = 0
 
 export function superviseDisabled(env: NodeJS.ProcessEnv = process.env) {
   return envTruthy(env.OPENCODE_STUDIO_NO_SUPERVISE)
@@ -96,9 +99,26 @@ function clearWatchdog() {
   }
 }
 
+function childStillRunning(state: OwnedState | undefined): boolean {
+  return Boolean(state?.child && state.child.exitCode === null && !state.child.killed)
+}
+
 async function tickWatchdog() {
   if (!ownSupervision) return
-  if (owned && (await probeParentOpenCode(owned.baseUrl, watchEnv))) return
+  const state = owned
+  if (state && (await probeParentOpenCode(state.baseUrl, watchEnv))) {
+    healthMisses = 0
+    return
+  }
+  // Process gone → restart immediately. Flaky /global/health with a live child needs two misses.
+  if (childStillRunning(state)) {
+    healthMisses += 1
+    if (healthMisses < HEALTH_MISS_BEFORE_RESTART) {
+      console.error(`[opencode-studio] OpenCode health miss ${healthMisses}/${HEALTH_MISS_BEFORE_RESTART}; waiting…`)
+      return
+    }
+  }
+  healthMisses = 0
   console.error("[opencode-studio] OpenCode unhealthy or exited; restarting…")
   const result = await restartOpenCode(watchEnv)
   if (!result.ok) {
@@ -301,6 +321,7 @@ export async function resetOpenCodeSupervisorForTests() {
   ownSupervision = false
   supervisionGeneration += 1
   restartTimestamps = []
+  healthMisses = 0
   stopOpenCodeWatchdog()
   await killOwnedChild()
 }

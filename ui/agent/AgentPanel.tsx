@@ -74,6 +74,9 @@ import {
   type UsageMessage,
 } from "./session-usage"
 
+/** Cover supervised OpenCode restarts before wiping the agent panel. */
+const HEALTH_DOWN_GRACE_MS = 8_000
+
 function useMdUp() {
   const [mdUp, setMdUp] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true))
   useEffect(() => {
@@ -159,6 +162,13 @@ export function AgentPanel({
   const [sessionQuery, setSessionQuery] = useState("")
   const [modelQuery, setModelQuery] = useState("")
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /** Delay marking agent dead so brief OpenCode restarts do not wipe the thread. */
+  const healthDownTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const healthDownGeneration = useRef(0)
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
   const contextEpoch = useRef(0)
   const historyRequest = useRef(0)
   const catalogRequest = useRef(0)
@@ -305,12 +315,34 @@ export function AgentPanel({
 
   const refreshHealth = useCallback(async () => {
     if (!available) {
+      if (healthDownTimer.current) {
+        clearTimeout(healthDownTimer.current)
+        healthDownTimer.current = undefined
+      }
+      healthDownGeneration.current += 1
       setHealthOk(false)
       return
     }
     const health = await probeAgentHealth()
-    setHealthOk(health.ok)
+    if (health.ok) {
+      if (healthDownTimer.current) {
+        clearTimeout(healthDownTimer.current)
+        healthDownTimer.current = undefined
+      }
+      healthDownGeneration.current += 1
+      setHealthOk(true)
+      setHealthError(undefined)
+      return
+    }
     setHealthError(health.error)
+    // Keep UI live through short OpenCode restarts; only flip after grace.
+    if (healthDownTimer.current) return
+    const generation = ++healthDownGeneration.current
+    healthDownTimer.current = setTimeout(() => {
+      healthDownTimer.current = undefined
+      if (healthDownGeneration.current !== generation) return
+      setHealthOk(false)
+    }, HEALTH_DOWN_GRACE_MS)
   }, [available])
 
   const refreshSessions = useCallback(async () => {
@@ -463,9 +495,11 @@ export function AgentPanel({
 
   useEffect(() => {
     void refreshHealth()
-    const timer = setInterval(() => void refreshHealth(), 10_000)
+    // Faster while SSE is retrying so recovery lands before the health grace expires.
+    const ms = sseRetry ? 2_500 : 10_000
+    const timer = setInterval(() => void refreshHealth(), ms)
     return () => clearInterval(timer)
-  }, [refreshHealth])
+  }, [refreshHealth, sseRetry])
 
   const refreshSessionsRef = useRef(refreshSessions)
   refreshSessionsRef.current = refreshSessions
@@ -476,7 +510,9 @@ export function AgentPanel({
     void contextRevision
     if (!open || !healthOk) return
     const epoch = contextEpoch.current
-    setLoading(true)
+    // Cold start / context switch only — keep the thread painted on health recovery.
+    const cold = messagesRef.current.length === 0 && sessionsRef.current.length === 0
+    if (cold) setLoading(true)
     setError(undefined)
     // Call through refs so draft/session callback identity churn cannot re-trigger Loading.
     void Promise.all([refreshSessionsRef.current(), refreshCatalogRef.current()])
@@ -503,13 +539,22 @@ export function AgentPanel({
     })
   }, [contextRevision, healthOk, refreshRuntimeState])
 
+  const loadedSessionRef = useRef<string | undefined>(undefined)
   useEffect(() => {
     void contextRevision
-    if (!open || !sessionID || !healthOk) {
+    // Clear only when the panel/session identity changes — never on a health blip.
+    if (!open || !sessionID) {
+      loadedSessionRef.current = undefined
       setMessages([])
       setFiles([])
       return
     }
+    if (loadedSessionRef.current !== sessionID) {
+      loadedSessionRef.current = sessionID
+      setMessages([])
+      setFiles([])
+    }
+    if (!healthOk) return
     const epoch = contextEpoch.current
     void Promise.all([refreshMessages(sessionID), refreshDiff(sessionID)]).catch((err) =>
       epoch === contextEpoch.current ? setError(err instanceof Error ? err.message : String(err)) : undefined,
@@ -519,6 +564,7 @@ export function AgentPanel({
   useEffect(() => {
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
+      if (healthDownTimer.current) clearTimeout(healthDownTimer.current)
     }
   }, [])
 
@@ -1055,7 +1101,7 @@ export function AgentPanel({
           <div className="oc-thread-scroll">
             <div ref={listRef} className="oc-thread" onScroll={onThreadScroll}>
               <div className="oc-thread__inner">
-                {loading ? <p className="oc-thread__hint">Loading…</p> : null}
+                {loading && messages.length === 0 ? <p className="oc-thread__hint">Loading…</p> : null}
                 {!loading && messages.length === 0 ? (
                   <div className="oc-thread__welcome">
                     <h2>{sessionTitle === "New session" || !activeSession ? "New session" : sessionTitle}</h2>
@@ -1065,7 +1111,7 @@ export function AgentPanel({
                 {messages.map((message) => (
                   <MessageBubble key={message.info.id} message={message} />
                 ))}
-                {busy && !loading ? (
+                {busy && !(loading && messages.length === 0) ? (
                   <p className="oc-thread__hint oc-thread__hint--live" aria-live="polite">
                     Working…
                   </p>

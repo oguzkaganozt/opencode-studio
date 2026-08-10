@@ -3,11 +3,19 @@ import type { Part } from "@opencode-ai/sdk/v2/client"
 import { assistantBlocks, isToolsOnly } from "./agent-messages"
 
 function toolPart(id: string): Part {
-  return { id, type: "tool", tool: "bash", state: { status: "completed", input: { command: "ls" } } } as Part
+  return {
+    id,
+    type: "tool",
+    tool: "bash",
+    sessionID: "s",
+    messageID: "m",
+    callID: id,
+    state: { status: "completed", input: { command: "ls" } },
+  } as unknown as Part
 }
 
 function textPart(id: string, text: string): Part {
-  return { id, type: "text", text } as Part
+  return { id, type: "text", text, sessionID: "s", messageID: "m" } as unknown as Part
 }
 
 describe("assistantBlocks / isToolsOnly", () => {
