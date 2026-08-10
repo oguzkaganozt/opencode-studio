@@ -3,7 +3,7 @@ export function compactDirectoryLabel(directory: string, home?: string): string 
   const path = directory.trim().replace(/\/+$/, "") || directory.trim()
   if (!path) return directory
   const root = home?.trim().replace(/\/+$/, "") || ""
-  if (root && path === root) return "~"
+  if (root && path === root) return "Home"
   if (root && path.startsWith(`${root}/`)) {
     const rest = path.slice(root.length + 1)
     const parts = rest.split("/").filter(Boolean)

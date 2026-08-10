@@ -56,6 +56,7 @@ import {
   sessionDiff,
   subscribeAgentEvents,
 } from "./client"
+import { IconChevronDown } from "./icons"
 import { availableModelVariants } from "./model-variant"
 import { PermissionRequestBar } from "./permission-request"
 import { SessionHistoryPopover } from "./session-history-popover"
@@ -115,6 +116,7 @@ export function AgentPanel({
   const widthRef = useRef(readAgentWidth())
   const listRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
+  const [nearBottom, setNearBottom] = useState(true)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const mdUp = useMdUp()
   const [width, setWidth] = useState(() => readAgentWidth())
@@ -708,8 +710,26 @@ export function AgentPanel({
   const onThreadScroll = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 64
+    stickToBottom.current = atBottom
+    setNearBottom(atBottom)
   }, [])
+
+  const jumpToBottom = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    stickToBottom.current = true
+    setNearBottom(true)
+    el.scrollTop = el.scrollHeight
+  }, [])
+
+  const onRetryError = useCallback(() => {
+    setError(undefined)
+    void refreshHealth().then(() => {
+      void refreshRuntimeState().catch(() => {})
+      void refreshSessions().catch(() => {})
+    })
+  }, [refreshHealth, refreshRuntimeState, refreshSessions])
 
   const status = deriveAgentStatus({
     open,
@@ -766,6 +786,7 @@ export function AgentPanel({
     setError(undefined)
     setSending(true)
     stickToBottom.current = true
+    setNearBottom(true)
     let activeID = sessionID
     try {
       activeID = await ensureSession()
@@ -1031,39 +1052,57 @@ export function AgentPanel({
             </div>
           ) : null}
 
-          <div ref={listRef} className="oc-thread" onScroll={onThreadScroll}>
-            <div className="oc-thread__inner">
-              {loading ? <p className="oc-thread__hint">Loading…</p> : null}
-              {!loading && messages.length === 0 ? (
-                <div className="oc-thread__welcome">
-                  <h2>{sessionTitle === "New session" || !activeSession ? "New session" : sessionTitle}</h2>
-                  <p>Ask anything. Studio handoffs land in the composer below.</p>
-                </div>
-              ) : null}
-              {messages.map((message) => (
-                <MessageBubble key={message.info.id} message={message} />
-              ))}
+          <div className="oc-thread-scroll">
+            <div ref={listRef} className="oc-thread" onScroll={onThreadScroll}>
+              <div className="oc-thread__inner">
+                {loading ? <p className="oc-thread__hint">Loading…</p> : null}
+                {!loading && messages.length === 0 ? (
+                  <div className="oc-thread__welcome">
+                    <h2>{sessionTitle === "New session" || !activeSession ? "New session" : sessionTitle}</h2>
+                    <p>Ask anything. Studio handoffs land in the composer below.</p>
+                  </div>
+                ) : null}
+                {messages.map((message) => (
+                  <MessageBubble key={message.info.id} message={message} />
+                ))}
+                {busy && !loading ? (
+                  <p className="oc-thread__hint oc-thread__hint--live" aria-live="polite">
+                    Working…
+                  </p>
+                ) : null}
+              </div>
             </div>
+            {!nearBottom && messages.length > 0 ? (
+              <button type="button" className="oc-thread-jump" onClick={jumpToBottom}>
+                <IconChevronDown />
+                Latest
+              </button>
+            ) : null}
           </div>
 
           {permission ? <PermissionRequestBar permission={permission} onReply={(reply) => void onPermission(reply)} /> : null}
 
           {error ? (
             <div className="oc-error" role="alert">
-              {error}
+              <span className="oc-error__text">{error}</span>
+              <button type="button" className="oc-error__retry" onClick={onRetryError}>
+                Retry
+              </button>
             </div>
           ) : null}
 
           {!contextWritable ? (
             <div className="oc-error" role="status">
-              {activeContext.status === "checking"
-                ? "Resolving the active Studio context…"
-                : "This session's project directory is unavailable. The conversation is read-only."}
-              {fullPage && activeContext.key !== "home" ? (
-                <button type="button" className="ml-2 underline" onClick={() => transitionContext(homeContext)}>
-                  Return Home
-                </button>
-              ) : null}
+              <span className="oc-error__text">
+                {activeContext.status === "checking"
+                  ? "Resolving the active Studio context…"
+                  : "This session's project directory is unavailable. The conversation is read-only."}
+                {fullPage && activeContext.key !== "home" ? (
+                  <button type="button" className="ml-2 underline" onClick={() => transitionContext(homeContext)}>
+                    Return Home
+                  </button>
+                ) : null}
+              </span>
             </div>
           ) : null}
 

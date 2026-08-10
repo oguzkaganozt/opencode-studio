@@ -8,7 +8,8 @@ export function PermissionRequestBar({
   onReply: (response: "once" | "always" | "reject") => void
 }) {
   return (
-    <div className="oc-permission" role="alertdialog" aria-label="Permission request">
+    <div className="oc-permission" role="alertdialog" aria-label="Permission required">
+      <p className="oc-permission__kicker">Permission required</p>
       <p className="oc-permission__title">{permission.permission}</p>
       <p className="oc-permission__meta">{permission.patterns.join(", ") || "OpenCode requests permission to continue."}</p>
       <div className="oc-permission__actions">

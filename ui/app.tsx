@@ -56,16 +56,11 @@ function CloseIcon() {
   )
 }
 
-function SettingsIcon() {
+function StatusIcon() {
   return (
-    <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path
-        d="M7.65 2.75h2.7l.42 1.42c.3.13.58.29.85.48l1.43-.35 1.35 2.34-1.02 1.08a5 5 0 0 1 0 .96l1.02 1.08-1.35 2.34-1.43-.35c-.27.19-.55.35-.85.48l-.42 1.42h-2.7l-.42-1.42a5 5 0 0 1-.85-.48l-1.43.35-1.35-2.34 1.02-1.08a5 5 0 0 1 0-.96L3.6 6.64 4.95 4.3l1.43.35c.27-.19.55-.35.85-.48l.42-1.42Z"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinejoin="round"
-      />
-      <circle cx="9" cy="8.2" r="1.8" stroke="currentColor" strokeWidth="1.25" />
+    <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.25" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5.25 8.1 7.1 9.9 10.85 5.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -298,7 +293,7 @@ function TopBar({
           {actions}
           <ThemePreferenceControl compact />
           <Link to="/status" className="osc-icon-btn" aria-label="Status" aria-current={statusActive ? "page" : undefined} title="Status">
-            <SettingsIcon />
+            <StatusIcon />
           </Link>
         </div>
       </div>
@@ -330,7 +325,7 @@ function OpenCodeFrame() {
     <div className="oc-panel__chrome-actions">
       <ThemePreferenceControl compact />
       <Link to="/status" className="oc-icon-btn" aria-label="Status" aria-current={statusActive ? "page" : undefined} title="Status">
-        <SettingsIcon />
+        <StatusIcon />
       </Link>
     </div>
   )

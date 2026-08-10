@@ -1,4 +1,5 @@
 import type { Part } from "@opencode-ai/sdk/v2/client"
+import { useState } from "react"
 import { roleOf } from "./agent-types"
 import type { AgentMessage } from "./client"
 import { IconChevron, ToolIcon } from "./icons"
@@ -6,6 +7,9 @@ import { Markdown } from "./markdown"
 import { summarizePart, textFromParts, toolDetail, toolLabel, toolPreview, toolStatus } from "./part-text"
 
 export type AssistantBlock = { id: string; kind: "tools"; parts: Part[] } | { id: string; kind: "text"; text: string }
+
+const USER_CLAMP_CHARS = 480
+const USER_CLAMP_LINES = 12
 
 /** Chronological blocks: consecutive tool parts group into one quiet list, text parts render as markdown. */
 export function assistantBlocks(parts: Part[]): AssistantBlock[] {
@@ -32,11 +36,7 @@ export function MessageBubble({ message }: { message: AgentMessage }) {
   const role = roleOf(message.info)
   const text = textFromParts(message.parts)
   if (role === "user") {
-    return (
-      <div className="oc-msg oc-msg--user">
-        <div className="oc-msg__bubble">{text || "…"}</div>
-      </div>
-    )
+    return <UserBubble key={message.info.id} text={text || "…"} />
   }
   const blocks = assistantBlocks(message.parts)
   const summaries = message.parts.map(summarizePart).filter((summary): summary is string => Boolean(summary))
@@ -62,6 +62,25 @@ export function MessageBubble({ message }: { message: AgentMessage }) {
               </p>
             ))
           : null}
+      </div>
+    </div>
+  )
+}
+
+function UserBubble({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const longEnough = text.length > USER_CLAMP_CHARS || text.split("\n").length > USER_CLAMP_LINES
+  const clamped = longEnough && !expanded
+
+  return (
+    <div className="oc-msg oc-msg--user">
+      <div className="oc-msg__user-wrap">
+        <div className={`oc-msg__bubble${clamped ? " oc-msg__bubble--clamp" : ""}`}>{text}</div>
+        {longEnough ? (
+          <button type="button" className="oc-msg__expand" onClick={() => setExpanded((value) => !value)}>
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        ) : null}
       </div>
     </div>
   )

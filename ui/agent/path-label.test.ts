@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { compactDirectoryLabel } from "./path-label"
 
 describe("compactDirectoryLabel", () => {
-  test("collapses home to tilde", () => {
-    expect(compactDirectoryLabel("/home/oguz", "/home/oguz")).toBe("~")
+  test("collapses home to Home", () => {
+    expect(compactDirectoryLabel("/home/oguz", "/home/oguz")).toBe("Home")
   })
 
   test("keeps short paths under home", () => {
