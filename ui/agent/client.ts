@@ -4,6 +4,8 @@ import {
   type OpencodeClient,
   type Part,
   type PermissionRequest,
+  type QuestionAnswer,
+  type QuestionRequest,
   type Session,
   type SessionStatus,
   type SnapshotFileDiff,
@@ -128,6 +130,24 @@ export async function listSessionStatuses(directory?: string): Promise<Record<st
 
 export async function listPendingPermissions(directory?: string): Promise<PermissionRequest[]> {
   return (await sdk(directory, (client) => client.permission.list(directory ? { directory } : undefined))) ?? []
+}
+
+export async function listPendingQuestions(directory?: string): Promise<QuestionRequest[]> {
+  return (await sdk(directory, (client) => client.question.list(directory ? { directory } : undefined))) ?? []
+}
+
+export async function replyQuestion(input: { requestID: string; answers: QuestionAnswer[]; directory?: string }): Promise<void> {
+  await sdk(input.directory, (client) =>
+    client.question.reply({
+      requestID: input.requestID,
+      directory: input.directory,
+      answers: input.answers,
+    }),
+  )
+}
+
+export async function rejectQuestion(input: { requestID: string; directory?: string }): Promise<void> {
+  await sdk(input.directory, (client) => client.question.reject({ requestID: input.requestID, directory: input.directory }))
 }
 
 export type EventHandler = (event: { type: string; properties?: unknown }) => void

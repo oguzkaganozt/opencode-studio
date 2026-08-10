@@ -1,4 +1,4 @@
-import type { PermissionRequest, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
+import type { PermissionRequest, QuestionAnswer, QuestionRequest, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 import {
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -47,18 +47,22 @@ import {
   createSession,
   listMessages,
   listPendingPermissions,
+  listPendingQuestions,
   listProviders,
   listSessionHistory,
   listSessionStatuses,
   probeAgentHealth,
   promptSessionAsync,
+  rejectQuestion,
   replyPermission,
+  replyQuestion,
   sessionDiff,
   subscribeAgentEvents,
 } from "./client"
 import { IconChevronDown } from "./icons"
 import { availableModelVariants } from "./model-variant"
 import { PermissionRequestBar } from "./permission-request"
+import { QuestionRequestBar } from "./question-request"
 import { SessionHistoryPopover } from "./session-history-popover"
 import { sessionGroupsByLastMessage, sessionLabel, sessionOptionLabels } from "./session-label"
 import {
@@ -153,6 +157,7 @@ export function AgentPanel({
   const composersBySession = useRef(new Map<string, ComposerState>())
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>({})
   const [permissions, setPermissions] = useState<PermissionRequest[]>([])
+  const [questions, setQuestions] = useState<QuestionRequest[]>([])
   const [files, setFiles] = useState<SnapshotFileDiff[]>([])
   const [modelOptions, setModelOptions] = useState<ModelRef[]>([])
   const [model, setModel] = useState<ModelRef | undefined>()
@@ -186,6 +191,7 @@ export function AgentPanel({
   const busy =
     sending || Boolean(sessionID && (sessionStatuses[sessionID]?.type === "busy" || sessionStatuses[sessionID]?.type === "retry"))
   const permission = permissions.find((item) => item.sessionID === sessionID) ?? null
+  const question = questions.find((item) => item.sessionID === sessionID) ?? null
   const modelVariants = model?.variants ?? []
   const selectedVariant = model ? variantsByModel[modelKey(model)] : undefined
   const variant = selectedVariant && modelVariants.includes(selectedVariant) ? selectedVariant : undefined
@@ -469,17 +475,18 @@ export function AgentPanel({
     if (!healthOk || !directory || !contextWritable) return
     const epoch = contextEpoch.current
     const request = ++runtimeRequest.current
-    let result: [Record<string, SessionStatus>, PermissionRequest[]]
+    let result: [Record<string, SessionStatus>, PermissionRequest[], QuestionRequest[]]
     try {
-      result = await Promise.all([listSessionStatuses(directory), listPendingPermissions(directory)])
+      result = await Promise.all([listSessionStatuses(directory), listPendingPermissions(directory), listPendingQuestions(directory)])
     } catch (error) {
       if (epoch !== contextEpoch.current || request !== runtimeRequest.current) return
       throw error
     }
-    const [statuses, pending] = result
+    const [statuses, pendingPermissions, pendingQuestions] = result
     if (epoch !== contextEpoch.current || request !== runtimeRequest.current) return
     setSessionStatuses(statuses)
-    setPermissions(pending)
+    setPermissions(pendingPermissions)
+    setQuestions(pendingQuestions)
   }, [contextWritable, directory, healthOk])
 
   const scheduleMessageRefresh = useCallback(
@@ -596,17 +603,34 @@ export function AgentPanel({
         if (event.type === "studio.sse.retry") {
           return
         }
-        if (event.type === "permission.asked") {
+        if (event.type === "permission.asked" || event.type === "permission.v2.asked") {
           runtimeRequest.current += 1
           const next = event.properties as PermissionRequest
           setPermissions((current) => [...current.filter((item) => item.id !== next.id), next])
           return
         }
-        if (event.type === "permission.replied") {
+        if (event.type === "permission.replied" || event.type === "permission.v2.replied") {
           runtimeRequest.current += 1
           const props = event.properties as { requestID?: string; permissionID?: string }
           const id = props.requestID || props.permissionID
           if (id) setPermissions((current) => current.filter((item) => item.id !== id))
+          return
+        }
+        if (event.type === "question.asked" || event.type === "question.v2.asked") {
+          runtimeRequest.current += 1
+          const next = event.properties as QuestionRequest
+          setQuestions((current) => [...current.filter((item) => item.id !== next.id), next])
+          return
+        }
+        if (
+          event.type === "question.replied" ||
+          event.type === "question.rejected" ||
+          event.type === "question.v2.replied" ||
+          event.type === "question.v2.rejected"
+        ) {
+          runtimeRequest.current += 1
+          const props = event.properties as { requestID?: string }
+          if (props.requestID) setQuestions((current) => current.filter((item) => item.id !== props.requestID))
           return
         }
         if (event.type === "session.status") {
@@ -909,6 +933,28 @@ export function AgentPanel({
     }
   }
 
+  const onQuestionReply = async (answers: QuestionAnswer[]) => {
+    if (!question || !directory || !contextWritable) return
+    try {
+      await replyQuestion({ requestID: question.id, answers, directory })
+      runtimeRequest.current += 1
+      setQuestions((current) => current.filter((item) => item.id !== question.id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const onQuestionReject = async () => {
+    if (!question || !directory || !contextWritable) return
+    try {
+      await rejectQuestion({ requestID: question.id, directory })
+      runtimeRequest.current += 1
+      setQuestions((current) => current.filter((item) => item.id !== question.id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   const beginResize = (event: ReactPointerEvent<HTMLElement>) => {
     const target = event.currentTarget
     const startX = event.clientX
@@ -1126,6 +1172,14 @@ export function AgentPanel({
           </div>
 
           {permission ? <PermissionRequestBar permission={permission} onReply={(reply) => void onPermission(reply)} /> : null}
+          {question ? (
+            <QuestionRequestBar
+              key={question.id}
+              request={question}
+              onReply={(answers) => void onQuestionReply(answers)}
+              onReject={() => void onQuestionReject()}
+            />
+          ) : null}
 
           {error ? (
             <div className="oc-error" role="alert">
