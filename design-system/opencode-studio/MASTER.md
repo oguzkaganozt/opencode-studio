@@ -17,7 +17,7 @@
 
 | Token / choice | Value |
 | --- | --- |
-| UI font | Barlow (`--osc-font-ui`) |
+| UI font | Inter (`--osc-font-ui`) |
 | Mono | IBM Plex Mono (`--osc-font-mono`) |
 | Canvas | Dark `#0c0d10` / light `#f4f4f5` (`--osc-canvas-bg*`) |
 | Studio accents | CAD `#b45309` · PCB `#0e7490` · Files `#e11d48` |
@@ -60,10 +60,10 @@ Map to existing tokens — do not invent parallel palettes.
 | Nav / chrome title | 13–15px, medium–semibold | `--osc-text` |
 | Body / helper | 12–15px, regular, leading relaxed | `--osc-text-muted` |
 | Chrome control | 11–12px, medium | muted → text on hover |
-| Mono meta | 10–11px IBM Plex | faint (paths, version) |
+| Mono meta | 10–12px IBM Plex Mono | faint (paths, version) |
 | Badge | 10px mono uppercase | tone colors |
 
-No oversized “fashion” display type. No Inter swap.
+No oversized “fashion” display type.
 
 ---
 

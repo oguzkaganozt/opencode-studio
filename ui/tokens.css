@@ -7,7 +7,7 @@
  */
 
 :root {
-  --osc-font-ui: "Barlow", system-ui, sans-serif;
+  --osc-font-ui: "Inter", system-ui, sans-serif;
   --osc-font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --osc-radius-sm: 4px;
@@ -38,11 +38,11 @@ html:not([data-theme]) {
 
   --osc-bg: #f4f4f5;
   --osc-bg-elevated: #ffffff;
-  --osc-bg-subtle: #ececee;
-  --osc-surface: #e8e8eb;
-  --osc-surface-hover: #dedee3;
-  --osc-border: #e0e0e4;
-  --osc-border-strong: #c8c8d0;
+  --osc-bg-subtle: #e8e8eb;
+  --osc-surface: #dedee3;
+  --osc-surface-hover: #d2d2d8;
+  --osc-border: #d8d8de;
+  --osc-border-strong: #c0c0c8;
   --osc-text: #18181b;
   --osc-text-muted: #52525b;
   --osc-text-faint: #71717a;
@@ -73,12 +73,13 @@ html[data-theme="dark"] {
   color-scheme: dark;
 
   --osc-bg: #08080a;
-  --osc-bg-elevated: #151518;
-  --osc-bg-subtle: #0c0c0f;
-  --osc-surface: #1c1c20;
-  --osc-surface-hover: #27272c;
-  --osc-border: #2a2a30;
-  --osc-border-strong: #3f3f48;
+  /* One step up from page so answer cards / dock separate on near-black */
+  --osc-bg-elevated: #1a1a1f;
+  --osc-bg-subtle: #121216;
+  --osc-surface: #28282f;
+  --osc-surface-hover: #32323a;
+  --osc-border: #3a3a44;
+  --osc-border-strong: #52525c;
   --osc-text: #fafafa;
   --osc-text-muted: #a1a1aa;
   --osc-text-faint: #8b8b96;
