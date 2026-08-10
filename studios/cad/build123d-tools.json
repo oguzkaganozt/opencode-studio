@@ -1,0 +1,855 @@
+{
+  "package": "build123d-mcp@0.3.80",
+  "prefix": "build123d_",
+  "tools": [
+    {
+      "name": "execute",
+      "description": "Execute build123d Python code in the persistent session. Errors include automatic fix hints — read them before retrying. Use show(shape, name) to register named objects (name defaults to 'shape'); show() immediately prints volume and face count confirming the shape is non-empty. After any boolean operation (-, +, &) call measure() to confirm it succeeded (check topology.faces). named_face(shape, name) is a built-in helper: named_face(box, 'top') returns the highest-Z face, 'bottom'/'front'/'back'/'left'/'right' work similarly. find_edges(shape, geom='circle', radius=4.25, at_z=10.2, length=None, tol=0.05) filters edges for fillet/chamfer selection and prints what matched. Analysis primitives are callable INSIDE this execute() code and return real Python objects so you compose (filter, do arithmetic) instead of copying numbers out of a tool result: measure(shape) -> dict (measure(part)['volume']), clearance(a, b) -> dict, cross_sections(shape) -> list of {position,area}, find_holes(shape) -> hole records with .location (an (x,y,z) tuple), .diameter, .depth, … ([h for h in find_holes(part) if h.location[0] < 5]); find_bosses(shape) / find_bored_bosses(shape) / find_countersinks(shape) / find_hole_patterns(shape) return recogniser records too; align_check(a, b, axis='Z', mode='flush') -> dict (align_check(a,b)['delta'] is a float). For standalone MCP comparison calls, use compare(a='axle', b='frame', kind='fit'), compare(a='a', b='b', kind='align'), compare(a='before', b='after', kind='shape'), or compare(a='before', kind='snapshot'). shape defaults to the current shape, and measure/clearance/cross_sections stay bounded on large shapes. save_json(name, obj) writes structured analysis data (face inventories, hole tables) to a server scratch file and returns its path — use it instead of printing large results; open()/os stay blocked.",
+      "inputSchema": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": ["code"],
+        "title": "executeArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "render_view",
+      "description": "Render model. Auto-detects 3D vs 2D: solids use the VTK tessellation path; 2D shapes (Sketches, edge Compounds, dimensioned drawings) use the ezdxf+matplotlib raster path — review dimensioned drawings the same way as 3D parts. Renders confirm appearance, not geometry — verify booleans with measure() first. format: 'png' (raster, default), 'svg' (HLR line drawing, works without a display), 'dxf' (HLR projection as parseable polylines for downstream 2D CAD), or 'both' (PNG + SVG together). If the PNG path fails (headless host), falls back to SVG automatically. direction: top, front, side, iso. azimuth/elevation: camera rotation in degrees applied after the direction preset. objects: comma-separated names or name:color pairs e.g. 'u_frame:blue,roller:red' (default: all, auto-coloured). quality: standard, high. clip_plane: x, y, z to slice; clip_at: absolute world coordinate along that axis (default: each mesh's midpoint). save_to: optional file path; for format='both' writes <save_to>.png and <save_to>.svg. mode: 'auto' (default; no solids + flat in Z = 2D), or '2d'/'3d' to force a pipeline when auto-detection picks wrong (e.g. a Compound mixing a Sketch and a solid routes to 3D); the path used is reported as 'Rendered via <mode> pipeline.' colors: optional dict mapping object names and special layer keys (`_dims`, `_labels`) to colour names or '#aabbcc'; overrides name:color syntax and the default dimension colour (2D PNG/SVG only; ignored for 3D and DXF). label_objects: when true, each named object is labelled at its centroid in the PNG. highlights: optional list of entities to label, e.g. [{\"object\": \"bracket\", \"type\": \"edge\", \"index\": 5, \"label\": \"hinge_edge\"}]; type is 'face', 'edge', or 'vertex', index matches shape.faces()/edges()/vertices(); the object must be registered with show() and in the rendered set. Labels are PNG-only.",
+      "inputSchema": {
+        "properties": {
+          "direction": {
+            "default": "iso",
+            "title": "Direction",
+            "type": "string"
+          },
+          "objects": {
+            "default": "",
+            "title": "Objects",
+            "type": "string"
+          },
+          "quality": {
+            "default": "standard",
+            "title": "Quality",
+            "type": "string"
+          },
+          "clip_plane": {
+            "default": "",
+            "title": "Clip Plane",
+            "type": "string"
+          },
+          "clip_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Clip At"
+          },
+          "azimuth": {
+            "default": 0.0,
+            "title": "Azimuth",
+            "type": "number"
+          },
+          "elevation": {
+            "default": 0.0,
+            "title": "Elevation",
+            "type": "number"
+          },
+          "save_to": {
+            "default": "",
+            "title": "Save To",
+            "type": "string"
+          },
+          "format": {
+            "default": "png",
+            "title": "Format",
+            "type": "string"
+          },
+          "label_objects": {
+            "default": false,
+            "title": "Label Objects",
+            "type": "boolean"
+          },
+          "highlights": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Highlights"
+          },
+          "colors": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Colors"
+          },
+          "mode": {
+            "default": "auto",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "render_viewArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "measure",
+      "description": "Measure a shape and return a complete geometric summary: volume (mm³), surface area (mm²), topology (face/edge/vertex counts), bounding box with per-axis size and center, volumetric center of mass, 6-component inertia tensor (Ixx/Iyy/Izz/Ixy/Ixz/Iyz), and a face-type inventory classifying every face as Plane/Cylinder/Cone/Sphere/Torus/BSpline with area and type-specific params (e.g. cylinder diameter and axis); identical faces are collapsed with a count, non-analytic sliver faces folded into one summary line. Prefer measure over render_view for verifying geometry — numbers are unambiguous. topology is the fastest confirmation that a boolean operation succeeded: a failed cut leaves face/edge/vertex counts unchanged. object_name: named object from show() (default: current shape). density (g/cm³) or material preset (steel, stainless, aluminum/6061, brass, copper, titanium, abs, pla, petg, nylon) adds mass_g and scales inertia to true mass moments in g·mm².",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          },
+          "density": {
+            "default": 0.0,
+            "title": "Density",
+            "type": "number"
+          },
+          "material": {
+            "default": "",
+            "title": "Material",
+            "type": "string"
+          }
+        },
+        "title": "measureArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "validate",
+      "description": "Check whether a shape would pass a CAD validity gate before exporting it. Returns a PASS/FAIL verdict plus JSON (passes_gate, n_solids, volume, is_manifold, brep_valid, reasons). The gate mirrors what CAD scorers and downstream tools require: a well-formed (BRepCheck), watertight, manifold solid with non-zero volume. A FAIL means a STEP/STL export would be rejected outright (e.g. CADGenBench scores it zero) — common causes are a leftover 2D sketch or open shell as the current shape, an un-fused compound, or a degenerate boolean result. Run this immediately before export() on any part you intend to submit or hand off. object_name: named object from show() (default: current shape).",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          }
+        },
+        "title": "validateArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "locate_gate_defects",
+      "description": "Report WHERE a solid fails the validity gate, with 3D coordinates — so you can fix the exact edge/face instead of guessing. validate()/export() tell you WHAT is wrong (e.g. \"1 non-manifold edge\", \"BRepCheck failed\") but not where; call this when validate() FAILs to get a per-defect list: brep_invalid_face (face index + center + BRepCheck status, e.g. an unorientable BSpline), open_edge / nonmanifold_edge (B-rep edge midpoint + faces_incident), the mesh self-touches a CAD scorer rejects — mesh_nonmanifold_edge (edge midpoint) and mesh_nonmanifold_vertex (corner-to-corner touch point), mesh_untriangulated_face (a face that cannot tessellate at the base tolerance), mesh_refined_untriangulated_face (a face that only fails at a finer tolerance) — and mesh_vertex_deflection_defect (a tessellated edge endpoint that misses its own BREP vertex by more than the mesh deflection — a patched/healed face whose boundary is topologically closed but geometrically off-vertex; BRepCheck and even the open-edge count can both read clean, but a CAD scorer's own mesh sanity check still rejects it). Each defect includes a generic repair hint plus diagnostic_class / repair_family / next_step metadata; the top-level diagnosis block counts defect kinds and recommends the next verification path. An empty list means the part passes the structural checks. Bounded out-of-process (it mesh-checks), so a huge part returns a clean budget error rather than hanging. object_name: named object from show() (default: current shape).",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          }
+        },
+        "title": "locate_gate_defectsArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "design_audit",
+      "description": "Audit the current session program as a *design*, not just a shape: surface its named numeric parameters (Θ) and test how robust each is to editing. Parses the assembled program (see script()) for top-level numeric assignments (e.g. `plate_thickness = 5.0`), then rebuilds the program with each parameter nudged ±epsilon (default ±10%) in a hard-bounded subprocess (the live session is never mutated) and runs the validity gate on each result. Returns JSON: {parameters, baseline, audit:[{name, value, perturbations:[{delta_pct (realized), new_value, discrete_step?, rebuilt, passes_gate, volume_delta_pct, reasons?}], brittle}], summary:{robust, brittle, inconclusive, ...}, note}. A parameter is `brittle` if a small change fails to rebuild or drops below the validity gate — the thin-wall / coordinate-reasoning failure mode where a valid *shape* is not an editable *design* (Arko-T §6); a parameter reassigned at the top level is `inconclusive` (perturbation is overwritten), not counted as robust. If no named parameters are found, the program uses inline magic constants and the note advises hoisting them to a parameter block. Known limitation: only literal-valued top-level names are surfaced as Θ — a derived parameter (`radius = diameter / 2`) is not listed, though perturbing its upstream literal flows through. Bounded by a wall-clock budget and max_params (returns a partial report rather than risking a timeout). epsilon: relative nudge, 0<epsilon<1. max_params: cap on parameters audited.",
+      "inputSchema": {
+        "properties": {
+          "epsilon": {
+            "default": 0.1,
+            "title": "Epsilon",
+            "type": "number"
+          },
+          "max_params": {
+            "default": 8,
+            "title": "Max Params",
+            "type": "integer"
+          }
+        },
+        "title": "design_auditArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "analyze_printability",
+      "description": "Analyse a build123d shape for FDM printability using augura (BREP-exact analysis).\n\n    Checks: overhangs, manifold/watertight, tip-over risk, brim/raft need,\n    minimum vertical feature (→ max layer height), and thin walls. Optionally\n    checks bed-fit against a declared build volume.\n\n    Returns a plain-text summary followed by a JSON report with per-finding\n    detail (kind, severity, message, area/location where applicable).\n\n    object_name: named object from show() (default: current shape).\n    support_angle: faces shallower than this many degrees from horizontal need\n        support (default 45).\n    nozzle: nozzle diameter in mm for wall-thickness check (default 0.4).\n    min_perimeters: walls thinner than min_perimeters × nozzle are flagged\n        (default 2).\n    build_volume: optional build envelope as 'X Y Z' in mm, e.g. '256 256 256';\n        omit to skip the bed-fit check.\n    bed_tol: Z tolerance in mm for identifying bed-contact faces (default 0.001);\n        raise it for parts whose bottom faces sit slightly off Z=0.\n    min_feature: minimum vertical feature size in mm to flag (default 0.5).\n    ",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          },
+          "support_angle": {
+            "default": 45.0,
+            "title": "Support Angle",
+            "type": "number"
+          },
+          "nozzle": {
+            "default": 0.4,
+            "title": "Nozzle",
+            "type": "number"
+          },
+          "min_perimeters": {
+            "default": 2,
+            "title": "Min Perimeters",
+            "type": "integer"
+          },
+          "build_volume": {
+            "default": "",
+            "title": "Build Volume",
+            "type": "string"
+          },
+          "bed_tol": {
+            "default": 0.001,
+            "title": "Bed Tol",
+            "type": "number"
+          },
+          "min_feature": {
+            "default": 0.5,
+            "title": "Min Feature",
+            "type": "number"
+          }
+        },
+        "title": "analyze_printabilityArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "cross_sections",
+      "description": "Compute cross-sectional areas at evenly spaced planes along an axis. Returns a list of {position, area} pairs. axis: X, Y, or Z (default Z). num_slices: number of planes (default 10, minimum 2). Useful for detecting internal voids, wall-thickness variation, or verifying that a shape's cross-section profile matches a reference. object_name: named object from show() (default: current shape).",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          },
+          "axis": {
+            "default": "Z",
+            "title": "Axis",
+            "type": "string"
+          },
+          "num_slices": {
+            "default": 10,
+            "title": "Num Slices",
+            "type": "integer"
+          }
+        },
+        "title": "cross_sectionsArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "inspect_part",
+      "description": "Return one compact generation-checkpoint inventory: bbox, solid/topology counts, holes grouped by axis/diameter/depth/bottom, bosses grouped by axis/diameter/height, recognised patterns with member counts, and a cross-section area profile. expected is an optional JSON object derived from the drawing/spec; supported keys are bbox [x,y,z], solid_count, holes/bosses/patterns group lists, section_varying, and tolerance. Pattern groups can check type, diameter, pitch, direction, center, member_count, and member_diameter. A supplied feature category is an exact inventory: unexpected or ambiguously matched groups fail. With expectations, returns explicit PASS/FAIL plus mismatches. Without them, returns INVENTORY plus heuristic warnings for shallow partial cuts and nearly constant sections. Unsupported expectation keys are rejected; this tool contains no built-in fixture expectations.",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          },
+          "section_axis": {
+            "default": "Z",
+            "title": "Section Axis",
+            "type": "string"
+          },
+          "section_slices": {
+            "default": 7,
+            "title": "Section Slices",
+            "type": "integer"
+          },
+          "expected": {
+            "default": "",
+            "title": "Expected",
+            "type": "string"
+          }
+        },
+        "title": "inspect_partArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "export",
+      "description": "Export model. format: step, stl, dxf, svg, or comma-separated list e.g. 'step,stl' or 'dxf,svg'. 3D shapes (solids) export to step/stl; 2D shapes (Sketches and dimensioned drawings composed via build123d.drafting) export to dxf/svg. Mixing 2D and 3D formats for the same shape errors with a clear message. object_name: named object from show(), '*' to export all named shapes as a combined assembly (default: current shape). STEP exports carry the session names as labels — single-object exports use the object_name, '*' exports produce a Compound labelled 'assembly' with each child labelled by its show() name. Downstream CAD tools (FreeCAD, Fusion) will see the structured assembly with named bodies. Use dxf for engineering-drawing handoff to other CAD tools; svg for embedding in docs/wikis. The result echoes the exported shape's volume/bbox/face count (or bbox/edge count for 2D) as a final sanity check that the right, non-degenerate object was written.",
+      "inputSchema": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "format": {
+            "default": "step",
+            "title": "Format",
+            "type": "string"
+          },
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          }
+        },
+        "required": ["filename"],
+        "title": "exportArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "inspect_drawing",
+      "description": "Structured bbox and annotation report for a 2D drawing.\n\n    Two modes:\n\n    1. Session mode (default): inspects objects registered via annotate()/show().\n       Returns per-object bounding boxes, face/edge counts, annotation metadata\n       (label string, measured length, Leader tip/elbow), and structural lint.\n\n    2. SVG mode (svg_path set): parses an SVG file from disk and reports page\n       size, layer ids, text content + positions, and element counts. Decouples\n       inspection from the build-and-register ceremony — works on SVGs from any\n       source (CI artifacts, third-party exports, prior runs).\n\n    Use annotate(result, name) instead of show(result.shape, name) when building\n    with build123d_drafting so metadata is captured:\n\n        from build123d_drafting import Dimension, Draft\n        draft = Draft(font_size=2.5, decimal_precision=1)\n        w = Dimension((-20, -10, 0), (20, -10, 0), \"below\", 8, draft, label=\"40\")\n        annotate(w, \"width_dim\")\n\n    For vanilla build123d.ExtensionLine/DimensionLine, pass the label explicitly:\n\n        w = ExtensionLine(border=[...], offset=6, draft=draft, label=\"40\")\n        annotate(w, \"width_dim\", label=\"40\")\n\n    Args:\n        objects: comma-separated object names (default: all). Session mode only.\n        svg_path: path to an SVG file on disk. Switches to SVG mode.\n    ",
+      "inputSchema": {
+        "properties": {
+          "objects": {
+            "default": "",
+            "title": "Objects",
+            "type": "string"
+          },
+          "svg_path": {
+            "default": "",
+            "title": "Svg Path",
+            "type": "string"
+          }
+        },
+        "title": "inspect_drawingArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "view_axes",
+      "description": "Return the world→page axis mapping for a project_to_viewport call,\n    computed analytically (no projection performed). Use this BEFORE rendering\n    a projected view to confirm which world axis ends up on which page axis\n    and with what sign — catches bottom-view/side-view axis swaps before they\n    show up in the render.\n\n    Returns JSON like {\"world_X\": [\"page_X\", -1.0], \"world_Y\": [\"page_Y\", 1.0],\n    \"world_Z\": [\"depth\", 0.0]} — for a bottom-view origin (0,0,-100), world-X\n    flips to negative page-X.\n\n    Args:\n        viewport_origin: camera position, same arg as project_to_viewport.\n        viewport_up: up vector. Defaults to (0,1,0).\n        look_at: target point. Defaults to origin.\n    ",
+      "inputSchema": {
+        "properties": {
+          "viewport_origin": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Viewport Origin",
+            "type": "array"
+          },
+          "viewport_up": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Viewport Up"
+          },
+          "look_at": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Look At"
+          }
+        },
+        "required": ["viewport_origin"],
+        "title": "view_axesArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "lint_drawing",
+      "description": "Run structural drawing-quality checks and return JSON {violations: [...]}.\n\n    Session mode (default): reconstructs the session's annotations and delegates\n    to build123d-drafting-helpers (lint_drawing + find_interferences) — single\n    source of truth. Surfaces label-vs-measured divergence (axis swap), Leader\n    line through its own label, annotation/label overlap, a witness/extension\n    line piercing a neighbour's label, redundant collinear lines, and page-bounds\n    overshoot.\n\n    SVG mode (svg_path set): scans an SVG file for export-only pathologies — most\n    importantly native <text> elements (build123d renders glyph paths, so any\n    <text> won't DXF-export and won't scale with the model).\n\n    drawing_scale: when the geometry was scaled up before projecting — e.g. a\n    7.5 mm feature drawn at 5:1 via part.scale(5) — pass the same factor (5.0)\n    so the label-vs-measured check divides each measured path length by it\n    before comparing to the label. This lets labels carry the *real* dimension\n    while the geometry is drawn enlarged, instead of every dim tripping a false\n    axis-swap warning. Session mode only; defaults to 1.0 (no scaling).\n\n    view_shape_names: list of shape names (from show()) representing the placed\n    view outlines. Used to detect view_annotation_overlap (annotation bbox\n    overlaps a view outline) and view_overlap (two view outlines overlap).\n    Pass the visible-side placed compounds from each projection, e.g.\n    [\"front_placed\", \"side_placed\", \"plan_placed\", \"iso\"]. Session mode only.\n\n    Each violation is {severity, check, object, message}. Run this after major\n    drawing additions; running it BEFORE rendering catches the bug at the source.\n    ",
+      "inputSchema": {
+        "properties": {
+          "svg_path": {
+            "default": "",
+            "title": "Svg Path",
+            "type": "string"
+          },
+          "drawing_scale": {
+            "default": 1.0,
+            "title": "Drawing Scale",
+            "type": "number"
+          },
+          "view_shape_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "View Shape Names"
+          }
+        },
+        "title": "lint_drawingArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "render_drawing",
+      "description": "Rasterise an existing SVG file to PNG via resvg-py.\n\n    Complements render_view (which takes build123d shapes from the live\n    session) by accepting an SVG written outside the sandbox — typically by\n    a short Python script that does the ExportSVG call directly. The PNG is\n    returned inline so the LLM can see the drawing without you having to\n    open the file in another tool.\n\n    Args:\n        svg_path: path to an SVG file on disk.\n        width: output pixel width (default 1200); height set by SVG aspect ratio.\n        save_to: optional path to write the PNG. If empty, PNG bytes are\n            delivered inline only.\n    ",
+      "inputSchema": {
+        "properties": {
+          "svg_path": {
+            "title": "Svg Path",
+            "type": "string"
+          },
+          "width": {
+            "default": 1200,
+            "title": "Width",
+            "type": "integer"
+          },
+          "save_to": {
+            "default": "",
+            "title": "Save To",
+            "type": "string"
+          }
+        },
+        "required": ["svg_path"],
+        "title": "render_drawingArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "save_drawing_annotations",
+      "description": "Write a .dims.json sidecar file alongside an SVG with label metadata.\n\n    build123d renders Text as filled glyph paths, not <text> SVG elements, so\n    label strings are irrecoverable from a finished SVG. Call this tool after\n    completing a drawing (annotate all dims/leaders with annotate()) and before\n    or after exporting the SVG. The sidecar is read automatically by\n    inspect_drawing(svg_path=...) to restore annotation content.\n\n    Workflow:\n        1. Build your drawing with Dimension / Leader / annotate()\n        2. Export SVG:  execute(\"exporter.write('drawing.svg')\")\n        3. Save metadata: save_drawing_annotations(\"drawing.svg\")\n        4. Inspect later: inspect_drawing(svg_path=\"drawing.svg\")\n           → includes full annotations dict from the sidecar\n\n    Args:\n        svg_path: path to the SVG file (sidecar written as <svg_path>.dims.json).\n    ",
+      "inputSchema": {
+        "properties": {
+          "svg_path": {
+            "title": "Svg Path",
+            "type": "string"
+          }
+        },
+        "required": ["svg_path"],
+        "title": "save_drawing_annotationsArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "save_snapshot",
+      "description": "Save a named checkpoint of the current geometric state (current_shape and the show() object registry).\n    The Python variable namespace is NOT saved — only geometry. Call this before risky experiments so you can\n    restore known-good geometry without re-running all prior execute() calls.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": ["name"],
+        "title": "save_snapshotArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "restore_snapshot",
+      "description": "Restore geometric state from a previously saved snapshot (current_shape and the show() registry).\n    The Python variable namespace is NOT restored — execute() calls made after the snapshot are still in scope,\n    but current_shape and all show() objects revert to what they were at snapshot time.\n    Raises an error if the snapshot name does not exist.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": ["name"],
+        "title": "restore_snapshotArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "session_state",
+      "description": "Return a structured JSON snapshot of the current session: current_shape metrics, all named objects (replaces list_objects) with geometry stats, snapshot names, and a variables summary of the Python namespace (type + volume for shapes, type + length for collections, type + value for scalars). Use this to orient after a reset, restore, or multi-step build to confirm what geometry and variables are active.",
+      "inputSchema": {
+        "properties": {},
+        "title": "session_stateArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "health_check",
+      "description": "Verify that render and export dependencies are working. Tests PNG render (VTK), SVG render (build123d HLR), STEP export, and STL export with a trivial shape. Returns JSON with ok/error per capability. Run at session start if you suspect a missing dependency.",
+      "inputSchema": {
+        "properties": {},
+        "title": "health_checkArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "reset",
+      "description": "Clear the current session back to empty state, including all snapshots.",
+      "inputSchema": {
+        "properties": {},
+        "title": "resetArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "compare",
+      "description": "Unified comparison tool.\n\n    kind='shape' compares two named shapes from show(), a and b, by\n    volume/bbox/topology and localized surface deviation; b is required.\n\n    kind='fit' reports the spatial relationship between two named shapes, a and b:\n    clearance, apart/touching/containing/interpenetrating status, containment,\n    and overlap volumes; b is required.\n\n    kind='align' checks two named shapes, a and b, along one axis. axis: X, Y, or Z.\n    mode: flush (bbox extreme offset), center (centroid offset), or clearance\n    (nearest-face gap); b is required.\n\n    kind='snapshot' compares snapshot a against the current session state\n    or b as a second snapshot. format: 'text' or 'json'.\n    ",
+      "inputSchema": {
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "string"
+          },
+          "b": {
+            "default": "",
+            "title": "B",
+            "type": "string"
+          },
+          "kind": {
+            "default": "shape",
+            "title": "Kind",
+            "type": "string"
+          },
+          "axis": {
+            "default": "Z",
+            "title": "Axis",
+            "type": "string"
+          },
+          "mode": {
+            "default": "flush",
+            "title": "Mode",
+            "type": "string"
+          },
+          "format": {
+            "default": "text",
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": ["a"],
+        "title": "compareArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "find_holes",
+      "description": "Recognise drilled holes on a session object (defaults to current shape). Coaxial internal cylinders are grouped into one record per hole: drill + counterbore + spotface stacks, keyway-split bores, and bores interrupted by crossing holes all count once. Returns JSON: {count, holes: [{axis (drilling direction, unit vector), location (opening point), diameter, depth (bore top to deep end; drill-point cone excluded), bottom: through|flat|drill_point|unknown, cbore: {diameter, depth}|null, spotface: {diameter, depth}|null}]}. Countersinks read as openings (not steps); threads and non-cylindrical features are not recognised.",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          }
+        },
+        "title": "find_holesArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "find_hole_patterns",
+      "description": "Recognise hole patterns on a session object (defaults to current shape): ≥3 identical-spec holes equally spaced on a circle → bolt_circle (center, diameter/BCD), collinear at constant pitch → linear_array (pitch, direction). Returns JSON: {count, patterns: [{type, holes: [HoleFeature records], center/diameter | pitch/direction}]}. Each hole belongs to at most one pattern; make_drawing already annotates these automatically.",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          }
+        },
+        "title": "find_hole_patternsArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "find_bosses",
+      "description": "Recognise external cylindrical bosses on a session object (defaults to current shape), including a turned part's OD — filter on diameter against the part envelope for local bosses only. Returns JSON: {count, bosses: [{axis (base toward free end), location (free-end point), diameter, height}]}.",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          }
+        },
+        "title": "find_bossesArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "find_bored_bosses",
+      "description": "Find candidate bored bosses and report target-selection/edit evidence: bore opening location, axis into the part, outward axis, bore diameter/depth, planar cap faces at the opening, whether the cap is split across multiple faces, and construction advice. Use this before extending a square/rounded-square boss with a central bore; it is read-only and diagnostic, not proof of the requested target.",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          }
+        },
+        "title": "find_bored_bossesArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "find_countersinks",
+      "description": "Recognise countersinks (conical screw-head recesses) on a session object (defaults to current shape) — the feature find_holes reports only as a plain opening. A countersink is an internal cone flaring from a drilled bore out to a larger opening, coaxial with the drill; drill-point cones and external edge chamfers are excluded. Returns JSON: {count, countersinks: [{location (opening centre), axis (into the part), major_diameter (countersink Ø at the surface), drill_diameter, included_angle (deg, e.g. 82/90/100/120), depth}]}. object_name: named object from show() (default: current shape).",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          }
+        },
+        "title": "find_countersinksArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "resolve",
+      "description": "Evaluate a selector expression against a named object and return a geometry descriptor. selector is a Python expression suffix applied to the object, e.g. '.faces().filter_by(Axis.Z).last()'. If label is given, the descriptor is stored in session.geometry_refs[label] and appears in session_state(). Returns JSON: {label, ref, object, selector, type, area/length, center, normal (for Face)}. The ref field uses @cad[object#label] format.",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "title": "Object Name",
+            "type": "string"
+          },
+          "selector": {
+            "title": "Selector",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": ["object_name", "selector"],
+        "title": "resolveArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "script",
+      "description": "Return a single Python script assembled from all successfully executed code blocks in this session. Prepends 'from build123d import *' if not already present. If save_to is given, writes the script to that path and returns {script_path, blocks}; otherwise returns {script, blocks}. Useful for exporting a reproducible script after an interactive session.",
+      "inputSchema": {
+        "properties": {
+          "save_to": {
+            "default": "",
+            "title": "Save To",
+            "type": "string"
+          }
+        },
+        "title": "scriptArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "import_cad_file",
+      "description": "Import a STEP (.step/.stp), STL (.stl), or 3MF (.3mf) file as a named object in the session. path: absolute or relative path to the file. name: name to register the shape under (defaults to the filename stem). The shape becomes both the named object and the current_shape. A multi-object 3MF registers an aggregate under name plus each member as name_1, name_2, etc.; the result includes per-member topology summaries. After importing, use render_view() to visualise the shape, measure() for geometry queries, or compare(a='imported', b='model', kind='shape') to diff against a show() object. Note: STL imports produce a shell (volume=0) rather than a solid. 3MF commonly yields editable solids when its meshes are closed, but callers must check the returned solids and volume fields rather than assuming every mesh is valid. If you have both the original built shape and an imported copy in session.objects, render the imported one by name (e.g. objects='mypart') to avoid Z-fighting artifacts from two co-located shapes.",
+      "inputSchema": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": ["path"],
+        "title": "import_cad_fileArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "repair_hints",
+      "description": "Given an error message or validity-gate reason, return targeted fix suggestions for common build123d mistakes and gate failures: wrong Location syntax, missing .part, CadQuery idioms, blocked imports, degenerate boolean results, fillet edge selection, B-rep defects, mesh non-manifold/open-edge failures, and more. Pass the full error string from execute(), last_error(), validate(), or export().",
+      "inputSchema": {
+        "properties": {
+          "error_text": {
+            "title": "Error Text",
+            "type": "string"
+          }
+        },
+        "required": ["error_text"],
+        "title": "repair_hintsArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "repair_advice",
+      "description": "Return structured, field-proven repair/edit recipes for an agent to implement explicitly in execute(). Unlike repair_hints(), which gives short error-specific tips, this emits a sequenced plan with code-pattern names, acceptance checks, and stop conditions. Provide the full validate()/export()/last_error() text as error_text, the intended edit as goal, and any extra notes from locate_gate_defects()/compare(a='before', b='after', kind='shape') as context. The tool is read-only and does not mutate geometry.",
+      "inputSchema": {
+        "properties": {
+          "error_text": {
+            "default": "",
+            "title": "Error Text",
+            "type": "string"
+          },
+          "goal": {
+            "default": "",
+            "title": "Goal",
+            "type": "string"
+          },
+          "context": {
+            "default": "",
+            "title": "Context",
+            "type": "string"
+          }
+        },
+        "title": "repair_adviceArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "last_error",
+      "description": "Return details of the last failed execute() call: exception type, message, and (for runtime and syntax errors) line number and a 5-line excerpt around the failing line. Security errors include a message but no line/excerpt. Returns {\"error\": null} if the last execute() succeeded or no execute() has failed yet. Call this immediately after an execute() error to get the exact failing line — much faster than re-reading the submitted code.",
+      "inputSchema": {
+        "properties": {},
+        "title": "last_errorArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "version",
+      "description": "Return the installed versions of the build123d-mcp server, its key dependencies (build123d, build123d-drafting-helpers), and the companion packages importable inside execute() (bd_warehouse for threads/fasteners/gears/bearings, augura for printability analysis). Use this to confirm which server build is running — e.g. to check whether a feature or fix is present, or whether the client is talking to a stale install.",
+      "inputSchema": {
+        "properties": {},
+        "title": "versionArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "workflow_hints",
+      "description": "Return guidance on how to use these tools effectively. Call this at the start of a session or whenever unsure which tool to reach for.",
+      "inputSchema": {
+        "properties": {},
+        "title": "workflow_hintsArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "suggest_view_layout",
+      "description": "Auto-calculate safe VIEW_X / VIEW_Y positions for a multi-view engineering drawing.\n\n    Measures the named shape's bounding box and returns per-view page positions\n    (VIEW_X, VIEW_Y), look_at values, and camera/up vectors for a standard\n    third-angle layout:\n\n        [plan ]  [      ]\n        [front]  [ side ] [ iso ]\n                          [ title block (bottom-right) ]\n\n    Returns JSON with:\n      views: {name: {VIEW_X, VIEW_Y, half_w, half_h, look_at, camera, up}}\n      free_space: {name: {above/below: {x, y, h}, left/right: {x, y, w}}} — the\n        empty rectangle outside each view edge, bounded by neighbouring views,\n        the title block, and the margins; budget dimension tiers (n × tier\n        pitch must fit in h/w) before placing annotations\n      warnings: list of layout problems (out-of-bounds, title-block overlap)\n      suggestion: recommended page_w/page_h/scale if the layout does not fit\n\n    object_name: name from show() — use \"\" to measure the current shape\n    page_w/page_h: sheet size in mm (default A4 landscape 297×210)\n    scale: drawing scale factor (default 1.0; use 2.0 for 2:1)\n    views: subset of [\"front\",\"plan\",\"side\",\"iso\"] to place\n    title_block_w/h: reserved bottom-right area (default 150×30 mm)\n    margin: page margin in mm (default 10)\n    extents: [x, y, z] part sizes in mm — lays out from these numbers instead\n        of a session object (use when the part isn't loaded, e.g. import failed)\n    centroid: [x, y, z] look_at origin when using extents (default [0, 0, 0])\n\n    Accuracy: front/plan/side positions are exact for orthographic projection.\n    Iso position is approximate (75% of 3-D diagonal as half-extent) — verify\n    with render_view() and adjust manually if the iso overlaps a neighbour.\n    ",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          },
+          "page_w": {
+            "default": 297.0,
+            "title": "Page W",
+            "type": "number"
+          },
+          "page_h": {
+            "default": 210.0,
+            "title": "Page H",
+            "type": "number"
+          },
+          "scale": {
+            "default": 1.0,
+            "title": "Scale",
+            "type": "number"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Views"
+          },
+          "title_block_w": {
+            "default": 150.0,
+            "title": "Title Block W",
+            "type": "number"
+          },
+          "title_block_h": {
+            "default": 30.0,
+            "title": "Title Block H",
+            "type": "number"
+          },
+          "margin": {
+            "default": 10.0,
+            "title": "Margin",
+            "type": "number"
+          },
+          "extents": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Extents"
+          },
+          "centroid": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Centroid"
+          }
+        },
+        "title": "suggest_view_layoutArguments",
+        "type": "object"
+      }
+    }
+  ]
+}

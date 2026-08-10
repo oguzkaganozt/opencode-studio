@@ -118,7 +118,7 @@ try {
     postStatus.exited,
   ])
   if (postCode !== 0) throw new Error(`cli status after repair failed: ${postErr || postOut}`)
-  if (!postOut.includes("mcp-build123d") || !postOut.includes("skill:pcb")) {
+  if (!postOut.includes("cad-forge") || !postOut.includes("skill:pcb")) {
     throw new Error(`cli status after repair missing expected checks:\n${postOut}`)
   }
 

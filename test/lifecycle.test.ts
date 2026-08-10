@@ -37,12 +37,11 @@ describe("configureStudios", () => {
     expect(status.studios.every((s) => s.enabled)).toBe(true)
   })
 
-  test("status fails closed when plugins/MCP/skills are unwired", async () => {
+  test("status fails closed when plugins/skills are unwired", async () => {
     const ctx = await isolated()
     const status = await statusStudios(ctx)
     expect(status.ok).toBe(false)
     expect(status.checks.some((c) => c.id === "plugin-registration" && c.status === "fail")).toBe(true)
-    expect(status.checks.some((c) => c.id === "mcp-build123d" && c.status === "fail")).toBe(true)
     expect(status.checks.some((c) => c.id === "skill:cad" && c.status === "fail")).toBe(true)
     expect(status.checks.some((c) => c.id === "skill:media" && c.status === "fail")).toBe(true)
   })
@@ -66,12 +65,24 @@ describe("configureStudios", () => {
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-media/SKILL.md")).exists()).toBe(true)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
-    expect(openCode.plugin).toContain(pkgName)
+    expect(openCode.plugin).toContain(`file://${path.join(packageRoot, "dist/plugin.js")}`)
     expect(openCode.plugin.some((p: string) => String(p).includes("media-go.js"))).toBe(true)
     expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(false)
-    expect(openCode.mcp?.build123d).toBeTruthy()
+    expect(openCode.mcp?.build123d).toBeUndefined()
     expect(await Bun.file(path.join(ctx.workspace, "opencode.json")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.workspace, ".opencode/studio.json")).exists()).toBe(false)
+  })
+
+  test("preserves unrelated plugin paths containing opencode-studio", async () => {
+    const ctx = await isolated()
+    await mkdir(ctx.openCodeHome, { recursive: true })
+    const unrelated = "file:///opt/plugins/my-opencode-studio-helper.js"
+    await writeFile(path.join(ctx.openCodeHome, "opencode.json"), JSON.stringify({ plugin: [unrelated] }, null, 2))
+
+    await configureStudios({ ...ctx, validateOpenCode: false })
+
+    const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
+    expect(openCode.plugin).toContain(unrelated)
   })
 
   test("refuses user-modified skills", async () => {
@@ -155,9 +166,7 @@ describe("configureStudios", () => {
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-cad/SKILL.md")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-media/SKILL.md")).exists()).toBe(false)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
-    const pkgName = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")).name as string
-    expect(openCode.plugin ?? []).not.toContain(pkgName)
-    expect(openCode.plugin ?? []).not.toContain(`${pkgName}/media-go`)
+    expect((openCode.plugin ?? []).some((entry: string) => String(entry).includes("opencode-studio"))).toBe(false)
     expect(openCode.mcp?.build123d).toBeUndefined()
   })
 
@@ -169,7 +178,7 @@ describe("configureStudios", () => {
     })
     const result = await statusStudios(ctx)
     expect(result.packageVersion).toBeTruthy()
-    const managedIds = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "mcp-build123d"]
+    const managedIds = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "cad-forge"]
     expect(
       result.checks
         .map((check) => check.id)
@@ -179,9 +188,8 @@ describe("configureStudios", () => {
     expect(result.checks.some((c) => c.id === "skill:pcb" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "skill:cad" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "skill:media" && c.status === "pass")).toBe(true)
-    expect(result.checks.some((c) => c.id === "mcp-build123d" && c.status === "pass")).toBe(true)
-    expect(result.checks.some((c) => c.id === "plugin-registration" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "cad-forge")).toBe(true)
+    expect(result.checks.some((c) => c.id === "plugin-registration" && c.status === "pass")).toBe(true)
     expect(result.checks.some((c) => c.id === "engine:pcb:npm")).toBe(true)
     const hasDistMediaGo = await Bun.file(path.join(packageRoot, "dist/media-go.js")).exists()
     const mediaGo = result.checks.find((c) => c.id === "plugin-media-go")

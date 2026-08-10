@@ -151,23 +151,8 @@ export async function ensureForgeRuntimeDir(packageRoot: string) {
   return runtime
 }
 
-/** Pin for managed build123d MCP; `uv` path is resolved at configure time. */
-export const BUILD123D_MCP_PACKAGE = "build123d-mcp@0.3.80"
-export const BUILD123D_MCP_PYTHON = "3.12"
-export const BUILD123D_MCP_TIMEOUT_MS = 120_000
-/** mcp 2.x dropped FastMCP import path that build123d-mcp@0.3.80 still uses. */
-export const BUILD123D_MCP_WITH = "mcp>=1.2,<2"
-
-export function build123dMcpEntry(uvPath: string) {
-  return {
-    type: "local" as const,
-    command: [uvPath, "tool", "run", "--python", BUILD123D_MCP_PYTHON, "--with", BUILD123D_MCP_WITH, BUILD123D_MCP_PACKAGE],
-    timeout: BUILD123D_MCP_TIMEOUT_MS,
-    enabled: true as const,
-  }
-}
-
-export const MANAGED_MCP_KEY = "build123d"
+/** Legacy OpenCode mcp key scrubbed on configure/remove (session is plugin-native now). */
+export const LEGACY_MANAGED_MCP_KEY = "build123d"
 export const MANAGED_MARKER_NAME = ".opencode-studio-managed.json"
 /** Legacy filename under OpenCode plugins/ (repair now prefers package dist/media-go.js). */
 export const MANAGED_MEDIA_GO_PLUGIN_NAME = "media-go.js"

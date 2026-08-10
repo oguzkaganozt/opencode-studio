@@ -22,14 +22,14 @@ bun run dev:ui                                    # Vite :5173 (UI only)
 # Preferred: opencode-studio up  (supervises OpenCode + Studio host)
 ```
 
-CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` → `bun install --frozen-lockfile` → `bun run release:check`. Bun ≥ 1.3, Python 3.12 + uv for forge/MCP.
+CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` → `bun install --frozen-lockfile` → `bun run release:check`. Bun ≥ 1.3, Python 3.12 + uv for forge (batch build + interactive build123d session).
 
 ## Layout
 
 | Path | Owns |
 | --- | --- |
 | `src/` | CLI (`cli.ts`), plugin, host HTTP, config, lifecycle |
-| `src/core/` | Shared behaviors (engines, paths, security, plugin-compose, registry, MCP config, package meta) |
+| `src/core/` | Shared behaviors (engines, paths, security, plugin-compose, registry, OpenCode config, package meta) |
 | `src/platform/media/` | Always-on media tools, provider hooks, Files API, `media` skill |
 | `studios/<id>/` | Domain CAD/PCB: `studio.ts`, `plugin.ts`, `api.ts`, `tools.ts`, `skill/`, `viewer/`, `test/` |
 | `ui/` | Shared Viewer shell (`app.tsx`); Files explorer + lazy `@studios/<id>/viewer` |
@@ -47,10 +47,10 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
   - CAD → `$STUDIO_HOME/studio/designs` (projects at `studio/designs/<id>/`)
   - PCB → `$STUDIO_HOME/studio/circuits` (projects at `studio/circuits/<id>/`, catalog at `studio/circuits/catalog/parts/`)
   - `roots.<id>` must be **absolute** domain roots (directory that directly contains project ids). Platform media remains OpenCode-project-scoped.
-- Global install channel is **bun only** (`bun add -g @oguzkaganozt/opencode-studio`). npm registry is publish-only. **postinstall** on bun global runs `repair` once (soft): managed skills under `~/.config/opencode/skills/studio-<id>/` (`studio-cad`, `studio-pcb`, `studio-media`; marker `.opencode-studio-managed.json`), plugin + media-go **without version pins**, MCP `build123d`. Does **not** write into project directories. Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1` or `OPENCODE_STUDIO_SKIP_CONFIGURE=1`. `opencode-studio upgrade` → check npm → confirm (`-y` to skip) → stop serve+host → `bun add -g …@latest` → `repair` → start serve+host (bind/password from `OPENCODE_*` / `OPENCODE_STUDIO_*`). Restart env: caller env wins; missing keys filled from a snapshot of the previous stack (`ss` bind + `/proc/…/environ`).
+- Global install channel is **bun only** (`bun add -g @oguzkaganozt/opencode-studio`). npm registry is publish-only. **postinstall** on bun global runs `repair` once (soft): managed skills under `~/.config/opencode/skills/studio-<id>/` (`studio-cad`, `studio-pcb`, `studio-media`; marker `.opencode-studio-managed.json`), plugin + media-go as package-local `file://` entries. build123d session tools ship inside the CAD plugin (forge uv project; no OpenCode `mcp.build123d`). Does **not** write into project directories. Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1` or `OPENCODE_STUDIO_SKIP_CONFIGURE=1`. `opencode-studio upgrade` → check npm → confirm (`-y` to skip) → stop serve+host → `bun add -g …@latest` → `repair` → start serve+host (bind/password from `OPENCODE_*` / `OPENCODE_STUDIO_*`). Restart env: caller env wins; missing keys filled from a snapshot of the previous stack (`ss` bind + `/proc/…/environ`).
 - `opencode-studio repair` and `PUT /api/config` re-run the same install (loopback + CSRF). Restart **OpenCode** after install so plugins/skills load.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
-- Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` **uninstalls** managed plugins/skills/MCP from OpenCode home (not the npm package).
+- Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` **uninstalls** managed plugins/skills from OpenCode home (not the npm package); also scrubs legacy `mcp.build123d` if present.
 - **OpenCode runtime + Studio host:** preferred entry is `opencode-studio up` — attaches to a healthy OpenCode API or **spawns** `opencode serve` on loopback (auto-restart watchdog when spawned), then starts the Studio host (default port **4173**). Browser uses Studio only; native Agent panel (no iframe, no assistant-ui) talks to OpenCode via same-origin proxy. Optional OpenCode web UI: same origin `/` or `/opencode`. Status page: Repair + Restart agent (supervised only). `repair`/`remove` strip any legacy PATH wrapper. Legacy CLI: `ensure-host`. Opt out of spawn: `OPENCODE_STUDIO_NO_SUPERVISE=1` (+ `OPENCODE_URL`). Opt out of host: `OPENCODE_STUDIO_AUTOSTART=0`. Studio Home is **`$HOME`** (or `OPENCODE_STUDIO_WORKSPACE`); agent directory follows the open CAD/PCB project via `x-opencode-directory`. See `INTENT-AGENT-PANEL.md`.
 
 ## Hard rules

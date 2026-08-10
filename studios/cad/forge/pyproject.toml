@@ -1,11 +1,15 @@
 [project]
 name = "forge-cad"
 version = "0.1.0"
-description = "Deterministic build of parametric CAD designs"
+description = "Deterministic CAD build + interactive build123d session"
 requires-python = ">=3.12"
 dependencies = [
   "build123d==0.11.1",
   "trimesh==4.12.2",
+  # Interactive session (formerly OpenCode-managed MCP). Pin with forge lockfile.
+  "build123d-mcp==0.3.80",
+  # mcp 2.x dropped the FastMCP import path build123d-mcp@0.3.80 still uses.
+  "mcp>=1.9,<2",
 ]
 
 [project.scripts]

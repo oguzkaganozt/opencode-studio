@@ -23,28 +23,46 @@ async function isolated() {
   }
 }
 
-describe("CAD MCP management", () => {
-  test("installs managed build123d and remove uninstalls it", async () => {
+describe("legacy build123d MCP scrub", () => {
+  test("configure does not install mcp.build123d and scrubs legacy entry", async () => {
     const ctx = await isolated()
+    await mkdir(ctx.openCodeHome, { recursive: true })
+    await writeFile(
+      path.join(ctx.openCodeHome, "opencode.json"),
+      JSON.stringify(
+        {
+          mcp: {
+            build123d: {
+              type: "local",
+              command: ["uv", "tool", "run", "--python", "3.12", "build123d-mcp@0.3.80"],
+              enabled: true,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
     await configureStudios({ ...ctx, validateOpenCode: false })
     const config = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
-    expect(config.mcp.build123d.type).toBe("local")
-    expect(config.mcp.build123d.command.join(" ")).toContain("build123d-mcp@0.3.80")
-    expect(config.mcp.build123d.command.join(" ")).toContain("mcp>=1.2,<2")
-    expect(config.mcp.build123d.command[0]).toMatch(/uv/)
+    expect(config.mcp?.build123d).toBeUndefined()
 
     await removeStudios({ ...ctx, validateOpenCode: false })
     const removed = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     expect(removed.mcp?.build123d).toBeUndefined()
   })
 
-  test("refuses conflicting user MCP entry", async () => {
+  test("leaves unrelated user MCP entries alone", async () => {
     const ctx = await isolated()
     await mkdir(ctx.openCodeHome, { recursive: true })
     await writeFile(
       path.join(ctx.openCodeHome, "opencode.json"),
-      JSON.stringify({ mcp: { build123d: { type: "remote", url: "https://example.com" } } }, null, 2),
+      JSON.stringify({ mcp: { other: { type: "remote", url: "https://example.com" } } }, null, 2),
     )
-    await expect(configureStudios({ ...ctx, validateOpenCode: false })).rejects.toThrow(/Conflict: mcp/)
+    await configureStudios({ ...ctx, validateOpenCode: false })
+    const config = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
+    expect(config.mcp?.other).toEqual({ type: "remote", url: "https://example.com" })
+    expect(config.mcp?.build123d).toBeUndefined()
   })
 })

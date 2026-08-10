@@ -4,7 +4,7 @@ OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Fil
 
 **Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
-**CAD and PCB are always on.** Install wires OpenCode once (plugins, skills, CAD MCP). Media tools and the Files explorer are always on too.
+**CAD and PCB are always on.** Install wires OpenCode once (plugins + skills). build123d session tools ship inside the CAD plugin. Media tools and the Files explorer are always on too.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ command -v opencode-studio
 # Greenfield: postinstall is soft — always repair
 opencode-studio repair
 opencode-studio status --workspace /path/to/your/project
-# exit 0; plugin + media-go + MCP@0.3.80 + skills must pass
+# exit 0; plugin + media-go + skills + cad-forge must pass
 ```
 
 From a git checkout (before/without registry publish):
@@ -45,7 +45,7 @@ Domain engines ship in the package:
 ## Quick start
 
 ```bash
-# after repair (wires plugins/skills/MCP into OpenCode)
+# after repair (wires plugins/skills into OpenCode)
 opencode-studio up
 # → attaches or spawns OpenCode API, starts Studio host
 ```
@@ -90,7 +90,7 @@ Prefer SSH tunnel to loopback. If public: TLS at your reverse-proxy; enable WebS
 | File | Purpose |
 | --- | --- |
 | `~/.config/opencode-studio/studio.json` | Optional absolute `roots` only (domains always on) |
-| `~/.config/opencode/opencode.json` | Unversioned plugin registrations + managed `build123d` MCP |
+| `~/.config/opencode/opencode.json` | Package-local `file://` plugin registrations (no managed MCP) |
 | `~/.config/opencode/skills/studio-<id>/` | Managed skills (`studio-cad`, `studio-pcb`, `studio-media`) |
 
 ```json
@@ -114,7 +114,7 @@ $STUDIO_HOME/studio/
 
 ```bash
 opencode-studio status [--workspace <path>]     # health + version (exit 1 if broken)
-opencode-studio repair [--workspace <path>]     # reinstall plugins/skills/MCP
+opencode-studio repair [--workspace <path>]     # reinstall plugins/skills
 opencode-studio remove                          # uninstall managed OpenCode state
 opencode-studio upgrade [--check]               # bun add -g @latest
 opencode-studio --help | -v

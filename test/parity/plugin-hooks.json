@@ -1,5 +1,5 @@
 {
-  "cad": ["tool.definition", "event", "tool"],
+  "cad": ["tool"],
   "media-go": ["provider"],
   "pcb": ["tool"],
   "composition": {

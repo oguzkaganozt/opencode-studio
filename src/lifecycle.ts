@@ -21,17 +21,14 @@ import {
   type OpenCodeConfig,
   pluginBaseName,
   pluginEntries,
-  pluginEntryMatches,
   readOpenCodeConfig,
   resolveOpenCodeConfigPath,
 } from "./core/opencode-config"
 import {
-  BUILD123D_MCP_PACKAGE,
-  build123dMcpEntry,
   forgeRuntimeDir,
+  LEGACY_MANAGED_MCP_KEY,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
-  MANAGED_MCP_KEY,
   MANAGED_MEDIA_GO_PLUGIN_NAME,
   type PackageMeta,
   PLATFORM_MEDIA_SKILL_ID,
@@ -248,13 +245,22 @@ async function removeManagedSkill(target: SkillTarget, userPaths: UserPathOption
   }
 }
 
-function isManagedBuild123dEntry(value: unknown) {
+/** Former OpenCode-managed build123d MCP entry (uv tool run build123d-mcp@…). */
+function isLegacyBuild123dMcpEntry(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false
   const entry = value as Record<string, unknown>
   if (entry.type !== "local") return false
   if (!Array.isArray(entry.command)) return false
-  const command = entry.command.map(String)
-  return command.some((part) => part.includes("build123d-mcp") || part.includes(BUILD123D_MCP_PACKAGE.split("@")[0]!))
+  return entry.command.map(String).some((part) => part.includes("build123d-mcp"))
+}
+
+function scrubLegacyBuild123dMcp(config: OpenCodeConfig): OpenCodeConfig {
+  const mcp = mcpEntries(config)
+  const existing = mcp[LEGACY_MANAGED_MCP_KEY]
+  if (!existing) return config
+  if (!isLegacyBuild123dMcpEntry(existing)) return config
+  delete mcp[LEGACY_MANAGED_MCP_KEY]
+  return withMcp(config, Object.keys(mcp).length > 0 ? mcp : undefined)
 }
 
 function isManagedPackagePluginBase(base: string | null, metaName: string): boolean {
@@ -263,12 +269,39 @@ function isManagedPackagePluginBase(base: string | null, metaName: string): bool
   return base === metaName || base.startsWith(`${metaName}/`)
 }
 
-function stripManagedPlugins(entries: unknown[], meta: PackageMeta): unknown[] {
+function pluginEntrySpecifier(entry: unknown): string | null {
+  if (typeof entry === "string") return entry
+  if (Array.isArray(entry) && typeof entry[0] === "string") return entry[0]
+  return null
+}
+
+function isManagedMainPluginEntry(entry: unknown, meta: PackageMeta, packageRoot: string): boolean {
+  const specifier = pluginEntrySpecifier(entry)
+  if (!specifier) return false
+  if (isManagedPackagePluginBase(pluginBaseName(entry), meta.name)) return true
+  if (specifier === mainPluginEntry(packageRoot)) return true
+  if (!specifier.startsWith("file://")) return false
+  try {
+    const file = fileURLToPath(specifier)
+    const packageDirectory = path.basename(path.dirname(path.dirname(file)))
+    const managedDirectories = [meta.name, ...LEGACY_PACKAGE_NAMES].map((name) => name.split("/").at(-1))
+    return (
+      path.basename(file) === "plugin.js" && path.basename(path.dirname(file)) === "dist" && managedDirectories.includes(packageDirectory)
+    )
+  } catch {
+    return false
+  }
+}
+
+function stripManagedPlugins(entries: unknown[], meta: PackageMeta, packageRoot: string): unknown[] {
   return entries.filter((entry) => {
     if (isManagedMediaGoPluginEntry(entry)) return false
-    if (String(entry).includes("opencode-studio")) return false
-    return !isManagedPackagePluginBase(pluginBaseName(entry), meta.name)
+    return !isManagedMainPluginEntry(entry, meta, packageRoot)
   })
+}
+
+function mainPluginEntry(packageRoot: string) {
+  return pathToFileURL(path.join(packageRoot, "dist", "plugin.js")).href
 }
 
 async function skillDoctorCheck(input: {
@@ -372,16 +405,6 @@ function mediaGoEntryFilePath(entry: unknown): string | null {
   return null
 }
 
-function build123dMcpPackagePin(entry: unknown): string | null {
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null
-  const command = (entry as { command?: unknown }).command
-  if (!Array.isArray(command)) return null
-  for (const part of command.map(String)) {
-    if (part.startsWith("build123d-mcp@") || part === "build123d-mcp") return part.includes("@") ? part : "build123d-mcp"
-  }
-  return null
-}
-
 async function mediaGoLoadable(entry: unknown): Promise<{ ok: boolean; detail: string }> {
   const filePath = mediaGoEntryFilePath(entry)
   if (!filePath) return { ok: false, detail: "media-go entry is not a file:// path" }
@@ -456,13 +479,9 @@ async function scrubProjectLocalManagedState(input: {
   const projectConfigPath = await resolveProjectOpenCodeConfigPath(input.domainRoot)
   if (projectConfigPath) {
     const openCode = await readOpenCodeConfig(projectConfigPath)
-    const plugins = pluginEntries(openCode).filter((entry) => !isManagedPackagePluginBase(pluginBaseName(entry), input.meta.name))
+    const plugins = stripManagedPlugins(pluginEntries(openCode), input.meta, input.packageRoot)
     let working = withPlugins(openCode, plugins)
-    const mcp = mcpEntries(working)
-    if (mcp[MANAGED_MCP_KEY] && isManagedBuild123dEntry(mcp[MANAGED_MCP_KEY])) {
-      delete mcp[MANAGED_MCP_KEY]
-      working = withMcp(working, Object.keys(mcp).length > 0 ? mcp : undefined)
-    }
+    working = scrubLegacyBuild123dMcp(working)
     // If the file is only $schema, delete it entirely (project no longer needs a pin).
     const remainingKeys = Object.keys(working.value).filter((k) => {
       if (k === "$schema") return false
@@ -495,8 +514,8 @@ async function scrubProjectLocalManagedState(input: {
 }
 
 /**
- * Install OpenCode plugins, all domain skills, platform media skill, and CAD MCP.
- * Domains (cad/pcb) are always on — no enable list.
+ * Install OpenCode plugins, all domain skills, and platform media skill.
+ * Domains (cad/pcb) are always on — no enable list. build123d session tools ship in the CAD plugin.
  */
 export async function configureStudios(
   input: {
@@ -544,22 +563,16 @@ export async function configureStudios(
 
   // OpenCode 1.18: npm subpath is not a server entry — file:// into package dist/media-go.js.
   const mediaGoFile = await resolveMediaGoPluginEntry(packageRoot, userPaths, Boolean(input.dryRun))
-  plugins = stripManagedPlugins(plugins, meta)
-  plugins.push(meta.pluginSpecifier)
+  plugins = stripManagedPlugins(plugins, meta, packageRoot)
+  const pluginFile = mainPluginEntry(packageRoot)
+  plugins.push(pluginFile)
   plugins.push(mediaGoFile)
 
   let working = withPlugins(openCode, plugins)
-
-  const mcp = mcpEntries(working)
-  const existingMcp = mcp[MANAGED_MCP_KEY]
-  if (existingMcp && !isManagedBuild123dEntry(existingMcp)) {
-    throw new Error(`Conflict: mcp.${MANAGED_MCP_KEY} exists and is not the managed build123d-mcp entry`)
-  }
-  // Absolute uv path: OpenCode serve often lacks ~/.local/bin on PATH.
-  const uv = input.dryRun ? resolveEngine("uv") : await ensureUv()
-  mcp[MANAGED_MCP_KEY] = build123dMcpEntry(uv?.path ?? "uv")
-  working = withMcp(working, mcp)
+  // Drop legacy OpenCode-managed build123d MCP; tools are plugin-native via forge uv project.
+  working = scrubLegacyBuild123dMcp(working)
   const nextText = working.text
+  const uv = input.dryRun ? resolveEngine("uv") : await ensureUv()
 
   if (input.dryRun) {
     return {
@@ -567,7 +580,7 @@ export async function configureStudios(
       dryRun: true,
       workspace: domainRoot,
       enabled,
-      plugin: meta.pluginSpecifier,
+      plugin: pluginFile,
       uv: uv?.path ?? null,
       restartRequired: true,
     }
@@ -657,7 +670,7 @@ export async function configureStudios(
       enabled,
       installed,
       removed: [] as string[],
-      plugin: meta.pluginSpecifier,
+      plugin: pluginFile,
       configPath: written.configPath,
       openCodeConfigPath: configPath,
       skillsHome: resolveOpenCodeSkillsHome(userPaths),
@@ -667,8 +680,8 @@ export async function configureStudios(
       restartOpenCode: true,
       restartHost: false,
       message: wrapperRemoved
-        ? `Installed plugins/skills/MCP. Removed legacy PATH wrapper at ${wrapperRemoved}. Prefer: opencode-studio up. Restart OpenCode.`
-        : "Installed plugins, CAD/PCB skills, media skill, and build123d MCP (user-global). Prefer: opencode-studio up. Restart OpenCode to load tools.",
+        ? `Installed plugins/skills. Removed legacy PATH wrapper at ${wrapperRemoved}. Prefer: opencode-studio up. Restart OpenCode.`
+        : "Installed plugins, CAD/PCB skills, and media skill (user-global). Prefer: opencode-studio up. Restart OpenCode to load tools.",
     }
   } catch (error) {
     for (const rollback of rollbacks.reverse()) {
@@ -679,8 +692,8 @@ export async function configureStudios(
 }
 
 /**
- * Uninstall managed OpenCode state (domain skills, media skill, managed MCP, package plugins).
- * CAD/PCB remain always-on in code once the package is registered again via repair.
+ * Uninstall managed OpenCode state (domain skills, media skill, package plugins).
+ * Also scrubs legacy build123d MCP entries. CAD/PCB remain always-on in code once re-registered.
  */
 export async function removeStudios(input: LifecyclePaths & { validateOpenCode?: boolean } = {}) {
   assertNotRoot("remove")
@@ -704,19 +717,10 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
 
   const configPath = await resolveOpenCodeConfigPath(userPaths)
   const openCode = await readOpenCodeConfig(configPath)
-  const plugins = stripManagedPlugins([...pluginEntries(openCode)], meta)
+  const plugins = stripManagedPlugins([...pluginEntries(openCode)], meta, packageRoot)
 
   let working = withPlugins(openCode, plugins)
-
-  const mcp = mcpEntries(working)
-  const existingMcp = mcp[MANAGED_MCP_KEY]
-  if (existingMcp) {
-    if (!isManagedBuild123dEntry(existingMcp)) {
-      throw new Error(`Conflict: mcp.${MANAGED_MCP_KEY} exists and is not the managed build123d-mcp entry`)
-    }
-    delete mcp[MANAGED_MCP_KEY]
-  }
-  working = withMcp(working, mcp)
+  working = scrubLegacyBuild123dMcp(working)
   const nextText = working.text
 
   await removeManagedMediaGoPluginFile(userPaths)
@@ -775,8 +779,8 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     restartOpenCode: true,
     restartHost: false,
     message: wrapperRemoved
-      ? `Removed managed plugins, skills, MCP, and legacy PATH wrapper (${wrapperRemoved}). Restart OpenCode. Run repair to reinstall.`
-      : "Removed managed plugins, skills, and build123d MCP. Restart OpenCode. Run repair to reinstall.",
+      ? `Removed managed plugins, skills, and legacy PATH wrapper (${wrapperRemoved}). Restart OpenCode. Run repair to reinstall.`
+      : "Removed managed plugins and skills. Restart OpenCode. Run repair to reinstall.",
   }
 }
 
@@ -904,13 +908,13 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     const projectOpenCode = await resolveProjectOpenCodeConfigPath(domainRoot)
     if (projectOpenCode) {
       const openCode = await readOpenCodeConfig(projectOpenCode)
-      const hasPlugin = pluginEntries(openCode).some((entry) => isManagedPackagePluginBase(pluginBaseName(entry), meta.name))
-      const hasMcp = isManagedBuild123dEntry(mcpEntries(openCode)[MANAGED_MCP_KEY])
-      if (hasPlugin || hasMcp) {
+      const hasPlugin = pluginEntries(openCode).some((entry) => isManagedMainPluginEntry(entry, meta, packageRoot))
+      const hasLegacyMcp = isLegacyBuild123dMcpEntry(mcpEntries(openCode)[LEGACY_MANAGED_MCP_KEY])
+      if (hasPlugin || hasLegacyMcp) {
         checks.push({
           id: "legacy-project-opencode",
           status: "warn",
-          message: `Project OpenCode config still pins studio plugin/MCP: ${projectOpenCode}`,
+          message: `Project OpenCode config still pins studio plugin/legacy MCP: ${projectOpenCode}`,
           repair: "Run opencode-studio repair to scrub managed entries, or edit the file",
         })
       }
@@ -927,12 +931,13 @@ export async function statusStudios(input: LifecyclePaths = {}) {
   try {
     const openCode = await readOpenCodeConfig(openCodePath)
     const entries = pluginEntries(openCode)
-    const registered = entries.some((entry) => pluginEntryMatches(entry, meta.name) || pluginEntryMatches(entry, meta.pluginSpecifier))
+    const expectedPlugin = mainPluginEntry(packageRoot)
+    const registered = entries.some((entry) => String(entry) === expectedPlugin)
     const mediaGoEntry = entries.find((entry) => isManagedMediaGoPluginEntry(entry))
     checks.push({
       id: "plugin-registration",
       status: registered ? "pass" : "fail",
-      message: registered ? `Plugin registered in ${openCodePath}` : `Plugin not registered in ${openCodePath}`,
+      message: registered ? `Plugin loadable (${expectedPlugin})` : `Plugin not registered as ${expectedPlugin}`,
       repair: registered ? undefined : "Run opencode-studio repair",
     })
     if (!mediaGoEntry) {
@@ -951,32 +956,13 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         repair: loadable.ok ? undefined : "Run bun run build && opencode-studio repair (needs dist/media-go.js)",
       })
     }
-    const mcpEntry = mcpEntries(openCode)[MANAGED_MCP_KEY]
-    const hasMcp = isManagedBuild123dEntry(mcpEntry)
-    const mcpCommand = hasMcp && mcpEntry && typeof mcpEntry === "object" ? (mcpEntry as { command?: unknown }).command : null
-    const mcpUv = Array.isArray(mcpCommand) ? String(mcpCommand[0] ?? "") : ""
-    const mcpUvOk = mcpUv.length > 0 && (mcpUv.includes("/") || mcpUv === "uv")
-    const mcpPin = hasMcp ? build123dMcpPackagePin(mcpEntry) : null
-    const mcpPinOk = mcpPin === BUILD123D_MCP_PACKAGE
-    if (!hasMcp) {
+    const legacyMcp = mcpEntries(openCode)[LEGACY_MANAGED_MCP_KEY]
+    if (isLegacyBuild123dMcpEntry(legacyMcp)) {
       checks.push({
-        id: "mcp-build123d",
-        status: "fail",
-        message: `build123d MCP not registered in ${openCodePath}`,
-        repair: "Run opencode-studio repair",
-      })
-    } else if (!mcpPinOk) {
-      checks.push({
-        id: "mcp-build123d",
-        status: "fail",
-        message: `build123d MCP pin mismatch (have ${mcpPin ?? "unknown"}, want ${BUILD123D_MCP_PACKAGE})`,
-        repair: "Run opencode-studio repair",
-      })
-    } else {
-      checks.push({
-        id: "mcp-build123d",
-        status: "pass",
-        message: `build123d MCP ${BUILD123D_MCP_PACKAGE} (${mcpUvOk && mcpUv.includes("/") ? "absolute uv" : "uv"}) in ${openCodePath}`,
+        id: "legacy-mcp-build123d",
+        status: "warn",
+        message: `Legacy OpenCode mcp.build123d entry still present in ${openCodePath}`,
+        repair: "Run opencode-studio repair to scrub (build123d tools are plugin-native now)",
       })
     }
   } catch (error) {
@@ -990,12 +976,6 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       id: "plugin-media-go",
       status: "fail",
       message: `Could not verify media-go: ${message}`,
-      repair: "Run opencode-studio repair",
-    })
-    checks.push({
-      id: "mcp-build123d",
-      status: "fail",
-      message: `Could not verify build123d MCP: ${message}`,
       repair: "Run opencode-studio repair",
     })
   }

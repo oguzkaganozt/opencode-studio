@@ -28,7 +28,7 @@ type LifecycleStatusResponse = {
   checks: DoctorCheck[]
 }
 
-const MANAGED_IDS = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "mcp-build123d"] as const
+const MANAGED_IDS = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "cad-forge"] as const
 
 function toneOf(status: "pass" | "warn" | "fail" | undefined): "pass" | "warn" | "fail" | undefined {
   return status

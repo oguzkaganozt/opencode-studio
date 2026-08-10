@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Global install postinstall (never fails the install):
- * 1) repair — OpenCode plugins, skills, build123d MCP
+ * 1) repair — OpenCode plugins + skills
  * 2) shell completion — static scripts under ~/.config/opencode-studio/
  *
  * Skip all: OPENCODE_STUDIO_SKIP_POSTINSTALL=1

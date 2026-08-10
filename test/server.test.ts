@@ -72,13 +72,13 @@ describe("host server", () => {
     expect(body.csrfRequired).toBe(true)
   })
 
-  test("live status exposes every managed plugin, skill, and MCP check", async () => {
+  test("live status exposes every managed plugin and skill check", async () => {
     const ctx = await isolatedHost()
     const { app } = await hostApp(ctx)
     const response = await app.request("http://127.0.0.1:4173/api/status", { headers: { host: "127.0.0.1:4173" } })
     expect(response.status).toBe(200)
     const body = await response.json()
-    const expected = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "mcp-build123d"]
+    const expected = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "cad-forge"]
     expect(
       body.checks
         .map((check: { id: string }) => check.id)

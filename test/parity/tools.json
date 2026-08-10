@@ -127,7 +127,259 @@
     },
     "media_download": {
       "studio": "platform"
+    },
+    "build123d_execute": {
+      "studio": "cad",
+      "args": {
+        "code": "string"
+      }
+    },
+    "build123d_render_view": {
+      "studio": "cad",
+      "args": {
+        "direction": "string",
+        "objects": "string",
+        "quality": "string",
+        "clip_plane": "string",
+        "clip_at": "number",
+        "azimuth": "number",
+        "elevation": "number",
+        "save_to": "string",
+        "format": "string",
+        "label_objects": "boolean",
+        "highlights": "array",
+        "colors": "object",
+        "mode": "string"
+      }
+    },
+    "build123d_measure": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string",
+        "density": "number",
+        "material": "string"
+      }
+    },
+    "build123d_validate": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string"
+      }
+    },
+    "build123d_locate_gate_defects": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string"
+      }
+    },
+    "build123d_design_audit": {
+      "studio": "cad",
+      "args": {
+        "epsilon": "number",
+        "max_params": "integer"
+      }
+    },
+    "build123d_analyze_printability": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string",
+        "support_angle": "number",
+        "nozzle": "number",
+        "min_perimeters": "integer",
+        "build_volume": "string",
+        "bed_tol": "number",
+        "min_feature": "number"
+      }
+    },
+    "build123d_cross_sections": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string",
+        "axis": "string",
+        "num_slices": "integer"
+      }
+    },
+    "build123d_inspect_part": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string",
+        "section_axis": "string",
+        "section_slices": "integer",
+        "expected": "string"
+      }
+    },
+    "build123d_export": {
+      "studio": "cad",
+      "args": {
+        "filename": "string",
+        "format": "string",
+        "object_name": "string"
+      }
+    },
+    "build123d_inspect_drawing": {
+      "studio": "cad",
+      "args": {
+        "objects": "string",
+        "svg_path": "string"
+      }
+    },
+    "build123d_view_axes": {
+      "studio": "cad",
+      "args": {
+        "viewport_origin": "array",
+        "viewport_up": "array",
+        "look_at": "array"
+      }
+    },
+    "build123d_lint_drawing": {
+      "studio": "cad",
+      "args": {
+        "svg_path": "string",
+        "drawing_scale": "number",
+        "view_shape_names": "array"
+      }
+    },
+    "build123d_render_drawing": {
+      "studio": "cad",
+      "args": {
+        "svg_path": "string",
+        "width": "integer",
+        "save_to": "string"
+      }
+    },
+    "build123d_save_drawing_annotations": {
+      "studio": "cad",
+      "args": {
+        "svg_path": "string"
+      }
+    },
+    "build123d_save_snapshot": {
+      "studio": "cad",
+      "args": {
+        "name": "string"
+      }
+    },
+    "build123d_restore_snapshot": {
+      "studio": "cad",
+      "args": {
+        "name": "string"
+      }
+    },
+    "build123d_session_state": {
+      "studio": "cad",
+      "args": {}
+    },
+    "build123d_health_check": {
+      "studio": "cad",
+      "args": {}
+    },
+    "build123d_reset": {
+      "studio": "cad",
+      "args": {}
+    },
+    "build123d_compare": {
+      "studio": "cad",
+      "args": {
+        "a": "string",
+        "b": "string",
+        "kind": "string",
+        "axis": "string",
+        "mode": "string",
+        "format": "string"
+      }
+    },
+    "build123d_find_holes": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string"
+      }
+    },
+    "build123d_find_hole_patterns": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string"
+      }
+    },
+    "build123d_find_bosses": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string"
+      }
+    },
+    "build123d_find_bored_bosses": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string"
+      }
+    },
+    "build123d_find_countersinks": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string"
+      }
+    },
+    "build123d_resolve": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string",
+        "selector": "string",
+        "label": "string"
+      }
+    },
+    "build123d_script": {
+      "studio": "cad",
+      "args": {
+        "save_to": "string"
+      }
+    },
+    "build123d_import_cad_file": {
+      "studio": "cad",
+      "args": {
+        "path": "string",
+        "name": "string"
+      }
+    },
+    "build123d_repair_hints": {
+      "studio": "cad",
+      "args": {
+        "error_text": "string"
+      }
+    },
+    "build123d_repair_advice": {
+      "studio": "cad",
+      "args": {
+        "error_text": "string",
+        "goal": "string",
+        "context": "string"
+      }
+    },
+    "build123d_last_error": {
+      "studio": "cad",
+      "args": {}
+    },
+    "build123d_version": {
+      "studio": "cad",
+      "args": {}
+    },
+    "build123d_workflow_hints": {
+      "studio": "cad",
+      "args": {}
+    },
+    "build123d_suggest_view_layout": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string",
+        "page_w": "number",
+        "page_h": "number",
+        "scale": "number",
+        "views": "array",
+        "title_block_w": "number",
+        "title_block_h": "number",
+        "margin": "number",
+        "extents": "array",
+        "centroid": "array"
+      }
     }
   },
-  "count": 36
+  "count": 71
 }

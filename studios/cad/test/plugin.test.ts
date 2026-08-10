@@ -95,9 +95,13 @@ describe("cad plugin smoke", () => {
       forgeProjectDir: studio.forgeDir,
       companionUrl: "http://127.0.0.1:4173",
     })
-    expect(Object.keys(hooks.tool ?? {}).sort()).toEqual(
+    const names = Object.keys(hooks.tool ?? {}).sort()
+    expect(names.filter((name) => name.startsWith("design_"))).toEqual(
       ["design_build", "design_create", "design_list", "design_qc_report", "design_read", "design_view"].sort(),
     )
+    expect(names.filter((name) => name.startsWith("build123d_")).length).toBeGreaterThan(20)
+    expect(names).toContain("build123d_execute")
+    expect(names).toContain("build123d_measure")
     const created = await (hooks.tool as any).design_create.execute(
       { id: "test-design", parts: [{ id: "body" }] },
       { ...fakeContext, ask: async () => {} },

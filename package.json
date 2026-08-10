@@ -22,6 +22,7 @@
     "studios/cad/forge/pyproject.toml",
     "studios/cad/forge/uv.lock",
     "studios/cad/forge/.python-version",
+    "studios/cad/build123d-tools.json",
     "studios/cad/skill/SKILL.md",
     "studios/pcb/skill/SKILL.md",
     "src/platform/media/skill/SKILL.md",

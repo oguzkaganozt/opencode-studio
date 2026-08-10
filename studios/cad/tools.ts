@@ -3,6 +3,7 @@ import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import manifest from "../../package.json" with { type: "json" }
 import { formatToolJson } from "../../src/core/format-tool-json"
+import { createBuild123dTools } from "./build123d-tools"
 import { buildDesign, defaultForgeRunner, type ForgeRunner, scaffoldDesign } from "./forge"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "./library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
@@ -11,17 +12,6 @@ import { buildDesignQcReport, type QcAxisStatus } from "./qc-report"
 const PACKAGE_NAME = `${manifest.name}@${manifest.version}`
 const MAX_TOOL_OUTPUT_BYTES = 60_000
 const COMPANION_HEALTH_TIMEOUT_MS = 1_000
-
-const BUILD123D_TOOL_GUIDANCE: Record<string, string> = {
-  build123d_execute:
-    "The execute Python namespace and the show()/import named-object registry are separate: only variables created by successful execute calls persist as Python variables. Do not assume imported names, objects, or current_shape exist inside execute().",
-  build123d_import_cad_file:
-    "The imported name is registered for named-object MCP tools but is not bound as a Python variable inside build123d_execute().",
-  build123d_compare:
-    'For kind="fit", clearance is the global minimum between complete shapes. An intended stop, detent, or other contact can therefore return clearance 0; this does not verify a nominal gap at a specific interface. Check staged poses for moving assemblies. Rigid overlap at a staged pose quantifies collision, not elastic accommodation, insertion force, or retention force.',
-  build123d_analyze_printability:
-    "The current world orientation is treated as the print orientation. Reorient the final source-built shape into its actual bed pose before analysis, and rerun this check after every geometry change.",
-}
 
 type Options = {
   studioRoot: string
@@ -70,13 +60,13 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
     const config = options(rawOptions, context.directory)
     const layout = await initializeStudio(config.studioRoot)
     const forgeRunner = dependencies.forgeRunner ?? defaultForgeRunner
+    const build123dTools = createBuild123dTools({
+      forgeProjectDir: config.forgeProjectDir,
+      cwd: context.directory,
+    })
     return {
-      "tool.definition": async ({ toolID }, output) => {
-        const guidance = BUILD123D_TOOL_GUIDANCE[toolID]
-        if (guidance && !output.description.includes(guidance)) output.description = `${output.description} ${guidance}`
-      },
-
       tool: {
+        ...build123dTools,
         design_list: tool({
           description:
             "List CAD designs discovered under the CAD domain root (default studio/designs/). Each entry reports id, build status, and part count.",
@@ -264,7 +254,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         design_qc_report: tool({
           description:
-            "Multi-axis CAD QC report. Artifact status is computed from design_build outputs; printability, fit, and form statuses are supplied from prior build123d_* checks (default unverified). complete is true only when every axis is pass. Never claim design complete without this report.",
+            "Multi-axis CAD QC report. Artifact status is computed from design_build outputs; printability, fit, and form statuses are supplied from prior build123d_* session checks (default unverified). complete is true only when every axis is pass. Never claim design complete without this report.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
             printability: tool.schema

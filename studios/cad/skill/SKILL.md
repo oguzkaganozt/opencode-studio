@@ -79,26 +79,26 @@ The presence of a BSpline face, a high face count, or one flattering render is n
 
 ## Tools Available
 
-### build123d-mcp (CAD sculpting - interactive session)
+### build123d session (CAD sculpting - interactive)
 
-OpenCode exposes the installed `build123d` MCP server under the `build123d_` prefix (confirm with `build123d_version()` if needed). Use the exact tool names and arguments below. Call `build123d_workflow_hints()` when unsure; do not invent a standalone MCP tool from an in-session Python helper.
+The CAD plugin exposes interactive build123d tools under the `build123d_` prefix (confirm with `build123d_version()` if needed). They run from the same forge uv project as `design_build` — no separate OpenCode MCP config. Use the exact tool names and arguments below. Call `build123d_workflow_hints()` when unsure; do not invent a standalone tool from an in-session Python helper.
 
-Treat this skill as the default workflow. Do not load `build123d://skill/modeling` or `build123d://quickref` unless `build123d_workflow_hints()` cannot resolve a concrete blocker; never read a resource already present in the conversation.
+Treat this skill as the default workflow.
 
 - `build123d_execute(code)` - run build123d code in a persistent Python namespace. Use `show(object, "name")` to register named objects. The Python namespace and named-object registry are separate: only variables created by successful execute calls persist as Python variables. Never assume imported names, `objects`, or `current_shape` exist inside `execute`.
 - `build123d_session_state()` - inspect current session objects, variables, and snapshots.
-- `build123d_import_cad_file(path, name)` - import STEP/STL into the named-object registry. The name works with standalone MCP tools but is not bound as a Python variable inside `build123d_execute`.
+- `build123d_import_cad_file(path, name)` - import STEP/STL into the named-object registry. The name works with standalone build123d tools but is not bound as a Python variable inside `build123d_execute`.
 - `build123d_measure(object_name)` - volume, area, bounding box, topology, and center of mass.
 - `build123d_validate(object_name)` - validity gate: BRepCheck, watertight, manifold, and non-zero volume.
 - `build123d_render_view(direction, save_to, objects)` - render named objects. Directions are `iso`, `front`, `side`, and `top`. Save PNGs under `studio/designs/<design-id>/renders/<part-id>-<view>.png` (domain root + id) so the companion viewer can display them. Do not use `studio-media` / `media_*` for these evidence renders.
-- `build123d_compare(a, b, kind, axis, mode)` - the standalone comparison tool. Use `kind="fit"` for clearance/interpenetration, `kind="align"` for alignment, `kind="shape"` for geometry deltas, and `kind="snapshot"` for snapshot deltas. Fit clearance is the global minimum between complete shapes; an intended stop or detent can make it zero without proving a nominal gap at a target interface.
+- `build123d_compare(a, b, kind, axis, mode)` - comparison tool. Use `kind="fit"` for clearance/interpenetration, `kind="align"` for alignment, `kind="shape"` for geometry deltas, and `kind="snapshot"` for snapshot deltas. Fit clearance is the global minimum between complete shapes; an intended stop or detent can make it zero without proving a nominal gap at a target interface.
 - `build123d_analyze_printability(object_name, ...)` - FDM overhang, wall thickness, manifold, stability, and bed-fit checks. It treats the object's current world orientation as its print orientation.
 - `build123d_resolve(object_name, selector, label)` - create a geometry reference: `@cad[part#label]`.
 - `build123d_save_snapshot(name)` / `build123d_restore_snapshot(name)` - checkpoint/rollback for safe experimentation.
 - `build123d_find_holes`, `build123d_find_bosses`, `build123d_find_bored_bosses`, `build123d_find_countersinks`, `build123d_find_hole_patterns` - feature recognition.
 - `build123d_last_error()` / `build123d_repair_hints(error_text)` / `build123d_locate_gate_defects(object_name)` - debugging.
 
-Inside `build123d_execute`, composable Python helpers such as `clearance(a, b)`, `align_check(a, b)`, and `measure(shape)` return Python objects. They are not standalone MCP tools. For ordinary Phase 2 checks, prefer `build123d_compare`.
+Inside `build123d_execute`, composable Python helpers such as `clearance(a, b)`, `align_check(a, b)`, and `measure(shape)` return Python objects. They are not standalone tools. For ordinary Phase 2 checks, prefer `build123d_compare`.
 
 ### opencode-studio plugin (design orchestration)
 
@@ -213,7 +213,7 @@ Before saying `complete`:
 - If retention is not a product requirement, static fit may be `pass` with finding `retention not required`.
 - If any printability finding or other check remains failed or unresolved, do not say `complete`, `implemented`, or `fabricated`; say `Build succeeded, verification failed.` and list it.
 
-Call `design_read(id)` for metrics, then **must** call `design_qc_report(id, { printability, fit, form })` with statuses from your prior MCP checks. Do not invent pass axes. Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete.
+Call `design_read(id)` for metrics, then **must** call `design_qc_report(id, { printability, fit, form })` with statuses from your prior build123d session checks. Do not invent pass axes. Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete.
 
 Report to the user:
 

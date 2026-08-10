@@ -81,7 +81,7 @@ Options:
 `,
     repair: `opencode-studio repair [options]
 
-Reinstall OpenCode plugins, CAD/PCB + media skills, and build123d MCP.
+Reinstall OpenCode plugins and CAD/PCB + media skills.
 Also runs on global bun install. Use after remove, drift, or skipped postinstall.
 
 Options:
@@ -92,7 +92,7 @@ Options:
 `,
     remove: `opencode-studio remove [options]
 
-Uninstall managed plugins, skills, and build123d MCP from OpenCode home.
+Uninstall managed plugins and skills from OpenCode home (also scrubs legacy build123d MCP).
 Does not uninstall the global package (bun remove -g @oguzkaganozt/opencode-studio).
 
 Options:
