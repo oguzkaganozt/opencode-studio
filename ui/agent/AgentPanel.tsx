@@ -59,6 +59,18 @@ import { availableModelVariants } from "./model-variant"
 import { PermissionRequestBar } from "./permission-request"
 import { SessionHistoryPopover } from "./session-history-popover"
 import { sessionGroupsByLastMessage, sessionLabel, sessionOptionLabels } from "./session-label"
+import {
+  appendMessageSample,
+  appendStreamSample,
+  estimateStreamTokens,
+  finalOutputTps,
+  formatUsageLine,
+  liveTpsValue,
+  pruneStreamSamples,
+  type StreamSample,
+  sessionUsageTotals,
+  type UsageMessage,
+} from "./session-usage"
 
 function useMdUp() {
   const [mdUp, setMdUp] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true))
@@ -148,6 +160,10 @@ export function AgentPanel({
   const pendingHandoff = useRef<AgentHandoffRequest | undefined>(undefined)
   const sessionIDRef = useRef(sessionID)
   const openRef = useRef(open)
+  const [streamSamples, setStreamSamples] = useState<StreamSample[]>([])
+  const [messageSamples, setMessageSamples] = useState<Record<string, StreamSample[]>>({})
+  const activeMessageCharsRef = useRef<{ messageID: string; chars: number } | undefined>(undefined)
+  const [usageClock, setUsageClock] = useState(() => Date.now())
   const busy =
     sending || Boolean(sessionID && (sessionStatuses[sessionID]?.type === "busy" || sessionStatuses[sessionID]?.type === "retry"))
   const permission = permissions.find((item) => item.sessionID === sessionID) ?? null
@@ -157,8 +173,10 @@ export function AgentPanel({
 
   const saveComposer = useCallback(() => {
     if (!directory) return
-    composersBySession.current.set(composerKey(activeContext.key, directory, sessionID), { draft, chips })
-  }, [activeContext.key, chips, directory, draft, sessionID])
+    // Read draft/chips from ref so keystrokes do not rebuild this callback
+    // (and the refreshSessions → setLoading chain that depends on it).
+    composersBySession.current.set(composerKey(activeContext.key, directory, sessionID), composerStateRef.current)
+  }, [activeContext.key, directory, sessionID])
 
   const applyHandoff = useCallback((handoff: AgentHandoffRequest) => {
     setChips(handoffChips(handoff))
@@ -213,6 +231,9 @@ export function AgentPanel({
     setPopover(null)
     setSessionQuery("")
     setError(undefined)
+    setStreamSamples([])
+    setMessageSamples({})
+    activeMessageCharsRef.current = undefined
 
     const target = pendingSession.current?.directory === directory ? pendingSession.current : undefined
     pendingSession.current = undefined
@@ -437,26 +458,32 @@ export function AgentPanel({
     return () => clearInterval(timer)
   }, [refreshHealth])
 
+  const refreshSessionsRef = useRef(refreshSessions)
+  refreshSessionsRef.current = refreshSessions
+  const refreshCatalogRef = useRef(refreshCatalog)
+  refreshCatalogRef.current = refreshCatalog
+
   useEffect(() => {
     void contextRevision
     if (!open || !healthOk) return
     const epoch = contextEpoch.current
     setLoading(true)
     setError(undefined)
-    void Promise.all([refreshSessions(), refreshCatalog()])
+    // Call through refs so draft/session callback identity churn cannot re-trigger Loading.
+    void Promise.all([refreshSessionsRef.current(), refreshCatalogRef.current()])
       .catch((err) => {
         if (epoch === contextEpoch.current) setError(err instanceof Error ? err.message : String(err))
       })
       .finally(() => {
         if (epoch === contextEpoch.current) setLoading(false)
       })
-  }, [contextRevision, open, healthOk, refreshSessions, refreshCatalog])
+  }, [contextRevision, open, healthOk])
 
   useEffect(() => {
     if (!open || !healthOk) return
-    const timer = setInterval(() => void refreshSessions().catch(() => {}), 10_000)
+    const timer = setInterval(() => void refreshSessionsRef.current().catch(() => {}), 10_000)
     return () => clearInterval(timer)
-  }, [healthOk, open, refreshSessions])
+  }, [healthOk, open])
 
   useEffect(() => {
     void contextRevision
@@ -485,6 +512,25 @@ export function AgentPanel({
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!busy) return
+    setUsageClock(Date.now())
+    const timer = setInterval(() => {
+      const now = Date.now()
+      setUsageClock(now)
+      setStreamSamples((samples) => pruneStreamSamples(samples, now))
+    }, 1_000)
+    return () => clearInterval(timer)
+  }, [busy])
+
+  useEffect(() => {
+    // Reset TPS samples whenever the active session identity changes.
+    void sessionID
+    setStreamSamples([])
+    setMessageSamples({})
+    activeMessageCharsRef.current = undefined
+  }, [sessionID])
 
   useEffect(() => {
     if (!healthOk || !directory || !contextWritable) return
@@ -518,8 +564,10 @@ export function AgentPanel({
           runtimeRequest.current += 1
           const props = event.properties as { sessionID?: string }
           if (props.sessionID) setSessionStatuses((current) => ({ ...current, [props.sessionID!]: { type: "idle" } }))
-          if (props.sessionID && props.sessionID === activeSessionID && openRef.current) {
-            void Promise.all([refreshMessages(props.sessionID), refreshDiff(props.sessionID)]).catch(() => {})
+          if (props.sessionID && props.sessionID === activeSessionID) {
+            setStreamSamples((samples) => pruneStreamSamples(samples))
+            activeMessageCharsRef.current = undefined
+            if (openRef.current) void Promise.all([refreshMessages(props.sessionID), refreshDiff(props.sessionID)]).catch(() => {})
           }
           return
         }
@@ -538,12 +586,52 @@ export function AgentPanel({
           if (paths.length) publishAgentFileEvent({ paths, directory, sessionID: props.sessionID })
           return
         }
-        if (event.type === "message.updated" || event.type === "message.part.updated" || event.type === "message.part.delta") {
+        if (event.type === "message.part.delta") {
           messageRequest.current += 1
-          const props = event.properties as { info?: { sessionID?: string }; part?: { sessionID?: string } }
+          const props = event.properties as {
+            sessionID?: string
+            messageID?: string
+            field?: string
+            delta?: string
+          }
+          if (openRef.current && activeSessionID && (!props.sessionID || props.sessionID === activeSessionID)) {
+            scheduleMessageRefresh(activeSessionID)
+          }
+          if (
+            props.field === "text" &&
+            props.messageID &&
+            typeof props.delta === "string" &&
+            props.delta.length > 0 &&
+            activeSessionID &&
+            (!props.sessionID || props.sessionID === activeSessionID)
+          ) {
+            const messageID = props.messageID
+            const previous = activeMessageCharsRef.current
+            const previousChars = previous?.messageID === messageID ? previous.chars : 0
+            const nextChars = previousChars + props.delta.length
+            activeMessageCharsRef.current = { messageID, chars: nextChars }
+            const deltaTokens = Math.max(0, estimateStreamTokens(nextChars) - estimateStreamTokens(previousChars))
+            if (deltaTokens > 0) {
+              const sample = { at: Date.now(), tokens: deltaTokens }
+              setStreamSamples((samples) => appendStreamSample(samples, sample))
+              setMessageSamples((stats) => appendMessageSample(stats, messageID, sample))
+            }
+          }
+          return
+        }
+        if (event.type === "message.updated" || event.type === "message.part.updated") {
+          messageRequest.current += 1
+          const props = event.properties as {
+            info?: { sessionID?: string; role?: string; time?: { completed?: number } }
+            part?: { sessionID?: string }
+          }
           const eventSessionID = props.info?.sessionID || props.part?.sessionID
           if (openRef.current && activeSessionID && (!eventSessionID || eventSessionID === activeSessionID))
             scheduleMessageRefresh(activeSessionID)
+          if (props.info?.role === "assistant" && props.info.time?.completed) {
+            setStreamSamples((samples) => pruneStreamSamples(samples, props.info!.time!.completed))
+            activeMessageCharsRef.current = undefined
+          }
           return
         }
         if (event.type === "session.updated") void refreshSessions().catch(() => {})
@@ -638,7 +726,7 @@ export function AgentPanel({
   const switchSession = useCallback(
     (nextSessionID: string, empty = false) => {
       if (!directory) return
-      composersBySession.current.set(composerKey(activeContext.key, directory, sessionID), { draft, chips })
+      composersBySession.current.set(composerKey(activeContext.key, directory, sessionID), composerStateRef.current)
       const nextComposer = empty ? undefined : composersBySession.current.get(composerKey(activeContext.key, directory, nextSessionID))
       messageRequest.current += 1
       diffRequest.current += 1
@@ -647,7 +735,7 @@ export function AgentPanel({
       setDraft(nextComposer?.draft ?? "")
       setChips(nextComposer?.chips ?? [])
     },
-    [activeContext.key, chips, directory, draft, sessionID],
+    [activeContext.key, directory, sessionID],
   )
 
   const ensureSession = useCallback(async () => {
@@ -812,6 +900,39 @@ export function AgentPanel({
     for (const d of files) if (d.file) paths.add(d.file)
     return [...paths]
   }, [files])
+
+  const usageMessages = useMemo((): UsageMessage[] => {
+    return messages.map((message) => {
+      const info = message.info
+      if (info.role === "assistant") {
+        return {
+          role: "assistant",
+          id: info.id,
+          parentID: info.parentID,
+          cost: info.cost,
+          tokens: info.tokens,
+          time: info.time,
+        }
+      }
+      return {
+        role: info.role,
+        id: info.id,
+        time: { created: info.time.created },
+      }
+    })
+  }, [messages])
+
+  const usageLine = useMemo(() => {
+    void usageClock
+    const totals = sessionUsageTotals(usageMessages)
+    return formatUsageLine({
+      busy,
+      liveTps: busy ? liveTpsValue(streamSamples, usageClock) : undefined,
+      finalTps: finalOutputTps(usageMessages, messageSamples),
+      tokens: totals.tokens,
+      cost: totals.cost,
+    })
+  }, [busy, messageSamples, streamSamples, usageClock, usageMessages])
 
   const activeContextLink = contextLink(activeContext)
   const canSend = Boolean(composeOutbound(chips, draft)) && !busy && contextWritable
@@ -987,6 +1108,7 @@ export function AgentPanel({
             }}
             onSend={() => void onSend()}
             onAbort={() => void onAbort()}
+            usageLine={usageLine}
           />
         </div>
       )}

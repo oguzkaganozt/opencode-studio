@@ -43,24 +43,26 @@ export function MessageBubble({ message }: { message: AgentMessage }) {
   if (blocks.length === 0 && summaries.length === 0) return null
   return (
     <div className="oc-msg oc-msg--assistant">
-      {blocks.map((block) =>
-        block.kind === "tools" ? (
-          <div key={block.id} className="oc-msg__tools">
-            {block.parts.map((part) => (
-              <ToolCard key={part.id} part={part} />
-            ))}
-          </div>
-        ) : (
-          <Markdown key={block.id} text={block.text} />
-        ),
-      )}
-      {blocks.length === 0
-        ? summaries.map((summary, index) => (
-            <p key={`${message.info.id}:summary:${index}`} className="oc-msg__meta">
-              {summary}
-            </p>
-          ))
-        : null}
+      <div className="oc-msg__surface">
+        {blocks.map((block) =>
+          block.kind === "tools" ? (
+            <div key={block.id} className="oc-msg__tools">
+              {block.parts.map((part) => (
+                <ToolCard key={part.id} part={part} />
+              ))}
+            </div>
+          ) : (
+            <Markdown key={block.id} text={block.text} />
+          ),
+        )}
+        {blocks.length === 0
+          ? summaries.map((summary, index) => (
+              <p key={`${message.info.id}:summary:${index}`} className="oc-msg__meta">
+                {summary}
+              </p>
+            ))
+          : null}
+      </div>
     </div>
   )
 }

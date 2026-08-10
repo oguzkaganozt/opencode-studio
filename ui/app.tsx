@@ -244,6 +244,8 @@ function TopBar({
   onMenu,
   edge = "border",
   actions,
+  /** Agent home: menu + actions only; session title lives in the panel header. */
+  center = "auto",
 }: {
   studioLabel?: string
   studioId?: string
@@ -252,6 +254,7 @@ function TopBar({
   /** studio pages stack a subnav — drop the bottom border to avoid a double line */
   edge?: "border" | "flush"
   actions?: React.ReactNode
+  center?: "auto" | "none"
 }) {
   const location = useLocation()
   const statusActive = location.pathname.startsWith("/status")
@@ -271,7 +274,9 @@ function TopBar({
         >
           <MenuIcon />
         </button>
-        {studioLabel ? (
+        {center === "none" ? (
+          <div className="min-w-0 flex-1" />
+        ) : studioLabel ? (
           <div className="flex min-w-0 flex-1 items-center gap-2 px-0.5">
             {studioId && (
               <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--osc-accent-${studioId})` }} aria-hidden />
@@ -309,7 +314,7 @@ function OpenCodeFrame() {
   return (
     <div data-studio="opencode" className="studio-shell flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--osc-bg)]">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" inert={chrome.drawerOpen ? true : undefined}>
-        <TopBar studioLabel="Agent" menuOpen={chrome.drawerOpen} onMenu={chrome.openDrawer} edge="flush" />
+        <TopBar menuOpen={chrome.drawerOpen} onMenu={chrome.openDrawer} edge="flush" center="none" />
         <main id="main-content" data-testid="studio-main" className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden" tabIndex={-1}>
           <h1 className="sr-only">Agent</h1>
           {studiosQuery.isLoading ? (

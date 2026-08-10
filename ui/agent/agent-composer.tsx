@@ -27,6 +27,7 @@ export function AgentComposer({
   onClearVariant,
   onSend,
   onAbort,
+  usageLine,
 }: {
   composerRef: Ref<HTMLTextAreaElement>
   draft: string
@@ -50,6 +51,7 @@ export function AgentComposer({
   onClearVariant: () => void
   onSend: () => void
   onAbort: () => void
+  usageLine?: string
 }) {
   return (
     <div className="oc-composer-wrap">
@@ -79,6 +81,11 @@ export function AgentComposer({
             onSend()
           }}
         >
+          {usageLine ? (
+            <p className="oc-dock__usage" title="Session token usage and tokens/sec" aria-live="polite">
+              {usageLine}
+            </p>
+          ) : null}
           <textarea
             ref={composerRef}
             className="oc-dock__input"
@@ -88,9 +95,9 @@ export function AgentComposer({
             rows={2}
             onChange={(e) => onDraftChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
-                onSend()
+                if (!busy && canSend) onSend()
               }
             }}
           />
@@ -182,10 +189,12 @@ export function AgentComposer({
               {busy ? <IconStop /> : <IconSend />}
             </button>
           </div>
+          {directory ? (
+            <p className="oc-dock__dir" title={directory}>
+              {directory}
+            </p>
+          ) : null}
         </form>
-        <p className="oc-dock__dir" title={directory}>
-          {directory ?? "Resolving context…"}
-        </p>
       </div>
     </div>
   )
