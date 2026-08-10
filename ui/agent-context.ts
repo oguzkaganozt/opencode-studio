@@ -47,7 +47,7 @@ export function homeAgentContext(directory: string): AgentContext {
   return {
     key: "home",
     kind: "home",
-    label: "Studio Home",
+    label: "Home",
     directory,
     historicalDirectory: directory,
     status: "available",

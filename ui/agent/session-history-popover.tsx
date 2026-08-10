@@ -1,4 +1,5 @@
 import type { StudioSessionHistoryItem } from "../../src/core/session-history"
+import { IconFolder } from "./icons"
 import { sessionLabel } from "./session-label"
 
 export function SessionHistoryPopover({
@@ -43,9 +44,14 @@ export function SessionHistoryPopover({
                 <span className="truncate">{optionLabels.get(s.id) ?? sessionLabel(s)}</span>
                 {historyScope === "studio" ? (
                   <span className="oc-popover__meta">
-                    {s.context.label}
-                    {s.context.relativePath && s.context.relativePath !== s.context.projectId ? ` · ${s.context.relativePath}` : ""}
-                    {s.context.status === "missing" ? " · unavailable" : s.context.status === "moved" ? " · moved" : ""}
+                    <span className="oc-popover__meta-icon" aria-hidden>
+                      <IconFolder />
+                    </span>
+                    <span className="oc-popover__meta-text">
+                      {s.context.label}
+                      {s.context.relativePath && s.context.relativePath !== s.context.projectId ? ` · ${s.context.relativePath}` : ""}
+                      {s.context.status === "missing" ? " · unavailable" : s.context.status === "moved" ? " · moved" : ""}
+                    </span>
                   </span>
                 ) : null}
               </button>

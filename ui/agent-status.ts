@@ -30,6 +30,13 @@ export function agentStatusDotClass(status: AgentStatus): string {
   }
 }
 
+/** Tone token for the header status dot (busy/reconnect override readiness). */
+export function agentStatusDotTone(status: AgentStatus, busy = false, reconnecting = false): AgentStatus | "busy" {
+  if (reconnecting && status !== "unavailable" && status !== "error" && status !== "closed") return "loading"
+  if (busy && (status === "ready" || status === "loading")) return "busy"
+  return status
+}
+
 export function agentStatusLabel(status: AgentStatus): string {
   switch (status) {
     case "closed":
@@ -43,4 +50,15 @@ export function agentStatusLabel(status: AgentStatus): string {
     case "error":
       return "Agent error"
   }
+}
+
+/** Header status-dot tooltip / accessible name (busy/reconnect override readiness). */
+export function agentStatusDotLabel(status: AgentStatus, busy = false, reconnecting = false): string {
+  if (reconnecting && status !== "unavailable" && status !== "error" && status !== "closed") return "Reconnecting…"
+  if (busy && (status === "ready" || status === "loading")) return "Working"
+  return agentStatusLabel(status)
+}
+
+export function agentStatusDotPulse(status: AgentStatus, busy = false, reconnecting = false): boolean {
+  return busy || status === "loading" || reconnecting
 }

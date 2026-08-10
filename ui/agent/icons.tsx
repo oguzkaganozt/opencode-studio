@@ -97,3 +97,21 @@ export function IconChevron() {
     </svg>
   )
 }
+
+export function IconFolder() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 5.25V12a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1H8.2L6.9 4H3.5a1 1 0 0 0-1 1.25Z" />
+    </svg>
+  )
+}

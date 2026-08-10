@@ -1,8 +1,9 @@
 import type { Ref } from "react"
 import type { ComposerChip, ModelRef, PopoverKind } from "./agent-types"
 import { modelKey } from "./agent-types"
-import { IconChevron, IconSend, IconStop } from "./icons"
+import { IconChevron, IconFolder, IconSend, IconStop } from "./icons"
 import { modelVariantLabel } from "./model-variant"
+import { compactDirectoryLabel } from "./path-label"
 
 export function AgentComposer({
   composerRef,
@@ -14,6 +15,7 @@ export function AgentComposer({
   contextWritable,
   canSend,
   directory,
+  directoryHome,
   model,
   modelOptions,
   modelQuery,
@@ -38,6 +40,7 @@ export function AgentComposer({
   contextWritable: boolean
   canSend: boolean
   directory?: string
+  directoryHome?: string
   model?: ModelRef
   modelOptions: ModelRef[]
   modelQuery: string
@@ -53,6 +56,8 @@ export function AgentComposer({
   onAbort: () => void
   usageLine?: string
 }) {
+  const pathLabel = directory ? compactDirectoryLabel(directory, directoryHome) : undefined
+  const effortLabel = modelVariantLabel(variant ?? "")
   return (
     <div className="oc-composer-wrap">
       <div className="oc-composer-inner">
@@ -81,10 +86,24 @@ export function AgentComposer({
             onSend()
           }}
         >
-          {usageLine ? (
-            <p className="oc-dock__usage" title="Session token usage and tokens/sec" aria-live="polite">
-              {usageLine}
-            </p>
+          {usageLine || pathLabel ? (
+            <div className="oc-dock__meta">
+              {usageLine ? (
+                <p className="oc-dock__usage" title="Session token usage and tokens/sec" aria-live="polite">
+                  {usageLine}
+                </p>
+              ) : (
+                <span />
+              )}
+              {directory && pathLabel ? (
+                <p className="oc-dock__dir" title={directory}>
+                  <span className="oc-dock__dir-icon" aria-hidden>
+                    <IconFolder />
+                  </span>
+                  <span className="oc-dock__dir-text">{pathLabel}</span>
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <textarea
             ref={composerRef}
@@ -149,10 +168,13 @@ export function AgentComposer({
                   disabled={!contextWritable}
                   onClick={() => onPopoverChange((p) => (p === "variant" ? null : "variant"))}
                   aria-expanded={popover === "variant"}
-                  aria-label={`Reasoning effort: ${modelVariantLabel(variant ?? "")}`}
-                  title={`Reasoning effort: ${modelVariantLabel(variant ?? "")}`}
+                  aria-label={`Reasoning effort: ${effortLabel}`}
+                  title={`Reasoning effort: ${effortLabel}`}
                 >
-                  <span className="truncate">{modelVariantLabel(variant ?? "")}</span>
+                  <span className="truncate">
+                    <span className="oc-dock__effort-k">Effort</span>
+                    {effortLabel}
+                  </span>
                   <IconChevron />
                 </button>
               ) : null}
@@ -189,11 +211,6 @@ export function AgentComposer({
               {busy ? <IconStop /> : <IconSend />}
             </button>
           </div>
-          {directory ? (
-            <p className="oc-dock__dir" title={directory}>
-              {directory}
-            </p>
-          ) : null}
         </form>
       </div>
     </div>

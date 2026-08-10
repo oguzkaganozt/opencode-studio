@@ -311,30 +311,69 @@ function OpenCodeFrame() {
   const chrome = useStudioChrome()
   const available = studiosQuery.data?.nativeOpenCodeAvailable ?? false
 
+  const location = useLocation()
+  const statusActive = location.pathname.startsWith("/status")
+
+  const agentChromeLeading = (
+    <button
+      type="button"
+      onClick={chrome.openDrawer}
+      className="oc-icon-btn"
+      aria-label="Open menu"
+      aria-expanded={chrome.drawerOpen}
+      aria-haspopup="dialog"
+    >
+      <MenuIcon />
+    </button>
+  )
+  const agentChromeTrailing = (
+    <div className="oc-panel__chrome-actions">
+      <ThemePreferenceControl compact />
+      <Link to="/status" className="oc-icon-btn" aria-label="Status" aria-current={statusActive ? "page" : undefined} title="Status">
+        <SettingsIcon />
+      </Link>
+    </div>
+  )
+
   return (
     <div data-studio="opencode" className="studio-shell flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--osc-bg)]">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" inert={chrome.drawerOpen ? true : undefined}>
-        <TopBar menuOpen={chrome.drawerOpen} onMenu={chrome.openDrawer} edge="flush" center="none" />
-        <main id="main-content" data-testid="studio-main" className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden" tabIndex={-1}>
+        <main
+          id="main-content"
+          data-testid="studio-main"
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          tabIndex={-1}
+        >
           <h1 className="sr-only">Agent</h1>
-          {studiosQuery.isLoading ? (
-            <div className="flex h-full flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
-              <span className="sr-only">Loading OpenCode…</span>
-              <div className="osc-skeleton h-10 w-full max-w-md" aria-hidden />
-              <div className="osc-skeleton min-h-48 flex-1" aria-hidden />
-            </div>
-          ) : studiosQuery.isError ? (
-            <div className="p-4 sm:p-8">
-              <ErrorState
-                title="Failed to load host"
-                description={(studiosQuery.error as Error)?.message ?? "unknown error"}
-                action={
-                  <Button type="button" variant="outline" size="sm" onClick={() => void studiosQuery.refetch()}>
-                    Retry
-                  </Button>
-                }
-              />
-            </div>
+          {studiosQuery.isLoading || studiosQuery.isError ? (
+            <>
+              <header className="oc-panel__header oc-panel__header--page">
+                {agentChromeLeading}
+                <div className="oc-panel__title-wrap">
+                  <p className="oc-panel__session-title">Agent</p>
+                </div>
+                {agentChromeTrailing}
+              </header>
+              {studiosQuery.isLoading ? (
+                <div className="flex min-h-0 flex-1 flex-col gap-3 p-4 sm:p-6" role="status" aria-busy="true">
+                  <span className="sr-only">Loading OpenCode…</span>
+                  <div className="osc-skeleton h-10 w-full max-w-md" aria-hidden />
+                  <div className="osc-skeleton min-h-48 flex-1" aria-hidden />
+                </div>
+              ) : (
+                <div className="p-4 sm:p-8">
+                  <ErrorState
+                    title="Failed to load host"
+                    description={(studiosQuery.error as Error)?.message ?? "unknown error"}
+                    action={
+                      <Button type="button" variant="outline" size="sm" onClick={() => void studiosQuery.refetch()}>
+                        Retry
+                      </Button>
+                    }
+                  />
+                </div>
+              )}
+            </>
           ) : (
             <AgentPanel
               studioRoot={studiosQuery.data?.studioRoot ?? ""}
@@ -343,6 +382,8 @@ function OpenCodeFrame() {
               fullPage
               historyScope="studio"
               onClose={() => {}}
+              headerLeading={agentChromeLeading}
+              headerTrailing={agentChromeTrailing}
             />
           )}
         </main>

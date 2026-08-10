@@ -90,7 +90,7 @@ function metadataContext(
 function legacyContext(session: GlobalSession, roots: StudioRoots): Omit<StudioSessionContext, "status"> | undefined {
   const historicalDirectory = absolute(session.directory)
   if (historicalDirectory === absolute(roots.home)) {
-    return { schema: 1, key: "home", kind: "home", label: "Studio Home", directory: historicalDirectory, historicalDirectory }
+    return { schema: 1, key: "home", kind: "home", label: "Home", directory: historicalDirectory, historicalDirectory }
   }
 
   for (const [studioId, root] of [

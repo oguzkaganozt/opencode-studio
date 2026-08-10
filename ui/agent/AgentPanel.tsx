@@ -1,5 +1,6 @@
 import type { PermissionRequest, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 import {
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -92,6 +93,8 @@ export function AgentPanel({
   onStatusChange,
   fullPage = false,
   historyScope = "directory",
+  headerLeading,
+  headerTrailing,
 }: {
   studioRoot: string
   available: boolean
@@ -100,6 +103,10 @@ export function AgentPanel({
   onStatusChange?: (status: AgentStatus) => void
   fullPage?: boolean
   historyScope?: "studio" | "directory"
+  /** Full-page chrome: menu control merged into the session header. */
+  headerLeading?: ReactNode
+  /** Full-page chrome: theme/settings merged into the session header. */
+  headerTrailing?: ReactNode
 }) {
   const panelRef = useRef<HTMLElement>(null)
   const setPanelRef = useCallback((node: HTMLElement | null) => {
@@ -127,8 +134,8 @@ export function AgentPanel({
 
   const [healthOk, setHealthOk] = useState(available)
   const [healthError, setHealthError] = useState<string | undefined>()
-  const [sseState, setSseState] = useState<"open" | "retry" | "closed">("closed")
   const [loading, setLoading] = useState(false)
+  const [sseRetry, setSseRetry] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const [sessions, setSessions] = useState<StudioSessionHistoryItem[]>([])
@@ -638,7 +645,7 @@ export function AgentPanel({
       },
       {
         onConnectionChange: (state) => {
-          setSseState(state)
+          setSseRetry(state === "retry")
           if (state === "open") void refreshRuntimeState().catch(() => {})
         },
       },
@@ -936,17 +943,6 @@ export function AgentPanel({
 
   const activeContextLink = contextLink(activeContext)
   const canSend = Boolean(composeOutbound(chips, draft)) && !busy && contextWritable
-  const statusLabel =
-    !available || !healthOk
-      ? healthError || "Unavailable"
-      : busy
-        ? "Working"
-        : sseState === "retry"
-          ? "Reconnecting…"
-          : loading
-            ? "Loading…"
-            : "Ready"
-
   return (
     <Panel
       ref={setPanelRef}
@@ -963,18 +959,20 @@ export function AgentPanel({
         sessionTitle={sessionTitle}
         directory={directory}
         activeContext={activeContext}
-        statusLabel={statusLabel}
         activeContextLink={activeContextLink}
         fullPage={fullPage}
         contextWritable={contextWritable}
         sessionID={sessionID}
         busy={busy}
+        reconnecting={sseRetry}
         popoverSessionOpen={popover === "session"}
         onToggleSessionPopover={() => setPopover((p) => (p === "session" ? null : "session"))}
         onHome={() => transitionContext(homeContext)}
         onNewSession={() => void onNewSession()}
         onAbort={() => void onAbort()}
         onClose={onClose}
+        leading={headerLeading}
+        trailing={headerTrailing}
       />
 
       {popover === "session" ? (
@@ -1079,6 +1077,7 @@ export function AgentPanel({
             contextWritable={contextWritable}
             canSend={canSend}
             directory={directory}
+            directoryHome={studioRoot}
             model={model}
             modelOptions={filteredModels}
             modelQuery={modelQuery}
