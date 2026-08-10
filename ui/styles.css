@@ -1129,36 +1129,6 @@ button:disabled {
   color: var(--osc-text-muted);
 }
 
-.oc-thread__hint--live {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  align-self: flex-start;
-  border: 1px solid var(--osc-border);
-  border-radius: 999px;
-  background: var(--osc-bg-elevated);
-  padding: 0.3rem 0.65rem;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--osc-text-muted);
-}
-
-.oc-thread__hint--live::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--osc-warning);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--osc-warning) 22%, transparent);
-  animation: oc-dot-pulse 1.1s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .oc-thread__hint--live::before {
-    animation: none;
-  }
-}
-
 .oc-thread-scroll {
   position: relative;
   display: flex;

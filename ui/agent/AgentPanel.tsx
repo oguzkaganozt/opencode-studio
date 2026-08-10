@@ -1111,8 +1111,8 @@ export function AgentPanel({
                   <MessageBubble key={message.info.id} message={message} />
                 ))}
                 {busy && !(loading && messages.length === 0) ? (
-                  <p className="oc-thread__hint oc-thread__hint--live" aria-live="polite">
-                    Working…
+                  <p className="sr-only" aria-live="polite">
+                    Agent working
                   </p>
                 ) : null}
               </div>
