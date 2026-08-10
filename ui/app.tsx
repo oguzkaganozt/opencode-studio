@@ -9,7 +9,8 @@ import { ErrorState } from "./components/error-state"
 import { FilesExplorer } from "./files-explorer"
 import { fetchJson } from "./lib/fetch-json"
 import { useFocusTrap } from "./lib/focus-trap"
-import { StatusPage } from "./status-page"
+import { openStatusDialog } from "./status-dialog-state"
+import { StatusDialogHost } from "./status-page"
 import { clearStudioRuntime, setStudioRuntime } from "./studio-context"
 import { readThemePreference, setThemePreference, type ThemePreference } from "./theme"
 import { useStudioChrome } from "./use-studio-chrome"
@@ -196,10 +197,17 @@ function SideDrawer({ open, onClose, studioId }: { open: boolean; onClose: () =>
           </button>
         </div>
 
-        <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-2 pb-4" aria-label="Studios">
+        <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-2" aria-label="Main">
           <div className="flex flex-col gap-0.5">
             <p className="osc-drawer-label px-2.5 pt-1.5 pb-1">Home</p>
-            <DrawerNavLink to="/" active={!studioId || studioId === "home"} onNavigate={onClose} title="Agent" blurb="Sessions & chat" />
+            <DrawerNavLink
+              to="/"
+              active={!studioId || studioId === "home"}
+              onNavigate={onClose}
+              title="Agent"
+              blurb="Sessions & chat"
+              accent="agent"
+            />
             <DrawerNavLink
               to="/files"
               active={studioId === "files"}
@@ -211,6 +219,16 @@ function SideDrawer({ open, onClose, studioId }: { open: boolean; onClose: () =>
           </div>
           <div className="flex flex-col gap-0.5">
             <p className="osc-drawer-label px-2.5 pt-0.5 pb-1">Studios</p>
+            {studiosQuery.isLoading ? (
+              <div className="flex flex-col gap-1.5 px-1 py-1" aria-busy="true">
+                <span className="sr-only">Loading studios…</span>
+                <div className="osc-skeleton h-12 w-full" aria-hidden />
+                <div className="osc-skeleton h-12 w-full" aria-hidden />
+              </div>
+            ) : null}
+            {!studiosQuery.isLoading && cards.length === 0 ? (
+              <p className="px-2.5 py-2 text-[12px] text-[var(--osc-text-muted)]">No studios available.</p>
+            ) : null}
             {cards.map((s) => {
               const meta = STUDIO_META[s.id]
               return (
@@ -227,6 +245,20 @@ function SideDrawer({ open, onClose, studioId }: { open: boolean; onClose: () =>
             })}
           </div>
         </nav>
+
+        <div className="osc-drawer-footer">
+          <button
+            type="button"
+            className="osc-drawer-status"
+            onClick={() => {
+              onClose()
+              openStatusDialog()
+            }}
+          >
+            <StatusIcon />
+            Status
+          </button>
+        </div>
       </aside>
     </>
   )
@@ -251,9 +283,6 @@ function TopBar({
   actions?: React.ReactNode
   center?: "auto" | "none"
 }) {
-  const location = useLocation()
-  const statusActive = location.pathname.startsWith("/status")
-
   return (
     <header
       className={`sticky top-0 z-40 shrink-0 bg-[var(--osc-bg-elevated)] pt-[env(safe-area-inset-top,0px)] ${edge === "border" ? "border-b border-[var(--osc-border)]" : ""}`}
@@ -292,9 +321,6 @@ function TopBar({
         <div className="osc-topbar-actions">
           {actions}
           <ThemePreferenceControl compact />
-          <Link to="/status" className="osc-icon-btn" aria-label="Status" aria-current={statusActive ? "page" : undefined} title="Status">
-            <StatusIcon />
-          </Link>
         </div>
       </div>
     </header>
@@ -305,9 +331,6 @@ function OpenCodeFrame() {
   const studiosQuery = useStudios()
   const chrome = useStudioChrome()
   const available = studiosQuery.data?.nativeOpenCodeAvailable ?? false
-
-  const location = useLocation()
-  const statusActive = location.pathname.startsWith("/status")
 
   const agentChromeLeading = (
     <button
@@ -324,9 +347,6 @@ function OpenCodeFrame() {
   const agentChromeTrailing = (
     <div className="oc-panel__chrome-actions">
       <ThemePreferenceControl compact />
-      <Link to="/status" className="oc-icon-btn" aria-label="Status" aria-current={statusActive ? "page" : undefined} title="Status">
-        <StatusIcon />
-      </Link>
     </div>
   )
 
@@ -583,19 +603,12 @@ function FilesFrame() {
   )
 }
 
-function StatusFrame() {
-  const chrome = useStudioChrome()
-  return (
-    <div className="studio-shell flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--osc-bg)]">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" inert={chrome.drawerOpen ? true : undefined}>
-        <TopBar studioLabel="Status" menuOpen={chrome.drawerOpen} onMenu={chrome.openDrawer} edge="flush" />
-        <main id="main-content" className="min-h-0 flex-1 overflow-y-auto" tabIndex={-1}>
-          <StatusPage />
-        </main>
-      </div>
-      <SideDrawer open={chrome.drawerOpen} onClose={chrome.closeDrawer} studioId="status" />
-    </div>
-  )
+/** Legacy /status deep link → stay on home and open the dialog. */
+function StatusDeepLink() {
+  useEffect(() => {
+    openStatusDialog()
+  }, [])
+  return <Navigate to="/" replace />
 }
 
 export function App() {
@@ -605,11 +618,9 @@ export function App() {
     const studioMatch = location.pathname.match(/^\/studios\/([^/]+)/)
     const title = location.pathname.startsWith("/files")
       ? "Files"
-      : location.pathname.startsWith("/status")
-        ? "Status"
-        : studioMatch
-          ? (STUDIO_META[studioMatch[1]]?.short ?? studioMatch[1])
-          : "Agent"
+      : studioMatch
+        ? (STUDIO_META[studioMatch[1]]?.short ?? studioMatch[1])
+        : "Agent"
     document.title = `${title} · OpenCode Studio`
   }, [location.pathname])
 
@@ -619,10 +630,11 @@ export function App() {
       <Routes>
         <Route path="/" element={<OpenCodeFrame />} />
         <Route path="/files/*" element={<FilesFrame />} />
-        <Route path="/status" element={<StatusFrame />} />
+        <Route path="/status" element={<StatusDeepLink />} />
         <Route path="/studios/:studioId/*" element={<StudioFrame />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <StatusDialogHost />
     </>
   )
 }

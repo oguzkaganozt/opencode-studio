@@ -281,12 +281,16 @@ async function browserSmoke(base: string) {
     console.log("files explorer ok")
 
     await page.goto(`${base}/studio/status`, { waitUntil: "domcontentloaded" })
-    await page.getByRole("heading", { name: "Status", exact: true }).waitFor()
-    await page.getByText("OpenCode smoke", { exact: true }).waitFor()
-    for (const label of ["OpenCode Studio", "media-go", "CAD · studio-cad", "PCB · studio-pcb", "Media · studio-media", "build123d"]) {
-      await page.getByText(label, { exact: true }).waitFor()
-    }
-    console.log("status page ok")
+    const statusDialog = page.getByRole("dialog", { name: "Status" })
+    await statusDialog.waitFor()
+    await statusDialog.getByRole("heading", { name: "Status", exact: true }).waitFor()
+    await statusDialog.getByRole("button", { name: "Repair" }).waitFor()
+    await statusDialog.getByRole("button", { name: "Refresh" }).waitFor()
+    await statusDialog.getByRole("button", { name: "Close dialog" }).click()
+    await page.getByRole("button", { name: "Open menu" }).click()
+    await page.locator("aside").getByRole("button", { name: "Status" }).click()
+    await page.getByRole("dialog", { name: "Status" }).waitFor()
+    console.log("status dialog ok")
 
     // Phone posture: no forced horizontal page scroll on home + one studio
     await page.setViewportSize({ width: 360, height: 640 })

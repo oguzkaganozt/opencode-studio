@@ -57,15 +57,15 @@ export function AgentPanelHeader({
   return (
     <header className={`oc-panel__header${fullPage ? " oc-panel__header--page" : ""}`}>
       {leading}
-      <span
-        className={`oc-panel__dot${dotPulse ? " oc-panel__dot--pulse" : ""}`}
-        data-tone={dotTone}
-        title={dotLabel}
-        role="img"
-        aria-label={dotLabel}
-      />
       <div className="oc-panel__title-wrap">
         <div className="oc-panel__session-row">
+          <span
+            className={`oc-panel__dot${dotPulse ? " oc-panel__dot--pulse" : ""}`}
+            data-tone={dotTone}
+            title={dotLabel}
+            role="img"
+            aria-label={dotLabel}
+          />
           <button
             type="button"
             data-oc-popover-trigger

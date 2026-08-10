@@ -56,7 +56,7 @@ Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent 
 | --- | --- |
 | `http://127.0.0.1:4173/studio` | Studio shell (native Agent panel) |
 | `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
-| `http://127.0.0.1:4173/studio/status` | Health / repair / restart agent |
+| Status (drawer footer) | Compact health modal: repair / restart agent |
 | `http://127.0.0.1:4173/` or `/opencode` | Optional OpenCode web UI (same-origin proxy) |
 
 **Lifecycle:** `opencode-studio up` supervises OpenCode (`opencode serve` on loopback if nothing is healthy; auto-restarts when this host spawned it). Attach instead with `OPENCODE_URL`. Disable spawn: `OPENCODE_STUDIO_NO_SUPERVISE=1`. Disable host: `OPENCODE_STUDIO_AUTOSTART=0`. Studio Home defaults to `$HOME`; agent directory follows the open project. PATH wrapper is removed on repair — do not rely on it.

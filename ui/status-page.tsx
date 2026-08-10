@@ -1,70 +1,84 @@
 import { useQuery } from "@tanstack/react-query"
-import { useState } from "react"
-import { Link } from "react-router"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { probeAgentHealth } from "./agent/client"
-import { Button, buttonVariants } from "./components/button"
-import { ErrorState } from "./components/error-state"
-import { cn } from "./lib/cn"
+import { Button } from "./components/button"
+import { Dialog, DialogHeader } from "./components/dialog"
 import { fetchJson } from "./lib/fetch-json"
+import { closeStatusDialog, isStatusDialogOpen, subscribeStatusDialog } from "./status-dialog-state"
 
 type StudiosResponse = {
-  studioRoot: string
   packageVersion: string
   nativeOpenCodeAvailable: boolean
-  studios: Array<{ id: string; skill: string; skillInstalled: boolean; root: string | null }>
   restartRequiredHint: string
 }
 
 type SupervisorResponse = {
   supervised: boolean
   pid?: number
-  baseUrl?: string
-  restartsInWindow: number
 }
 
 type DoctorCheck = {
   id: string
   status: "pass" | "warn" | "fail"
   message: string
-  repair?: string
 }
 
 type LifecycleStatusResponse = {
   packageVersion: string
-  workspace: string
   checks: DoctorCheck[]
 }
 
-const MANAGED_ROWS = [
-  { group: "Plugins", id: "plugin-registration", label: "OpenCode Studio" },
-  { group: "Plugins", id: "plugin-media-go", label: "media-go" },
-  { group: "Skills", id: "skill:cad", label: "CAD · studio-cad" },
-  { group: "Skills", id: "skill:pcb", label: "PCB · studio-pcb" },
-  { group: "Skills", id: "skill:media", label: "Media · studio-media" },
-  { group: "MCP", id: "mcp-build123d", label: "build123d" },
-] as const
+const MANAGED_IDS = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "mcp-build123d"] as const
 
-export function StatusPage() {
+function toneOf(status: "pass" | "warn" | "fail" | undefined): "pass" | "warn" | "fail" | undefined {
+  return status
+}
+
+export function StatusDialogHost() {
+  const open = useSyncExternalStore(subscribeStatusDialog, isStatusDialogOpen, () => false)
+  return <StatusDialog open={open} onClose={closeStatusDialog} />
+}
+
+function StatusDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [busy, setBusy] = useState<"repair" | "restart" | undefined>()
   const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" } | undefined>()
+  const openRef = useRef(open)
+  openRef.current = open
+  const actionGen = useRef(0)
+
   const studiosQuery = useQuery({
     queryKey: ["host", "studios", "status"],
     queryFn: () => fetchJson<StudiosResponse>("/api/studios"),
+    enabled: open,
   })
   const healthQuery = useQuery({
     queryKey: ["agent", "health"],
     queryFn: probeAgentHealth,
-    refetchInterval: 10_000,
+    enabled: open,
+    refetchInterval: open ? 10_000 : false,
   })
   const statusQuery = useQuery({
     queryKey: ["host", "lifecycle-status"],
     queryFn: () => fetchJson<LifecycleStatusResponse>("/api/status"),
+    enabled: open,
   })
   const supervisorQuery = useQuery({
     queryKey: ["agent", "supervisor"],
     queryFn: () => fetchJson<SupervisorResponse>("/api/agent/supervisor"),
-    refetchInterval: 10_000,
+    enabled: open,
+    refetchInterval: open ? 10_000 : false,
   })
+
+  useEffect(() => {
+    if (open) {
+      setNotice(undefined)
+      setBusy(undefined)
+      return
+    }
+    actionGen.current += 1
+    setNotice(undefined)
+    setBusy(undefined)
+  }, [open])
 
   const withCsrf = async (path: string, init?: RequestInit) => {
     const csrf = await fetchJson<{ token: string }>("/api/csrf")
@@ -82,142 +96,115 @@ export function StatusPage() {
   }
 
   const repair = async () => {
+    const gen = ++actionGen.current
     setBusy("repair")
     setNotice(undefined)
     try {
       const body = await withCsrf("/api/config", { method: "PUT", body: "{}" })
+      if (!openRef.current || gen !== actionGen.current) return
       setNotice({ text: body?.message || "Repair complete. Restart agent if plugins did not reload.", tone: "success" })
-      void studiosQuery.refetch()
       void statusQuery.refetch()
+      void studiosQuery.refetch()
     } catch (error) {
+      if (!openRef.current || gen !== actionGen.current) return
       setNotice({ text: error instanceof Error ? error.message : String(error), tone: "error" })
     } finally {
-      setBusy(undefined)
+      if (openRef.current && gen === actionGen.current) setBusy(undefined)
     }
   }
 
   const restartAgent = async () => {
+    const gen = ++actionGen.current
     setBusy("restart")
     setNotice(undefined)
     try {
       const body = await withCsrf("/api/agent/restart", { method: "POST", body: "{}" })
+      if (!openRef.current || gen !== actionGen.current) return
       setNotice({ text: body?.message || "Agent restarted.", tone: "success" })
       void healthQuery.refetch()
       void supervisorQuery.refetch()
     } catch (error) {
+      if (!openRef.current || gen !== actionGen.current) return
       setNotice({ text: error instanceof Error ? error.message : String(error), tone: "error" })
     } finally {
-      setBusy(undefined)
+      if (openRef.current && gen === actionGen.current) setBusy(undefined)
     }
   }
 
-  if (studiosQuery.isError) {
-    return (
-      <div className="p-6">
-        <ErrorState title="Status unavailable" description={(studiosQuery.error as Error).message} />
-      </div>
-    )
-  }
-
-  const data = studiosQuery.data
-  const supervisor = supervisorQuery.data
-  const checks = new Map((statusQuery.data?.checks ?? []).map((check) => [check.id, check]))
-  const managedChecks = MANAGED_ROWS.map((row) => ({ ...row, check: checks.get(row.id) }))
-  const needsRepair = managedChecks.some(({ check }) => check?.status !== "pass")
-  const healthStatus = healthQuery.isLoading ? undefined : healthQuery.data?.ok ? "pass" : "fail"
-  const studioStatus = statusQuery.isLoading
+  const checks = statusQuery.data?.checks ?? []
+  const managed = MANAGED_IDS.map((id) => {
+    const check = checks.find((item) => item.id === id)
+    return check ?? { id, status: "fail" as const, message: "Status check unavailable" }
+  })
+  const managedReady = managed.filter((check) => check.status === "pass").length
+  const managedTotal = MANAGED_IDS.length
+  const failed = managed.filter((check) => check.status !== "pass")
+  const needsRepair = failed.length > 0 || statusQuery.isError
+  const agentOk = healthQuery.data?.ok === true
+  const agentTone = healthQuery.isLoading ? undefined : agentOk ? "pass" : "fail"
+  const installTone: "pass" | "warn" | "fail" | undefined = statusQuery.isLoading
     ? undefined
-    : managedChecks.some(({ check }) => !check || check.status === "fail") || statusQuery.isError
+    : statusQuery.isError || failed.some((check) => check.status === "fail")
       ? "fail"
-      : managedChecks.some(({ check }) => check?.status === "warn")
+      : failed.some((check) => check.status === "warn")
         ? "warn"
         : "pass"
-  const connectionLabel = supervisor
+
+  const version = statusQuery.data?.packageVersion ?? studiosQuery.data?.packageVersion
+  const supervisor = supervisorQuery.data
+  const processLabel = supervisor
     ? supervisor.supervised
-      ? `Supervised${supervisor.pid ? ` · PID ${supervisor.pid}` : ""}`
-      : "Attached to external OpenCode"
-    : "Checking process…"
+      ? supervisor.pid
+        ? `Supervised · ${supervisor.pid}`
+        : "Supervised"
+      : "Attached"
+    : undefined
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 p-4 sm:p-8">
-      <header>
-        <p className="osc-drawer-label">System</p>
-        <h1 className="mt-1 text-[18px] font-semibold tracking-tight text-[var(--osc-text)]">Status</h1>
-        <p className="mt-1 text-[13px] text-[var(--osc-text-muted)]">OpenCode runtime and Studio installation health.</p>
-      </header>
-
-      <div className="grid items-start gap-3 sm:grid-cols-2">
-        <section className="osc-setting-card">
-          <div className="flex items-start gap-3">
-            <span className="osc-status-dot" data-status={healthStatus} aria-hidden />
-            <div className="min-w-0">
-              <p className="osc-drawer-label">Agent API</p>
-              <h2 className="mt-1 text-[14px] font-semibold text-[var(--osc-text)]">
-                {healthQuery.isLoading ? "Checking…" : healthQuery.data?.ok ? "Healthy" : "Unavailable"}
-              </h2>
-              <p className="mt-0.5 font-mono text-[11px] text-[var(--osc-text-muted)]">
-                {healthQuery.data?.ok && healthQuery.data.version
-                  ? `OpenCode ${healthQuery.data.version}`
-                  : healthQuery.data?.error || "Waiting for health response"}
-              </p>
-            </div>
-          </div>
-          <dl className="mt-4 grid gap-2 border-t border-[var(--osc-border)] pt-3 text-[11px]">
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-[var(--osc-text-faint)]">Native bridge</dt>
-              <dd className="m-0 text-right text-[var(--osc-text-muted)]">{data?.nativeOpenCodeAvailable ? "Available" : "Unavailable"}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-[var(--osc-text-faint)]">Process</dt>
-              <dd className="m-0 text-right text-[var(--osc-text-muted)]">{connectionLabel}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="osc-setting-card">
-          <div className="flex items-start gap-3">
-            <span className="osc-status-dot" data-status={studioStatus} aria-hidden />
+    <Dialog open={open} onClose={onClose} title="Status" className="max-w-md">
+      <DialogHeader title="Status" onClose={onClose} />
+      <div className="flex flex-col gap-4 px-5 py-4">
+        <ul className="flex flex-col gap-3">
+          <li className="flex items-start gap-2.5">
+            <span className="osc-status-dot mt-1" data-status={toneOf(agentTone)} aria-hidden />
             <div className="min-w-0 flex-1">
-              <p className="osc-drawer-label">Studio</p>
-              <h2 className="mt-1 font-mono text-[14px] font-medium text-[var(--osc-text)]">
-                v{statusQuery.data?.packageVersion ?? data?.packageVersion ?? "…"}
-              </h2>
-              <p
-                className="mt-0.5 truncate font-mono text-[10px] text-[var(--osc-text-muted)]"
-                title={statusQuery.data?.workspace ?? data?.studioRoot}
-              >
-                {statusQuery.data?.workspace ?? data?.studioRoot ?? "Resolving Studio Home…"}
+              <p className="text-[13px] font-semibold text-[var(--osc-text)]">
+                {healthQuery.isLoading ? "Agent…" : agentOk ? "Agent healthy" : "Agent unavailable"}
+              </p>
+              <p className="mt-0.5 text-[12px] text-[var(--osc-text-muted)]">
+                {agentOk && healthQuery.data?.version
+                  ? `OpenCode ${healthQuery.data.version}${processLabel ? ` · ${processLabel}` : ""}`
+                  : healthQuery.data?.error || (healthQuery.isLoading ? "Checking…" : "Not responding")}
               </p>
             </div>
-          </div>
-          <ul className="mt-4 grid gap-3 border-t border-[var(--osc-border)] pt-3 text-[11px]">
-            {managedChecks.map(({ group, id, label, check }) => (
-              <li key={id} className="flex items-start gap-2">
-                <span className="osc-status-dot !mt-1 !size-1.5" data-status={check?.status ?? "fail"} aria-hidden />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="font-medium text-[var(--osc-text)]">{label}</span>
-                    <span className="shrink-0 text-[9px] tracking-[0.08em] text-[var(--osc-text-faint)] uppercase">{group}</span>
-                  </span>
-                  <span className="mt-0.5 block text-[var(--osc-text-muted)]">{check?.message ?? "Status check unavailable"}</span>
-                  {check?.repair && check.status !== "pass" ? (
-                    <span className="mt-0.5 block text-[var(--osc-text-faint)]">{check.repair}</span>
-                  ) : null}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
+          </li>
+          <li className="flex items-start gap-2.5">
+            <span className="osc-status-dot mt-1" data-status={toneOf(installTone)} aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-[var(--osc-text)]">
+                {statusQuery.isLoading ? "Install…" : needsRepair ? "Install needs attention" : "Install OK"}
+              </p>
+              <p className="mt-0.5 text-[12px] text-[var(--osc-text-muted)]">
+                {version ? `v${version}` : "…"}
+                {statusQuery.isLoading ? "" : ` · ${managedReady}/${managedTotal} checks`}
+              </p>
+              {failed.length > 0 ? (
+                <ul className="mt-2 flex flex-col gap-1 border-t border-[var(--osc-border)] pt-2">
+                  {failed.slice(0, 4).map((check) => (
+                    <li key={check.id} className="text-[11px] text-[var(--osc-text-muted)]">
+                      <span className="font-medium text-[var(--osc-text)]">{check.id}</span>
+                      {" · "}
+                      {check.message}
+                    </li>
+                  ))}
+                  {failed.length > 4 ? <li className="text-[11px] text-[var(--osc-text-faint)]">+{failed.length - 4} more</li> : null}
+                </ul>
+              ) : null}
+            </div>
+          </li>
+        </ul>
 
-      <section className="osc-setting-card">
-        <div>
-          <h2 className="text-[13px] font-semibold text-[var(--osc-text)]">Maintenance</h2>
-          <p className="mt-0.5 text-[11px] text-[var(--osc-text-muted)]">
-            Repair installation state, restart a supervised runtime, or refresh health.
-          </p>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 border-t border-[var(--osc-border)] pt-3">
           <Button
             type="button"
             variant={needsRepair ? "default" : "outline"}
@@ -232,7 +219,7 @@ export function StatusPage() {
             variant="outline"
             size="sm"
             disabled={Boolean(busy) || supervisor?.supervised === false}
-            title={supervisor?.supervised === false ? "Only available when this host spawned OpenCode" : undefined}
+            title={supervisor?.supervised === false ? "Only when this host spawned OpenCode" : undefined}
             onClick={() => void restartAgent()}
           >
             {busy === "restart" ? "Restarting…" : "Restart agent"}
@@ -241,31 +228,26 @@ export function StatusPage() {
             type="button"
             variant="outline"
             size="sm"
+            disabled={Boolean(busy)}
             onClick={() => {
               void healthQuery.refetch()
               void supervisorQuery.refetch()
               void statusQuery.refetch()
             }}
           >
-            Recheck status
+            Refresh
           </Button>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--osc-border)] pt-3">
-          <a href="/opencode" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
-            OpenCode web
-          </a>
-          <Link to="/" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
-            Agent home
-          </Link>
-        </div>
-      </section>
 
-      {notice ? (
-        <p className="osc-settings-alert" data-tone={notice.tone} role={notice.tone === "error" ? "alert" : "status"}>
-          {notice.text}
-        </p>
-      ) : null}
-      {data?.restartRequiredHint ? <p className="text-[11px] text-[var(--osc-text-muted)]">{data.restartRequiredHint}</p> : null}
-    </div>
+        {notice ? (
+          <p className="osc-settings-alert" data-tone={notice.tone} role={notice.tone === "error" ? "alert" : "status"}>
+            {notice.text}
+          </p>
+        ) : null}
+        {studiosQuery.data?.restartRequiredHint ? (
+          <p className="text-[11px] text-[var(--osc-text-muted)]">{studiosQuery.data.restartRequiredHint}</p>
+        ) : null}
+      </div>
+    </Dialog>
   )
 }
