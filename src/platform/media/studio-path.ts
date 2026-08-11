@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto"
 import { constants } from "node:fs"
 import { chmod, link, lstat, mkdir, open, realpath, rm } from "node:fs/promises"
 import path from "node:path"
-import { isInside } from "../../core/paths"
+import { StudioError } from "../../core/errors"
+import { isInside, resolveUnderRoot } from "../../core/paths"
 
 export { isInside }
 
@@ -18,9 +19,14 @@ export async function canonicalStudioRoot(directory: string) {
 }
 
 export function resolveStudioPath(root: string, input: string) {
-  const candidate = path.isAbsolute(input) ? path.normalize(input) : path.resolve(root, input)
-  if (!isInside(root, candidate)) throw new Error(`Path must be inside the Studio root: ${input}`)
-  return candidate
+  try {
+    return resolveUnderRoot(root, input)
+  } catch (error) {
+    if (error instanceof StudioError && error.code === "path_escape") {
+      throw new Error(`Path must be inside the Studio root: ${input}`)
+    }
+    throw error
+  }
 }
 
 async function ensureSafeDirectory(root: string, directory: string) {

@@ -1,7 +1,7 @@
-import { lstat, realpath } from "node:fs/promises"
 import path from "node:path"
 import { Hono } from "hono"
-import { isInside } from "../../src/core/paths"
+import { StudioError } from "../../src/core/errors"
+import { resolveContainedPath } from "../../src/core/paths"
 import { createSseResponse } from "../../src/core/sse"
 import { type DesignEntry, findDesign, listRenders, RENDER_FILE_PATTERN, type StudioLayout, scanDesigns } from "./library"
 import { ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
@@ -29,19 +29,20 @@ function safeDesignId(id: string) {
 }
 
 async function resolveRegularFileInside(root: string, candidate: string, escapeMessage: string, notFoundMessage: string) {
-  if (!isInside(root, candidate)) throw new ApiError(400, escapeMessage)
-  let resolved: string
-  let canonicalRoot: string
   try {
-    resolved = await realpath(candidate)
-    canonicalRoot = await realpath(root)
-  } catch {
-    throw new ApiError(404, notFoundMessage)
+    const { absolute } = await resolveContainedPath(root, candidate, {
+      kind: "file",
+      rejectSymlink: false,
+      realpathRoot: true,
+    })
+    return absolute
+  } catch (error) {
+    if (error instanceof StudioError) {
+      if (error.code === "path_escape" || error.code === "path_resolves_outside") throw new ApiError(400, escapeMessage)
+      throw new ApiError(404, notFoundMessage)
+    }
+    throw error
   }
-  if (!isInside(canonicalRoot, resolved)) throw new ApiError(400, escapeMessage)
-  const info = await lstat(resolved)
-  if (!info.isFile()) throw new ApiError(404, notFoundMessage)
-  return resolved
 }
 
 function designEntryDto(root: string, entry: DesignEntry) {

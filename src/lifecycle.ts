@@ -14,8 +14,6 @@ import {
 import { ensureUv, resolveEngine } from "./core/engines"
 import {
   atomicWriteOpenCodeConfig,
-  configWithMcp,
-  configWithPlugins,
   LEGACY_PACKAGE_NAMES,
   mcpEntries,
   type OpenCodeConfig,
@@ -23,6 +21,8 @@ import {
   pluginEntries,
   readOpenCodeConfig,
   resolveOpenCodeConfigPath,
+  withMcp,
+  withPlugins,
 } from "./core/opencode-config"
 import {
   forgeRuntimeDir,
@@ -62,23 +62,6 @@ type SkillTarget = {
   id: string
   skillName: string
   sourceSkillFile: string
-}
-
-function withPlugins(openCode: OpenCodeConfig, plugins: unknown[]): OpenCodeConfig {
-  const text = configWithPlugins(openCode, plugins)
-  const value: Record<string, unknown> = { ...openCode.value }
-  if (plugins.length > 0) value.plugin = plugins
-  else delete value.plugin
-  return { ...openCode, text, value }
-}
-
-function withMcp(config: OpenCodeConfig, mcp: Record<string, unknown> | undefined): OpenCodeConfig {
-  const next = mcp && Object.keys(mcp).length > 0 ? mcp : undefined
-  const text = configWithMcp(config, next)
-  const value: Record<string, unknown> = { ...config.value }
-  if (next) value.mcp = next
-  else delete value.mcp
-  return { ...config, text, value }
 }
 
 async function readMarker(markerFile: string): Promise<ManagedMarker | null> {

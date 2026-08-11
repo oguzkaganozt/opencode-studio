@@ -2,7 +2,8 @@ import { constants } from "node:fs"
 import { lstat, open, opendir, realpath } from "node:fs/promises"
 import path from "node:path"
 import { fileTypeFromBuffer } from "file-type"
-import { isInside } from "../../core/paths"
+import { StudioError } from "../../core/errors"
+import { isInside, resolveContainedPath, resolveUnderRoot } from "../../core/paths"
 import { modalityFromMime } from "./assets"
 import type { AskPermission } from "./studio-path"
 
@@ -57,25 +58,34 @@ export function personalOutputPath(layout: LibraryLayout, requested: string | un
     }
     return path.resolve(layout.root, requested)
   })()
-  if (!isInside(layout.root, resolved) && resolved !== layout.root) {
-    throw new Error(`Output path must be inside the workspace: ${requested ?? filename}`)
+  try {
+    const inside = resolveUnderRoot(layout.root, resolved, { allowRoot: true })
+    if (inside === path.resolve(layout.root)) {
+      throw new Error(`Output path must name a file inside the workspace: ${requested ?? filename}`)
+    }
+    return inside
+  } catch (error) {
+    if (error instanceof StudioError && error.code === "path_escape") {
+      throw new Error(`Output path must be inside the workspace: ${requested ?? filename}`)
+    }
+    throw error
   }
-  if (resolved === layout.root) {
-    throw new Error(`Output path must name a file inside the workspace: ${requested ?? filename}`)
-  }
-  return resolved
 }
 
 export async function resolveWorkspaceFile(root: string, input: string) {
-  const requested = path.isAbsolute(input) ? path.normalize(input) : path.resolve(root, input)
-  if (!isInside(root, requested) && requested !== root) {
-    throw new Error(`Path must be inside the workspace: ${input}`)
+  try {
+    const requested = resolveUnderRoot(root, input, { allowRoot: true })
+    const { absolute, relative } = await resolveContainedPath(root, requested, { kind: "file", rejectSymlink: true })
+    return { filePath: absolute, relativePath: relative }
+  } catch (error) {
+    if (error instanceof StudioError) {
+      if (error.code === "path_escape") throw new Error(`Path must be inside the workspace: ${input}`)
+      if (error.code === "path_resolves_outside") throw new Error(`Path resolves outside the workspace: ${input}`)
+      if (error.code === "not_found") throw new Error(`Path not found: ${input}`)
+      throw new Error(`Path is not a regular file: ${input}`)
+    }
+    throw error
   }
-  const info = await lstat(requested)
-  if (info.isSymbolicLink() || !info.isFile()) throw new Error(`Path is not a regular file: ${input}`)
-  const canonical = await realpath(requested)
-  if (!isInside(root, canonical)) throw new Error(`Path resolves outside the workspace: ${input}`)
-  return { filePath: canonical, relativePath: path.relative(root, canonical) }
 }
 
 async function inspectMediaFile(root: string, filePath: string): Promise<ManagedAsset> {

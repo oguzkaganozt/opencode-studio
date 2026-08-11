@@ -4,7 +4,8 @@ import path from "node:path"
 import { Readable } from "node:stream"
 import { fileTypeFromBuffer } from "file-type"
 import { Hono } from "hono"
-import { isInside } from "../../core/paths"
+import { StudioError } from "../../core/errors"
+import { resolveContainedPath } from "../../core/paths"
 import { safeContentDisposition, securityHeaders } from "../../core/security"
 import { SKIP_DIR_NAMES } from "./library"
 
@@ -88,17 +89,16 @@ export async function resolveWorkspaceRoot(workspaceRoot: string) {
 export async function resolveInside(root: string, relative: string) {
   const clean = relative.replace(/^\/+/, "")
   const candidate = clean ? path.resolve(root, clean) : root
-  if (!isInside(root, candidate) && candidate !== root) throw new FilesError(400, "Path escapes Studio Home")
-  let info: Awaited<ReturnType<typeof lstat>>
   try {
-    info = await lstat(candidate)
-  } catch {
-    throw new FilesError(404, "Not found")
+    return await resolveContainedPath(root, candidate, { allowRoot: true, rejectSymlink: true })
+  } catch (error) {
+    if (error instanceof StudioError) {
+      if (error.code === "not_found") throw new FilesError(404, "Not found")
+      if (error.code === "symlink_rejected") throw new FilesError(400, "Symlinks are not allowed")
+      throw new FilesError(400, "Path escapes Studio Home")
+    }
+    throw error
   }
-  if (info.isSymbolicLink()) throw new FilesError(400, "Symlinks are not allowed")
-  const canonical = await realpath(candidate)
-  if (!isInside(root, canonical) && canonical !== root) throw new FilesError(400, "Path escapes Studio Home")
-  return { absolute: canonical, relative: path.relative(root, canonical).split(path.sep).join("/"), info }
 }
 
 function previewKind(name: string, mime?: string): PreviewKind {

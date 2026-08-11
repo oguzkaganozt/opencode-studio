@@ -85,7 +85,7 @@ export function pluginEntries(config: OpenCodeConfig) {
   return value
 }
 
-function configWithKey(config: OpenCodeConfig, key: "plugin" | "mcp", value: unknown) {
+function configTextWithKey(config: OpenCodeConfig, key: "plugin" | "mcp", value: unknown) {
   const edits = modify(config.text, [key], value, {
     formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
   })
@@ -94,9 +94,18 @@ function configWithKey(config: OpenCodeConfig, key: "plugin" | "mcp", value: unk
   return text.endsWith("\n") ? text : `${text}\n`
 }
 
-export function configWithPlugins(config: OpenCodeConfig, plugins: unknown[] | undefined) {
-  if (plugins !== undefined) validatePluginEntries(plugins)
-  return configWithKey(config, "plugin", plugins && plugins.length > 0 ? plugins : undefined)
+function configWithKey(config: OpenCodeConfig, key: "plugin" | "mcp", value: unknown): OpenCodeConfig {
+  const text = configTextWithKey(config, key, value)
+  const nextValue: Record<string, unknown> = { ...config.value }
+  if (value === undefined) delete nextValue[key]
+  else nextValue[key] = value
+  return { ...config, text, value: nextValue }
+}
+
+/** Return a new OpenCodeConfig with `plugin` set or cleared. */
+export function withPlugins(config: OpenCodeConfig, plugins: unknown[]): OpenCodeConfig {
+  validatePluginEntries(plugins)
+  return configWithKey(config, "plugin", plugins.length > 0 ? plugins : undefined)
 }
 
 export function mcpEntries(config: OpenCodeConfig): Record<string, unknown> {
@@ -108,8 +117,10 @@ export function mcpEntries(config: OpenCodeConfig): Record<string, unknown> {
   return { ...(value as Record<string, unknown>) }
 }
 
-export function configWithMcp(config: OpenCodeConfig, mcp: Record<string, unknown> | undefined) {
-  return configWithKey(config, "mcp", mcp && Object.keys(mcp).length > 0 ? mcp : undefined)
+/** Return a new OpenCodeConfig with `mcp` set or cleared. */
+export function withMcp(config: OpenCodeConfig, mcp: Record<string, unknown> | undefined): OpenCodeConfig {
+  const next = mcp && Object.keys(mcp).length > 0 ? mcp : undefined
+  return configWithKey(config, "mcp", next)
 }
 
 async function validateWithOpenCode(candidate: string) {

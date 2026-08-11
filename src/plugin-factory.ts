@@ -7,8 +7,8 @@ import { composeStudioPlugins, type StudioPluginContribution } from "./core/plug
 import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
-import { autostartDisabled, ensureStudioHost } from "./host-ensure"
-import { defaultStudioRoot } from "./serve-bootstrap"
+import { autostartDisabled } from "./host-ensure"
+import { defaultStudioRoot, ensureStudioHostReady } from "./serve-bootstrap"
 import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
 
 export type StudioPluginOptions = UserPathOptions & {
@@ -82,7 +82,7 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
     if (!hostUrl && shouldEnsure) {
       const parent = parentServerUrl(context)
       if (parent) {
-        const ensured = await ensureStudioHost({
+        const ensured = await ensureStudioHostReady({
           parentOpenCodeUrl: parent,
           studioRoot,
           packageRoot,
