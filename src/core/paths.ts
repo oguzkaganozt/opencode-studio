@@ -35,7 +35,10 @@ export type ResolveContainedOptions = {
   /** Reject when the path itself is a symlink (default true). */
   rejectSymlink?: boolean
   kind?: "file" | "directory" | "any"
-  /** Allow the root directory itself (default false). */
+  /**
+   * Documented for call-site intent. `isInside` already treats root equality as
+   * inside (`relative === ""`), so this flag does not change lexical acceptance.
+   */
   allowRoot?: boolean
   /** Compare final path against realpath(root) (default false). */
   realpathRoot?: boolean

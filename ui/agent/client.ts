@@ -3,7 +3,6 @@ import {
   type Message,
   type OpencodeClient,
   type Part,
-  type PermissionRequest,
   type QuestionAnswer,
   type QuestionRequest,
   type Session,
@@ -12,6 +11,7 @@ import {
 } from "@opencode-ai/sdk/v2/client"
 import { type StudioSessionContext, type StudioSessionHistoryResponse, studioSessionMetadata } from "../../src/core/session-history"
 import { fetchJson } from "../lib/fetch-json"
+import { normalizePermissionProperties, type UiPermissionRequest } from "./permission-request"
 
 export type AgentMessage = {
   info: Message
@@ -110,7 +110,22 @@ export async function replyPermission(input: {
   requestID: string
   reply: "once" | "always" | "reject"
   directory?: string
+  /** v2 permission requests require session-scoped reply. */
+  sessionID?: string
+  api?: "v1" | "v2"
 }): Promise<void> {
+  if (input.api === "v2") {
+    if (!input.sessionID) throw new Error("sessionID is required for permission v2 reply")
+    await sdk(input.directory, async (client) => {
+      const result = await client.v2.session.permission.reply({
+        sessionID: input.sessionID!,
+        requestID: input.requestID,
+        reply: input.reply,
+      })
+      return { data: undefined, error: result.error }
+    })
+    return
+  }
   await sdk(input.directory, (client) =>
     client.permission.reply({ requestID: input.requestID, directory: input.directory, reply: input.reply }),
   )
@@ -128,8 +143,38 @@ export async function listSessionStatuses(directory?: string): Promise<Record<st
   return (await sdk(directory, (client) => client.session.status(directory ? { directory } : undefined))) ?? {}
 }
 
-export async function listPendingPermissions(directory?: string): Promise<PermissionRequest[]> {
-  return (await sdk(directory, (client) => client.permission.list(directory ? { directory } : undefined))) ?? []
+/** Pending permissions from v1 list + v2 location list, normalized for the agent UI. */
+export async function listPendingPermissions(directory?: string): Promise<UiPermissionRequest[]> {
+  const client = createAgentClient(directory)
+  const location = directory?.trim() ? { directory: directory.trim() } : undefined
+  const [v1Result, v2Result] = await Promise.all([
+    client.permission.list(location ? { directory: location.directory } : undefined),
+    client.v2.permission.request.list(location ? { location } : undefined),
+  ])
+  if (v1Result.error) throw new Error(formatSdkError(v1Result.error))
+
+  const out: UiPermissionRequest[] = []
+  const seen = new Set<string>()
+
+  for (const item of v1Result.data ?? []) {
+    const next = normalizePermissionProperties("permission.asked", item)
+    if (!next || seen.has(next.id)) continue
+    seen.add(next.id)
+    out.push(next)
+  }
+
+  // Older OpenCode builds may lack v2 permission list — treat as empty, not fatal.
+  if (!v2Result.error) {
+    const rows = Array.isArray(v2Result.data) ? v2Result.data : []
+    for (const item of rows) {
+      const next = normalizePermissionProperties("permission.v2.asked", item)
+      if (!next || seen.has(next.id)) continue
+      seen.add(next.id)
+      out.push(next)
+    }
+  }
+
+  return out
 }
 
 export async function listPendingQuestions(directory?: string): Promise<QuestionRequest[]> {

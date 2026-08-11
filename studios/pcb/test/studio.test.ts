@@ -311,8 +311,22 @@ describe("pcb studio smoke", () => {
       }),
     )
 
-    const bad = await upsertCatalogPart(workspace, { mpn: "bad/name" })
-    expect(bad.ok).toBe(false)
+    const slash = await upsertCatalogPart(workspace, {
+      mpn: "TLV9062IDR/R",
+      manufacturer: "TI",
+      description: "op-amp",
+    })
+    expect(slash.ok).toBe(true)
+    if (!slash.ok) return
+    expect(slash.created).toBe(true)
+    expect(slash.path).toBe(`catalog/parts/${encodeURIComponent("TLV9062IDR/R")}.yaml`)
+    expect(await getCatalogPart(workspace, "TLV9062IDR/R")).toEqual(expect.objectContaining({ mpn: "TLV9062IDR/R", manufacturer: "TI" }))
+
+    const paren = await upsertCatalogPart(workspace, { mpn: "part(1)", description: "paren mpn" })
+    expect(paren.ok).toBe(true)
+    if (!paren.ok) return
+    expect(paren.path).toBe(`catalog/parts/${encodeURIComponent("part(1)")}.yaml`)
+    expect(await getCatalogPart(workspace, "part(1)")).toEqual(expect.objectContaining({ mpn: "part(1)" }))
 
     const cased = await upsertCatalogPart(workspace, {
       mpn: "esp32-s3-wroom-1-n16r8",

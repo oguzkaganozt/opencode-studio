@@ -28,14 +28,26 @@ export type CatalogState = {
 const CATALOG_SUBDIR = path.join("catalog", "parts")
 const MAX_PART_FILE_BYTES = 256 * 1024
 const MAX_CATALOG_PARTS = 2000
-const MPN_FILE_RE = /^[A-Za-z0-9._+-]+$/
+const MAX_MPN_FILE_CHARS = 180
+/** Legacy plain filenames (no encoding). */
+const PLAIN_MPN_FILE_RE = /^[A-Za-z0-9._+-]+$/
 
 function catalogPartsDir(workspaceRoot: string): string {
   return path.join(workspaceRoot, CATALOG_SUBDIR)
 }
 
 function mpnFromFilename(filename: string): string {
-  return path.basename(filename, path.extname(filename))
+  const stem = path.basename(filename, path.extname(filename))
+  try {
+    return decodeURIComponent(stem)
+  } catch {
+    return stem
+  }
+}
+
+/** Basenames only — reject path traversal; plain or percent-encoded stems are fine. */
+function isSafeCatalogStem(stem: string): boolean {
+  return Boolean(stem) && !stem.includes("..") && !stem.includes("/") && !stem.includes("\\") && !stem.includes("\0")
 }
 
 const KNOWN_PART_KEYS = new Set(["mpn", "manufacturer", "description", "datasheet", "category"])
@@ -97,11 +109,12 @@ export async function inspectCatalog(workspaceRoot: string): Promise<CatalogStat
       break
     }
     const file = yamlFiles[i]!
-    const mpnFallback = mpnFromFilename(file)
-    if (!MPN_FILE_RE.test(mpnFallback) || mpnFallback.includes("..")) {
+    const stem = path.basename(file, path.extname(file))
+    if (!isSafeCatalogStem(stem)) {
       skippedCount++
       continue
     }
+    const mpnFallback = mpnFromFilename(file)
     const filePath = path.join(dir, file)
     if (!isInside(workspaceRoot, filePath)) {
       skippedCount++
@@ -172,10 +185,16 @@ function optionalTrimmed(value: string | null | undefined): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-function catalogFileName(mpn: string): string | null {
+/** Map display MPN → catalog filename. Plain when possible; else percent-encode (keeps `/`, spaces, etc.). */
+export function catalogFileName(mpn: string): string | null {
   const trimmed = mpn.trim()
-  if (!trimmed || !MPN_FILE_RE.test(trimmed) || trimmed.includes("..")) return null
-  return `${trimmed}.yaml`
+  if (!trimmed || trimmed.includes("\0") || trimmed.includes("..")) return null
+  if (trimmed.length > MAX_MPN_FILE_CHARS) return null
+  if (PLAIN_MPN_FILE_RE.test(trimmed)) return `${trimmed}.yaml`
+  const encoded = encodeURIComponent(trimmed)
+  if (!encoded || encoded.length > MAX_MPN_FILE_CHARS * 3) return null
+  if (!isSafeCatalogStem(encoded)) return null
+  return `${encoded}.yaml`
 }
 
 /** Locate on-disk catalog file for an MPN (case-insensitive identity). */
@@ -192,8 +211,9 @@ async function findCatalogPartRecord(workspaceRoot: string, mpn: string): Promis
 
   const yamlFiles = entries.filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")).sort()
   for (const file of yamlFiles) {
+    const stem = path.basename(file, path.extname(file))
+    if (!isSafeCatalogStem(stem)) continue
     const mpnFallback = mpnFromFilename(file)
-    if (!MPN_FILE_RE.test(mpnFallback) || mpnFallback.includes("..")) continue
     const filePath = path.join(dir, file)
     if (!isInside(workspaceRoot, filePath)) continue
     try {
@@ -233,7 +253,7 @@ export async function upsertCatalogPart(workspaceRoot: string, input: CatalogUps
   if (!catalogFileName(mpn)) {
     return {
       ok: false,
-      error: "mpn must match [A-Za-z0-9._+-]+ for catalog filenames",
+      error: "mpn is empty, too long, or contains unsupported characters for catalog storage",
       code: "invalid_mpn",
     }
   }
@@ -251,7 +271,7 @@ export async function upsertCatalogPart(workspaceRoot: string, input: CatalogUps
   if (!fileName) {
     return {
       ok: false,
-      error: "mpn must match [A-Za-z0-9._+-]+ for catalog filenames",
+      error: "mpn is empty, too long, or contains unsupported characters for catalog storage",
       code: "invalid_mpn",
     }
   }

@@ -164,6 +164,9 @@ export function createGlobalSessionSource(baseUrl: string, env: NodeJS.ProcessEn
   }
 }
 
+/** Default cap on OpenCode global session fetch for agent history. */
+export const DEFAULT_SESSION_HISTORY_LIMIT = 500
+
 export async function studioSessionHistory(input: {
   source: GlobalSessionSource
   roots: StudioRoots
@@ -171,6 +174,8 @@ export async function studioSessionHistory(input: {
   directory?: string
   contextKey?: string
   search?: string
+  /** OpenCode session list limit (default DEFAULT_SESSION_HISTORY_LIMIT). */
+  limit?: number
 }): Promise<StudioSessionHistoryResponse> {
   const requestedDirectory = input.directory ? absolute(input.directory) : undefined
   if (input.scope === "directory" && !requestedDirectory) throw new SessionHistoryInputError("directory is required for directory scope")
@@ -197,7 +202,12 @@ export async function studioSessionHistory(input: {
     return pending
   }
 
-  const sessions = await input.source({ limit: Number.MAX_SAFE_INTEGER })
+  // Bound OpenCode fetch — panel polls history; unbounded pulls grow with total sessions.
+  // Prefer newest-first before classify so a non-ordered page still surfaces recent work.
+  const limit = input.limit ?? DEFAULT_SESSION_HISTORY_LIMIT
+  const sessions = [...(await input.source({ limit }))].sort(
+    (a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0) || b.id.localeCompare(a.id),
+  )
   for (let offset = 0; offset < sessions.length; offset += 200) {
     const classified = await Promise.all(
       sessions.slice(offset, offset + 200).map((session) => classifySession(session, input.roots, exists)),

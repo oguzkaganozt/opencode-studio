@@ -158,10 +158,11 @@ export function sameOrigin(
   try {
     const url = new URL(origin)
     if (url.protocol !== "http:" && url.protocol !== "https:") return false
-    // Use url.host (keeps IPv6 brackets) with explicit port so IPv6 origins match.
+    // url.hostname is unbracketed for IPv6 (::1); allowlist entries use [hostname].
     const explicitPort = url.port || (url.protocol === "https:" ? "443" : "80")
     if (!isLoopbackHost(hostname) && requestHost && url.host === requestHost) return true
-    const normalized = `${url.protocol}//${url.host.split(":")[0]}:${explicitPort}`
+    const hostLabel = isIP(url.hostname) === 6 ? `[${url.hostname}]` : url.hostname
+    const normalized = `${url.protocol}//${hostLabel}:${explicitPort}`
     return allowedOrigins(hostname, port, env).has(normalized)
   } catch {
     return false

@@ -517,39 +517,59 @@ export async function upgradeAndRestart(options: UpgradeOptions = {}): Promise<{
   const { killed } = await stopOpenCodeStudioStack(process.pid, env)
   logProgress(onProgress, `Stopped ${killed.length} process(es).`)
 
-  logProgress(onProgress, "Installing package (bun add -g @latest)…")
-  const upgraded = await upgradePackage({ packageRoot })
-  logProgress(onProgress, upgraded.installOutput ? `Installed.\n${upgraded.installOutput}` : "Installed.")
+  try {
+    logProgress(onProgress, "Installing package (bun add -g @latest)…")
+    const upgraded = await upgradePackage({ packageRoot })
+    logProgress(onProgress, upgraded.installOutput ? `Installed.\n${upgraded.installOutput}` : "Installed.")
 
-  const repairOutput = await runNewCliRepair(env, onProgress)
-  const started = await startOpenCodeStudioStack(env, onProgress)
+    const repairOutput = await runNewCliRepair(env, onProgress)
+    const started = await startOpenCodeStudioStack(env, onProgress)
 
-  const bindNote =
-    started.hostname === "127.0.0.1" || started.hostname === "localhost"
-      ? "Bound loopback only (set OPENCODE_SERVER_PASSWORD + OPENCODE_HOSTNAME=0.0.0.0 for online)."
-      : `Bound ${started.hostname}:${started.port} (online).`
+    const bindNote =
+      started.hostname === "127.0.0.1" || started.hostname === "localhost"
+        ? "Bound loopback only (set OPENCODE_SERVER_PASSWORD + OPENCODE_HOSTNAME=0.0.0.0 for online)."
+        : `Bound ${started.hostname}:${started.port} (online).`
 
-  logProgress(onProgress, "Upgrade complete.")
+    logProgress(onProgress, "Upgrade complete.")
 
-  return {
-    action: "upgrade",
-    packageName: upgraded.packageName,
-    current: before.current,
-    latest: before.latest,
-    killed,
-    installOutput: upgraded.installOutput,
-    repairOutput,
-    serveUrl: started.serveUrl,
-    studioUrl: started.studioUrl,
-    snapshotUsed: fromSnapshot,
-    message: [
-      `Upgraded ${upgraded.packageName} ${before.current} → ${before.latest}.`,
-      `Stopped ${killed.length} process(es).`,
-      bindNote,
-      started.serveUrl ? `OpenCode: ${started.serveUrl}` : "",
-      `Studio:  ${started.studioUrl}`,
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    return {
+      action: "upgrade",
+      packageName: upgraded.packageName,
+      current: before.current,
+      latest: before.latest,
+      killed,
+      installOutput: upgraded.installOutput,
+      repairOutput,
+      serveUrl: started.serveUrl,
+      studioUrl: started.studioUrl,
+      snapshotUsed: fromSnapshot,
+      message: [
+        `Upgraded ${upgraded.packageName} ${before.current} → ${before.latest}.`,
+        `Stopped ${killed.length} process(es).`,
+        bindNote,
+        started.serveUrl ? `OpenCode: ${started.serveUrl}` : "",
+        `Studio:  ${started.studioUrl}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    }
+  } catch (error) {
+    const original = error instanceof Error ? error.message : String(error)
+    logProgress(onProgress, `Upgrade step failed after stop: ${original}`)
+    logProgress(onProgress, "Attempting to restart previous stack…")
+    try {
+      const restarted = await startOpenCodeStudioStack(env, onProgress)
+      throw new Error(
+        `Upgrade failed after stop; stack restarted at ${restarted.studioUrl}. ${original}. If the package is half-updated, run opencode-studio repair.`,
+      )
+    } catch (restartError) {
+      if (restartError instanceof Error && restartError.message.startsWith("Upgrade failed after stop; stack restarted")) {
+        throw restartError
+      }
+      const restartMsg = restartError instanceof Error ? restartError.message : String(restartError)
+      throw new Error(
+        `Upgrade failed after stop and stack restart also failed (${restartMsg}). Original: ${original}. Run opencode-studio up manually.`,
+      )
+    }
   }
 }

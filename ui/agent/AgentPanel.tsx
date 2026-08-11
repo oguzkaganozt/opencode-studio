@@ -1,4 +1,4 @@
-import type { PermissionRequest, QuestionAnswer, QuestionRequest, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
+import type { QuestionAnswer, QuestionRequest, SessionStatus, SnapshotFileDiff } from "@opencode-ai/sdk/v2/client"
 import {
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -61,7 +61,7 @@ import {
 } from "./client"
 import { IconChevronDown } from "./icons"
 import { availableModelVariants } from "./model-variant"
-import { PermissionRequestBar } from "./permission-request"
+import { normalizePermissionProperties, PermissionRequestBar, type UiPermissionRequest } from "./permission-request"
 import { QuestionRequestBar } from "./question-request"
 import { SessionHistoryPopover } from "./session-history-popover"
 import { sessionGroupsByLastMessage, sessionLabel, sessionOptionLabels } from "./session-label"
@@ -156,7 +156,7 @@ export function AgentPanel({
   composerStateRef.current = { draft, chips }
   const composersBySession = useRef(new Map<string, ComposerState>())
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>({})
-  const [permissions, setPermissions] = useState<PermissionRequest[]>([])
+  const [permissions, setPermissions] = useState<UiPermissionRequest[]>([])
   const [questions, setQuestions] = useState<QuestionRequest[]>([])
   const [files, setFiles] = useState<SnapshotFileDiff[]>([])
   const [modelOptions, setModelOptions] = useState<ModelRef[]>([])
@@ -475,7 +475,7 @@ export function AgentPanel({
     if (!healthOk || !directory || !contextWritable) return
     const epoch = contextEpoch.current
     const request = ++runtimeRequest.current
-    let result: [Record<string, SessionStatus>, PermissionRequest[], QuestionRequest[]]
+    let result: [Record<string, SessionStatus>, Awaited<ReturnType<typeof listPendingPermissions>>, QuestionRequest[]]
     try {
       result = await Promise.all([listSessionStatuses(directory), listPendingPermissions(directory), listPendingQuestions(directory)])
     } catch (error) {
@@ -485,6 +485,7 @@ export function AgentPanel({
     const [statuses, pendingPermissions, pendingQuestions] = result
     if (epoch !== contextEpoch.current || request !== runtimeRequest.current) return
     setSessionStatuses(statuses)
+    // Full replace from v1∪v2 lists so reload/reconnect cannot keep stale SSE-only rows.
     setPermissions(pendingPermissions)
     setQuestions(pendingQuestions)
   }, [contextWritable, directory, healthOk])
@@ -605,7 +606,8 @@ export function AgentPanel({
         }
         if (event.type === "permission.asked" || event.type === "permission.v2.asked") {
           runtimeRequest.current += 1
-          const next = event.properties as PermissionRequest
+          const next = normalizePermissionProperties(event.type, event.properties)
+          if (!next) return
           setPermissions((current) => [...current.filter((item) => item.id !== next.id), next])
           return
         }
@@ -666,7 +668,7 @@ export function AgentPanel({
           return
         }
         if (event.type === "message.part.delta") {
-          messageRequest.current += 1
+          // Do not bump messageRequest here — that cancelled every in-flight listMessages during streaming.
           const props = event.properties as {
             sessionID?: string
             messageID?: string
@@ -925,6 +927,8 @@ export function AgentPanel({
         requestID: permission.id,
         reply: response,
         directory,
+        sessionID: permission.sessionID || sessionID,
+        api: permission.api,
       })
       runtimeRequest.current += 1
       setPermissions((current) => current.filter((item) => item.id !== permission.id))

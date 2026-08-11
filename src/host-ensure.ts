@@ -23,10 +23,20 @@ export type EnsureStudioHostResult =
   | { ok: false; reason: string }
 
 let state: { bind: StudioBind; handle: HostHandle; studioRoot: string } | undefined
-let starting: Promise<EnsureStudioHostResult> | undefined
+let starting: { key: string; promise: Promise<EnsureStudioHostResult> } | undefined
 
 export function autostartDisabled(value: string | undefined) {
   return envFalsy(value)
+}
+
+function ensureFlightKey(input: EnsureStudioHostInput, env: NodeJS.ProcessEnv): string {
+  const studioRoot = path.resolve(input.studioRoot)
+  try {
+    const bind = resolveStudioBind(input.parentOpenCodeUrl, env)
+    return `${bind.hostname}:${bind.port}:${studioRoot}`
+  } catch {
+    return `unresolved:${studioRoot}`
+  }
 }
 
 export async function ensureStudioHost(input: EnsureStudioHostInput): Promise<EnsureStudioHostResult> {
@@ -34,11 +44,18 @@ export async function ensureStudioHost(input: EnsureStudioHostInput): Promise<En
   if (autostartDisabled(input.autostart ?? env.OPENCODE_STUDIO_AUTOSTART)) {
     return { ok: false, reason: "OPENCODE_STUDIO_AUTOSTART disabled" }
   }
-  if (starting) return starting
-  starting = ensureStudioHostLocked(input, env).finally(() => {
-    starting = undefined
+  const key = ensureFlightKey(input, env)
+  if (starting) {
+    if (starting.key === key) return starting.promise
+    // Different bind/root: wait out the other flight, then evaluate this caller.
+    await starting.promise.catch(() => {})
+    return ensureStudioHost(input)
+  }
+  const promise = ensureStudioHostLocked(input, env).finally(() => {
+    if (starting?.promise === promise) starting = undefined
   })
-  return starting
+  starting = { key, promise }
+  return promise
 }
 
 function portBusyReason(port: number, message: string) {

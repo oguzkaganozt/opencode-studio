@@ -41,17 +41,22 @@ async function roots() {
 }
 
 describe("studioSessionHistory", () => {
-  test("walks the complete OpenCode history when no limit is requested", async () => {
+  test("caps OpenCode history fetch at the default limit", async () => {
     const studioRoots = await roots()
     const rows = Array.from({ length: 550 }, (_, index) =>
       session({ id: `home-${index}`, directory: studioRoots.home, updated: 10_000 - index }),
     )
-    const source = async ({ limit }: { limit: number }) => rows.slice(0, limit)
+    let requestedLimit = 0
+    const source = async ({ limit }: { limit: number }) => {
+      requestedLimit = limit
+      return rows.slice(0, limit)
+    }
 
     const result = await studioSessionHistory({ source, roots: studioRoots, scope: "studio" })
 
-    expect(result.sessions).toHaveLength(550)
-    expect(result.sessions.at(-1)?.id).toBe("home-549")
+    expect(requestedLimit).toBe(500)
+    expect(result.sessions).toHaveLength(500)
+    expect(result.sessions.at(-1)?.id).toBe("home-499")
   })
 
   test("keeps root-level PCB projects distinct from the PCB workspace", async () => {

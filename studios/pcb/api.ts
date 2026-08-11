@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { readRegularFileAt } from "../../src/core/paths"
+import { resolveContainedPath } from "../../src/core/paths"
 import { safeContentDisposition } from "../../src/core/security"
 import { createSseResponse } from "../../src/core/sse"
 import { toCplCsv } from "./assembly"
@@ -71,9 +71,9 @@ async function serveProjectSvg(workspaceRoot: string, id: string, pathKey: "sche
 }
 
 async function serveWorkspaceFile(workspaceRoot: string, filePath: string, contentType: string, downloadName?: string): Promise<Response> {
-  let content: Buffer
+  let absolute: string
   try {
-    content = await readRegularFileAt(workspaceRoot, filePath)
+    ;({ absolute } = await resolveContainedPath(workspaceRoot, filePath, { kind: "file", rejectSymlink: true }))
   } catch {
     throw new ApiError(404, "File not found")
   }
@@ -83,7 +83,7 @@ async function serveWorkspaceFile(workspaceRoot: string, filePath: string, conte
     "X-Content-Type-Options": "nosniff",
   }
   if (downloadName) headers["Content-Disposition"] = safeContentDisposition(downloadName)
-  return new Response(new Uint8Array(content), { headers })
+  return new Response(Bun.file(absolute), { headers })
 }
 
 export function createPcbApi(workspaceRoot: string) {

@@ -22,8 +22,16 @@ const multi: QuestionInfo = {
 }
 
 describe("buildQuestionAnswers", () => {
-  test("includes selected labels and custom text", () => {
-    expect(buildQuestionAnswers([single], [["A"]], ["other"])).toEqual([["A", "other"]])
+  test("single-select prefers option over leftover custom", () => {
+    expect(buildQuestionAnswers([single], [["A"]], ["other"])).toEqual([["A"]])
+  })
+
+  test("single-select custom alone", () => {
+    expect(buildQuestionAnswers([single], [[]], ["typed"])).toEqual([["typed"]])
+  })
+
+  test("multi-select includes custom with options", () => {
+    expect(buildQuestionAnswers([multi], [["X"]], ["other"])).toEqual([["X", "other"]])
   })
 
   test("omits blank custom", () => {
@@ -32,6 +40,7 @@ describe("buildQuestionAnswers", () => {
 
   test("respects custom:false", () => {
     const locked = { ...single, custom: false }
+    expect(buildQuestionAnswers([locked], [[]], ["typed"])).toEqual([[]])
     expect(buildQuestionAnswers([locked], [["A"]], ["typed"])).toEqual([["A"]])
   })
 })

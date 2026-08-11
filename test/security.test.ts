@@ -47,6 +47,10 @@ describe("security", () => {
     test("accepts extra allowed origins from env", () => {
       expect(sameOrigin("http://my-dev.test:3000", host, port, { OPENCODE_STUDIO_ALLOWED_ORIGINS: "http://my-dev.test:3000" })).toBe(true)
     })
+    test("accepts IPv6 loopback origin when bind is loopback", () => {
+      expect(sameOrigin("http://[::1]:4173", host, port)).toBe(true)
+      expect(sameOrigin("http://[::1]:4173", "::1", port)).toBe(true)
+    })
   })
 
   describe("csrfTokensEqual", () => {

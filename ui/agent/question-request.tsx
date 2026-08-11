@@ -17,8 +17,14 @@ export function buildQuestionAnswers(questions: QuestionInfo[], selected: string
   return questions.map((question, index) => {
     const picks = [...(selected[index] ?? [])]
     const custom = (customs[index] ?? "").trim()
-    if (custom && allowsCustom(question) && !picks.includes(custom)) picks.push(custom)
-    return picks
+    if (question.multiple) {
+      if (custom && allowsCustom(question) && !picks.includes(custom)) picks.push(custom)
+      return picks
+    }
+    // Single-select: option XOR custom (prefer option when both present).
+    if (picks.length > 0) return picks.slice(0, 1)
+    if (custom && allowsCustom(question)) return [custom]
+    return []
   })
 }
 
@@ -67,6 +73,13 @@ export function QuestionRequestBar({
       }
       return next
     })
+    if (!multiple) {
+      setCustoms((current) => {
+        const next = [...current]
+        next[index] = ""
+        return next
+      })
+    }
   }
 
   if (!question || total === 0) return null
