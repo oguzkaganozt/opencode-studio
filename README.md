@@ -1,17 +1,17 @@
 # OpenCode Studio
 
-OpenCode Studios for CAD and PCB, plus always-on workspace media tools and a Files explorer.
+Isolated OpenCode Studios for CAD, PCB, and Media, plus a general Files explorer.
 
 **Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
-**CAD and PCB are always on.** Install wires OpenCode once (plugins + skills). build123d session tools ship inside the CAD plugin. Media tools and the Files explorer are always on too.
+**All Studios are always on.** Install wires OpenCode once with globally registered tools, one managed skill and hidden primary agent per Studio, and isolation permissions that keep Home/Files on stock `build` without Studio capabilities.
 
 ## Prerequisites
 
-1. **[OpenCode](https://opencode.ai)** ≥ 1.18.15 — authenticate your model providers.
+1. **[OpenCode](https://opencode.ai)** ≥ 1.18.16 — authenticate your model providers.
 2. **Bun ≥ 1.3** on PATH (install channel + CLI runtime).
 3. **Node + npm** recommended for PCB project scripts (if missing, build falls back to bundled `tsci`).
-4. Restart OpenCode after install/repair so plugins and skills load.
+4. Restart OpenCode after install/repair so plugins, skills, agents, and permissions load.
 
 ## Install
 
@@ -23,7 +23,7 @@ command -v opencode-studio
 # Greenfield: postinstall is soft — always repair
 opencode-studio repair
 opencode-studio status --workspace /path/to/your/project
-# exit 0; plugin + media-go + skills + cad-forge must pass
+# exit 0; plugins + skills + agents + permissions + engines must pass
 ```
 
 From a git checkout (before/without registry publish):
@@ -45,25 +45,25 @@ Domain engines ship in the package:
 ## Quick start
 
 ```bash
-# after repair (wires plugins/skills into OpenCode)
+# after repair (wires plugins/skills/agents/permissions into OpenCode)
 opencode-studio up
 # → attaches or spawns OpenCode API, starts Studio host
 ```
 
-Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent home, CAD / PCB / Files. One browser URL; OpenCode API is proxied (loopback child by default).
+Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent home, CAD / PCB / Media / Files. One browser URL; OpenCode API is proxied (loopback child by default).
 
 | URL | What |
 | --- | --- |
 | `http://127.0.0.1:4173/studio` | Studio shell (native Agent panel) |
 | `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
+| `http://127.0.0.1:4173/studio/studios/pcb` | PCB viewer |
+| `http://127.0.0.1:4173/studio/studios/media` | Media projects and asset browser |
 | Status (drawer footer) | Compact health modal: repair / restart agent |
 | `http://127.0.0.1:4173/` or `/opencode` | Optional OpenCode web UI (same-origin proxy) |
 
 **Lifecycle:** `opencode-studio up` supervises OpenCode (`opencode serve` on loopback if nothing is healthy; auto-restarts when this host spawned it). Attach instead with `OPENCODE_URL`. Disable spawn: `OPENCODE_STUDIO_NO_SUPERVISE=1`. Disable host: `OPENCODE_STUDIO_AUTOSTART=0`. Studio Home defaults to `$HOME`; agent directory follows the open project. PATH wrapper is removed on repair — do not rely on it.
 
 Health: `opencode-studio status` (exit 1 if unwired). Prefer **`OPENCODE_SERVER_PASSWORD`** when binding non-loopback (shared with Studio Basic auth).
-
-See `INTENT-AGENT-PANEL.md` for the native-agent / supervise plan.
 
 ### Web / LAN
 
@@ -90,8 +90,9 @@ Prefer SSH tunnel to loopback. If public: TLS at your reverse-proxy; enable WebS
 | File | Purpose |
 | --- | --- |
 | `~/.config/opencode-studio/studio.json` | Optional absolute `roots` only (domains always on) |
-| `~/.config/opencode/opencode.json` | Package-local `file://` plugin registrations (no managed MCP) |
+| `~/.config/opencode/opencode.json` | Package-local plugins + managed Studio isolation permissions |
 | `~/.config/opencode/skills/studio-<id>/` | Managed skills (`studio-cad`, `studio-pcb`, `studio-media`) |
+| `~/.config/opencode/agents/studio-<id>.md` | Managed hidden primary Studio agents |
 
 ```json
 { "roots": { "cad": "/absolute/path" } }
@@ -104,9 +105,10 @@ $STUDIO_HOME/studio/
   designs/<id>/              # CAD (design.json, parts/, …)
   circuits/<id>/             # PCB (src/circuit.tsx, …)
   circuits/catalog/parts/    # optional PCB catalog
+  media/<id>/media/           # Media project and default generated assets
 ```
 
-`roots.<id>` are absolute domain-root overrides (the directory that directly contains project ids — CAD: designs folder, PCB: circuits folder). Media paths remain OpenCode-project-scoped. Keep **one** of `opencode.json` / `opencode.jsonc`.
+`roots.<id>` are absolute domain-root overrides: CAD points at the designs folder, PCB at circuits, and Media at the directory directly containing Media projects. Keep **one** of `opencode.json` / `opencode.jsonc`.
 
 **Upgrade from project-local config:** if global config is missing and the domain still has `.opencode/studio.json` with roots, roots are migrated on plugin load. Run `opencode-studio repair` once to finish.
 
@@ -114,7 +116,7 @@ $STUDIO_HOME/studio/
 
 ```bash
 opencode-studio status [--workspace <path>]     # health + version (exit 1 if broken)
-opencode-studio repair [--workspace <path>]     # reinstall plugins/skills
+opencode-studio repair [--workspace <path>]     # reinstall managed OpenCode state
 opencode-studio remove                          # uninstall managed OpenCode state
 opencode-studio upgrade [--check]               # bun add -g @latest
 opencode-studio --help | -v

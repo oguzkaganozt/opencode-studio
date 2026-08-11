@@ -28,4 +28,20 @@ describe("create-studio", () => {
     expect(await Bun.file(marker).text()).toBe("untouched")
     expect(await Bun.file(path.join(target, "studio.ts")).exists()).toBe(false)
   })
+
+  test("scaffolds a dedicated skill and agent", async () => {
+    const proc = Bun.spawn(["bun", "scripts/create-studio.ts", id], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const code = await proc.exited
+
+    expect(code).toBe(0)
+    expect(await Bun.file(path.join(target, "skill", "SKILL.md")).text()).toContain(`name: studio-${id}`)
+    const agent = await Bun.file(path.join(target, "agent", `studio-${id}.md`)).text()
+    expect(agent).toContain("mode: primary")
+    expect(agent).toContain("hidden: true")
+    expect(agent).toContain(`studio-${id}: allow`)
+  })
 })

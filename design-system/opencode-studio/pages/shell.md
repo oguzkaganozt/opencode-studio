@@ -18,17 +18,17 @@ Studio is the chrome; OpenCode remains the runtime behind the native Agent surfa
 - Outline chips h-8, 11–12px.
 - Menu button: `aria-expanded` + `aria-haspopup="dialog"` when drawer open.
 - Theme control: compact `.osc-segmented.osc-theme-toggle` (System | Light | Dark) in the top-right actions.
-- Agent toggle (CAD/PCB only): status dot + “Agent”; `aria-pressed` + `aria-label` with status.
+- Agent toggle (CAD/PCB/Media): status dot + “Agent”; `aria-pressed` + `aria-label` with status.
 - **No** Settings gear, Status control, or settings drawer on TopBar.
 - **No** TopBar leave-shell link.
 
 ## Drawer
 - Full-bleed on phones; 22rem max from `sm`.
-- Nav: Home (**Agent**, Files) + Studios (CAD, PCB); `.osc-nav-item` + accent rail/dot; `aria-current="page"`.
+- Nav: Home (**Agent**, Files) + Studios (CAD, PCB, Media); `.osc-nav-item` + accent rail/dot; `aria-current="page"`.
 - **Status** is a footer control (bottom-right), not a nav row — opens the Status dialog.
 - No Navigate/Settings tabs; health, repair, and supervised restart live in the Status dialog.
 
-## Agent chrome (side panel on CAD/PCB)
+## Agent chrome (side panel on domain Studios)
 - `.oc-panel__header`: API status, session selector, new-session/stop actions, and Close.
 - Tool calls remain chronological and always render outside answer cards as quiet, borderless rows with expandable details.
 - Native thread and composer stay mounted while the panel is hidden so API/SSE status and pending permissions remain current.

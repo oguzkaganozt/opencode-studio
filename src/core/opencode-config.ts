@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { applyEdits, modify, type ParseError, parse, printParseErrorCode } from "jsonc-parser"
+import { STUDIO_IDS, STUDIO_SKILL_NAMES, STUDIO_TOOL_PERMISSIONS } from "./registry"
 import { resolveOpenCodeHome, type UserPathOptions } from "./user-paths"
 
 export type OpenCodeConfig = {
@@ -85,7 +86,7 @@ export function pluginEntries(config: OpenCodeConfig) {
   return value
 }
 
-function configTextWithKey(config: OpenCodeConfig, key: "plugin" | "mcp", value: unknown) {
+function configTextWithKey(config: OpenCodeConfig, key: "plugin" | "mcp" | "permission", value: unknown) {
   const edits = modify(config.text, [key], value, {
     formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
   })
@@ -94,7 +95,7 @@ function configTextWithKey(config: OpenCodeConfig, key: "plugin" | "mcp", value:
   return text.endsWith("\n") ? text : `${text}\n`
 }
 
-function configWithKey(config: OpenCodeConfig, key: "plugin" | "mcp", value: unknown): OpenCodeConfig {
+function configWithKey(config: OpenCodeConfig, key: "plugin" | "mcp" | "permission", value: unknown): OpenCodeConfig {
   const text = configTextWithKey(config, key, value)
   const nextValue: Record<string, unknown> = { ...config.value }
   if (value === undefined) delete nextValue[key]
@@ -121,6 +122,56 @@ export function mcpEntries(config: OpenCodeConfig): Record<string, unknown> {
 export function withMcp(config: OpenCodeConfig, mcp: Record<string, unknown> | undefined): OpenCodeConfig {
   const next = mcp && Object.keys(mcp).length > 0 ? mcp : undefined
   return configWithKey(config, "mcp", next)
+}
+
+type PermissionAction = "allow" | "ask" | "deny"
+const PERMISSION_ACTIONS = new Set<PermissionAction>(["allow", "ask", "deny"])
+
+export const MANAGED_STUDIO_TOOL_PERMISSIONS = STUDIO_IDS.flatMap((id) => STUDIO_TOOL_PERMISSIONS[id])
+
+function permissionObject(value: unknown, label: string): Record<string, unknown> {
+  if (value === undefined) return {}
+  if (typeof value === "string" && PERMISSION_ACTIONS.has(value as PermissionAction)) return { "*": value }
+  if (value && typeof value === "object" && !Array.isArray(value)) return { ...(value as Record<string, unknown>) }
+  throw new Error(`OpenCode config ${label} must be allow, ask, deny, or an object`)
+}
+
+export function withManagedStudioPermissions(config: OpenCodeConfig): OpenCodeConfig {
+  const permission = permissionObject(config.value.permission, "permission")
+  for (const key of MANAGED_STUDIO_TOOL_PERMISSIONS) delete permission[key]
+
+  const skills = permissionObject(permission.skill, "permission.skill")
+  for (const name of STUDIO_SKILL_NAMES) delete skills[name]
+
+  // Append managed rules after user wildcards. OpenCode applies the last matching rule.
+  for (const key of MANAGED_STUDIO_TOOL_PERMISSIONS) permission[key] = "deny"
+  for (const name of STUDIO_SKILL_NAMES) skills[name] = "deny"
+  permission.skill = skills
+  return configWithKey(config, "permission", permission)
+}
+
+export function withoutManagedStudioPermissions(config: OpenCodeConfig): OpenCodeConfig {
+  if (config.value.permission === undefined || typeof config.value.permission === "string") return config
+  const permission = permissionObject(config.value.permission, "permission")
+  for (const key of MANAGED_STUDIO_TOOL_PERMISSIONS) delete permission[key]
+
+  if (permission.skill && typeof permission.skill === "object" && !Array.isArray(permission.skill)) {
+    const skills = { ...(permission.skill as Record<string, unknown>) }
+    for (const name of STUDIO_SKILL_NAMES) delete skills[name]
+    if (Object.keys(skills).length === 0) delete permission.skill
+    else permission.skill = skills
+  }
+
+  return configWithKey(config, "permission", Object.keys(permission).length > 0 ? permission : undefined)
+}
+
+export function hasManagedStudioPermissions(config: OpenCodeConfig) {
+  if (!config.value.permission || typeof config.value.permission !== "object" || Array.isArray(config.value.permission)) return false
+  const permission = config.value.permission as Record<string, unknown>
+  if (MANAGED_STUDIO_TOOL_PERMISSIONS.some((key) => permission[key] !== "deny")) return false
+  if (!permission.skill || typeof permission.skill !== "object" || Array.isArray(permission.skill)) return false
+  const skills = permission.skill as Record<string, unknown>
+  return STUDIO_SKILL_NAMES.every((name) => skills[name] === "deny")
 }
 
 async function validateWithOpenCode(candidate: string) {

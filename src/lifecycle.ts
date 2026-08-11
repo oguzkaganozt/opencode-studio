@@ -14,6 +14,7 @@ import {
 import { ensureUv, resolveEngine } from "./core/engines"
 import {
   atomicWriteOpenCodeConfig,
+  hasManagedStudioPermissions,
   LEGACY_PACKAGE_NAMES,
   mcpEntries,
   type OpenCodeConfig,
@@ -21,19 +22,21 @@ import {
   pluginEntries,
   readOpenCodeConfig,
   resolveOpenCodeConfigPath,
+  withManagedStudioPermissions,
   withMcp,
+  withoutManagedStudioPermissions,
   withPlugins,
 } from "./core/opencode-config"
 import {
+  agentNameFor,
+  agentSourcePath,
+  fileDigest,
   forgeRuntimeDir,
   LEGACY_MANAGED_MCP_KEY,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
   MANAGED_MEDIA_GO_PLUGIN_NAME,
   type PackageMeta,
-  PLATFORM_MEDIA_SKILL_ID,
-  platformMediaSkillName,
-  platformMediaSkillSourcePath,
   skillDigest,
   skillNameFor,
   skillSourcePath,
@@ -42,7 +45,13 @@ import { atomicWriteJson, packageRootFrom, resolveWorkspace } from "./core/paths
 import type { StudioDoctorCheck, StudioId } from "./core/registry"
 import { STUDIO_IDS } from "./core/registry"
 import { assertNotRoot } from "./core/security"
-import { pickUserPaths, resolveOpenCodePluginsHome, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
+import {
+  pickUserPaths,
+  resolveOpenCodeAgentsHome,
+  resolveOpenCodePluginsHome,
+  resolveOpenCodeSkillsHome,
+  type UserPathOptions,
+} from "./core/user-paths"
 import { probeLocalStudioHost } from "./studio-host-bind"
 import { getStudioDefinition } from "./studios"
 
@@ -53,7 +62,7 @@ type ManagedMarker = {
 }
 
 type LifecyclePaths = UserPathOptions & {
-  /** Domain data root (CAD/PCB). Defaults to cwd. Not used for enablement config. */
+  /** Studio Home containing all default domain roots. Defaults to cwd. */
   workspace?: string
   packageRoot?: string
 }
@@ -62,6 +71,12 @@ type SkillTarget = {
   id: string
   skillName: string
   sourceSkillFile: string
+}
+
+type AgentTarget = {
+  id: StudioId
+  agentName: string
+  sourceAgentFile: string
 }
 
 async function readMarker(markerFile: string): Promise<ManagedMarker | null> {
@@ -118,12 +133,100 @@ function studioSkillTarget(studioId: StudioId, packageRoot: string): SkillTarget
   }
 }
 
-function platformMediaSkillTarget(packageRoot: string): SkillTarget {
+function studioAgentTarget(studioId: StudioId, packageRoot: string): AgentTarget {
   return {
-    id: PLATFORM_MEDIA_SKILL_ID,
-    skillName: platformMediaSkillName(),
-    sourceSkillFile: platformMediaSkillSourcePath(packageRoot),
+    id: studioId,
+    agentName: agentNameFor(studioId),
+    sourceAgentFile: agentSourcePath(packageRoot, studioId),
   }
+}
+
+function agentPathsFor(target: AgentTarget, userPaths: UserPathOptions = {}) {
+  const agentsHome = resolveOpenCodeAgentsHome(userPaths)
+  const agentFile = path.join(agentsHome, `${target.agentName}.md`)
+  return {
+    id: target.id,
+    agentName: target.agentName,
+    agentsHome,
+    agentFile,
+    markerFile: `${agentFile}${MANAGED_MARKER_NAME}`,
+    sourceAgentFile: target.sourceAgentFile,
+  }
+}
+
+async function currentFileDigest(file: string) {
+  try {
+    return await fileDigest(file)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
+    throw error
+  }
+}
+
+function assertAgentConflict(
+  paths: ReturnType<typeof agentPathsFor>,
+  existingDigest: string | null,
+  marker: ManagedMarker | null,
+  ownerId: StudioId,
+) {
+  if (existingDigest && !marker) throw new Error(`Conflict: unmarked agent already exists at ${paths.agentFile}`)
+  if (marker && existingDigest && marker.digest !== existingDigest) {
+    throw new Error(`Conflict: agent was modified by the user at ${paths.agentFile}`)
+  }
+  if (marker && marker.studioId !== ownerId) {
+    throw new Error(`Conflict: agent owned by studio '${marker.studioId}' at ${paths.agentFile}`)
+  }
+}
+
+async function preflightAgent(target: AgentTarget, userPaths: UserPathOptions = {}) {
+  const paths = agentPathsFor(target, userPaths)
+  assertAgentConflict(paths, await currentFileDigest(paths.agentFile), await readMarker(paths.markerFile), target.id)
+}
+
+async function writeManagedAgent(input: { target: AgentTarget; packageVersion: string; userPaths?: UserPathOptions }) {
+  const paths = agentPathsFor(input.target, input.userPaths)
+  const content = await readFile(paths.sourceAgentFile)
+  const digest = createHash("sha256").update(content).digest("hex")
+  const existingDigest = await currentFileDigest(paths.agentFile)
+  const marker = await readMarker(paths.markerFile)
+  assertAgentConflict(paths, existingDigest, marker, input.target.id)
+  if (existingDigest === digest && marker?.digest === digest && marker.packageVersion === input.packageVersion) {
+    return { paths, changed: false as const, previousAgent: null, previousMarker: null }
+  }
+
+  const previousAgent = existingDigest ? await readFile(paths.agentFile) : null
+  const previousMarker = marker ? await readFile(paths.markerFile) : null
+  await mkdir(paths.agentsHome, { recursive: true })
+  const temporary = `${paths.agentFile}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temporary, content, { mode: 0o644 })
+    await rename(temporary, paths.agentFile)
+    await atomicWriteJson(paths.markerFile, {
+      studioId: input.target.id,
+      packageVersion: input.packageVersion,
+      digest,
+    } satisfies ManagedMarker)
+    return { paths, changed: true as const, previousAgent, previousMarker }
+  } catch (error) {
+    await rm(temporary, { force: true })
+    await restoreFile(paths.agentFile, previousAgent)
+    await restoreFile(paths.markerFile, previousMarker)
+    throw error
+  }
+}
+
+async function removeManagedAgent(target: AgentTarget, userPaths: UserPathOptions = {}) {
+  const paths = agentPathsFor(target, userPaths)
+  const existingDigest = await currentFileDigest(paths.agentFile)
+  if (!existingDigest) {
+    await rm(paths.markerFile, { force: true })
+    return
+  }
+  const marker = await readMarker(paths.markerFile)
+  assertAgentConflict(paths, existingDigest, marker, target.id)
+  await rm(paths.agentFile)
+  await rm(paths.markerFile, { force: true })
+  await rmdir(paths.agentsHome).catch(() => {})
 }
 
 async function directoryHasChildDesignJson(designsDir: string): Promise<boolean> {
@@ -311,6 +414,21 @@ async function skillDoctorCheck(input: {
   return { id: input.id, status: "pass", message: input.passLabel }
 }
 
+async function agentDoctorCheck(target: AgentTarget, userPaths: UserPathOptions): Promise<StudioDoctorCheck> {
+  const paths = agentPathsFor(target, userPaths)
+  const existingDigest = await currentFileDigest(paths.agentFile)
+  const marker = await readMarker(paths.markerFile)
+  const sourceDigest = await fileDigest(paths.sourceAgentFile)
+  const id = `agent:${target.id}`
+  if (!existingDigest) return { id, status: "fail", message: `Missing agent ${paths.agentFile}`, repair: "Run opencode-studio repair" }
+  if (!marker || marker.studioId !== target.id) return { id, status: "fail", message: `Unmanaged agent at ${paths.agentFile}` }
+  if (marker.digest !== existingDigest) return { id, status: "fail", message: `User-modified agent at ${paths.agentFile}` }
+  if (sourceDigest !== existingDigest) {
+    return { id, status: "warn", message: `Agent version drift for ${target.id}`, repair: "Run opencode-studio repair" }
+  }
+  return { id, status: "pass", message: `${target.agentName} installed` }
+}
+
 async function pushEngineCheck(
   checks: StudioDoctorCheck[],
   id: string,
@@ -437,10 +555,7 @@ async function scrubProjectLocalManagedState(input: {
   validateOpenCode?: boolean
 }) {
   const cleaned: string[] = []
-  const projectTargets: Array<{ skillName: string; studioId: string }> = [
-    { skillName: platformMediaSkillName(), studioId: PLATFORM_MEDIA_SKILL_ID },
-    ...STUDIO_IDS.map((studioId) => ({ skillName: skillNameFor(studioId), studioId })),
-  ]
+  const projectTargets = STUDIO_IDS.map((studioId) => ({ skillName: skillNameFor(studioId), studioId }))
   for (const { skillName, studioId } of projectTargets) {
     const skillDirectory = path.join(input.domainRoot, ".opencode", "skills", skillName)
     const skillFile = path.join(skillDirectory, "SKILL.md")
@@ -497,8 +612,8 @@ async function scrubProjectLocalManagedState(input: {
 }
 
 /**
- * Install OpenCode plugins, all domain skills, and platform media skill.
- * Domains (cad/pcb) are always on — no enable list. build123d session tools ship in the CAD plugin.
+ * Install OpenCode plugins plus every Studio's managed skill, agent, and isolation permissions.
+ * Domains are always on; build123d session tools ship in the CAD plugin.
  */
 export async function configureStudios(
   input: {
@@ -534,10 +649,9 @@ export async function configureStudios(
     }
   }
 
-  const platformTarget = platformMediaSkillTarget(packageRoot)
-  await preflightSkill(platformTarget, userPaths)
   for (const studioId of STUDIO_IDS) {
     await preflightSkill(studioSkillTarget(studioId, packageRoot), userPaths)
+    await preflightAgent(studioAgentTarget(studioId, packageRoot), userPaths)
   }
 
   const configPath = await resolveOpenCodeConfigPath(userPaths)
@@ -554,6 +668,7 @@ export async function configureStudios(
   let working = withPlugins(openCode, plugins)
   // Drop legacy OpenCode-managed build123d MCP; tools are plugin-native via forge uv project.
   working = scrubLegacyBuild123dMcp(working)
+  working = withManagedStudioPermissions(working)
   const nextText = working.text
   const uv = input.dryRun ? resolveEngine("uv") : await ensureUv()
 
@@ -573,22 +688,6 @@ export async function configureStudios(
   const rollbacks: Array<() => Promise<void>> = []
 
   try {
-    {
-      const result = await writeManagedSkill({
-        target: platformTarget,
-        packageRoot,
-        packageVersion: meta.version,
-        userPaths,
-      })
-      installed.push(PLATFORM_MEDIA_SKILL_ID)
-      if (result.changed) {
-        rollbacks.push(async () => {
-          await restoreFile(result.paths.skillFile, result.previousSkill)
-          await restoreFile(result.paths.markerFile, result.previousMarker)
-        })
-      }
-    }
-
     for (const studioId of enabled) {
       const result = await writeManagedSkill({
         target: studioSkillTarget(studioId, packageRoot),
@@ -603,11 +702,26 @@ export async function configureStudios(
           await restoreFile(result.paths.markerFile, result.previousMarker)
         })
       }
+
+      const agent = await writeManagedAgent({
+        target: studioAgentTarget(studioId, packageRoot),
+        packageVersion: meta.version,
+        userPaths,
+      })
+      if (agent.changed) {
+        rollbacks.push(async () => {
+          await restoreFile(agent.paths.agentFile, agent.previousAgent)
+          await restoreFile(agent.paths.markerFile, agent.previousMarker)
+        })
+      }
     }
 
     if (nextText !== openCode.text) {
       await atomicWriteOpenCodeConfig(configPath, nextText, openCode.exists ? openCode.text : "", {
         validate: input.validateOpenCode !== false,
+      })
+      rollbacks.push(async () => {
+        await restoreFile(configPath, openCode.exists ? Buffer.from(openCode.text) : null)
       })
     }
 
@@ -657,14 +771,15 @@ export async function configureStudios(
       configPath: written.configPath,
       openCodeConfigPath: configPath,
       skillsHome: resolveOpenCodeSkillsHome(userPaths),
+      agentsHome: resolveOpenCodeAgentsHome(userPaths),
       projectScrubbed,
       wrapperRemoved,
       restartRequired: true,
       restartOpenCode: true,
       restartHost: false,
       message: wrapperRemoved
-        ? `Installed plugins/skills. Removed legacy PATH wrapper at ${wrapperRemoved}. Prefer: opencode-studio up. Restart OpenCode.`
-        : "Installed plugins, CAD/PCB skills, and media skill (user-global). Prefer: opencode-studio up. Restart OpenCode to load tools.",
+        ? `Installed plugins, Studio skills, agents, and permissions. Removed legacy PATH wrapper at ${wrapperRemoved}. Prefer: opencode-studio up. Restart OpenCode.`
+        : "Installed plugins, Studio skills, agents, and isolation permissions. Prefer: opencode-studio up. Restart OpenCode to load them.",
     }
   } catch (error) {
     for (const rollback of rollbacks.reverse()) {
@@ -675,8 +790,8 @@ export async function configureStudios(
 }
 
 /**
- * Uninstall managed OpenCode state (domain skills, media skill, package plugins).
- * Also scrubs legacy build123d MCP entries. CAD/PCB remain always-on in code once re-registered.
+ * Uninstall managed OpenCode state (Studio skills, agents, permissions, and package plugins).
+ * Also scrubs legacy build123d MCP entries. Studios remain always-on in code once re-registered.
  */
 export async function removeStudios(input: LifecyclePaths & { validateOpenCode?: boolean } = {}) {
   assertNotRoot("remove")
@@ -688,8 +803,8 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
   const previous = await readStudioConfigFile(userPaths)
   const desiredRoots = previous.roots
 
-  const platformTarget = platformMediaSkillTarget(packageRoot)
-  const skillTargets = [platformTarget, ...STUDIO_IDS.map((id) => studioSkillTarget(id, packageRoot))]
+  const skillTargets = STUDIO_IDS.map((id) => studioSkillTarget(id, packageRoot))
+  const agentTargets = STUDIO_IDS.map((id) => studioAgentTarget(id, packageRoot))
 
   for (const target of skillTargets) {
     const paths = skillPathsFor(target, userPaths)
@@ -697,6 +812,7 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     const marker = await readMarker(paths.markerFile)
     assertSkillConflict(paths, existingDigest, marker, target.id)
   }
+  for (const target of agentTargets) await preflightAgent(target, userPaths)
 
   const configPath = await resolveOpenCodeConfigPath(userPaths)
   const openCode = await readOpenCodeConfig(configPath)
@@ -704,6 +820,7 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
 
   let working = withPlugins(openCode, plugins)
   working = scrubLegacyBuild123dMcp(working)
+  working = withoutManagedStudioPermissions(working)
   const nextText = working.text
 
   await removeManagedMediaGoPluginFile(userPaths)
@@ -714,6 +831,11 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     if (!(await Bun.file(paths.skillFile).exists()) && !(await Bun.file(paths.markerFile).exists())) continue
     await removeManagedSkill(target, userPaths)
     removed.push(target.id)
+  }
+  for (const target of agentTargets) {
+    const paths = agentPathsFor(target, userPaths)
+    if (!(await Bun.file(paths.agentFile).exists()) && !(await Bun.file(paths.markerFile).exists())) continue
+    await removeManagedAgent(target, userPaths)
   }
 
   if (nextText !== openCode.text) {
@@ -757,13 +879,14 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
     configPath: written.configPath,
     openCodeConfigPath: configPath,
     skillsHome: resolveOpenCodeSkillsHome(userPaths),
+    agentsHome: resolveOpenCodeAgentsHome(userPaths),
     wrapperRemoved,
     restartRequired: true,
     restartOpenCode: true,
     restartHost: false,
     message: wrapperRemoved
-      ? `Removed managed plugins, skills, and legacy PATH wrapper (${wrapperRemoved}). Restart OpenCode. Run repair to reinstall.`
-      : "Removed managed plugins and skills. Restart OpenCode. Run repair to reinstall.",
+      ? `Removed managed plugins, skills, agents, permissions, and legacy PATH wrapper (${wrapperRemoved}). Restart OpenCode. Run repair to reinstall.`
+      : "Removed managed plugins, skills, agents, and permissions. Restart OpenCode. Run repair to reinstall.",
   }
 }
 
@@ -799,6 +922,8 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     }
     const paths = skillPathsFor(studioSkillTarget(studioId, packageRoot), userPaths)
     const skillInstalled = await Bun.file(paths.skillFile).exists()
+    const agentPaths = agentPathsFor(studioAgentTarget(studioId, packageRoot), userPaths)
+    const agentInstalled = await Bun.file(agentPaths.agentFile).exists()
     studios.push({
       id: studioId,
       label: def.label,
@@ -809,6 +934,8 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       requiredEngines: def.requiredEngines,
       skill: skillNameFor(studioId),
       skillInstalled,
+      agent: agentNameFor(studioId),
+      agentInstalled,
     })
   }
 
@@ -948,6 +1075,13 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         repair: "Run opencode-studio repair to scrub (build123d tools are plugin-native now)",
       })
     }
+    const permissionsInstalled = hasManagedStudioPermissions(openCode)
+    checks.push({
+      id: "permission:studio",
+      status: permissionsInstalled ? "pass" : "fail",
+      message: permissionsInstalled ? "Studio isolation permissions installed" : "Studio isolation permissions are missing or incomplete",
+      repair: permissionsInstalled ? undefined : "Run opencode-studio repair",
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     checks.push({
@@ -961,33 +1095,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       message: `Could not verify media-go: ${message}`,
       repair: "Run opencode-studio repair",
     })
-  }
-
-  {
-    const target = platformMediaSkillTarget(packageRoot)
-    checks.push(
-      await skillDoctorCheck({
-        id: "skill:media",
-        paths: skillPathsFor(target, userPaths),
-        passLabel: "media skill installed",
-        driftLabel: "Skill version drift for media",
-      }),
-    )
-    for (const engine of ["ffmpeg", "ffprobe"] as const) {
-      await pushEngineCheck(checks, `engine:platform:${engine}`, engine, {
-        missingMessage: (id) => {
-          const armFfprobe =
-            id === "ffprobe" && process.platform === "linux" && process.arch === "arm64"
-              ? " — linux/arm64 has no bundled ffprobe-static; install system ffprobe on PATH"
-              : ""
-          return `${id} missing (expected bundled with the package)${armFfprobe}`
-        },
-        missingRepair:
-          engine === "ffprobe" && process.platform === "linux" && process.arch === "arm64"
-            ? "Install ffprobe on PATH (e.g. ffmpeg package) or reinstall on amd64"
-            : "Reinstall @oguzkaganozt/opencode-studio",
-      })
-    }
+    checks.push({ id: "permission:studio", status: "fail", message: `Could not verify Studio permissions: ${message}` })
   }
 
   for (const studio of studios) {
@@ -1002,6 +1110,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         driftLabel: `Skill version drift for ${studioId}`,
       }),
     )
+    checks.push(await agentDoctorCheck(studioAgentTarget(studioId, packageRoot), userPaths))
 
     if (studio.root && !studio.rootError) {
       checks.push({ id: `root:${studioId}`, status: "pass", message: studio.root })
@@ -1092,7 +1201,7 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     studios,
     checks,
     ok: !failed,
-    restartRequiredHint: "After repair, restart OpenCode so plugins and skills load.",
+    restartRequiredHint: "After repair, restart OpenCode so plugins, skills, agents, and permissions load.",
   }
 }
 

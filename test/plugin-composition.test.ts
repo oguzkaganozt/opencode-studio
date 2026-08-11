@@ -35,9 +35,17 @@ describe("plugin composition", () => {
           },
         } as any,
       },
+      {
+        studioId: "media",
+        hooks: {
+          "tool.definition": async () => {
+            order.push("media")
+          },
+        } as any,
+      },
     ])
     await (composed as any)["tool.definition"]()
-    expect(order).toEqual(["cad", "pcb"])
+    expect(order).toEqual(["cad", "pcb", "media"])
   })
 
   test("rejects unknown hooks", () => {

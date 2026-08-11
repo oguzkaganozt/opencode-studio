@@ -1,0 +1,14 @@
+{
+  "studio-cad": {
+    "path": "studios/cad/agent/studio-cad.md",
+    "sha256": "cfd09697870fb599b8b9c36ec114951dc7cbbd4b91f9eda2150c71b0fa7bccab"
+  },
+  "studio-pcb": {
+    "path": "studios/pcb/agent/studio-pcb.md",
+    "sha256": "41257437cad1c1817c1fde5b2a667e001f94bcd4acddd844827f526089adc4f4"
+  },
+  "studio-media": {
+    "path": "studios/media/agent/studio-media.md",
+    "sha256": "669d4b605c4ace284585385cbe48afc9c256b43aafc4e624ef14954ad8be8bec"
+  }
+}

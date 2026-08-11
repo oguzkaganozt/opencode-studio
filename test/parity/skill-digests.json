@@ -8,7 +8,7 @@
     "sha256": "d32d802d62255aee8cdce05aff6c0e11b0ff9e86d43dd297a2d9dc370f086041"
   },
   "studio-media": {
-    "path": "src/platform/media/skill/SKILL.md",
-    "sha256": "5dc13c3dd20f066369fb9977b3661f6be849e596dae46f2851cf2de6b3919ff5"
+    "path": "studios/media/skill/SKILL.md",
+    "sha256": "ec05abf5cecf901ff12ee9b551795f0142b6960da787ce1293e630cd31797268"
   }
 }

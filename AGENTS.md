@@ -30,28 +30,30 @@ CI (`.github/workflows/ci.yml`): `uv sync --locked --project studios/cad/forge` 
 | --- | --- |
 | `src/` | CLI (`cli.ts`), plugin, host HTTP, config, lifecycle |
 | `src/core/` | Shared behaviors (engines, paths, security, plugin-compose, registry, OpenCode config, package meta) |
-| `src/platform/media/` | Always-on media tools, provider hooks, Files API, `media` skill |
-| `studios/<id>/` | Domain CAD/PCB: `studio.ts`, `plugin.ts`, `api.ts`, `tools.ts`, `skill/`, `viewer/`, `test/` |
+| `src/platform/media/` | Native-media provider plumbing and shared Files API only |
+| `studios/<id>/` | Domain bundle: `studio.ts`, `agent/`, `plugin.ts`, `api.ts`, `tools.ts`, `skill/`, `viewer/`, `test/` |
 | `ui/` | Shared Viewer shell (`app.tsx`); Files explorer + lazy `@studios/<id>/viewer` |
-| `test/parity/` | 3 frozen fixtures: `tools.json`, `skill-digests.json`, `plugin-hooks.json` |
+| `test/parity/` | Frozen tools, skill/agent digests, and plugin-hook fixtures |
 
-Catalog IDs (`src/core/registry.ts`): `cad` \| `pcb`. Composition order: platform media first, then catalog order.
+Catalog IDs (`src/core/registry.ts`): `cad` \| `pcb` \| `media`. Composition follows catalog order.
 
 Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsconfig + Vite). Viewer tokens: single source `ui/tokens.css` — import via `@import "@ui/tokens.css"`; do not copy into studios. Shared viewer UI primitives live under `ui/components/` and `ui/lib/` — import via `@ui/…`; no cross-studio imports.
 
 ## Config — always-on domains, config global, data local
 
-- **CAD and PCB are always on** (full catalog). No enable/disable toggle. Platform media + Files stay on too.
-- Optional `~/.config/opencode-studio/studio.json` holds **roots only**: `{ "roots": { "cad": "/abs", "pcb": "/abs" } }`. Missing file is fine. Legacy `enabled` is ignored.
-- CAD/PCB **data** roots default under fixed Studio Home (`$HOME` or `OPENCODE_STUDIO_WORKSPACE`), not the OpenCode project directory:
+- **CAD, PCB, and Media are always on** (full catalog). No enable/disable toggle. Files stays available too.
+- Optional `~/.config/opencode-studio/studio.json` holds **roots only**: `{ "roots": { "cad": "/abs", "pcb": "/abs", "media": "/abs" } }`. Missing file is fine. Legacy `enabled` is ignored.
+- Studio **data** roots default under fixed Studio Home (`$HOME` or `OPENCODE_STUDIO_WORKSPACE`), not the OpenCode project directory:
   - CAD → `$STUDIO_HOME/studio/designs` (projects at `studio/designs/<id>/`)
   - PCB → `$STUDIO_HOME/studio/circuits` (projects at `studio/circuits/<id>/`, catalog at `studio/circuits/catalog/parts/`)
-  - `roots.<id>` must be **absolute** domain roots (directory that directly contains project ids). Platform media remains OpenCode-project-scoped.
-- Global install channel is **bun only** (`bun add -g @oguzkaganozt/opencode-studio`). npm registry is publish-only. **postinstall** on bun global runs `repair` once (soft): managed skills under `~/.config/opencode/skills/studio-<id>/` (`studio-cad`, `studio-pcb`, `studio-media`; marker `.opencode-studio-managed.json`), plugin + media-go as package-local `file://` entries. build123d session tools ship inside the CAD plugin (forge uv project; no OpenCode `mcp.build123d`). Does **not** write into project directories. Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1` or `OPENCODE_STUDIO_SKIP_CONFIGURE=1`. `opencode-studio upgrade` → check npm → confirm (`-y` to skip) → stop serve+host → `bun add -g …@latest` → `repair` → start serve+host (bind/password from `OPENCODE_*` / `OPENCODE_STUDIO_*`). Restart env: caller env wins; missing keys filled from a snapshot of the previous stack (`ss` bind + `/proc/…/environ`).
-- `opencode-studio repair` and `PUT /api/config` re-run the same install (loopback + CSRF). Restart **OpenCode** after install so plugins/skills load.
+  - Media → `$STUDIO_HOME/studio/media` (projects at `studio/media/<id>/`, defaults at `<id>/media/`)
+  - `roots.<id>` must be **absolute** domain roots that directly contain project ids.
+- Global install channel is **bun only** (`bun add -g @oguzkaganozt/opencode-studio`). npm registry is publish-only. **postinstall** on bun global runs `repair` once (soft): managed skills under `~/.config/opencode/skills/studio-<id>/`, agents under `~/.config/opencode/agents/studio-<id>.md`, Studio isolation permissions in global `opencode.json[c]`, and plugin + media-go as package-local `file://` entries. build123d session tools ship inside the CAD plugin (forge uv project; no OpenCode `mcp.build123d`). Does **not** write into project directories. Skip: `OPENCODE_STUDIO_SKIP_POSTINSTALL=1` or `OPENCODE_STUDIO_SKIP_CONFIGURE=1`. `opencode-studio upgrade` → check npm → confirm (`-y` to skip) → stop serve+host → `bun add -g …@latest` → `repair` → start serve+host (bind/password from `OPENCODE_*` / `OPENCODE_STUDIO_*`). Restart env: caller env wins; missing keys filled from a snapshot of the previous stack (`ss` bind + `/proc/…/environ`).
+- `opencode-studio repair` and `PUT /api/config` re-run the same install (loopback + CSRF). Restart **OpenCode** after install so plugins/skills/agents/permissions load.
 - Overrides for tests/isolation: `OPENCODE_STUDIO_CONFIG_HOME`, `OPENCODE_CONFIG_HOME` (absolute).
-- Do not hand-edit managed skills; unmarked or user-modified skills cause configure conflicts. `remove` **uninstalls** managed plugins/skills from OpenCode home (not the npm package); also scrubs legacy `mcp.build123d` if present.
-- **OpenCode runtime + Studio host:** preferred entry is `opencode-studio up` — attaches to a healthy OpenCode API or **spawns** `opencode serve` on loopback (auto-restart watchdog when spawned), then starts the Studio host (default port **4173**). Browser uses Studio only; native Agent panel (no iframe, no assistant-ui) talks to OpenCode via same-origin proxy. Optional OpenCode web UI: same origin `/` or `/opencode`. Status page: Repair + Restart agent (supervised only). `repair`/`remove` strip any legacy PATH wrapper. Legacy CLI: `ensure-host`. Opt out of spawn: `OPENCODE_STUDIO_NO_SUPERVISE=1` (+ `OPENCODE_URL`). Opt out of host: `OPENCODE_STUDIO_AUTOSTART=0`. Studio Home is **`$HOME`** (or `OPENCODE_STUDIO_WORKSPACE`); agent directory follows the open CAD/PCB project via `x-opencode-directory`. See `INTENT-AGENT-PANEL.md`.
+- OpenCode itself reads `OPENCODE_CONFIG_DIR`; lifecycle writes through `OPENCODE_CONFIG_HOME`. Tests that launch OpenCode in isolation must set both to the same directory.
+- Do not hand-edit managed skills or agents; unmarked or user-modified files cause configure conflicts. `remove` **uninstalls** managed plugins/skills/agents/permissions from OpenCode home (not the npm package); it also scrubs legacy `mcp.build123d` if present.
+- **OpenCode runtime + Studio host:** preferred entry is `opencode-studio up` — attaches to a healthy OpenCode API or **spawns** `opencode serve` on loopback (auto-restart watchdog when spawned), then starts the Studio host (default port **4173**). Browser uses Studio only; native Agent panel (no iframe, no assistant-ui) talks to OpenCode via same-origin proxy. Optional OpenCode web UI: same origin `/` or `/opencode`. Status page: Repair + Restart agent (supervised only). `repair`/`remove` strip any legacy PATH wrapper. Legacy CLI: `ensure-host`. Opt out of spawn: `OPENCODE_STUDIO_NO_SUPERVISE=1` (+ `OPENCODE_URL`). Opt out of host: `OPENCODE_STUDIO_AUTOSTART=0`. Studio Home is **`$HOME`** (or `OPENCODE_STUDIO_WORKSPACE`); agent directory follows the open Studio project via `x-opencode-directory`.
 
 ## Hard rules
 
@@ -63,7 +65,7 @@ Paths: `@/*` → `src/*`, `@studios/*` → `studios/*`, `@ui/*` → `ui/*` (tsco
 - **No cross-studio imports.** Shared behavior only in `src/core/` when ≥2 studios need it.
 - Tool names must not collide across studios; `provider`/`auth` hooks are singletons (media-go is the only auxiliary plugin export).
 - New studio: `bun run create-studio <id>` scaffolds only — still register in `registry.ts`, `studios.ts`, `studio-loaders.ts` (plugin + API), and `ui/app.tsx` (`viewerLoaders`).
-- Changing tools or packaged skills: update `test/parity/tools.json` and/or `test/parity/skill-digests.json` or parity tests fail.
+- Changing tools, packaged skills, or agents: update the matching fixture under `test/parity/` or parity tests fail.
 - Domain agent workflows live in `studios/*/skill/SKILL.md` (copied into `~/.config/opencode/skills/` on configure). Prefer those over inventing tool flows.
 - Viewer CSS: Vite root is `ui/`, so Tailwind only auto-scans `ui/**`. `ui/styles.css` registers `@source "../studios"` and each studio `styles.css` carries `@source "."` — keep both when adding a studio or its utilities silently never generate.
 - Viewer framing: `.studio-shell` is `flex min-h-dvh flex-col`; studio viewer roots must be `flex-1 min-h-0` (files explorer uses flex-1 min-h-0). Never `h-full`/`min-h-screen` on viewer roots and never style `.studio-shell` from studio CSS — that breaks the height chain.

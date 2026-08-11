@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react"
+import type { StudioId } from "../../src/core/registry"
 import type { StudioSessionHistoryItem } from "../../src/core/session-history"
 import { type AgentContext, getAgentContext, homeAgentContext, subscribeAgentContext } from "../agent-context"
 import { type AgentHandoffRequest, subscribeAgentHandoff } from "../agent-handoff"
@@ -63,6 +64,7 @@ import { IconChevronDown } from "./icons"
 import { availableModelVariants } from "./model-variant"
 import { normalizePermissionProperties, PermissionRequestBar, type UiPermissionRequest } from "./permission-request"
 import { QuestionRequestBar } from "./question-request"
+import { resolvePromptAgent } from "./resolve-prompt-agent"
 import { SessionHistoryPopover } from "./session-history-popover"
 import { sessionGroupsByLastMessage, sessionLabel, sessionOptionLabels } from "./session-label"
 import {
@@ -103,6 +105,7 @@ export function AgentPanel({
   historyScope = "directory",
   headerLeading,
   headerTrailing,
+  studioId,
 }: {
   studioRoot: string
   available: boolean
@@ -111,6 +114,8 @@ export function AgentPanel({
   onStatusChange?: (status: AgentStatus) => void
   fullPage?: boolean
   historyScope?: "studio" | "directory"
+  /** Studio surface owning this panel. Home/Files omit it and use stock build. */
+  studioId?: StudioId
   /** Full-page chrome: menu control merged into the session header. */
   headerLeading?: ReactNode
   /** Full-page chrome: theme/settings merged into the session header. */
@@ -868,6 +873,7 @@ export function AgentPanel({
         sessionID: activeID,
         text,
         directory: sendDirectory,
+        agent: resolvePromptAgent(studioId),
         model,
         variant,
       })

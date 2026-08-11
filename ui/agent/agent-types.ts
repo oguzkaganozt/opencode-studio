@@ -51,6 +51,7 @@ export function contextLink(context: AgentContext): { href: string; label: strin
   const id = encodeURIComponent(context.projectId)
   if (context.kind === "cad-project") return { href: `/studios/cad/designs/${id}`, label: "Open design" }
   if (context.kind === "pcb-project") return { href: `/studios/pcb/projects/${id}/schematic`, label: "Open project" }
+  if (context.kind === "media-project") return { href: `/studios/media/projects/${id}`, label: "Open project" }
   return undefined
 }
 
@@ -59,6 +60,9 @@ export function sameContext(left: AgentContext, right: AgentContext): boolean {
     left.key === right.key &&
     left.directory === right.directory &&
     left.historicalDirectory === right.historicalDirectory &&
+    left.kind === right.kind &&
+    left.studioId === right.studioId &&
+    left.projectId === right.projectId &&
     left.label === right.label &&
     left.relativePath === right.relativePath &&
     left.status === right.status

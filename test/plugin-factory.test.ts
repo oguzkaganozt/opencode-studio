@@ -13,7 +13,7 @@ afterEach(async () => {
 })
 
 describe("Studio plugin roots", () => {
-  test("CAD and PCB use fixed Studio Home instead of the OpenCode project", async () => {
+  test("all Studios use fixed Studio Home instead of the OpenCode project", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "osc-plugin-root-"))
     temps.push(root)
     const studioRoot = path.join(root, "home")
@@ -38,6 +38,11 @@ describe("Studio plugin roots", () => {
 
     const pcb = JSON.parse(await tools.pcb_workspace_list.execute({}, {}))
     expect(pcb.workspaceRoot).toBe(path.join(studioRoot, "studio", "circuits"))
+
+    const mediaProject = path.join(studioRoot, "studio", "media", "demo")
+    await mkdir(mediaProject)
+    expect(JSON.parse(await tools.media_list.execute({}, { directory: mediaProject }))).toEqual([])
+    await expect(tools.media_list.execute({}, { directory: project })).rejects.toThrow(/directly under/)
   }, 60_000)
 
   test("migrates legacy project roots without making the project Studio Home", async () => {

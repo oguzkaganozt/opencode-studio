@@ -33,11 +33,13 @@ async function roots() {
   temporary.push(home)
   const cad = path.join(home, "studio", "designs")
   const pcb = path.join(home, "studio", "circuits")
+  const media = path.join(home, "studio", "media")
   await mkdir(path.join(cad, "box"), { recursive: true })
   await writeFile(path.join(cad, "box", "design.json"), "{}")
   await mkdir(path.join(pcb, "boards", "demo", "src"), { recursive: true })
   await writeFile(path.join(pcb, "boards", "demo", "src", "circuit.tsx"), "export {}")
-  return { home, cad, pcb }
+  await mkdir(path.join(media, "demo"), { recursive: true })
+  return { home, cad, pcb, media, studios: { cad, pcb, media } }
 }
 
 describe("studioSessionHistory", () => {
@@ -121,6 +123,22 @@ describe("studioSessionHistory", () => {
       directory: path.join(studioRoots.cad, "box"),
       historicalDirectory: "/old/designs/box",
       status: "moved",
+    })
+  })
+
+  test("classifies Media project sessions", async () => {
+    const studioRoots = await roots()
+    const directory = path.join(studioRoots.media, "demo")
+    const rows = [session({ id: "media", directory, updated: 100 })]
+
+    const result = await studioSessionHistory({ source: async () => rows, roots: studioRoots, scope: "studio" })
+
+    expect(result.sessions[0]?.context).toMatchObject({
+      kind: "media-project",
+      studioId: "media",
+      projectId: "demo",
+      relativePath: "demo",
+      status: "available",
     })
   })
 

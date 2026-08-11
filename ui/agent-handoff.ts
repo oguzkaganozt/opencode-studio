@@ -1,4 +1,6 @@
-export type AgentHandoffSource = "cad" | "pcb" | "files" | "shell"
+import type { StudioId } from "../src/core/registry"
+
+export type AgentHandoffSource = StudioId | "files" | "shell"
 
 export type AgentHandoffRequest = {
   text: string

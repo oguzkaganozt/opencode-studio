@@ -3,7 +3,7 @@ import path from "node:path"
 import { Hono } from "hono"
 import { maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot, studioDomainRootPath } from "./config"
 import { errorBody } from "./core/errors"
-import { loadPackageMeta, skillNameFor } from "./core/package-meta"
+import { agentNameFor, loadPackageMeta, skillNameFor } from "./core/package-meta"
 import { isInside, packageRootFrom } from "./core/paths"
 import { STUDIO_IDS, type StudioId } from "./core/registry"
 import {
@@ -19,7 +19,7 @@ import {
   securityHeaders,
 } from "./core/security"
 import { checkNpmUpdate, scheduleUpdateLog } from "./core/update-check"
-import { pickUserPaths, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
+import { pickUserPaths, resolveOpenCodeAgentsHome, resolveOpenCodeSkillsHome, type UserPathOptions } from "./core/user-paths"
 import { configureStudios, statusStudios } from "./lifecycle"
 import { createOpenCodeBridge, normalizeParentOpenCodeUrl, type OpenCodeBridge } from "./opencode-bridge"
 import { restartOwnedOpenCode, supervisorStatus } from "./opencode-supervisor"
@@ -69,6 +69,8 @@ type StudioCardMeta = {
   requiredEngines: string[]
   skill: string
   skillInstalled: boolean
+  agent: string
+  agentInstalled: boolean
 }
 
 type HostStudiosMeta = {
@@ -78,10 +80,11 @@ type HostStudiosMeta = {
   studios: StudioCardMeta[]
 }
 
-/** Cheap viewer meta: config read + root resolve + skill stat. No doctor, no network. */
+/** Cheap viewer meta: config read + root resolve + managed file stats. No doctor, no network. */
 async function buildHostStudiosMeta(input: { studioRoot: string; userPaths: UserPathOptions }): Promise<HostStudiosMeta> {
   const config = await readStudioConfigFile(input.userPaths)
   const skillsHome = resolveOpenCodeSkillsHome(input.userPaths)
+  const agentsHome = resolveOpenCodeAgentsHome(input.userPaths)
   const studios: StudioCardMeta[] = []
   for (const studioId of STUDIO_IDS) {
     const def = getStudioDefinition(studioId)
@@ -100,6 +103,8 @@ async function buildHostStudiosMeta(input: { studioRoot: string; userPaths: User
     }
     const skill = skillNameFor(studioId)
     const skillInstalled = await Bun.file(path.join(skillsHome, skill, "SKILL.md")).exists()
+    const agent = agentNameFor(studioId)
+    const agentInstalled = await Bun.file(path.join(agentsHome, `${agent}.md`)).exists()
     studios.push({
       id: studioId,
       label: def.label,
@@ -109,6 +114,8 @@ async function buildHostStudiosMeta(input: { studioRoot: string; userPaths: User
       requiredEngines: def.requiredEngines,
       skill,
       skillInstalled,
+      agent,
+      agentInstalled,
     })
   }
   return { studioRoot: input.studioRoot, configPath: config.configPath, configError: config.error, studios }
@@ -246,7 +253,7 @@ export async function createHostApp(input: HostInput) {
       ...studiosMeta.current,
       packageVersion,
       csrfRequired: true,
-      restartRequiredHint: "After repair, restart OpenCode so plugins and skills load.",
+      restartRequiredHint: "After repair, restart OpenCode so plugins, skills, agents, and permissions load.",
       hostHotReload: true,
       nativeOpenCodeAvailable,
     })
@@ -317,7 +324,7 @@ export async function createHostApp(input: HostInput) {
         message:
           reloaded.mountErrors.length > 0
             ? `Install repaired; host reloaded with mount errors: ${reloaded.mountErrors.join("; ")}. Restart OpenCode.`
-            : "Install repaired. Restart OpenCode to reload plugins and skills.",
+            : "Install repaired. Restart OpenCode to reload plugins, skills, agents, and permissions.",
       })
     } catch (error) {
       return ctx.json(errorBody("configure_failed", error instanceof Error ? error.message : String(error)), 400)
@@ -336,7 +343,10 @@ export async function createHostApp(input: HostInput) {
       return ctx.json(
         await studioSessionHistory({
           source: sessionHistorySource,
-          roots: { home: domain.studioRoot, cad: roots.get("cad") ?? null, pcb: roots.get("pcb") ?? null },
+          roots: {
+            home: domain.studioRoot,
+            studios: Object.fromEntries(STUDIO_IDS.map((id) => [id, roots.get(id) ?? null])) as Record<StudioId, string | null>,
+          },
           scope,
           directory: ctx.req.query("directory"),
           contextKey: ctx.req.query("contextKey"),

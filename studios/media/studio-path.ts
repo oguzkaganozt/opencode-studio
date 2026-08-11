@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto"
 import { constants } from "node:fs"
 import { chmod, link, lstat, mkdir, open, realpath, rm } from "node:fs/promises"
 import path from "node:path"
-import { StudioError } from "../../core/errors"
-import { isInside, resolveUnderRoot } from "../../core/paths"
+import { StudioError } from "../../src/core/errors"
+import { isInside, resolveUnderRoot } from "../../src/core/paths"
 
 export { isInside }
 

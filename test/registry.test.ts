@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { assertCatalogComplete, isStudioId, STUDIO_IDS } from "../src/core/registry"
+import { assertCatalogComplete, isStudioId, STUDIO_IDS, STUDIO_TOOL_PERMISSIONS } from "../src/core/registry"
 import { apiLoaders, assertLoaderCoverage, pluginLoaders } from "../src/studio-loaders"
 import { listStudioDefinitions } from "../src/studios"
 
@@ -11,6 +11,7 @@ describe("registry", () => {
       defs.map((d) => d.id),
       "definitions",
     )
+    for (const definition of defs) expect(definition.toolPermissions).toEqual(STUDIO_TOOL_PERMISSIONS[definition.id])
   })
 
   test("unknown IDs are rejected", () => {

@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@source ".";
+@import "@ui/tokens.css";
+
+[data-studio="media"] {
+  background: var(--osc-bg);
+  color: var(--osc-text);
+  font-family: var(--osc-font-ui);
+}
+
+.media-project-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-lg);
+  background: var(--osc-bg-elevated);
+  padding: 1rem 1rem 1rem 1.15rem;
+  transition: border-color var(--osc-motion-duration), transform var(--osc-motion-duration);
+}
+
+.media-project-card:hover,
+.media-project-card:focus-visible {
+  border-color: var(--osc-border-strong);
+  transform: translateY(-1px);
+}
+
+.media-project-card__rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--osc-accent-media);
+}

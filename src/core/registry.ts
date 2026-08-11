@@ -1,8 +1,16 @@
-export const STUDIO_IDS = ["cad", "pcb"] as const
+export const STUDIO_IDS = ["cad", "pcb", "media"] as const
 export type StudioId = (typeof STUDIO_IDS)[number]
 
+export const STUDIO_TOOL_PERMISSIONS: Record<StudioId, readonly string[]> = {
+  cad: ["design_*", "build123d_*"],
+  pcb: ["pcb_*"],
+  media: ["media_*", "fal_*", "chatgpt_image_generate", "read_media"],
+}
+
+export const STUDIO_SKILL_NAMES = STUDIO_IDS.map((id) => `studio-${id}` as const)
+
 /** Legacy studio ids stripped from config with a warning. */
-export const LEGACY_STUDIO_IDS = ["media", "startup"] as const
+export const LEGACY_STUDIO_IDS = ["startup"] as const
 
 export type StudioRootDefault = "studio_home"
 
@@ -19,6 +27,8 @@ export type StudioDefinition = {
   label: string
   description: string
   skill: string
+  /** OpenCode permission selectors covering every model tool owned by the Studio. */
+  toolPermissions: readonly string[]
   requiredEngines: string[]
   root: {
     default: StudioRootDefault
@@ -26,6 +36,7 @@ export type StudioDefinition = {
      * Path under Studio Home when `studio.json` has no `roots.<id>` override.
      * CAD: `studio/designs` → `$HOME/studio/designs/<id>`
      * PCB: `studio/circuits` → `$HOME/studio/circuits/<id>`
+     * Media: `studio/media` → `$HOME/studio/media/<id>`
      */
     relativePath?: string
     create: boolean

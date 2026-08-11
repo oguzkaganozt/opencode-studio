@@ -4,8 +4,10 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { listComposedToolNames } from "../src/core/plugin-compose"
+import { STUDIO_IDS } from "../src/core/registry"
 import { configureStudios } from "../src/lifecycle"
 import { createOpenCodeStudioPlugin } from "../src/plugin-factory"
+import agentDigests from "./parity/agent-digests.json"
 import hooks from "./parity/plugin-hooks.json"
 import digests from "./parity/skill-digests.json"
 import tools from "./parity/tools.json"
@@ -21,25 +23,30 @@ describe("parity fixtures", () => {
     expect(Object.keys(tools.tools).sort()).not.toContain("startup_upsert")
   })
 
-  test("skill digests match packaged sources", async () => {
-    for (const [_name, meta] of Object.entries(digests as Record<string, { path: string; sha256: string }>)) {
-      const file = path.join(packageRoot, meta.path)
-      const hash = createHash("sha256")
-        .update(await readFile(file))
-        .digest("hex")
-      expect(hash).toBe(meta.sha256)
+  test("skill and agent digests match every Studio source", async () => {
+    const expected = STUDIO_IDS.map((id) => `studio-${id}`).sort()
+    expect(Object.keys(digests).sort()).toEqual(expected)
+    expect(Object.keys(agentDigests).sort()).toEqual(expected)
+    for (const fixture of [digests, agentDigests]) {
+      for (const [_name, meta] of Object.entries(fixture as Record<string, { path: string; sha256: string }>)) {
+        const file = path.join(packageRoot, meta.path)
+        const hash = createHash("sha256")
+          .update(await readFile(file))
+          .digest("hex")
+        expect(hash).toBe(meta.sha256)
+      }
     }
   })
 
   test("hook composition policy is defined", () => {
-    expect(hooks.composition.order).toEqual(["platform", "cad", "pcb"])
-    expect(hooks.platform).toContain("provider")
+    expect(hooks.composition.order).toEqual(["cad", "pcb", "media"])
+    expect(hooks.media).toContain("provider")
     expect(hooks["media-go"]).toEqual(["provider"])
   })
 })
 
 describe("live tool inventory", () => {
-  test("platform + all studios exposes every parity tool name", async () => {
+  test("all Studios expose every parity tool name", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "osc-tools-"))
     try {
       const workspace = path.join(root, "domain")

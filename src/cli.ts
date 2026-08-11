@@ -35,7 +35,7 @@ function parseCmd<T extends ParseArgsConfig["options"]>(
 function printHelp() {
   console.log(`opencode-studio
 
-CAD and PCB studios + native Agent panel on OpenCode.
+CAD, PCB, and Media studios + native Agent panel on OpenCode.
 Default path supervises OpenCode API and serves Studio on one URL.
 
 Commands:
@@ -81,7 +81,7 @@ Options:
 `,
     repair: `opencode-studio repair [options]
 
-Reinstall OpenCode plugins and CAD/PCB + media skills.
+Reinstall OpenCode plugins plus every Studio skill, agent, and isolation permission.
 Also runs on global bun install. Use after remove, drift, or skipped postinstall.
 
 Options:
@@ -92,7 +92,7 @@ Options:
 `,
     remove: `opencode-studio remove [options]
 
-Uninstall managed plugins and skills from OpenCode home (also scrubs legacy build123d MCP).
+Uninstall managed plugins, skills, agents, and permissions from OpenCode home (also scrubs legacy build123d MCP).
 Does not uninstall the global package (bun remove -g @oguzkaganozt/opencode-studio).
 
 Options:
@@ -103,7 +103,7 @@ Options:
     upgrade: `opencode-studio upgrade [options]
 
 If a newer version is on npm: ask, then stop the owned Studio stack, install @latest,
-repair plugins/skills/MCP, and restart opencode-studio up.
+repair plugins/skills/agents/permissions, and restart opencode-studio up.
 
 Options:
   --check              Report only (exit 1 if update available, 2 on error)
@@ -206,7 +206,7 @@ async function main(argv: string[]) {
             (check.status === "warn" || check.status === "fail") &&
             typeof check.repair === "string" &&
             check.repair.includes("opencode-studio repair") &&
-            /^(plugin-|mcp-|skill:)/.test(check.id),
+            /^(plugin-|mcp-|skill:|agent:|permission:)/.test(check.id),
         )
         if (needsRepairRestart) console.log(`Tip: ${result.restartRequiredHint}`)
       }
@@ -233,7 +233,7 @@ async function main(argv: string[]) {
         values["dry-run"] ? `Dry run OK (always on): ${result.enabled.join(", ")}` : `Repaired (always on): ${result.enabled.join(", ")}`,
       )
       console.log(`Config: ${result.configPath}`)
-      if (!values["dry-run"]) console.log("Restart OpenCode to load plugins and skills.")
+      if (!values["dry-run"]) console.log("Restart OpenCode to load plugins, skills, agents, and permissions.")
     }
     return 0
   }
@@ -309,7 +309,7 @@ async function main(argv: string[]) {
     const values = parsed.values
     const result = await removeStudios({ workspace: values.workspace, packageRoot })
     if (values.json) console.log(JSON.stringify(result, null, 2))
-    else console.log("Removed managed plugins/skills/MCP. Restart OpenCode. Run repair to reinstall.")
+    else console.log("Removed managed plugins/skills/agents/permissions. Restart OpenCode. Run repair to reinstall.")
     return 0
   }
 
@@ -341,7 +341,7 @@ async function main(argv: string[]) {
       if (!values.yes) {
         console.error(`Update available: ${check.current} → ${check.latest}`)
         console.error("This will stop the owned OpenCode Studio stack, install the new package,")
-        console.error("repair plugins/skills/MCP, then restart opencode-studio up.")
+        console.error("repair plugins/skills/agents/permissions, then restart opencode-studio up.")
         if (!process.stdin.isTTY) {
           console.error("Non-interactive shell: re-run with --yes to confirm.")
           return 2

@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises"
 import path from "node:path"
 import type { GlobalSession } from "@opencode-ai/sdk/v2/client"
 import { isInside } from "./core/paths"
+import { isStudioId, STUDIO_IDS, type StudioId } from "./core/registry"
 import {
   STUDIO_SESSION_METADATA_KEY,
   type StudioSessionContext,
@@ -11,15 +12,15 @@ import {
   type StudioSessionMetadata,
 } from "./core/session-history"
 import { openCodeBasicAuthHeaders } from "./opencode-bridge"
+import { getStudioDefinition } from "./studios"
 
 export type GlobalSessionSource = (input: { limit: number }) => Promise<GlobalSession[]>
 
 export class SessionHistoryInputError extends Error {}
 
-type StudioRoots = {
+export type StudioRoots = {
   home: string
-  cad: string | null
-  pcb: string | null
+  studios: Record<StudioId, string | null>
 }
 
 function absolute(raw: string): string {
@@ -37,19 +38,20 @@ function parseMetadata(session: GlobalSession): StudioSessionMetadata | undefine
   const raw = session.metadata?.[STUDIO_SESSION_METADATA_KEY]
   if (!raw || typeof raw !== "object") return undefined
   const value = raw as Partial<StudioSessionMetadata>
-  const kinds: StudioSessionContextKind[] = ["home", "cad-root", "cad-project", "pcb-root", "pcb-project"]
-  if (value.schema !== 1 || typeof value.key !== "string" || typeof value.label !== "string" || !kinds.includes(value.kind!))
+  if (value.schema !== 1 || typeof value.key !== "string" || typeof value.label !== "string" || typeof value.kind !== "string")
     return undefined
-  if ((value.kind === "cad-root" || value.kind === "cad-project") && value.studioId !== "cad") return undefined
-  if ((value.kind === "pcb-root" || value.kind === "pcb-project") && value.studioId !== "pcb") return undefined
-  if (
-    (value.kind === "cad-project" || value.kind === "pcb-project") &&
-    (typeof value.projectId !== "string" || !value.projectId || !safeRelative(value.relativePath))
-  )
+  if (value.kind === "home") {
+    if (value.studioId !== undefined || value.relativePath !== undefined) return undefined
+    return value as StudioSessionMetadata
+  }
+  const match = /^(.*)-(root|project)$/.exec(value.kind)
+  const studioId = match?.[1]
+  const scope = match?.[2]
+  if (!studioId || !isStudioId(studioId) || value.studioId !== studioId) return undefined
+  if (scope === "project" && (typeof value.projectId !== "string" || !value.projectId || !safeRelative(value.relativePath)))
     return undefined
   if (value.kind === "cad-project" && safeRelative(value.relativePath) === ".") return undefined
-  if ((value.kind === "home" || value.kind === "cad-root" || value.kind === "pcb-root") && value.relativePath !== undefined)
-    return undefined
+  if (scope === "root" && value.relativePath !== undefined) return undefined
   return value as StudioSessionMetadata
 }
 
@@ -70,8 +72,8 @@ function contextMarker(context: Omit<StudioSessionContext, "status">): { path: s
 
 function rootForKind(kind: StudioSessionContextKind, roots: StudioRoots): string | null {
   if (kind === "home") return roots.home
-  if (kind === "cad-root" || kind === "cad-project") return roots.cad
-  return roots.pcb
+  const studioId = kind.slice(0, kind.lastIndexOf("-"))
+  return isStudioId(studioId) ? roots.studios[studioId] : null
 }
 
 function metadataContext(
@@ -93,35 +95,34 @@ function legacyContext(session: GlobalSession, roots: StudioRoots): Omit<StudioS
     return { schema: 1, key: "home", kind: "home", label: "Home", directory: historicalDirectory, historicalDirectory }
   }
 
-  for (const [studioId, root] of [
-    ["cad", roots.cad],
-    ["pcb", roots.pcb],
-  ] as const) {
+  for (const studioId of STUDIO_IDS) {
+    const root = roots.studios[studioId]
     if (!root) continue
     const resolvedRoot = absolute(root)
     if (historicalDirectory === resolvedRoot) {
-      const kind = `${studioId}-root` as "cad-root" | "pcb-root"
+      const kind = `${studioId}-root` as StudioSessionContextKind
       return {
         schema: 1,
         key: kind,
         kind,
         studioId,
-        label: studioId === "cad" ? "CAD Studio" : "PCB Studio",
+        label: getStudioDefinition(studioId).label,
         directory: resolvedRoot,
         historicalDirectory,
       }
     }
     if (!isInside(resolvedRoot, historicalDirectory)) continue
     const relativePath = path.relative(resolvedRoot, historicalDirectory).split(path.sep).join("/")
-    const projectId = studioId === "cad" ? relativePath.split("/")[0]! : Buffer.from(relativePath).toString("base64url")
-    const kind = `${studioId}-project` as "cad-project" | "pcb-project"
+    const projectPath = studioId === "pcb" ? relativePath : relativePath.split("/")[0]!
+    const projectId = studioId === "pcb" ? Buffer.from(projectPath).toString("base64url") : projectPath
+    const kind = `${studioId}-project` as StudioSessionContextKind
     return {
       schema: 1,
       key: `${studioId}:${projectId}`,
       kind,
       studioId,
       projectId,
-      relativePath,
+      relativePath: projectPath,
       label: `${studioId.toUpperCase()} · ${path.basename(historicalDirectory)}`,
       directory: historicalDirectory,
       historicalDirectory,
@@ -182,7 +183,7 @@ export async function studioSessionHistory(input: {
   if (
     requestedDirectory &&
     requestedDirectory !== absolute(input.roots.home) &&
-    ![input.roots.cad, input.roots.pcb].some(
+    !Object.values(input.roots.studios).some(
       (root) => root && (requestedDirectory === absolute(root) || isInside(root, requestedDirectory)),
     )
   ) {

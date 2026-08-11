@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { STUDIO_IDS, STUDIO_TOOL_PERMISSIONS } from "../src/core/registry"
 
 const id = process.argv[2]
 if (!id || !/^[a-z][a-z0-9-]*$/.test(id)) {
@@ -17,6 +18,7 @@ try {
   process.exit(1)
 }
 await mkdir(path.join(dir, "skill"), { recursive: true })
+await mkdir(path.join(dir, "agent"), { recursive: true })
 await mkdir(path.join(dir, "viewer", "src"), { recursive: true })
 await mkdir(path.join(dir, "test"), { recursive: true })
 
@@ -29,9 +31,32 @@ export const ${id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}Studio: Studio
   label: "${id} Studio",
   description: "TODO",
   skill: "studio-${id}",
+  toolPermissions: ["TODO_*"],
   requiredEngines: [],
   root: { default: "studio_home", relativePath: "studio/${id}", create: true },
 }
+`,
+)
+const otherToolDenies = STUDIO_IDS.flatMap((studioId) => STUDIO_TOOL_PERMISSIONS[studioId])
+  .map((permission) => `  ${permission}: deny`)
+  .join("\n")
+await writeFile(
+  path.join(dir, `agent/studio-${id}.md`),
+  `---
+description: ${id} Studio agent.
+mode: primary
+hidden: true
+permission:
+  TODO_*: allow
+${otherToolDenies}
+  task:
+    "*": deny
+  skill:
+    "*": deny
+    studio-${id}: allow
+---
+
+You are the ${id} Studio agent. Load \`studio-${id}\` before domain work and follow its workflow.
 `,
 )
 await writeFile(
@@ -58,4 +83,4 @@ console.log(`  src/core/registry.ts (STUDIO_IDS)`)
 console.log(`  src/studios.ts (definition)`)
 console.log(`  src/studio-loaders.ts (plugin + API loaders)`)
 console.log(`  ui/app.tsx (viewerLoaders)`)
-console.log(`  test/parity/* (if tools/skills change)`)
+console.log(`  test/parity/* (tools, skill digest, and agent digest)`)

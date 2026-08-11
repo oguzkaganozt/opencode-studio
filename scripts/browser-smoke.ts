@@ -34,6 +34,7 @@ async function httpSmoke(base: string) {
   const apiProbes: Array<[string, string]> = [
     ["cad", "/api/studios/cad/designs"],
     ["pcb", "/api/studios/pcb/projects"],
+    ["media", "/api/studios/media/projects"],
     ["files", "/api/files/tree"],
   ]
   for (const [id, route] of apiProbes) {
@@ -161,17 +162,29 @@ async function browserSmoke(base: string) {
   })
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+    const browserErrors: string[] = []
+    page.on("pageerror", (error) => browserErrors.push(error.stack ?? error.message))
+    page.on("console", (message) => {
+      if (message.type() === "error") browserErrors.push(message.text())
+    })
 
     await page.goto(`${base}/studio`, { waitUntil: "domcontentloaded" })
     await page.getByRole("heading", { name: "Agent", exact: true }).waitFor()
     await page.locator('[aria-label="Agent"][data-agent-open="true"]').waitFor({ state: "visible", timeout: 15_000 })
-    await page.getByRole("textbox", { name: "Ask anything…" }).waitFor()
+    try {
+      await page.getByRole("textbox", { name: "Ask anything…" }).waitFor()
+    } catch {
+      throw new Error(
+        `Agent composer did not load:\n${(await page.locator("body").innerText()).slice(0, 2_000)}\n${browserErrors.join("\n")}`,
+      )
+    }
     await page.getByRole("button", { name: "Open menu" }).click()
     await page.getByRole("link", { name: /Agent/ }).waitFor()
     await page.getByRole("link", { name: /Files/ }).waitFor()
     await page.getByRole("button", { name: "Status" }).waitFor()
     await page.getByRole("link", { name: /CAD Studio|CAD/ }).waitFor()
     await page.getByRole("link", { name: /PCB Studio|PCB/ }).waitFor()
+    await page.getByRole("link", { name: /Media Studio|Media/ }).waitFor()
     await page.getByRole("button", { name: "Close menu" }).click()
     const theme = page.locator("fieldset.osc-theme-toggle")
     await theme.waitFor()
@@ -231,12 +244,18 @@ async function browserSmoke(base: string) {
           await p.waitForSelector("text=Projects")
         },
       },
+      media: {
+        wait: "Media Studio",
+        extra: async (p) => {
+          await p.getByRole("heading", { name: "Projects", exact: true }).waitFor()
+        },
+      },
     }
 
     for (const id of STUDIO_IDS) {
       const check = studioChecks[id]
       assert(check, `missing studio check for ${id}`)
-      // CAD/PCB open long-lived SSE; networkidle never settles.
+      // Studio viewers can open long-lived SSE; networkidle never settles.
       await page.goto(`${base}/studio/studios/${id}`, { waitUntil: "domcontentloaded" })
       await page.waitForSelector(`text=${check.wait}`, { timeout: 15_000 })
       await page.getByLabel("Agent", { exact: true }).waitFor({ state: "attached" })
@@ -245,8 +264,19 @@ async function browserSmoke(base: string) {
       const uiBase = await page.evaluate(() => (window as any).__OPENCODE_STUDIO__?.uiBase)
       assert(uiBase === `/studios/${id}`, `${id}: router uiBase should be basename-relative, got ${String(uiBase)}`)
       if (check.extra) await check.extra(page)
+      await page.getByRole("button", { name: /^Agent/ }).click()
+      const studioComposer = page.getByRole("textbox", { name: "Ask anything…" })
+      await studioComposer.waitFor()
+      await studioComposer.fill(`Prompt from ${id}`)
+      const beforePrompt: number = promptBodies.length
+      await page.getByRole("button", { name: "Send" }).click()
+      for (let attempt = 0; attempt < 50 && promptBodies.length === beforePrompt; attempt += 1) await Bun.sleep(20)
+      assert(promptBodies.length === beforePrompt + 1, `${id}: prompt did not reach OpenCode`)
+      assert(promptBodies.at(-1)?.agent === `studio-${id}`, `${id}: unexpected prompt agent ${String(promptBodies.at(-1)?.agent)}`)
+      await page.getByRole("button", { name: "Close agent" }).click()
       await assertShellFillsViewport(page, id)
-      assert((await page.title()) === `${id.toUpperCase()} · OpenCode Studio`, `${id}: unexpected document title ${await page.title()}`)
+      const expectedTitle = id === "media" ? "Media" : id.toUpperCase()
+      assert((await page.title()) === `${expectedTitle} · OpenCode Studio`, `${id}: unexpected document title ${await page.title()}`)
       await assertNoHorizontalScroll(page, `1280 ${id}`)
       // Studio utilities still present after lazy CSS load
       await assertTailwindUtilities(page)
@@ -325,6 +355,9 @@ async function browserSmoke(base: string) {
     const pcbMainCount = await page.locator("main").count()
     assert(pcbMainCount === 1, `360 pcb: expected one main landmark, got ${pcbMainCount}`)
     await assertNoHorizontalScroll(page, "360 pcb")
+    await page.goto(`${base}/studio/studios/media`, { waitUntil: "domcontentloaded" })
+    await page.getByRole("heading", { name: "Projects", exact: true }).waitFor()
+    await assertNoHorizontalScroll(page, "360 media")
     console.log("360 smoke ok")
 
     await page.setViewportSize({ width: 1280, height: 800 })
@@ -409,6 +442,7 @@ await import("node:fs/promises").then(async ({ mkdir, writeFile }) => {
     path.join(catalogDir, "TEST-1.yml"),
     "mpn: TEST-1\nmanufacturer: Studio QA\ndescription: Browser history fixture\ncategory: test\n",
   )
+  await mkdir(path.join(domain, "studio", "media"), { recursive: true })
 })
 
 let exitCode = 0
@@ -441,6 +475,12 @@ try {
             directory: domain,
             time: { created: 1_786_264_300_000, updated: 1_786_264_300_000 },
           },
+          ...STUDIO_IDS.map((id, index) => ({
+            id: `session-${id}`,
+            title: `${id.toUpperCase()} session`,
+            directory: path.join(domain, "studio", id === "cad" ? "designs" : id === "pcb" ? "circuits" : "media"),
+            time: { created: 1_786_264_200_000 - index, updated: 1_786_264_200_000 - index },
+          })),
         ])
       }
       if (/^\/session\/[^/]+\/prompt_async$/.test(pathname) && request.method === "POST") {
@@ -462,6 +502,7 @@ try {
       }
       if (pathname === "/session/status") return Response.json({})
       if (pathname === "/permission") return Response.json([])
+      if (pathname === "/question") return Response.json([])
       if (pathname === "/event") return new Response("", { headers: { "Content-Type": "text/event-stream" } })
       return new Response("<!doctype html><title>OpenCode</title><div id='root'>stub parent</div>", {
         headers: { "Content-Type": "text/html; charset=utf-8" },

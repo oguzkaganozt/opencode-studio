@@ -7,7 +7,8 @@ import { Hono } from "hono"
 import { StudioError } from "../../core/errors"
 import { resolveContainedPath } from "../../core/paths"
 import { safeContentDisposition, securityHeaders } from "../../core/security"
-import { SKIP_DIR_NAMES } from "./library"
+
+const SKIP_DIR_NAMES = new Set([".git", "node_modules", "dist", ".venv", "__pycache__", ".opencode", ".cache"])
 
 const DETECTION_BYTES = 64 * 1024
 const MAX_TEXT_PREVIEW = 1_048_576
@@ -167,8 +168,9 @@ function streamFile(absolute: string, start?: number, end?: number): ReadableStr
   return Readable.toWeb(createReadStream(absolute, opts)) as unknown as ReadableStream
 }
 
-export async function createFilesApi(workspaceRoot: string) {
+export async function createFilesApi(workspaceRoot: string, options?: { publicBasePath?: string }) {
   const root = await resolveWorkspaceRoot(workspaceRoot)
+  const publicBasePath = (options?.publicBasePath ?? "/api/files").replace(/\/$/, "")
   const app = new Hono()
 
   app.get("/tree", async (ctx) => {
@@ -249,7 +251,13 @@ export async function createFilesApi(workspaceRoot: string) {
       const text = await readFile(absolute, "utf8")
       return ctx.json({ path: relative, preview: "text", truncated: false, bytes: info.size, text })
     }
-    return ctx.json({ path: relative, preview: kind, bytes: info.size, mime, url: `/api/files/raw?path=${encodeURIComponent(relative)}` })
+    return ctx.json({
+      path: relative,
+      preview: kind,
+      bytes: info.size,
+      mime,
+      url: `${publicBasePath}/raw?path=${encodeURIComponent(relative)}`,
+    })
   })
 
   app.get("/raw", async (ctx) => {

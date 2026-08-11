@@ -12,6 +12,7 @@ import {
 import { type StudioSessionContext, type StudioSessionHistoryResponse, studioSessionMetadata } from "../../src/core/session-history"
 import { fetchJson } from "../lib/fetch-json"
 import { normalizePermissionProperties, type UiPermissionRequest } from "./permission-request"
+import type { PromptAgent } from "./resolve-prompt-agent"
 
 export type AgentMessage = {
   info: Message
@@ -87,6 +88,7 @@ export async function promptSessionAsync(input: {
   sessionID: string
   text: string
   directory?: string
+  agent: PromptAgent
   model?: { providerID: string; modelID: string }
   variant?: string
 }): Promise<void> {
@@ -94,7 +96,7 @@ export async function promptSessionAsync(input: {
     client.session.promptAsync({
       sessionID: input.sessionID,
       directory: input.directory,
-      agent: "build",
+      agent: input.agent,
       model: input.model ? { providerID: input.model.providerID, modelID: input.model.modelID } : undefined,
       variant: input.variant,
       parts: [{ type: "text", text: input.text }],

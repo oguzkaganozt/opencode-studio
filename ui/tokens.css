@@ -19,6 +19,7 @@
   --osc-accent-agent: #4f46e5;
   --osc-accent-cad: #b45309;
   --osc-accent-files: #e11d48;
+  --osc-accent-media: #7c3aed;
   --osc-accent-pcb: #0e7490;
   --osc-accent: var(--osc-text);
 
@@ -107,6 +108,7 @@ html[data-theme="dark"] {
   --osc-hairline: linear-gradient(90deg, #a16207 0%, #78350f 28%, transparent 62%);
   --osc-accent-agent: #818cf8;
   --osc-accent-pcb: #22a8c7;
+  --osc-accent-media: #a78bfa;
 }
 
 [data-studio="agent"],
@@ -120,6 +122,10 @@ html[data-theme="dark"] {
 
 [data-studio="pcb"] {
   --osc-accent: var(--osc-accent-pcb);
+}
+
+[data-studio="media"] {
+  --osc-accent: var(--osc-accent-media);
 }
 
 [data-studio="files"] {

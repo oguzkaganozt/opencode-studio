@@ -67,7 +67,7 @@ export function parseStudioConfig(raw: unknown): ParseStudioConfigResult {
   const warnings: string[] = []
 
   if (value.enabled !== undefined) {
-    warnings.push("Ignoring legacy studio.json.enabled — CAD and PCB are always on")
+    warnings.push("Ignoring legacy studio.json.enabled — all Studios are always on")
   }
 
   const roots = parseRoots(value.roots, warnings, false)

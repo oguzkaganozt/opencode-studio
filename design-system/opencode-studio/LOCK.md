@@ -1,6 +1,6 @@
-# Lock — Shell + Files + CAD + PCB
+# Lock — Shell + Files + CAD + PCB + Media
 
-**Status:** Files + Shell + CAD + **PCB LOCKED** 2026-07-28  
+**Status:** Files + Shell + CAD + PCB + **Media LOCKED** 2026-08-11
 **Do not restyle** without explicit unlock.
 
 Comprehensive UI/UX pass explicitly unlocked by the user and re-locked 2026-07-29. Shared contrast/semantics, Files keyboard + preview flow, CAD inspection status/tooling, PCB tab/data workflows, and mobile targets were re-verified with `bun run check`, browser smoke, and 360/1280 light/dark screenshots.
@@ -36,6 +36,15 @@ Re-polished **2026-07-29** (toolbar; status pill; empty recovery).
 
 QA: projects list; built project schematic/PCB/BOM tabs; diagnostics; catalog empty; mobile project detail + tab strip. 3D/JSON tabs not re-dogfooded this pass.
 
+### Media lock addendum
+| Surface | Paths |
+| --- | --- |
+| Media viewer | `studios/media/viewer/src/*` |
+| Shared project browser | `ui/files-explorer.tsx` |
+| Spec | `pages/media.md` |
+
+Added the Media catalog surface, project list, project-scoped asset browser, purple accent token, and dedicated Agent routing. Verified at 1280px and 360px with browser smoke on 2026-08-11.
+
 ## Locked surfaces
 
 | Surface | Paths |
@@ -46,6 +55,7 @@ QA: projects list; built project schematic/PCB/BOM tabs; diagnostics; catalog em
 | Files | `ui/files-explorer.tsx` |
 | CAD viewer | `studios/cad/viewer/src/app.tsx`, `styles.css` |
 | PCB viewer | `studios/pcb/viewer/src/*` |
+| Media viewer | `studios/media/viewer/src/*` |
 | Spec | `MASTER.md`, `pages/*.md` |
 
 ## Visual QA — PCB polish 2026-07-28

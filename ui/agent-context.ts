@@ -1,3 +1,4 @@
+import type { StudioId } from "../src/core/registry"
 import type { StudioSessionContextKind, StudioSessionContextStatus } from "../src/core/session-history"
 
 export type AgentContext = {
@@ -6,7 +7,7 @@ export type AgentContext = {
   label: string
   directory?: string
   historicalDirectory?: string
-  studioId?: "cad" | "pcb"
+  studioId?: StudioId
   projectId?: string
   relativePath?: string
   status: StudioSessionContextStatus | "checking"

@@ -24,6 +24,8 @@ type StudioCard = {
   requiredEngines: string[]
   skill: string
   skillInstalled: boolean
+  agent: string
+  agentInstalled: boolean
 }
 
 type StudiosResponse = {
@@ -39,6 +41,7 @@ type StudiosResponse = {
 const STUDIO_META: Record<string, { short: string; blurb: string }> = {
   cad: { short: "CAD", blurb: "Parts, assemblies, renders" },
   pcb: { short: "PCB", blurb: "Schematic, layout, BOM" },
+  media: { short: "Media", blurb: "Image, audio, video" },
 }
 
 function MenuIcon() {
@@ -419,6 +422,11 @@ const viewerLoaders: Record<StudioId, React.LazyExoticComponent<() => React.Reac
     const mod = await import("@studios/pcb/viewer/src/app")
     return { default: mod.App }
   }),
+  media: lazy(async () => {
+    await import("@studios/media/viewer/src/styles.css")
+    const mod = await import("@studios/media/viewer/src/app")
+    return { default: mod.App }
+  }),
 }
 
 assertCatalogComplete(Object.keys(viewerLoaders), "viewerLoaders")
@@ -543,6 +551,7 @@ function StudioFrame() {
             available={nativeAvailable}
             open={chrome.agentOpen}
             historyScope="directory"
+            studioId={studioId}
             onClose={chrome.closeAgent}
             onStatusChange={chrome.setAgentStatus}
           />

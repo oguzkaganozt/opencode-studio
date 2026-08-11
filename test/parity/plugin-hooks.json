@@ -3,13 +3,13 @@
   "media-go": ["provider"],
   "pcb": ["tool"],
   "composition": {
-    "order": ["platform", "cad", "pcb"],
+    "order": ["cad", "pcb", "media"],
     "mutableTransforms": "sequential catalog order",
     "dispose": "reverse order",
     "duplicateTools": "reject",
     "unknownHooks": "reject"
   },
-  "platform": [
+  "media": [
     "config",
     "provider",
     "event",

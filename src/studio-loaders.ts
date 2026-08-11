@@ -38,6 +38,11 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
     const root = await ctx.resolveStudioRoot({ studioId: "pcb", studioRoot: ctx.studioRoot, roots: ctx.roots })
     return loadPcbPlugin({ root })
   },
+  media: async (ctx) => {
+    const { loadMediaPlugin } = await import("../studios/media/plugin")
+    const root = await ctx.resolveStudioRoot({ studioId: "media", studioRoot: ctx.studioRoot, roots: ctx.roots })
+    return loadMediaPlugin({ root, providerPackage: ctx.mediaProviderPackage })
+  },
 }
 
 export const apiLoaders: Record<StudioId, ApiLoader> = {
@@ -52,14 +57,11 @@ export const apiLoaders: Record<StudioId, ApiLoader> = {
     const root = await ctx.resolveStudioRoot({ studioId: "pcb", studioRoot: ctx.studioRoot, roots: ctx.roots })
     return createPcbApi(root)
   },
-}
-
-export async function loadPlatformMediaPlugin(ctx: { workspace: string; mediaProviderPackage: string }): Promise<Plugin> {
-  const { loadMediaPlugin } = await import("./platform/media/plugin")
-  return loadMediaPlugin({
-    workspaceRoot: ctx.workspace,
-    providerPackage: ctx.mediaProviderPackage,
-  })
+  media: async (ctx) => {
+    const { createMediaApi } = await import("../studios/media/api")
+    const root = await ctx.resolveStudioRoot({ studioId: "media", studioRoot: ctx.studioRoot, roots: ctx.roots })
+    return createMediaApi(root)
+  },
 }
 
 /** Ensures loader maps stay in lockstep with the catalog. */

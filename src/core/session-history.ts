@@ -1,13 +1,15 @@
+import type { StudioId } from "./registry"
+
 export const STUDIO_SESSION_METADATA_KEY = "opencode-studio"
 
-export type StudioSessionContextKind = "home" | "cad-root" | "cad-project" | "pcb-root" | "pcb-project"
+export type StudioSessionContextKind = "home" | `${StudioId}-root` | `${StudioId}-project`
 export type StudioSessionContextStatus = "available" | "missing" | "moved"
 
 export type StudioSessionMetadata = {
   schema: 1
   key: string
   kind: StudioSessionContextKind
-  studioId?: "cad" | "pcb"
+  studioId?: StudioId
   projectId?: string
   relativePath?: string
   label: string

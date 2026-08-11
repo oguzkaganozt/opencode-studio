@@ -12,7 +12,9 @@ afterEach(async () => {
 
 describe("FFmpeg output ownership", () => {
   test("concurrent mutations cannot remove the output published by the winner", async () => {
-    const mediaDir = path.join(root, "media")
+    const domainRoot = path.join(root, "projects")
+    const projectRoot = path.join(domainRoot, "demo")
+    const mediaDir = path.join(projectRoot, "media")
     const source = path.join(mediaDir, "source.png")
     const fakeFfmpeg = path.join(root, "fake-ffmpeg.sh")
     await mkdir(mediaDir, { recursive: true })
@@ -38,9 +40,9 @@ describe("FFmpeg output ownership", () => {
         worktree: root,
         client: { provider: { list: async () => ({ data: { all: [] } }) } },
       } as never,
-      { libraryRoot: root, ffmpegPath: fakeFfmpeg },
+      { libraryRoot: domainRoot, ffmpegPath: fakeFfmpeg },
     )
-    const context = { abort: new AbortController().signal, ask: async () => {} } as never
+    const context = { directory: projectRoot, abort: new AbortController().signal, ask: async () => {} } as never
     const execute = () =>
       (hooks.tool as any).media_convert.execute(
         { filePath: "media/source.png", preset: "image-png", outputPath: "media/shared.png" },

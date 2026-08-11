@@ -11,15 +11,17 @@ afterEach(async () => {
 })
 
 describe("resolveStudioRoot", () => {
-  test("defaults CAD to studio/designs and PCB to studio/circuits under Studio Home", async () => {
+  test("defaults every Studio under Studio Home", async () => {
     const home = await mkdtemp(path.join(tmpdir(), "osc-root-home-"))
     temps.push(home)
 
     const cad = await resolveStudioRoot({ studioId: "cad", studioRoot: home })
     const pcb = await resolveStudioRoot({ studioId: "pcb", studioRoot: home })
+    const media = await resolveStudioRoot({ studioId: "media", studioRoot: home })
 
     expect(cad).toBe(await realpath(path.join(home, "studio", "designs")))
     expect(pcb).toBe(await realpath(path.join(home, "studio", "circuits")))
+    expect(media).toBe(await realpath(path.join(home, "studio", "media")))
   })
 
   test("absolute roots overrides win over relative defaults", async () => {

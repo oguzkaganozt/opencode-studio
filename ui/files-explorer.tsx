@@ -118,8 +118,16 @@ function PreviewChrome({
   )
 }
 
-function PreviewActions({ selected, onRequestAgent }: { selected: FileEntry; onRequestAgent?: (path: string) => void }) {
-  const downloadHref = `/api/files/raw?path=${encodeURIComponent(selected.path)}&download=1`
+function PreviewActions({
+  selected,
+  onRequestAgent,
+  apiBase,
+}: {
+  selected: FileEntry
+  onRequestAgent?: (path: string) => void
+  apiBase: string
+}) {
+  const downloadHref = `${apiBase}/raw?path=${encodeURIComponent(selected.path)}&download=1`
   return (
     <div className="flex shrink-0 items-center gap-2">
       {onRequestAgent ? (
@@ -139,17 +147,19 @@ function PreviewPane({
   selectedPath,
   onBack,
   onRequestAgent,
+  apiBase,
 }: {
   selected: FileEntry | null
   selectedPath: string | null
   onBack?: () => void
   onRequestAgent?: (path: string) => void
+  apiBase: string
 }) {
   const [mediaError, setMediaError] = useState(false)
   const contentQuery = useQuery({
-    queryKey: ["files", "content", selected?.path],
+    queryKey: ["files", apiBase, "content", selected?.path],
     enabled: Boolean(selected && selected.kind === "file"),
-    queryFn: () => fetchJson<ContentResponse>(`/api/files/content?path=${encodeURIComponent(selected!.path)}`),
+    queryFn: () => fetchJson<ContentResponse>(`${apiBase}/content?path=${encodeURIComponent(selected!.path)}`),
   })
 
   if (!selected) {
@@ -182,7 +192,11 @@ function PreviewPane({
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]" role="status" aria-busy="true">
         <span className="sr-only">Loading preview…</span>
-        <PreviewChrome onBack={onBack} tall trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} />}>
+        <PreviewChrome
+          onBack={onBack}
+          tall
+          trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} apiBase={apiBase} />}
+        >
           <div className="osc-skeleton h-4 w-40" />
         </PreviewChrome>
         <div className="flex-1 p-4">
@@ -194,7 +208,10 @@ function PreviewPane({
   if (contentQuery.error) {
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]">
-        <PreviewChrome onBack={onBack} trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} />} />
+        <PreviewChrome
+          onBack={onBack}
+          trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} apiBase={apiBase} />}
+        />
         <ErrorState
           className="m-4 flex-1 border-0 py-12"
           title="Preview failed"
@@ -211,12 +228,12 @@ function PreviewPane({
   const data = contentQuery.data
   if (!data) return null
 
-  const downloadHref = `/api/files/raw?path=${encodeURIComponent(selected.path)}&download=1`
-  const rawHref = `/api/files/raw?path=${encodeURIComponent(selected.path)}`
+  const downloadHref = `${apiBase}/raw?path=${encodeURIComponent(selected.path)}&download=1`
+  const rawHref = `${apiBase}/raw?path=${encodeURIComponent(selected.path)}`
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]">
-      <PreviewChrome onBack={onBack} trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} />}>
+      <PreviewChrome onBack={onBack} trailing={<PreviewActions selected={selected} onRequestAgent={onRequestAgent} apiBase={apiBase} />}>
         <div className="min-w-0">
           <p className="truncate text-[13px] font-medium text-[var(--osc-text)]">{selected.name}</p>
           <p
@@ -291,7 +308,18 @@ function PreviewPane({
   )
 }
 
-export function FilesExplorer({ onRequestAgent }: { onRequestAgent?: (path: string) => void }) {
+export function FilesExplorer({
+  onRequestAgent,
+  apiBase = "/api/files",
+  rootLabel = "Home",
+  studioId = "files",
+}: {
+  onRequestAgent?: (path: string) => void
+  apiBase?: string
+  rootLabel?: string
+  studioId?: string
+}) {
+  const normalizedApiBase = apiBase.replace(/\/$/, "")
   const [dirPath, setDirPath] = useState("")
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [filter, setFilter] = useState("")
@@ -301,8 +329,8 @@ export function FilesExplorer({ onRequestAgent }: { onRequestAgent?: (path: stri
   const listColumnRef = useRef<HTMLDivElement>(null)
 
   const treeQuery = useQuery({
-    queryKey: ["files", "tree", dirPath],
-    queryFn: () => fetchJson<TreeResponse>(`/api/files/tree?path=${encodeURIComponent(dirPath)}`),
+    queryKey: ["files", normalizedApiBase, "tree", dirPath],
+    queryFn: () => fetchJson<TreeResponse>(`${normalizedApiBase}/tree?path=${encodeURIComponent(dirPath)}`),
   })
 
   const entries = useMemo(() => {
@@ -424,7 +452,7 @@ export function FilesExplorer({ onRequestAgent }: { onRequestAgent?: (path: stri
   const showPreviewMobile = Boolean(selectedPath)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]" data-studio="files">
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--osc-bg)]" data-studio={studioId}>
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] px-2 sm:h-10 sm:px-3">
         <button
           type="button"
@@ -439,7 +467,7 @@ export function FilesExplorer({ onRequestAgent }: { onRequestAgent?: (path: stri
         <nav
           className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-contain whitespace-nowrap text-[12px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           aria-label="Breadcrumb"
-          title={dirPath || "Studio Home"}
+          title={dirPath || rootLabel}
         >
           <button
             type="button"
@@ -449,7 +477,7 @@ export function FilesExplorer({ onRequestAgent }: { onRequestAgent?: (path: stri
             onClick={() => navigateDir("")}
             aria-current={crumbs.length === 0 ? "location" : undefined}
           >
-            Home
+            {rootLabel}
           </button>
           {crumbs.map((part, index) => {
             const target = crumbs.slice(0, index + 1).join("/")
@@ -616,6 +644,7 @@ export function FilesExplorer({ onRequestAgent }: { onRequestAgent?: (path: stri
             selectedPath={selectedPath}
             onBack={selectedPath ? () => setSelectedPath(null) : undefined}
             onRequestAgent={onRequestAgent}
+            apiBase={normalizedApiBase}
           />
         </div>
       </div>

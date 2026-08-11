@@ -4,17 +4,16 @@ import { allStudioIds, maybeMigrateLegacyConfig, readStudioConfigFile, resolveSt
 import { ensureForgeRuntimeDir, loadPackageMeta } from "./core/package-meta"
 import { packageRootFrom } from "./core/paths"
 import { composeStudioPlugins, type StudioPluginContribution } from "./core/plugin-compose"
-import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { autostartDisabled } from "./host-ensure"
 import { defaultStudioRoot, ensureStudioHostReady } from "./serve-bootstrap"
-import { loadPlatformMediaPlugin, pluginLoaders } from "./studio-loaders"
+import { pluginLoaders } from "./studio-loaders"
 
 export type StudioPluginOptions = UserPathOptions & {
   /** Fixed Studio Home override for embedding and tests. */
   studioRoot?: string
-  /** OpenCode project fallback for project-scoped media tools. */
+  /** OpenCode project used only for legacy config migration. */
   workspace?: string
   hostUrl?: string
   packageRoot?: string
@@ -116,18 +115,6 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       mediaProviderPackage: meta.mediaProviderSpecifier,
       resolveStudioRoot,
       ensureForgeRuntimeDir,
-    }
-
-    try {
-      const platformPlugin = await loadPlatformMediaPlugin({
-        workspace: agentWorkspace,
-        mediaProviderPackage: meta.mediaProviderSpecifier,
-      })
-      contributions.push({ studioId: PLATFORM_OWNER, hooks: await platformPlugin(context, {}) })
-    } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : String(loadError)
-      console.error(`[opencode-studio] failed to initialize platform media: ${message}`)
-      throw new Error(`opencode-studio: failed to initialize platform media: ${message}`)
     }
 
     const studioHooks = await Promise.all(

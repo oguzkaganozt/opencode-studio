@@ -1,5 +1,5 @@
 import { createFalClient } from "@fal-ai/client"
-import { formatToolJson } from "../../core/format-tool-json"
+import { formatToolJson } from "../../src/core/format-tool-json"
 
 const ENDPOINT_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._/-]+$/
 const PLATFORM_URL = "https://api.fal.ai/v1"

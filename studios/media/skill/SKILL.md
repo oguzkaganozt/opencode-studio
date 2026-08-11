@@ -1,37 +1,35 @@
 ---
 name: studio-media
 description: >
-  Load before workspace image, audio, or video work — generate/edit/import/convert/trim
+  Load before Media Studio image, audio, or video work — generate/edit/import/convert/trim
   thumbnails or clips, chatgpt_image_generate, fal_* paid generation, media_download,
-  media_list/info/probe, or Files explorer media paths. Not for mechanical CAD product
+  media_list/info/probe, or Media project asset paths. Not for mechanical CAD product
   renders (studio-cad + build123d_render_view into designs/<id>/renders/) or PCB artifacts
   (studio-pcb).
 license: proprietary
 compatibility: opencode
 ---
 
-# Media (platform)
+# Media Studio
 
-Use media tools for image, audio, and video under the **workspace**
-(`serve --workspace` / OpenCode project directory). Media is always on — not a
-toggleable studio. Load this skill before `media_*`, `fal_*`, or
-`chatgpt_image_*` product work.
+Use media tools for image, audio, and video inside the **open Media project**.
+Media projects are immediate directories under `$STUDIO_HOME/studio/media/`
+(or configured `roots.media`). Load this skill before `media_*`, `fal_*`,
+`chatgpt_image_generate`, or `read_media` work.
 
 Do **not** use this skill for CAD evidence PNGs or PCB exports — those stay under
 `studio-cad` / `studio-pcb` domain roots and their tools.
 
-The Files explorer (`/studio/files`) is a read-only browser for the whole
-workspace (preview + download). All media mutations happen through agent tools,
-not the browser.
+The Media project viewer is a read-only asset browser. All mutations happen
+through Media agent tools, not the browser.
 
 ## Paths (important)
 
-- Default output when a path is omitted: `media/` under the workspace.
-- Explicit workspace-relative paths are allowed **anywhere inside the workspace**.
-- Tools can overwrite CAD/PCB sources, configs, and other project files if you
-  pass those paths. Prefer `media/` for generated assets. Never write secrets
-  into the tree casually.
-- `media_list` scans the workspace for image/audio/video (depth and entry caps
+- Default output when a path is omitted: `<media-project>/media/`.
+- Explicit project-relative paths must remain inside the open Media project.
+- Media tools reject the Media domain root, sibling projects, CAD/PCB roots,
+  and arbitrary OpenCode workspaces.
+- `media_list` scans only the open project for image/audio/video (depth and entry caps
   apply; very large trees may need a filename filter).
 
 ## Tool map
@@ -66,11 +64,9 @@ failed; download only from a completed result URL.
 
 ## Files explorer
 
-Open the host UI Files page at `/studio/files` (default host
-`http://127.0.0.1:4173` unless `OPENCODE_STUDIO_PORT` overrides) to browse the
-workspace tree and preview image/audio/video/text. It does not upload, generate,
-or delete. On non-loopback hosts (`serve --web`), Files API requires the same
-HTTP Basic password as OpenCode.
+Open the Media Studio project view to browse and preview image/audio/video/text.
+The global Files page remains a Studio Home browser and is not the Media project
+scope. Neither browser uploads, generates, or deletes assets.
 
 ## Readiness checks
 
@@ -79,4 +75,4 @@ HTTP Basic password as OpenCode.
 - Treat missing, empty, or wrong-path files as incomplete even when a provider
   job reports success.
 - Never claim readiness from tool success alone — confirm the file exists at the
-  expected workspace path.
+   expected project path.

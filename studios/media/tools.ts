@@ -4,8 +4,14 @@ import path from "node:path"
 import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import type { Part } from "@opencode-ai/sdk"
-import manifest from "../../../package.json" with { type: "json" }
-import { resolveFfmpeg, resolveFfprobe } from "../../core/engines"
+import manifest from "../../package.json" with { type: "json" }
+import { resolveFfmpeg, resolveFfprobe } from "../../src/core/engines"
+import { formatBytes, hasPlausibleSignature, MAX_MEDIA_BYTES, mediaMime, mediaModality } from "../../src/platform/media/media"
+import {
+  type NativeSessionDescriptor,
+  nativeCompatibilityError,
+  shouldPatchNativeVideo,
+} from "../../src/platform/media/native-compatibility"
 import { importMediaAsset, inspectCreatedMedia } from "./assets"
 import { loadChatGPTAuth } from "./chatgpt-auth"
 import { decodeGeneratedPng, generateChatGPTImage, readReferenceImages } from "./chatgpt-image"
@@ -23,9 +29,8 @@ import {
 } from "./fal"
 import { type ConvertPreset, convertArguments, extractAudioArguments, probeMedia, runMediaProcess, trimArguments } from "./ffmpeg"
 import { initializeLibrary, inspectManagedAsset, type LibraryModality, openManagedAsset, personalOutputPath, scanLibrary } from "./library"
-import { formatBytes, hasPlausibleSignature, MAX_MEDIA_BYTES, mediaMime, mediaModality } from "./media"
-import { type NativeSessionDescriptor, nativeCompatibilityError, shouldPatchNativeVideo } from "./native-compatibility"
 import { canonicalStudioRoot, prepareNewOutput, verifyNewOutput, verifyOutputParent, writeNewFileAtomic } from "./studio-path"
+import { resolveMediaProjectDirectory } from "./workspace"
 
 const PROVIDER_PACKAGE = `${manifest.name}@${manifest.version}`
 const READ_TOOL_NAME = "read_media"
@@ -188,9 +193,8 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
 
   return async (context, rawOptions) => {
     const config = options(rawOptions)
-    const workspaceRoot = await canonicalStudioRoot(config.libraryRoot ?? context.directory)
-    const library = await initializeLibrary({ root: workspaceRoot })
-    const studioRoot = library.root
+    const mediaRoot = await canonicalStudioRoot(config.libraryRoot ?? context.directory)
+    const projectLibraries = new Map<string, Promise<Awaited<ReturnType<typeof initializeLibrary>>>>()
     const fal = createFalClient()
     const compacting = new Set<string>()
     const sessionModels = new Map<string, NativeSessionDescriptor>()
@@ -200,9 +204,20 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
       if (error) throw error
     }
 
+    async function projectFor(toolContext: { directory?: string }) {
+      const project = await resolveMediaProjectDirectory(mediaRoot, toolContext.directory)
+      let library = projectLibraries.get(project.directory)
+      if (!library) {
+        library = initializeLibrary({ root: project.directory })
+        projectLibraries.set(project.directory, library)
+      }
+      const resolved = await library
+      return { library: resolved, studioRoot: resolved.root, workspaceRoot: resolved.root }
+    }
+
     async function runFfmpegMutation(input: {
       filePath: string
-      toolContext: { abort: AbortSignal; ask: (request: any) => Promise<void> }
+      toolContext: { abort: AbortSignal; ask: (request: any) => Promise<void>; directory?: string }
       outputPath?: string
       message: (filePath: string) => string
       plan: (source: Awaited<ReturnType<typeof openManagedAsset>>) => {
@@ -212,6 +227,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
         ffmpegArgs: (outputPath: string) => string[]
       }
     }) {
+      const { library, studioRoot, workspaceRoot } = await projectFor(input.toolContext)
       const source = await openManagedAsset({
         root: studioRoot,
         workspaceRoot,
@@ -344,6 +360,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
           },
           async execute(args, context) {
             assertNativeCompatibility(context.sessionID, args.filePath)
+            const { studioRoot, workspaceRoot } = await projectFor(context)
             const media = await openManagedAsset({
               root: studioRoot,
               workspaceRoot,
@@ -416,6 +433,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
               .describe("Optional local reference image paths, resolved from the workspace root"),
           },
           async execute(args, toolContext) {
+            const { library, studioRoot, workspaceRoot } = await projectFor(toolContext)
             const quality = args.quality ?? "auto"
             const outputPath = personalOutputPath(library, args.outputPath, `chatgpt-${Date.now()}-${randomUUID().slice(0, 8)}.png`)
             if (path.extname(outputPath).toLowerCase() !== ".png") throw new Error("ChatGPT image outputPath must end in .png")
@@ -454,12 +472,13 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
         }),
 
         media_import: tool({
-          description: "Copy a server-local image, audio, or video file into the workspace (default: media/).",
+          description: "Copy a server-local image, audio, or video file into the open Media project (default: media/).",
           args: {
             filePath: tool.schema.string().describe("Absolute path, or path relative to the workspace root"),
             outputPath: tool.schema.string().optional().describe("Optional workspace-relative output path"),
           },
           async execute(args, toolContext) {
+            const { library, studioRoot, workspaceRoot } = await projectFor(toolContext)
             const media = await importMediaAsset({
               root: workspaceRoot,
               filePath: args.filePath,
@@ -478,14 +497,15 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
         }),
 
         media_list: tool({
-          description: "Scan image, audio, and video files under the workspace.",
+          description: "Scan image, audio, and video files under the open Media project.",
           args: {
             modality: tool.schema.enum(["image", "audio", "video"]).optional(),
             filename: tool.schema.string().optional().describe("Case-insensitive filename substring"),
             limit: tool.schema.number().int().min(1).max(200).default(50),
             offset: tool.schema.number().int().min(0).default(0),
           },
-          async execute(args) {
+          async execute(args, toolContext) {
+            const { studioRoot } = await projectFor(toolContext)
             const assets = await scanLibrary({
               root: studioRoot,
               modality: args.modality as LibraryModality | undefined,
@@ -498,21 +518,23 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
         }),
 
         media_info: tool({
-          description: "Inspect filesystem and detected-format information for one workspace media file.",
+          description: "Inspect filesystem and detected-format information for one Media project file.",
           args: {
             filePath: tool.schema.string().describe("Absolute or workspace-relative media file path"),
           },
-          async execute(args) {
+          async execute(args, toolContext) {
+            const { studioRoot } = await projectFor(toolContext)
             return formatToolJSON(await inspectManagedAsset(studioRoot, args.filePath))
           },
         }),
 
         media_probe: tool({
-          description: "Inspect a workspace media file with ffprobe without persisting probe data.",
+          description: "Inspect a Media project file with ffprobe without persisting probe data.",
           args: {
             filePath: tool.schema.string().describe("Absolute or workspace-relative media file path"),
           },
           async execute(args, toolContext) {
+            const { studioRoot, workspaceRoot } = await projectFor(toolContext)
             const media = await openManagedAsset({
               root: studioRoot,
               workspaceRoot,
@@ -665,6 +687,7 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
           },
           async execute(args, toolContext) {
             requireFalKey()
+            const { studioRoot, workspaceRoot } = await projectFor(toolContext)
             const expiresIn = args.expiresIn ?? "1d"
             const media = await openManagedAsset({
               root: studioRoot,
@@ -845,12 +868,13 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
         }),
 
         media_download: tool({
-          description: "Download generated media into the workspace (default: media/).",
+          description: "Download generated media into the open Media project (default: media/).",
           args: {
             url: tool.schema.string().url().describe("HTTPS media URL returned by a generation provider"),
             outputPath: tool.schema.string().optional().describe("Optional workspace-relative output path (default: media/)"),
           },
           async execute(args, context) {
+            const { library, studioRoot } = await projectFor(context)
             const result = await downloadMedia({
               url: args.url,
               outputPath: args.outputPath,
@@ -873,17 +897,5 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
 }
 
 const MediaStudioPlugin = createMediaStudioPlugin()
-
-export const AnthropicNativeMediaProviderPlugin: Plugin = async (_context, rawOptions) => {
-  const config = options(rawOptions)
-  return {
-    provider: {
-      id: "opencode-go",
-      async models(provider) {
-        return patchModels(provider, config.providerPackage, "opencode-go")
-      },
-    },
-  }
-}
 
 export default MediaStudioPlugin

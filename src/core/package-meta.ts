@@ -34,10 +34,12 @@ export async function loadPackageMeta(packageRoot: string): Promise<PackageMeta>
   return meta
 }
 
-export async function skillDigest(skillFile: string) {
-  const content = await readFile(skillFile)
+export async function fileDigest(file: string) {
+  const content = await readFile(file)
   return createHash("sha256").update(content).digest("hex")
 }
+
+export const skillDigest = fileDigest
 
 export function skillSourcePath(packageRoot: string, studioId: StudioId) {
   return path.join(packageRoot, "studios", studioId, "skill", "SKILL.md")
@@ -47,15 +49,12 @@ export function skillNameFor(studioId: StudioId) {
   return `studio-${studioId}`
 }
 
-/** Platform media skill (always managed). Marker studioId stays `media`. */
-export const PLATFORM_MEDIA_SKILL_ID = "media" as const
-
-export function platformMediaSkillSourcePath(packageRoot: string) {
-  return path.join(packageRoot, "src", "platform", "media", "skill", "SKILL.md")
+export function agentNameFor(studioId: StudioId) {
+  return `studio-${studioId}`
 }
 
-export function platformMediaSkillName() {
-  return "studio-media"
+export function agentSourcePath(packageRoot: string, studioId: StudioId) {
+  return path.join(packageRoot, "studios", studioId, "agent", `${agentNameFor(studioId)}.md`)
 }
 
 const FORGE_RUNTIME_FILES = ["pyproject.toml", "uv.lock", "forge_cli.py", ".python-version"] as const

@@ -108,7 +108,7 @@ Touch targets: interactive chrome ≥36px (prefer 36–40); icon-only ≥36×36.
 ### TopBar
 - Solid `--osc-bg-elevated` (no heavy frosted glass).
 - Left: menu ≥36px + brand or surface label + accent dot (studios/files).
-- Right: compact theme segmented (System | Light | Dark); Agent toggle on CAD/PCB only — outline chip. Files stays a focused read-only explorer.
+- Right: compact theme segmented (System | Light | Dark); Agent toggle on domain Studios — outline chip. Files stays a focused read-only explorer.
 - `edge=flush` when content is full-bleed under chrome.
 
 ### SideDrawer

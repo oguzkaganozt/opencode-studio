@@ -46,7 +46,7 @@ describe("configureStudios", () => {
     expect(status.checks.some((c) => c.id === "skill:media" && c.status === "fail")).toBe(true)
   })
 
-  test("installs all domain skills and plugins globally", async () => {
+  test("installs all Studio skills, agents, permissions, and plugins globally", async () => {
     const ctx = await isolated()
     const result = await configureStudios({
       ...ctx,
@@ -59,6 +59,9 @@ describe("configureStudios", () => {
     for (const id of STUDIO_IDS) {
       const skill = path.join(ctx.openCodeHome, `skills/studio-${id}/SKILL.md`)
       expect(await Bun.file(skill).exists()).toBe(true)
+      const agent = path.join(ctx.openCodeHome, `agents/studio-${id}.md`)
+      expect(await Bun.file(agent).exists()).toBe(true)
+      expect(await Bun.file(`${agent}.opencode-studio-managed.json`).exists()).toBe(true)
     }
     const marker = JSON.parse(await readFile(path.join(ctx.openCodeHome, "skills/studio-pcb/.opencode-studio-managed.json"), "utf8"))
     expect(marker.studioId).toBe("pcb")
@@ -69,6 +72,10 @@ describe("configureStudios", () => {
     expect(openCode.plugin.some((p: string) => String(p).includes("media-go.js"))).toBe(true)
     expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(false)
     expect(openCode.mcp?.build123d).toBeUndefined()
+    expect(openCode.permission["pcb_*"]).toBe("deny")
+    expect(openCode.permission["design_*"]).toBe("deny")
+    expect(openCode.permission["media_*"]).toBe("deny")
+    expect(openCode.permission.skill["studio-media"]).toBe("deny")
     expect(await Bun.file(path.join(ctx.workspace, "opencode.json")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.workspace, ".opencode/studio.json")).exists()).toBe(false)
   })
@@ -77,12 +84,17 @@ describe("configureStudios", () => {
     const ctx = await isolated()
     await mkdir(ctx.openCodeHome, { recursive: true })
     const unrelated = "file:///opt/plugins/my-opencode-studio-helper.js"
-    await writeFile(path.join(ctx.openCodeHome, "opencode.json"), JSON.stringify({ plugin: [unrelated] }, null, 2))
+    await writeFile(
+      path.join(ctx.openCodeHome, "opencode.json"),
+      JSON.stringify({ plugin: [unrelated], permission: { bash: "ask", skill: { personal: "allow" } } }, null, 2),
+    )
 
     await configureStudios({ ...ctx, validateOpenCode: false })
 
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     expect(openCode.plugin).toContain(unrelated)
+    expect(openCode.permission.bash).toBe("ask")
+    expect(openCode.permission.skill.personal).toBe("allow")
   })
 
   test("refuses user-modified skills", async () => {
@@ -99,6 +111,14 @@ describe("configureStudios", () => {
         validateOpenCode: false,
       }),
     ).rejects.toThrow(/modified by the user/)
+  })
+
+  test("refuses user-modified managed agents", async () => {
+    const ctx = await isolated()
+    await configureStudios({ ...ctx, validateOpenCode: false })
+    const agent = path.join(ctx.openCodeHome, "agents/studio-media.md")
+    await writeFile(agent, `${await readFile(agent, "utf8")}\nUser edit\n`)
+    await expect(configureStudios({ ...ctx, validateOpenCode: false })).rejects.toThrow(/agent was modified by the user/)
   })
 
   test("configure migrates legacy roots before scrubbing the project config", async () => {
@@ -153,6 +173,22 @@ describe("configureStudios", () => {
     await expect(Promise.all(skillFiles.map((file) => readFile(file, "utf8")))).resolves.toEqual(before)
   })
 
+  test("late configure failure restores the previous OpenCode config", async () => {
+    const ctx = await isolated()
+    await configureStudios({ ...ctx, validateOpenCode: false })
+    const openCodePath = path.join(ctx.openCodeHome, "opencode.json")
+    const current = JSON.parse(await readFile(openCodePath, "utf8"))
+    delete current.permission["media_*"]
+    await writeFile(openCodePath, `${JSON.stringify(current, null, 2)}\n`)
+    const before = await readFile(openCodePath, "utf8")
+
+    await rm(ctx.studioConfigHome, { recursive: true, force: true })
+    await writeFile(ctx.studioConfigHome, "blocks studio.json creation")
+
+    await expect(configureStudios({ ...ctx, validateOpenCode: false })).rejects.toThrow()
+    expect(await readFile(openCodePath, "utf8")).toBe(before)
+  })
+
   test("remove uninstalls managed skills and plugins", async () => {
     const ctx = await isolated()
     await configureStudios({
@@ -165,12 +201,14 @@ describe("configureStudios", () => {
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-pcb/SKILL.md")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-cad/SKILL.md")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-media/SKILL.md")).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "agents/studio-media.md")).exists()).toBe(false)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     expect((openCode.plugin ?? []).some((entry: string) => String(entry).includes("opencode-studio"))).toBe(false)
     expect(openCode.mcp?.build123d).toBeUndefined()
+    expect(openCode.permission).toBeUndefined()
   })
 
-  test("status reports all domain skills and platform media checks", async () => {
+  test("status reports every managed Studio capability", async () => {
     const ctx = await isolated()
     await configureStudios({
       ...ctx,
@@ -178,7 +216,18 @@ describe("configureStudios", () => {
     })
     const result = await statusStudios(ctx)
     expect(result.packageVersion).toBeTruthy()
-    const managedIds = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "cad-forge"]
+    const managedIds = [
+      "plugin-registration",
+      "plugin-media-go",
+      "permission:studio",
+      "skill:cad",
+      "skill:pcb",
+      "skill:media",
+      "agent:cad",
+      "agent:pcb",
+      "agent:media",
+      "cad-forge",
+    ]
     expect(
       result.checks
         .map((check) => check.id)

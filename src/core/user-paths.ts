@@ -7,6 +7,7 @@ import path from "node:path"
  * - Optional studio roots: $XDG_CONFIG_HOME/opencode-studio/studio.json
  * - OpenCode plugin/MCP:   $XDG_CONFIG_HOME/opencode/opencode.json[c]
  * - Managed skills:        $XDG_CONFIG_HOME/opencode/skills/studio-<id>/
+ * - Managed agents:        $XDG_CONFIG_HOME/opencode/agents/studio-<id>.md
  *
  * Overrides (absolute paths) for tests / isolation:
  *   OPENCODE_STUDIO_CONFIG_HOME  — studio config home (roots)
@@ -48,6 +49,10 @@ export function resolveOpenCodeHome(options: UserPathOptions = {}) {
 
 export function resolveOpenCodeSkillsHome(options: UserPathOptions = {}) {
   return path.join(resolveOpenCodeHome(options), "skills")
+}
+
+export function resolveOpenCodeAgentsHome(options: UserPathOptions = {}) {
+  return path.join(resolveOpenCodeHome(options), "agents")
 }
 
 /** Managed OpenCode plugin drop-ins (short file:// paths for UI). */
