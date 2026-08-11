@@ -85,6 +85,33 @@ export type BomEntry = {
   description: string | null
   datasheet: string | null
   category: string | null
+  inCatalog: boolean
+}
+
+export type CatalogUpsertBody = {
+  manufacturer?: string | null
+  description?: string | null
+  datasheet?: string | null
+  category?: string | null
+  replace?: boolean
+}
+
+export type CatalogUpsertResponse = {
+  created: boolean
+  path: string
+  part: CatalogPartDetail
+}
+
+async function fetchJsonWithCsrf<T>(url: string, init?: RequestInit): Promise<T> {
+  const csrf = await fetchJson<{ token: string }>("/api/csrf")
+  return fetchJson<T>(url, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "x-csrf-token": csrf.token,
+      ...(init?.headers ?? {}),
+    },
+  })
 }
 
 export type BomResponse = {
@@ -128,6 +155,12 @@ export const api = {
   },
 
   catalogPart: (mpn: string): Promise<CatalogPartResponse> => fetchJson(apiPath(`/catalog/${encodeURIComponent(mpn)}`)),
+
+  catalogUpsert: (mpn: string, body: CatalogUpsertBody = {}): Promise<CatalogUpsertResponse> =>
+    fetchJsonWithCsrf(apiPath(`/catalog/${encodeURIComponent(mpn)}`), {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 
   schematicSvgUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/schematic.svg`),
   pcbSvgUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/pcb.svg`),

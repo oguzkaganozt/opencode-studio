@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { requestAgentHandoff } from "@ui/agent-handoff"
 import { EmptyState } from "@ui/components/empty-state"
@@ -23,6 +23,10 @@ function hasPartIdentity(entry: BomEntry) {
   return Boolean(entry.mpn || supplierIdentity(entry))
 }
 
+function canPromoteToCatalog(entry: BomEntry) {
+  return Boolean(entry.mpn && !entry.inCatalog)
+}
+
 function formatBomAnnotation(entry: BomEntry) {
   return [
     entry.mpn ? `mpn=${entry.mpn}` : null,
@@ -40,14 +44,19 @@ function BomRow({
   entry,
   onSelect,
   onSend,
+  onAddToCatalog,
+  adding,
 }: {
   entry: BomEntry
   onSelect?: (entry: BomEntry) => void
   onSend?: (entry: BomEntry) => void
+  onAddToCatalog?: (entry: BomEntry) => void
+  adding?: boolean
 }) {
   const clickable = Boolean(entry.mpn && onSelect)
   const refdes = summarizeRefdes(entry.refdes, 8)
   const supplierPartNumber = supplierIdentity(entry)
+  const promote = canPromoteToCatalog(entry)
   return (
     <tr className="border-b border-[var(--osc-border)] transition-colors hover:bg-[var(--osc-surface-hover)]">
       <td className="whitespace-nowrap px-4 py-2.5 font-mono text-sm">
@@ -70,8 +79,14 @@ function BomRow({
         {entry.description ?? "—"}
       </td>
       <td className="px-4 py-2.5 text-sm">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DatasheetLink href={entry.datasheet} />
+          {promote && onAddToCatalog ? (
+            <button type="button" className="pcb-chip px-1.5 py-0.5 text-[10px]" disabled={adding} onClick={() => onAddToCatalog(entry)}>
+              {adding ? "Adding…" : "Add to catalog"}
+            </button>
+          ) : null}
+          {entry.mpn && entry.inCatalog ? <span className="font-mono text-[10px] text-[var(--osc-text-faint)]">In catalog</span> : null}
           {onSend ? (
             <button type="button" className="pcb-chip px-1.5 py-0.5 text-[10px]" onClick={() => onSend(entry)}>
               Agent
@@ -87,13 +102,18 @@ function BomCard({
   entry,
   onSelect,
   onSend,
+  onAddToCatalog,
+  adding,
 }: {
   entry: BomEntry
   onSelect: (entry: BomEntry) => void
   onSend?: (entry: BomEntry) => void
+  onAddToCatalog?: (entry: BomEntry) => void
+  adding?: boolean
 }) {
   const supplierPartNumber = supplierIdentity(entry)
   const identified = hasPartIdentity(entry)
+  const promote = canPromoteToCatalog(entry)
   return (
     <article className={`pcb-data-card${identified ? "" : " pcb-data-card--warning"}`}>
       <div className="flex min-w-0 items-start justify-between gap-3">
@@ -118,6 +138,12 @@ function BomCard({
       ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <DatasheetLink href={entry.datasheet} className="inline-flex text-xs text-[var(--osc-accent)]" />
+        {promote && onAddToCatalog ? (
+          <button type="button" className="pcb-chip px-1.5 py-0.5 text-[10px]" disabled={adding} onClick={() => onAddToCatalog(entry)}>
+            {adding ? "Adding…" : "Add to catalog"}
+          </button>
+        ) : null}
+        {entry.mpn && entry.inCatalog ? <span className="font-mono text-[10px] text-[var(--osc-text-faint)]">In catalog</span> : null}
         {onSend ? (
           <button type="button" className="pcb-chip px-1.5 py-0.5 text-[10px]" onClick={() => onSend(entry)}>
             Send to agent
@@ -130,9 +156,38 @@ function BomCard({
 
 export default function BomTab({ projectId, directory }: { projectId: string; directory: string }) {
   const [selected, setSelected] = useState<BomEntry | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [addingMpn, setAddingMpn] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["pcb", "bom", projectId],
     queryFn: () => api.bom(projectId),
+  })
+
+  const promote = useMutation({
+    mutationFn: async (entry: BomEntry) => {
+      if (!entry.mpn) throw new Error("MPN required")
+      return api.catalogUpsert(entry.mpn, {
+        manufacturer: entry.manufacturer,
+        description: entry.description,
+        datasheet: entry.datasheet,
+        category: entry.category,
+      })
+    },
+    onMutate: (entry) => {
+      setAddingMpn(entry.mpn)
+      setNotice(null)
+    },
+    onSuccess: (result) => {
+      setNotice(result.created ? `Added ${result.part.mpn} to catalog` : `Updated ${result.part.mpn} in catalog`)
+      void queryClient.invalidateQueries({ queryKey: ["pcb", "bom", projectId] })
+      void queryClient.invalidateQueries({ queryKey: ["pcb", "catalog"] })
+      void queryClient.invalidateQueries({ queryKey: ["pcb", "part"] })
+    },
+    onError: (err) => {
+      setNotice(err instanceof Error ? err.message : String(err))
+    },
+    onSettled: () => setAddingMpn(null),
   })
 
   if (isLoading) {
@@ -170,6 +225,7 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
     )
   }
 
+  const missingCatalog = data.entries.filter(canPromoteToCatalog)
   const requestIdentityFix = () => {
     const missing = data.entries.filter((entry) => !hasPartIdentity(entry)).flatMap((entry) => entry.refdes)
     requestAgentHandoff({
@@ -192,6 +248,25 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
       open: true,
       copyFallback: true,
     })
+  }
+
+  const promoteAllMissing = async () => {
+    setNotice(null)
+    let added = 0
+    let failed = 0
+    for (const entry of missingCatalog) {
+      try {
+        await promote.mutateAsync(entry)
+        added += 1
+      } catch {
+        failed += 1
+      }
+    }
+    setNotice(
+      failed === 0
+        ? `Added ${added} part${added === 1 ? "" : "s"} to catalog`
+        : `Added ${added}, failed ${failed}. Check MPN filename rules and retry.`,
+    )
   }
 
   return (
@@ -221,12 +296,22 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
                 Fix identities with agent
               </button>
             ) : null}
+            {missingCatalog.length > 0 ? (
+              <button type="button" className="pcb-chip" disabled={promote.isPending} onClick={() => void promoteAllMissing()}>
+                {promote.isPending ? "Adding…" : `Add ${missingCatalog.length} to catalog`}
+              </button>
+            ) : null}
             <a href={api.bomCsvUrl(projectId)} download className="pcb-chip pcb-chip--action">
               Download CSV
             </a>
           </div>
         </div>
       </div>
+      {notice ? (
+        <p className="text-[12px] text-[var(--osc-text-muted)]" role="status">
+          {notice}
+        </p>
+      ) : null}
       <div className="pcb-table-wrap pcb-desktop-table overflow-x-auto">
         <table>
           <caption className="sr-only">Bill of materials</caption>
@@ -234,11 +319,13 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
             <tr>
               <th scope="col">MPN</th>
               <th scope="col">Refdes</th>
-              <th scope="col" className="text-center">Qty</th>
+              <th scope="col" className="text-center">
+                Qty
+              </th>
               <th scope="col">Manufacturer</th>
               <th scope="col">Description</th>
               <th scope="col">
-                <span className="sr-only">Datasheet</span>
+                <span className="sr-only">Actions</span>
               </th>
             </tr>
           </thead>
@@ -249,6 +336,8 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
                 entry={entry}
                 onSelect={setSelected}
                 onSend={sendEntry}
+                onAddToCatalog={(row) => promote.mutate(row)}
+                adding={addingMpn === entry.mpn}
               />
             ))}
           </tbody>
@@ -261,10 +350,22 @@ export default function BomTab({ projectId, directory }: { projectId: string; di
             entry={entry}
             onSelect={setSelected}
             onSend={sendEntry}
+            onAddToCatalog={(row) => promote.mutate(row)}
+            adding={addingMpn === entry.mpn}
           />
         ))}
       </div>
-      {selected?.mpn && <PartDetailModal mpn={selected.mpn} fallback={selected} onClose={() => setSelected(null)} />}
+      {selected?.mpn && (
+        <PartDetailModal
+          mpn={selected.mpn}
+          fallback={selected}
+          onClose={() => setSelected(null)}
+          onCatalogChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ["pcb", "bom", projectId] })
+            void queryClient.invalidateQueries({ queryKey: ["pcb", "catalog"] })
+          }}
+        />
+      )}
     </div>
   )
 }

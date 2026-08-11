@@ -381,6 +381,11 @@ export async function createHostApp(input: HostInput) {
 
   // Dispatch to the hot-swappable studio mount table.
   app.all("/api/studios/*", async (ctx) => {
+    const method = ctx.req.method.toUpperCase()
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      const denied = await writeGuard(ctx)
+      if (denied) return denied
+    }
     const url = new URL(ctx.req.url)
     const suffix = url.pathname.replace(/^\/api\/studios/, "") || "/"
     return mount.current.studios.request(suffix + url.search, ctx.req.raw)

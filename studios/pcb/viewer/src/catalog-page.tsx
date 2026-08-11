@@ -90,7 +90,7 @@ export function CatalogPage() {
 
   const requestCatalogHelp = () => {
     requestAgentHandoff({
-      text: "Help populate the Studio Home PCB component catalog with verified manufacturer part numbers, metadata, datasheets, and usable footprint identities.",
+      text: "Populate the Studio Home PCB catalog (catalog/parts/*.yaml) using pcb_catalog_upsert for verified MPNs only — prefer promoting identities already present on built project BOMs, with manufacturer/description/datasheet when known. Do not invent MPNs or footprints.",
       source: "pcb",
       directory: rootInfo?.root,
       open: true,
@@ -144,12 +144,12 @@ export function CatalogPage() {
             description={
               search
                 ? "Try a shorter MPN or manufacturer token."
-                : "Add parts under the Studio Home catalog directory, or search after parts exist."
+                : "Catalog fills from verified BOM MPNs (Add to catalog) or pcb_catalog_upsert after part identity is confirmed."
             }
             action={
               !search ? (
                 <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestCatalogHelp}>
-                  Add parts with agent
+                  Seed catalog with agent
                 </button>
               ) : undefined
             }

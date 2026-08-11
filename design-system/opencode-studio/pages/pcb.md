@@ -12,7 +12,8 @@ Mobile: touch tab strip, compact chips, dashed empty wells.
 - Project detail: crumb + health + downloads + diagnostics + view tabs
 - Tabs: Schematic · PCB Layout · BOM · 3D · Circuit JSON (`.pcb-tablist` scroll, no scrollbar chrome)
 - Active route tabs scroll into view; every tab owns bounded scrolling and has a recoverable error boundary
-- Catalog: search + table (min-width scroll) + part modal
+- Catalog: search + table (min-width scroll) + part modal; filled via BOM **Add to catalog** / `pcb_catalog_upsert` after verified MPN (not empty forever)
+- BOM: show **Add to catalog** only when `mpn` is set and `inCatalog` is false; optional bulk for missing catalog rows
 
 ## Chrome rules
 - Radius via `--osc-radius-*`; no pill CTAs (tags/counts use `radius-sm`)

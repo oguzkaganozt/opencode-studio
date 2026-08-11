@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
 import { Dialog, DialogHeader } from "@ui/components/dialog"
 import { ErrorState } from "@ui/components/error-state"
 import { safeHref } from "@ui/lib/safe-href"
@@ -105,13 +106,17 @@ export function PartDetailModal({
   mpn,
   onClose,
   fallback,
+  onCatalogChanged,
 }: {
   mpn: string
   onClose: () => void
   /** Used when catalog has no file for this MPN (common for circuit-only identities). */
   fallback?: BomEntry | CatalogPartDetail | null
+  onCatalogChanged?: () => void
 }) {
-  const { data, isLoading, error, isFetched } = useQuery({
+  const queryClient = useQueryClient()
+  const [notice, setNotice] = useState<string | null>(null)
+  const { data, isLoading, error, isFetched, refetch } = useQuery({
     queryKey: ["pcb", "part", mpn],
     queryFn: () => api.catalogPart(mpn),
     retry: false,
@@ -126,14 +131,44 @@ export function PartDetailModal({
   const part = catalogPart ?? (!isLoading && fallbackPart ? fallbackPart : null)
   const fromBomOnly = Boolean(!catalogPart && part && fallbackPart && (error || isFetched))
 
+  const promote = useMutation({
+    mutationFn: async () => {
+      const source = part ?? fallbackPart
+      return api.catalogUpsert(mpn, {
+        manufacturer: typeof source?.manufacturer === "string" ? source.manufacturer : null,
+        description: typeof source?.description === "string" ? source.description : null,
+        datasheet: typeof source?.datasheet === "string" ? source.datasheet : null,
+        category: typeof source?.category === "string" ? source.category : null,
+      })
+    },
+    onSuccess: (result) => {
+      setNotice(result.created ? "Added to catalog" : "Updated catalog entry")
+      void queryClient.invalidateQueries({ queryKey: ["pcb", "part", mpn] })
+      void queryClient.invalidateQueries({ queryKey: ["pcb", "catalog"] })
+      void refetch()
+      onCatalogChanged?.()
+    },
+    onError: (err) => setNotice(err instanceof Error ? err.message : String(err)),
+  })
+
   return (
     <Dialog open onClose={onClose} title={`Part detail: ${mpn}`}>
       <DialogHeader title={mpn} onClose={onClose} />
       <div className="max-h-[min(70dvh,32rem)] overflow-auto overscroll-contain p-5">
         {isLoading && !part && <LoadingState />}
         {fromBomOnly && (
-          <p className="mb-3 text-[12px] text-[var(--osc-text-muted)]">Not in Studio Home catalog — showing BOM line fields only.</p>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <p className="text-[12px] text-[var(--osc-text-muted)]">Not in Studio Home catalog — showing BOM line fields only.</p>
+            <button type="button" className="pcb-chip pcb-chip--primary" disabled={promote.isPending} onClick={() => promote.mutate()}>
+              {promote.isPending ? "Adding…" : "Add to catalog"}
+            </button>
+          </div>
         )}
+        {notice ? (
+          <p className="mb-3 text-[12px] text-[var(--osc-text-muted)]" role="status">
+            {notice}
+          </p>
+        ) : null}
         {part && <PartDetailView part={part} />}
         {!isLoading && !part && <ErrorState className="border-0 py-12" title="Failed to load part details" />}
       </div>

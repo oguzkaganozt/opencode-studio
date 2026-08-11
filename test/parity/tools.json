@@ -50,6 +50,9 @@
     "pcb_catalog_get": {
       "studio": "pcb"
     },
+    "pcb_catalog_upsert": {
+      "studio": "pcb"
+    },
     "pcb_component_search": {
       "studio": "pcb"
     },
@@ -381,5 +384,5 @@
       }
     }
   },
-  "count": 71
+  "count": 72
 }

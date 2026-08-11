@@ -4,7 +4,7 @@ import { safeContentDisposition } from "../../src/core/security"
 import { createSseResponse } from "../../src/core/sse"
 import { toCplCsv } from "./assembly"
 import { generateBom, toBomCsv } from "./bom"
-import { filterCatalogParts, getCatalogPart, loadCatalogParts, partSummary } from "./catalog"
+import { filterCatalogParts, getCatalogPart, loadCatalogParts, partSummary, upsertCatalogPart } from "./catalog"
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
 import { ensureWatching, onProjectEvent } from "./watcher"
@@ -228,6 +228,31 @@ export function createPcbApi(workspaceRoot: string) {
     const part = await getCatalogPart(workspaceRoot, ctx.req.param("mpn"))
     if (!part) return ctx.json({ error: "Part not found" }, 404)
     return ctx.json({ part })
+  })
+
+  app.put("/catalog/:mpn", async (ctx) => {
+    const mpnParam = ctx.req.param("mpn")
+    const body = (await ctx.req.json().catch(() => null)) as {
+      manufacturer?: string | null
+      description?: string | null
+      datasheet?: string | null
+      category?: string | null
+      replace?: boolean
+    } | null
+    if (!body || typeof body !== "object") throw new ApiError(400, "JSON body required")
+    const result = await upsertCatalogPart(workspaceRoot, {
+      mpn: mpnParam,
+      manufacturer: body.manufacturer,
+      description: body.description,
+      datasheet: body.datasheet,
+      category: body.category,
+      replace: body.replace === true,
+    })
+    if (!result.ok) {
+      const status = result.code === "invalid_mpn" || result.code === "invalid_datasheet" ? 400 : result.code === "catalog_full" ? 409 : 500
+      throw new ApiError(status, result.error)
+    }
+    return ctx.json({ created: result.created, path: result.path, part: result.part })
   })
 
   return app

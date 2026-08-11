@@ -11,6 +11,8 @@ export type BomEntry = {
   description: string | null
   datasheet: string | null
   category: string | null
+  /** True when this line's MPN exists in the workspace catalog. */
+  inCatalog: boolean
 }
 
 export type BomResult = {
@@ -150,6 +152,7 @@ export function generateBom(circuitJson: unknown, catalogParts: CatalogPart[] = 
       description: part?.description ?? null,
       datasheet: part?.datasheet ?? null,
       category: part?.category ?? null,
+      inCatalog: Boolean(part),
     })
   }
 
@@ -163,6 +166,7 @@ export function generateBom(circuitJson: unknown, catalogParts: CatalogPart[] = 
       description: null,
       datasheet: null,
       category: null,
+      inCatalog: false,
     })
   }
 
@@ -178,6 +182,7 @@ export function generateBom(circuitJson: unknown, catalogParts: CatalogPart[] = 
       description: null,
       datasheet: null,
       category: null,
+      inCatalog: false,
     })
   }
 

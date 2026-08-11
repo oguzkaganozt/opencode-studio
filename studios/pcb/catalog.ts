@@ -1,4 +1,4 @@
-import { lstat, readdir, readFile } from "node:fs/promises"
+import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import yaml from "js-yaml"
 import { isInside } from "../../src/core/paths"
@@ -150,6 +150,165 @@ export function findCatalogPart(parts: CatalogPart[], mpn: string): CatalogPart 
 
 export async function getCatalogPart(workspaceRoot: string, mpn: string): Promise<CatalogPart | null> {
   return findCatalogPart((await inspectCatalog(workspaceRoot)).parts, mpn)
+}
+
+export type CatalogUpsertInput = {
+  mpn: string
+  manufacturer?: string | null
+  description?: string | null
+  datasheet?: string | null
+  category?: string | null
+  /** When true, replace existing file fields; default merges non-empty input over existing. */
+  replace?: boolean
+}
+
+export type CatalogUpsertResult =
+  | { ok: true; created: boolean; path: string; part: CatalogPart }
+  | { ok: false; error: string; code: "invalid_mpn" | "invalid_datasheet" | "write_failed" | "catalog_full" }
+
+function optionalTrimmed(value: string | null | undefined): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function catalogFileName(mpn: string): string | null {
+  const trimmed = mpn.trim()
+  if (!trimmed || !MPN_FILE_RE.test(trimmed) || trimmed.includes("..")) return null
+  return `${trimmed}.yaml`
+}
+
+/** Locate on-disk catalog file for an MPN (case-insensitive identity). */
+async function findCatalogPartRecord(workspaceRoot: string, mpn: string): Promise<{ fileName: string; part: CatalogPart } | null> {
+  const target = mpn.trim().toLowerCase()
+  if (!target) return null
+  const dir = catalogPartsDir(workspaceRoot)
+  let entries: string[]
+  try {
+    entries = await readdir(dir)
+  } catch {
+    return null
+  }
+
+  const yamlFiles = entries.filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")).sort()
+  for (const file of yamlFiles) {
+    const mpnFallback = mpnFromFilename(file)
+    if (!MPN_FILE_RE.test(mpnFallback) || mpnFallback.includes("..")) continue
+    const filePath = path.join(dir, file)
+    if (!isInside(workspaceRoot, filePath)) continue
+    try {
+      const info = await lstat(filePath)
+      if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_PART_FILE_BYTES) continue
+      const content = await readFile(filePath, "utf8")
+      const part = parsePart(yaml.load(content), mpnFallback)
+      if (part.mpn.trim().toLowerCase() === target || mpnFallback.toLowerCase() === target) {
+        return { fileName: file, part }
+      }
+    } catch {
+      // skip unreadable / malformed
+    }
+  }
+  return null
+}
+
+function serializePart(part: CatalogPart): string {
+  const body: Record<string, unknown> = { mpn: part.mpn }
+  if (part.manufacturer) body.manufacturer = part.manufacturer
+  if (part.description) body.description = part.description
+  if (part.category) body.category = part.category
+  if (part.datasheet) body.datasheet = part.datasheet
+  for (const [key, value] of Object.entries(part)) {
+    if (KNOWN_PART_KEYS.has(key)) continue
+    if (isScalarExtra(value) || (Array.isArray(value) && value.every((item) => isScalarExtra(item) || item === null))) {
+      body[key] = value
+    }
+  }
+  return yaml.dump(body, { lineWidth: 100, noRefs: true, sortKeys: true })
+}
+
+/** Write or merge a verified part into `catalog/parts/<mpn>.yaml`. */
+export async function upsertCatalogPart(workspaceRoot: string, input: CatalogUpsertInput): Promise<CatalogUpsertResult> {
+  const mpn = optionalTrimmed(input.mpn)
+  if (!mpn) return { ok: false, error: "mpn is required", code: "invalid_mpn" }
+  if (!catalogFileName(mpn)) {
+    return {
+      ok: false,
+      error: "mpn must match [A-Za-z0-9._+-]+ for catalog filenames",
+      code: "invalid_mpn",
+    }
+  }
+
+  const datasheetRaw = optionalTrimmed(input.datasheet ?? undefined)
+  const datasheet = datasheetRaw ? safeExternalHref(datasheetRaw) : undefined
+  if (datasheetRaw && !datasheet) {
+    return { ok: false, error: "datasheet must be an http(s) URL", code: "invalid_datasheet" }
+  }
+
+  const dir = catalogPartsDir(workspaceRoot)
+  const existingRecord = await findCatalogPartRecord(workspaceRoot, mpn)
+  // Keep first-seen on-disk filename/casing so case variants merge into one identity.
+  const fileName = existingRecord?.fileName ?? catalogFileName(mpn)
+  if (!fileName) {
+    return {
+      ok: false,
+      error: "mpn must match [A-Za-z0-9._+-]+ for catalog filenames",
+      code: "invalid_mpn",
+    }
+  }
+  const filePath = path.join(dir, fileName)
+  if (!isInside(workspaceRoot, filePath)) {
+    return { ok: false, error: "catalog path escapes workspace", code: "write_failed" }
+  }
+
+  if (!existingRecord) {
+    const state = await inspectCatalog(workspaceRoot)
+    if (state.parts.length >= MAX_CATALOG_PARTS) {
+      return { ok: false, error: `catalog already has ${MAX_CATALOG_PARTS} parts`, code: "catalog_full" }
+    }
+  }
+
+  const canonicalMpn = existingRecord?.part.mpn ?? mpn
+  const incoming: CatalogPart = {
+    mpn: canonicalMpn,
+    ...(optionalTrimmed(input.manufacturer ?? undefined) ? { manufacturer: optionalTrimmed(input.manufacturer ?? undefined) } : {}),
+    ...(optionalTrimmed(input.description ?? undefined) ? { description: optionalTrimmed(input.description ?? undefined) } : {}),
+    ...(optionalTrimmed(input.category ?? undefined) ? { category: optionalTrimmed(input.category ?? undefined) } : {}),
+    ...(datasheet ? { datasheet } : {}),
+  }
+
+  const existing = existingRecord?.part
+  const part: CatalogPart =
+    input.replace || !existing
+      ? incoming
+      : {
+          ...existing,
+          mpn: canonicalMpn,
+          ...(incoming.manufacturer ? { manufacturer: incoming.manufacturer } : {}),
+          ...(incoming.description ? { description: incoming.description } : {}),
+          ...(incoming.category ? { category: incoming.category } : {}),
+          ...(incoming.datasheet ? { datasheet: incoming.datasheet } : {}),
+        }
+
+  try {
+    await mkdir(dir, { recursive: true })
+    const yamlText = serializePart(part)
+    if (Buffer.byteLength(yamlText, "utf8") > MAX_PART_FILE_BYTES) {
+      return { ok: false, error: "part file exceeds size limit", code: "write_failed" }
+    }
+    await writeFile(filePath, yamlText, "utf8")
+    return {
+      ok: true,
+      created: !existingRecord,
+      path: path.join(CATALOG_SUBDIR, fileName),
+      part,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      code: "write_failed",
+    }
+  }
 }
 
 export function partSummary(part: CatalogPart) {

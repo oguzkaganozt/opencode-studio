@@ -5,7 +5,7 @@ import { tool } from "@opencode-ai/plugin"
 import { formatToolJson } from "../../src/core/format-tool-json"
 import { canonicalExistingDirectory } from "../../src/core/paths"
 import { toCplCsv } from "./assembly"
-import { filterCatalogParts, findCatalogPart, inspectCatalog, loadCatalogParts, partSummary } from "./catalog"
+import { filterCatalogParts, findCatalogPart, inspectCatalog, loadCatalogParts, partSummary, upsertCatalogPart } from "./catalog"
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
@@ -167,6 +167,38 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               malformedCount: catalog.malformedCount,
               skippedCount: catalog.skippedCount,
               part,
+            })
+          },
+        }),
+
+        pcb_catalog_upsert: tool({
+          description:
+            "Write or merge a verified part into the workspace-local catalog at catalog/parts/<mpn>.yaml. Use only after an exact MPN is confirmed (circuit identity, JLCPCB/tsci match, or datasheet). Creates the catalog directory if missing. Does not invent footprints or approve unverified substitutes.",
+          args: {
+            mpn: tool.schema.string().min(1).describe("Exact manufacturer part number, e.g. ESP32-S3-WROOM-1-N16R8"),
+            manufacturer: tool.schema.string().optional().describe("Manufacturer name"),
+            description: tool.schema.string().optional().describe("Short part description"),
+            datasheet: tool.schema.string().optional().describe("https datasheet URL"),
+            category: tool.schema.string().optional().describe("Category label, e.g. MCU module"),
+            replace: tool.schema.boolean().optional().describe("Replace existing file fields instead of merging (default false)"),
+          },
+          async execute(args) {
+            const result = await upsertCatalogPart(workspaceRoot, {
+              mpn: args.mpn,
+              manufacturer: args.manufacturer,
+              description: args.description,
+              datasheet: args.datasheet,
+              category: args.category,
+              replace: args.replace === true,
+            })
+            if (!result.ok) {
+              return formatToolJson({ success: false, error: result.error, code: result.code })
+            }
+            return formatToolJson({
+              success: true,
+              created: result.created,
+              path: result.path,
+              part: partSummary(result.part),
             })
           },
         }),

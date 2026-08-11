@@ -27,15 +27,16 @@ rebuild (and re-export if needed) before asserting readiness.
 ## Workflow
 
 1. Call `pcb_workspace_list` and `pcb_catalog_list` once before authoring.
-   The catalog is optional and workspace-local; do not repeat searches when it
-   reports that no catalog is available.
+   The catalog is workspace-local (`catalog/parts/*.yaml`). Missing/empty is fine
+   on a new Studio Home; create entries after parts are verified (see step 8).
 2. New project: `pcb_project_create` (name/directory) unless an existing id already
    covers the work. Then edit `src/circuit.tsx`.
 3. Decide exact parts before claiming a production-oriented design. Record the
    MPN, pinout, footprint, and whether each complex device is a module or bare
-   IC. When the local catalog has no exact match, call `pcb_component_search`
-   with each named complex part's exact MPN before inspecting `node_modules` or
-   searching the web. Treat search results as candidates, not catalog approval.
+   IC. Prefer `pcb_catalog_get` when the MPN is already catalogued. Otherwise call
+   `pcb_component_search` with each named complex part's exact MPN before
+   inspecting `node_modules` or searching the web. Treat search results as
+   candidates, not catalog approval.
    For an exact JLCPCB match, use the returned `supplierPartNumbers` and verify
    the generated pinout and footprint; `packageDescription` is metadata, not a
    tscircuit footprint string. Prefer exact tscircuit `usageInstructions` or a
@@ -59,6 +60,11 @@ rebuild (and re-export if needed) before asserting readiness.
    CPL are blocked while placeholders, unverified complex part identities,
    supplier footprint mismatches, unconnected non-`noConnect` pins, incomplete
    BOM identity, or missing/malformed placements remain.
+8. After a BOM line has a **verified** exact MPN (and optional manufacturer /
+   description / datasheet), promote it with `pcb_catalog_upsert` so later boards
+   reuse metadata via `pcb_catalog_list` / `pcb_catalog_get`. Do not upsert
+   placeholders, guessed MPNs, or supplier-only identities without an MPN.
+   The viewer BOM can also “Add to catalog” for the same write path.
 
 ## Worked micro-flow (first board)
 
@@ -79,6 +85,9 @@ Typical loop for a new project (names are illustrative):
 7. Open Studio PCB viewer (`/studio` → PCB) to confirm schematic/PCB previews.
    If the user sent diagnostics via **Send diagnostics to agent**, treat that text
    as the current defect list and re-run build after fixes.
+8. For each verified MPN not yet in the catalog, call `pcb_catalog_upsert` (or use
+   BOM **Add to catalog**) so the next project can resolve metadata without a
+   fresh supplier search.
 
 ## Readiness field table
 

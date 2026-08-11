@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { isInside } from "../../../src/core/paths"
@@ -7,7 +7,7 @@ import { createPcbApi } from "../api"
 import { buildInputDigest, writeBuildInputStamp } from "../artifact-freshness"
 import { generatePickAndPlace, toCplCsv } from "../assembly"
 import { generateBom } from "../bom"
-import { getCatalogPart } from "../catalog"
+import { getCatalogPart, upsertCatalogPart } from "../catalog"
 import { manufacturingBlockers } from "../circuit-json"
 import { createPcbStudioPlugin } from "../tools"
 import { exportCircuit, runProjectBuild } from "../tsci"
@@ -30,6 +30,7 @@ describe("pcb studio smoke", () => {
     const names = Object.keys(hooks.tool ?? {})
     expect(names).toContain("pcb_workspace_list")
     expect(names).toContain("pcb_catalog_list")
+    expect(names).toContain("pcb_catalog_upsert")
     const listed = JSON.parse((await hooks.tool?.pcb_workspace_list.execute({}, {} as any)) as string)
     expect(listed.workspaceRoot).toBe(workspaceRoot)
   })
@@ -277,6 +278,69 @@ describe("pcb studio smoke", () => {
     expect(await getCatalogPart(workspace, " internal-123 ")).toEqual(
       expect.objectContaining({ mpn: "INTERNAL-123", description: "first" }),
     )
+  })
+
+  test("catalog upsert creates and merges part YAML under catalog/parts", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pcb-catalog-upsert-"))
+    temps.push(workspace)
+    const created = await upsertCatalogPart(workspace, {
+      mpn: "ESP32-S3-WROOM-1-N16R8",
+      manufacturer: "Espressif",
+      description: "Wi-Fi MCU module",
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+    expect(created.created).toBe(true)
+    expect(created.path).toBe("catalog/parts/ESP32-S3-WROOM-1-N16R8.yaml")
+    expect(await getCatalogPart(workspace, "ESP32-S3-WROOM-1-N16R8")).toEqual(
+      expect.objectContaining({ mpn: "ESP32-S3-WROOM-1-N16R8", manufacturer: "Espressif" }),
+    )
+
+    const merged = await upsertCatalogPart(workspace, {
+      mpn: "ESP32-S3-WROOM-1-N16R8",
+      datasheet: "https://example.com/esp32.pdf",
+    })
+    expect(merged.ok).toBe(true)
+    if (!merged.ok) return
+    expect(merged.created).toBe(false)
+    expect(merged.part).toEqual(
+      expect.objectContaining({
+        manufacturer: "Espressif",
+        description: "Wi-Fi MCU module",
+        datasheet: "https://example.com/esp32.pdf",
+      }),
+    )
+
+    const bad = await upsertCatalogPart(workspace, { mpn: "bad/name" })
+    expect(bad.ok).toBe(false)
+
+    const cased = await upsertCatalogPart(workspace, {
+      mpn: "esp32-s3-wroom-1-n16r8",
+      category: "MCU module",
+    })
+    expect(cased.ok).toBe(true)
+    if (!cased.ok) return
+    expect(cased.created).toBe(false)
+    expect(cased.path).toBe("catalog/parts/ESP32-S3-WROOM-1-N16R8.yaml")
+    expect(cased.part.mpn).toBe("ESP32-S3-WROOM-1-N16R8")
+    expect(cased.part.category).toBe("MCU module")
+    expect(cased.part.manufacturer).toBe("Espressif")
+    const catalogFiles = await readdir(path.join(workspace, "catalog", "parts"))
+    expect(catalogFiles.filter((name) => name.toLowerCase().includes("esp32-s3-wroom")).sort()).toEqual(["ESP32-S3-WROOM-1-N16R8.yaml"])
+    expect(await getCatalogPart(workspace, "ESP32-S3-WROOM-1-N16R8")).toEqual(
+      expect.objectContaining({ category: "MCU module", manufacturer: "Espressif" }),
+    )
+
+    const app = createPcbApi(workspace)
+    const res = await app.request("/catalog/AMS1117-3.3", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ manufacturer: "Advanced Monolithic", category: "LDO" }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { created: boolean; part: { mpn: string } }
+    expect(body.created).toBe(true)
+    expect(body.part.mpn).toBe("AMS1117-3.3")
   })
 
   test("projects endpoint supports paged and single-snapshot complete lists", async () => {
