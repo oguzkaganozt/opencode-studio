@@ -21,9 +21,9 @@ const SchematicTab = lazy(() => import("./schematic-tab"))
 const PcbTab = lazy(() => import("./pcb-tab"))
 const BomTab = lazy(() => import("./bom-tab"))
 
-/** Compact health for cards — one primary signal, optional warning count. */
-function CardHealth({ project }: { project: ProjectSummary }) {
-  if (project.artifactStatus === "stale")
+/** Compact health for cards/detail — one primary signal. */
+function CardHealth({ project, stale = false }: { project: ProjectSummary; stale?: boolean }) {
+  if (stale || project.artifactStatus === "stale")
     return (
       <Badge tone="fail" dot title={project.artifactError ?? undefined}>
         Stale build
@@ -78,53 +78,6 @@ function projectHealthTone(project: ProjectSummary): "success" | "warning" | "er
   if (!project.designValid || project.fabricationReady === false) return "error"
   if (project.assemblyReady === false || (project.warningCount ?? 0) > 0) return "warning"
   return "success"
-}
-
-/** Detail page: health + fab/assembly only (artifacts via downloads). */
-function DetailHealth({ project }: { project: ProjectSummary }) {
-  const items: Array<{ label: string; value: string; tone: "success" | "warning" | "error" }> = []
-  if (project.artifactStatus === "stale") {
-    items.push({ label: "Build", value: "Stale", tone: "error" })
-  } else if (!project.built) {
-    items.push({ label: "Build", value: "Not built", tone: "warning" })
-  } else if (project.designValid === null) {
-    items.push({ label: "Design", value: "Unknown", tone: "warning" })
-  } else {
-    items.push({
-      label: "Design",
-      value: project.designValid ? "Valid" : `${project.errorCount} errors`,
-      tone: project.designValid ? "success" : "error",
-    })
-    if (project.fabricationReady !== null) {
-      items.push({
-        label: "Fabrication",
-        value: project.fabricationReady ? "Ready" : "Blocked",
-        tone: project.fabricationReady ? "success" : "error",
-      })
-    }
-    if (project.assemblyReady !== null) {
-      items.push({
-        label: "Assembly",
-        value: project.assemblyReady ? "Ready" : "Blocked",
-        tone: project.assemblyReady ? "success" : "warning",
-      })
-    }
-  }
-
-  return (
-    <div className="pcb-readiness" role="status" aria-label="Project readiness">
-      <span className="pcb-readiness__label">Readiness</span>
-      <div className="pcb-readiness__items">
-        {items.map((item) => (
-          <span key={item.label} className="pcb-readiness__item" data-tone={item.tone}>
-            <span className="pcb-readiness__dot" aria-hidden />
-            <span className="pcb-readiness__name">{item.label}</span>
-            <strong>{item.value}</strong>
-          </span>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 // ── Empty / Error / Loading states ────────────────────────────────────────────
@@ -413,11 +366,17 @@ function ProjectPage() {
     })
   }
   const stale = project.artifactStatus === "stale" || buildState.status === "stale"
+  const needsBuild = stale || !project.built
+  const buildBanner = stale
+    ? (project.artifactError ?? "Project source changed after the last build. Rebuild to refresh viewers and artifacts.")
+    : !project.built
+      ? "This project has not been built yet. Build to generate schematic, PCB, and manufacturing artifacts."
+      : null
 
   const showPath = Boolean(project.path && project.path !== project.name && project.path !== project.id)
 
   return (
-    <Shell fill hideProjectsNav>
+    <Shell fill>
       <div className="pcb-project-page mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 px-3 py-2.5 sm:gap-2.5 sm:px-6 sm:py-3">
         <header className="pcb-project-header shrink-0">
           <div className="pcb-project-header__title min-w-0">
@@ -426,7 +385,7 @@ function ProjectPage() {
                 to={studioHref()}
                 className="shrink-0 rounded-[var(--osc-radius-md)] px-1.5 py-1 text-sm text-[var(--osc-text-muted)] transition-colors hover:bg-[var(--osc-surface)] hover:text-[var(--osc-text)]"
               >
-                ← Projects
+                Projects
               </Link>
               <span className="shrink-0 text-[var(--osc-border-strong)]" aria-hidden>
                 /
@@ -440,18 +399,7 @@ function ProjectPage() {
             ) : null}
           </div>
           <div className="pcb-project-header__meta">
-            <DetailHealth project={project} />
-            {stale && (
-              <span className="inline-flex items-center gap-1.5 rounded-[var(--osc-radius-md)] border border-[var(--osc-stale)]/30 bg-[var(--osc-stale-bg)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--osc-stale)]">
-                <span className="size-1.5 shrink-0 rounded-full bg-[var(--osc-stale)]" aria-hidden />
-                Artifacts stale — rebuild
-              </span>
-            )}
-            {(stale || !project.built) && (
-              <button type="button" className="pcb-chip pcb-chip--primary" onClick={requestBuild}>
-                {stale ? "Draft rebuild request" : "Draft build request"}
-              </button>
-            )}
+            <CardHealth project={project} stale={stale} />
             {project.hasGerbersZip && project.fabricationReady && id && (
               <a href={api.gerbersZipUrl(id)} download className="pcb-chip pcb-chip--action">
                 Gerbers ↓
@@ -465,11 +413,14 @@ function ProjectPage() {
           </div>
         </header>
 
-        {project.artifactStatus === "stale" && project.artifactError && (
-          <p className="shrink-0 text-xs text-[var(--osc-error)]" role="status">
-            {project.artifactError}
-          </p>
-        )}
+        {needsBuild && buildBanner ? (
+          <div className="pcb-project-banner shrink-0" data-tone={stale ? "stale" : "warning"} role="status">
+            <p className="pcb-project-banner__text">{buildBanner}</p>
+            <button type="button" className="pcb-chip pcb-chip--primary shrink-0" onClick={requestBuild}>
+              {stale ? "Rebuild" : "Build"}
+            </button>
+          </div>
+        ) : null}
 
         {project.diagnostics && id && (
           <DiagnosticsPanel diagnostics={project.diagnostics} projectId={id} projectName={project.name} directory={project.directory} />

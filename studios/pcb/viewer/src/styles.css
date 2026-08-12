@@ -145,7 +145,7 @@
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem 0.75rem;
 }
@@ -158,102 +158,56 @@
 [data-studio="pcb"] .pcb-project-header__meta {
   display: flex;
   min-width: 0;
-  flex: 1 1 18rem;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
-  justify-content: flex-start;
+  gap: 0.4rem;
+  justify-content: flex-end;
 }
 
-@media (min-width: 900px) {
-  [data-studio="pcb"] .pcb-project-header__meta {
-    flex: 0 1 auto;
-    justify-content: flex-end;
-  }
+[data-studio="pcb"] .pcb-project-banner {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem 0.75rem;
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-md);
+  background: var(--osc-bg-elevated);
+  padding: 0.55rem 0.7rem;
+}
+
+[data-studio="pcb"] .pcb-project-banner[data-tone="stale"] {
+  border-color: color-mix(in srgb, var(--osc-stale) 35%, var(--osc-border));
+  background: color-mix(in srgb, var(--osc-stale-bg) 70%, var(--osc-bg-elevated));
+}
+
+[data-studio="pcb"] .pcb-project-banner[data-tone="warning"] {
+  border-color: color-mix(in srgb, var(--osc-warning) 35%, var(--osc-border));
+  background: color-mix(in srgb, var(--osc-warning-bg) 70%, var(--osc-bg-elevated));
+}
+
+[data-studio="pcb"] .pcb-project-banner__text {
+  min-width: 0;
+  flex: 1 1 14rem;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--osc-text-muted);
+}
+
+[data-studio="pcb"] .pcb-project-banner[data-tone="stale"] .pcb-project-banner__text {
+  color: var(--osc-stale);
+}
+
+[data-studio="pcb"] .pcb-project-banner[data-tone="warning"] .pcb-project-banner__text {
+  color: var(--osc-warning);
 }
 
 /* Keep the canvas usable even when diagnostics expand. */
 [data-studio="pcb"] .pcb-project-view {
   min-height: min(22rem, 48dvh);
-}
-
-[data-studio="pcb"] .pcb-readiness {
-  display: inline-flex;
-  min-width: 0;
-  align-items: stretch;
-  overflow: hidden;
-  border: 1px solid var(--osc-border);
-  border-radius: var(--osc-radius-md);
-  background: var(--osc-bg-elevated);
-}
-
-[data-studio="pcb"] .pcb-readiness__label {
-  display: flex;
-  align-items: center;
-  border-right: 1px solid var(--osc-border);
-  padding: 0 0.65rem;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--osc-text-faint);
-}
-
-[data-studio="pcb"] .pcb-readiness__items {
-  display: flex;
-  min-width: 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-
-[data-studio="pcb"] .pcb-readiness__items::-webkit-scrollbar {
-  display: none;
-}
-
-[data-studio="pcb"] .pcb-readiness__item {
-  display: inline-flex;
-  min-height: 2.25rem;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0 0.65rem;
-  border-left: 1px solid var(--osc-border);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-[data-studio="pcb"] .pcb-readiness__item:first-child {
-  border-left: 0;
-}
-
-[data-studio="pcb"] .pcb-readiness__dot {
-  width: 6px;
-  height: 6px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--osc-text-faint);
-}
-
-[data-studio="pcb"] .pcb-readiness__item[data-tone="success"] .pcb-readiness__dot {
-  background: var(--osc-success);
-}
-
-[data-studio="pcb"] .pcb-readiness__item[data-tone="warning"] .pcb-readiness__dot {
-  background: var(--osc-warning);
-}
-
-[data-studio="pcb"] .pcb-readiness__item[data-tone="error"] .pcb-readiness__dot {
-  background: var(--osc-error);
-}
-
-[data-studio="pcb"] .pcb-readiness__name {
-  color: var(--osc-text-muted);
-}
-
-[data-studio="pcb"] .pcb-readiness__item strong {
-  font-weight: 500;
-  color: var(--osc-text);
 }
 
 [data-studio="pcb"] .pcb-bom-overview {
@@ -898,16 +852,14 @@
     gap: 0.6rem;
   }
 
-  [data-studio="pcb"] .pcb-readiness {
+  [data-studio="pcb"] .pcb-project-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  [data-studio="pcb"] .pcb-project-banner .pcb-chip {
     width: 100%;
-  }
-
-  [data-studio="pcb"] .pcb-readiness__label {
-    display: none;
-  }
-
-  [data-studio="pcb"] .pcb-readiness__items {
-    flex: 1;
+    justify-content: center;
   }
 
   [data-studio="pcb"] .pcb-json-toolbar {
