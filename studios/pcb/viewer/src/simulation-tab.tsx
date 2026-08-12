@@ -207,6 +207,7 @@ export default function SimulationTab({ projectId, directory }: { projectId: str
             </span>
           </div>
           <p>Electrical feedback only. This status does not change fabrication or assembly readiness.</p>
+          {data.caveat ? <p className="mt-1 text-[11px] text-[var(--osc-text-faint)]">{data.caveat}</p> : null}
           {diagnostics.length > 0 ? (
             <ul className="mt-2 space-y-1 text-[12px] text-[var(--osc-error)]">
               {diagnostics.map((message) => (

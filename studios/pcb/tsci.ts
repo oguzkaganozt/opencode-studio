@@ -50,6 +50,9 @@ export type AnalogSimulationResult = TsciResult & {
   diagnostics: string[]
 }
 
+export const SIMULATION_ESTIMATE_CAVEAT =
+  "Directional estimate, not engineering-grade — SPICE convergence and ideal tscircuit parts limit accuracy."
+
 const SPICE_PROPERTY_RE = /spice(?:model|pinmapping)/i
 
 export function extractAnalogSimulationDiagnostics(circuitJson: unknown[]): string[] {
@@ -63,7 +66,7 @@ export function extractAnalogSimulationDiagnostics(circuitJson: unknown[]): stri
     if (
       row.type === "simulation_unknown_experiment_error" ||
       row.type.startsWith("simulation_") ||
-      (row.type === "source_invalid_component_property_error" && SPICE_PROPERTY_RE.test(message))
+      (row.type === "source_invalid_component_property_error" && (row.property_name === "spiceModel" || SPICE_PROPERTY_RE.test(message)))
     ) {
       messages.push(message)
     }
@@ -202,14 +205,20 @@ function numericArray(value: unknown): number[] {
 }
 
 function summarizeValues(values: number[]): AnalogSimulationSeries["summary"] {
-  const min = Math.min(...values)
-  const max = Math.max(...values)
+  let min = Infinity
+  let max = -Infinity
+  let total = 0
+  for (const value of values) {
+    if (value < min) min = value
+    if (value > max) max = value
+    total += value
+  }
   return {
     first: values[0]!,
     last: values[values.length - 1]!,
     min,
     max,
-    mean: values.reduce((total, value) => total + value, 0) / values.length,
+    mean: total / values.length,
     peakToPeak: max - min,
   }
 }

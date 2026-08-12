@@ -172,6 +172,7 @@ export type SimulationResponse = {
   simulationSuccess: boolean
   experiments: SimulationExperiment[]
   diagnostics?: string[]
+  caveat?: string
 }
 
 export const api = {

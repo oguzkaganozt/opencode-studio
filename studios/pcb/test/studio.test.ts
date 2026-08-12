@@ -12,12 +12,7 @@ import { getCatalogPart, inspectCatalog, spiceModelSnippet, upsertCatalogPart, v
 import { manufacturingBlockers } from "../circuit-json"
 import { basicProjectTemplate, TSCIRCUIT_VERSION } from "../templates"
 import { createPcbStudioPlugin } from "../tools"
-import {
-  exportCircuit,
-  extractAnalogSimulationDiagnostics,
-  extractAnalogSimulationExperiments,
-  runProjectBuild,
-} from "../tsci"
+import { exportCircuit, extractAnalogSimulationDiagnostics, extractAnalogSimulationExperiments, runProjectBuild } from "../tsci"
 import { decodeProjectId, discoverProjects, encodeProjectId } from "../workspace"
 
 const temps: string[] = []
@@ -324,10 +319,21 @@ describe("pcb studio smoke", () => {
         message: "Invalid spicePinMapping for U1: pin 'OUT' not found",
       },
     ]
-    expect(extractAnalogSimulationDiagnostics(rejectedModel)).toEqual([
-      "Invalid spicePinMapping for U1: pin 'OUT' not found",
-    ])
+    expect(extractAnalogSimulationDiagnostics(rejectedModel)).toEqual(["Invalid spicePinMapping for U1: pin 'OUT' not found"])
     expect(extractAnalogSimulationExperiments(rejectedModel)).toHaveLength(1)
+
+    const realEngineVariant = [
+      ...graphs,
+      {
+        type: "source_invalid_component_property_error",
+        property_name: "spiceModel",
+        message: 'Could not resolve SPICE pin "OUT" to exactly one component port using "pin1".',
+      },
+    ]
+    expect(extractAnalogSimulationDiagnostics(realEngineVariant)).toEqual([
+      'Could not resolve SPICE pin "OUT" to exactly one component port using "pin1".',
+    ])
+    expect(extractAnalogSimulationExperiments(realEngineVariant)).toHaveLength(1)
 
     const engineFail = [
       { type: "simulation_experiment", simulation_experiment_id: "sim1", name: "load_step" },
@@ -335,6 +341,31 @@ describe("pcb studio smoke", () => {
     ]
     expect(extractAnalogSimulationDiagnostics(engineFail)).toEqual(["ngspice failed: singular matrix"])
     expect(extractAnalogSimulationExperiments(engineFail)).toEqual([])
+  })
+
+  test("summaries compute on dense series without exceeding the spread argument limit", () => {
+    const points = 200_000
+    const timestamps = Array.from({ length: points }, (_, index) => index)
+    const levels = Array.from({ length: points }, (_, index) => Math.sin(index / 1000) * 5)
+    const experiments = extractAnalogSimulationExperiments(
+      [
+        { type: "simulation_experiment", simulation_experiment_id: "sim1", name: "dense" },
+        {
+          type: "simulation_transient_voltage_graph",
+          simulation_experiment_id: "sim1",
+          name: "VOUT",
+          timestamps_ms: timestamps,
+          voltage_levels: levels,
+        },
+      ],
+      500,
+    )
+    expect(experiments).toHaveLength(1)
+    const summary = experiments[0]!.series[0]!.summary
+    expect(summary.min).toBeCloseTo(-5, 0)
+    expect(summary.max).toBeCloseTo(5, 0)
+    expect(experiments[0]!.pointsCount).toBe(points)
+    expect(experiments[0]!.returnedPoints).toBeLessThanOrEqual(500)
   })
 
   test("simulation API fails closed when graphs coexist with spice model errors", async () => {
@@ -370,6 +401,21 @@ describe("pcb studio smoke", () => {
     expect(body.simulationSuccess).toBe(false)
     expect(body.diagnostics).toEqual(["spiceModel rejected: incomplete spicePinMapping"])
     expect(body.experiments).toHaveLength(1)
+  })
+
+  test("simulation API returns 404 when the project has no simulation elements", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "pcb-simulation-empty-"))
+    temps.push(workspace)
+    const projectDir = path.join(workspace, "board")
+    const circuitDir = path.join(projectDir, "dist", "src", "circuit")
+    await mkdir(path.join(projectDir, "src"), { recursive: true })
+    await mkdir(circuitDir, { recursive: true })
+    await writeFile(path.join(projectDir, "src", "circuit.tsx"), "export default () => null\n")
+    await writeFile(path.join(circuitDir, "circuit.json"), JSON.stringify([{ type: "source_component", name: "R1" }]))
+    await stampProject(projectDir)
+
+    const response = await createPcbApi(workspace).request(`/projects/${encodeURIComponent(encodeProjectId("board"))}/simulation`)
+    expect(response.status).toBe(404)
   })
 
   test("invalid on-disk spiceModel is counted malformed and not treated as a clean part", async () => {

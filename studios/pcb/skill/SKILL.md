@@ -52,6 +52,10 @@ rebuild (and re-export if needed) before asserting readiness.
    For circuits containing `<analogsimulation>` and probes, run `pcb_sim_run`
    and use its numeric series to verify electrical behavior. Simulation success
    does not imply `designValid`, fabrication readiness, or assembly readiness.
+   Declare `<analogsimulation spiceEngine="ngspice" ... />` when the experiment
+   needs the ngspice engine: the default spicey engine emits only voltage
+   probes, so current probes require ngspice and otherwise return empty series.
+   Keep results as directional estimates, not engineering-grade.
 5. After the first build, make targeted edits instead of rewriting the entire
    `src/circuit.tsx`. Read locally installed tscircuit source and types before
    broad web research.

@@ -7,7 +7,7 @@ import { generateBom, toBomCsv } from "./bom"
 import { filterCatalogParts, getCatalogPart, loadCatalogParts, partDetail, partSummary, upsertCatalogPart } from "./catalog"
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
-import { extractAnalogSimulationDiagnostics, extractAnalogSimulationExperiments } from "./tsci"
+import { extractAnalogSimulationDiagnostics, extractAnalogSimulationExperiments, SIMULATION_ESTIMATE_CAVEAT } from "./tsci"
 import { ensureWatching, onProjectEvent } from "./watcher"
 import {
   type CircuitProject,
@@ -148,6 +148,7 @@ export function createPcbApi(workspaceRoot: string) {
       simulationSuccess: experiments.length > 0 && diagnostics.length === 0,
       experiments,
       diagnostics,
+      caveat: SIMULATION_ESTIMATE_CAVEAT,
     })
   })
 
