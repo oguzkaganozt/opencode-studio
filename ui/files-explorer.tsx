@@ -118,6 +118,16 @@ function PreviewChrome({
   )
 }
 
+export type FilesPreviewKind = FileEntry["preview"]
+
+export type FilesPreviewRenderContext = {
+  selected: FileEntry
+  preview: FilesPreviewKind
+  rawHref: string
+  downloadHref: string
+  onMediaError: () => void
+}
+
 function PreviewActions({
   selected,
   onRequestAgent,
@@ -148,12 +158,16 @@ function PreviewPane({
   onBack,
   onRequestAgent,
   apiBase,
+  renderFilePreview,
+  previewFooter,
 }: {
   selected: FileEntry | null
   selectedPath: string | null
   onBack?: () => void
   onRequestAgent?: (path: string) => void
   apiBase: string
+  renderFilePreview?: (ctx: FilesPreviewRenderContext) => ReactNode | null | undefined
+  previewFooter?: ReactNode
 }) {
   const [mediaError, setMediaError] = useState(false)
   const contentQuery = useQuery({
@@ -252,57 +266,83 @@ function PreviewPane({
           </p>
         </div>
       </PreviewChrome>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        {mediaError ? (
-          <ErrorState
-            className="mx-auto max-w-md border-0 bg-transparent py-12"
-            title="Media preview failed"
-            description="Retry the inline preview, or download the original file."
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                <button type="button" className="osc-chip" onClick={() => setMediaError(false)}>
-                  Retry
-                </button>
-                <a href={downloadHref} className="osc-chip">
-                  Download
-                </a>
-              </div>
-            }
-          />
-        ) : data.preview === "image" ? (
-          <img
-            src={rawHref}
-            alt={selected.name}
-            onError={() => setMediaError(true)}
-            className="mx-auto max-h-full max-w-full rounded-[var(--osc-radius-md)] object-contain shadow-[var(--osc-shadow)]"
-          />
-        ) : data.preview === "audio" ? (
-          <audio
-            aria-label={`Audio preview: ${selected.name}`}
-            controls
-            src={rawHref}
-            onError={() => setMediaError(true)}
-            className="w-full"
-          />
-        ) : data.preview === "video" ? (
-          <video
-            aria-label={`Video preview: ${selected.name}`}
-            controls
-            src={rawHref}
-            onError={() => setMediaError(true)}
-            className="mx-auto max-h-full max-w-full rounded-[var(--osc-radius-md)]"
-          />
-        ) : data.preview === "text" ? (
-          data.truncated || data.text === null ? (
-            <p className="text-sm text-[var(--osc-text-muted)]">Text too large to preview — use Download.</p>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {mediaError ? (
+            <ErrorState
+              className="mx-auto max-w-md border-0 bg-transparent py-12"
+              title="Media preview failed"
+              description="Retry the inline preview, or download the original file."
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <button type="button" className="osc-chip" onClick={() => setMediaError(false)}>
+                    Retry
+                  </button>
+                  <a href={downloadHref} className="osc-chip">
+                    Download
+                  </a>
+                </div>
+              }
+            />
           ) : (
-            <pre className="overflow-auto rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-[var(--osc-text)] md:whitespace-pre md:break-normal">
-              {data.text}
-            </pre>
-          )
-        ) : (
-          <p className="text-sm text-[var(--osc-text-muted)]">No inline preview for this type. Use Download.</p>
-        )}
+            (() => {
+              const custom =
+                data.preview === "image" || data.preview === "audio" || data.preview === "video"
+                  ? renderFilePreview?.({
+                      selected,
+                      preview: data.preview,
+                      rawHref,
+                      downloadHref,
+                      onMediaError: () => setMediaError(true),
+                    })
+                  : undefined
+              if (custom !== undefined && custom !== null) return custom
+              if (data.preview === "image") {
+                return (
+                  <img
+                    src={rawHref}
+                    alt={selected.name}
+                    onError={() => setMediaError(true)}
+                    className="mx-auto max-h-full max-w-full rounded-[var(--osc-radius-md)] object-contain shadow-[var(--osc-shadow)]"
+                  />
+                )
+              }
+              if (data.preview === "audio") {
+                return (
+                  <audio
+                    aria-label={`Audio preview: ${selected.name}`}
+                    controls
+                    src={rawHref}
+                    onError={() => setMediaError(true)}
+                    className="w-full"
+                  />
+                )
+              }
+              if (data.preview === "video") {
+                return (
+                  <video
+                    aria-label={`Video preview: ${selected.name}`}
+                    controls
+                    src={rawHref}
+                    onError={() => setMediaError(true)}
+                    className="mx-auto max-h-full max-w-full rounded-[var(--osc-radius-md)]"
+                  />
+                )
+              }
+              if (data.preview === "text") {
+                return data.truncated || data.text === null ? (
+                  <p className="text-sm text-[var(--osc-text-muted)]">Text too large to preview — use Download.</p>
+                ) : (
+                  <pre className="overflow-auto rounded-[var(--osc-radius-md)] border border-[var(--osc-border)] bg-[var(--osc-bg-elevated)] p-4 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-[var(--osc-text)] md:whitespace-pre md:break-normal">
+                    {data.text}
+                  </pre>
+                )
+              }
+              return <p className="text-sm text-[var(--osc-text-muted)]">No inline preview for this type. Use Download.</p>
+            })()
+          )}
+        </div>
+        {previewFooter}
       </div>
     </div>
   )
@@ -313,11 +353,15 @@ export function FilesExplorer({
   apiBase = "/api/files",
   rootLabel = "Home",
   studioId = "files",
+  renderFilePreview,
+  previewFooter,
 }: {
   onRequestAgent?: (path: string) => void
   apiBase?: string
   rootLabel?: string
   studioId?: string
+  renderFilePreview?: (ctx: FilesPreviewRenderContext) => ReactNode | null | undefined
+  previewFooter?: ReactNode
 }) {
   const normalizedApiBase = apiBase.replace(/\/$/, "")
   const [dirPath, setDirPath] = useState("")
@@ -651,6 +695,8 @@ export function FilesExplorer({
             onBack={selectedPath ? () => setSelectedPath(null) : undefined}
             onRequestAgent={onRequestAgent}
             apiBase={normalizedApiBase}
+            renderFilePreview={renderFilePreview}
+            previewFooter={previewFooter}
           />
         </div>
       </div>

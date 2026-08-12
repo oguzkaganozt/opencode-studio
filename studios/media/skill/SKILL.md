@@ -1,8 +1,8 @@
 ---
 name: studio-media
 description: >
-  Load before Media Studio image, audio, or video work — generate/edit/import/convert/trim
-  thumbnails or clips, chatgpt_image_generate, fal_* paid generation, media_download,
+  Load before Media Studio image, audio, or video work — generate/edit/import/convert/trim/crop/concat,
+  chatgpt_image_generate, media_image_crop, media_image_edit, fal_* paid generation, media_download,
   media_list/info/probe, or Media project asset paths. Not for mechanical CAD product
   renders (studio-cad + cad_render_view into designs/<id>/renders/) or PCB artifacts
   (studio-pcb).
@@ -20,8 +20,9 @@ Media projects are immediate directories under `$STUDIO_HOME/studio/media/`
 Do **not** use this skill for CAD evidence PNGs or PCB exports — those stay under
 `studio-cad` / `studio-pcb` domain roots and their tools.
 
-The Media project viewer is a read-only asset browser. All mutations happen
-through Media agent tools, not the browser.
+The Media project viewer previews assets and collects **selection context**
+(image bbox / video-audio in–out). All mutations still happen through Media
+agent tools, not the browser.
 
 ## Paths (important)
 
@@ -39,10 +40,15 @@ through Media agent tools, not the browser.
 | See what exists | `media_list` → `media_info` / `media_probe` / `read_media` |
 | Copy server-local file in | `media_import` |
 | Ordinary still image | `chatgpt_image_generate` first (subscription OAuth) |
+| Image crop (viewer bbox) | `media_image_crop` with `x,y,width,height` |
+| Image content edit | `media_image_edit` (prompt + source; optional bbox) |
 | Paid fal model | `fal_models` → `fal_model_schema` → `fal_pricing` → optional `fal_upload` → `fal_submit` → poll `fal_status` → `fal_result` → `media_download` |
 | Abort fal job | `fal_cancel` (on user abort or wrong submit) |
-| Transform local AV | `media_convert`, `media_trim`, `media_extract_audio` |
+| Transform local AV | `media_convert`, `media_trim`, `media_extract_audio`, `media_video_concat` |
 | Confirm on disk | `media_list` or `media_info` at the expected path |
+
+When the user sends a viewer selection annotation (`bbox_px=…` or `time_s=…`), honor those
+numbers in `media_image_crop` / `media_image_edit` / `media_trim` instead of guessing.
 
 Prefer ChatGPT image for simple PNGs before paid fal. Do not start bulk fal jobs
 without explicit user intent. After `fal_submit`, poll `fal_status` until done or

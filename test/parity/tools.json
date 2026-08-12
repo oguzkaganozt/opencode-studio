@@ -104,6 +104,15 @@
     "media_extract_audio": {
       "studio": "media"
     },
+    "media_image_crop": {
+      "studio": "media"
+    },
+    "media_image_edit": {
+      "studio": "media"
+    },
+    "media_video_concat": {
+      "studio": "media"
+    },
     "fal_upload": {
       "studio": "media"
     },
@@ -401,5 +410,5 @@
       }
     }
   },
-  "count": 74
+  "count": 77
 }
