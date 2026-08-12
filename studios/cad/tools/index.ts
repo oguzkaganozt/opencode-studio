@@ -4,7 +4,7 @@ import { tool } from "@opencode-ai/plugin"
 import manifest from "../../../package.json" with { type: "json" }
 import { formatToolJson } from "../../../src/core/format-tool-json"
 import { createCadSessionTools } from "./session-tools"
-import { buildDesign, createRuntimeForgeRunner, type ForgeRunner, scaffoldDesign } from "../host/build"
+import { buildDesign, createCadBuildRunner, type CadBuildRunner, scaffoldDesign } from "../host/build"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "../host/manifest"
 import { buildDesignQcReport, type QcAxisStatus } from "../host/qc-report"
@@ -21,7 +21,7 @@ const COMPANION_HEALTH_TIMEOUT_MS = 1_000
 
 type Options = {
   studioRoot: string
-  forgeProjectDir: string
+  engineProjectDir: string
   companionUrl?: string
 }
 
@@ -52,22 +52,22 @@ function resolvePathOption(value: unknown, fallback: string, base: string, name:
 
 function options(input: PluginOptions | undefined, directory: string): Options {
   const studioRoot = resolvePathOption(input?.studioRoot, ".", directory, "studioRoot")
-  const forgeProjectDir = resolvePathOption(input?.forgeProjectDir, path.resolve(import.meta.dir, "..", "engine"), directory, "forgeProjectDir")
+  const engineProjectDir = resolvePathOption(input?.engineProjectDir, path.resolve(import.meta.dir, "..", "engine"), directory, "engineProjectDir")
   const companionUrl = typeof input?.companionUrl === "string" && input.companionUrl.length > 0 ? input.companionUrl : undefined
-  return { studioRoot, forgeProjectDir, companionUrl }
+  return { studioRoot, engineProjectDir, companionUrl }
 }
 
 export type StudioPluginDependencies = {
-  forgeRunner?: ForgeRunner
+  buildRunner?: CadBuildRunner
 }
 
 export function createStudioPlugin(dependencies: StudioPluginDependencies = {}): Plugin {
   return async (context, rawOptions) => {
     const config = options(rawOptions, context.directory)
     const layout = await initializeStudio(config.studioRoot)
-    const forgeRunner = dependencies.forgeRunner ?? createRuntimeForgeRunner(context.directory)
+    const buildRunner = dependencies.buildRunner ?? createCadBuildRunner(context.directory)
     const build123dTools = createCadSessionTools({
-      forgeProjectDir: config.forgeProjectDir,
+      engineProjectDir: config.engineProjectDir,
       cwd: context.directory,
     })
     return {
@@ -208,8 +208,8 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const result = await buildDesign(
               layout,
               args.id,
-              config.forgeProjectDir,
-              forgeRunner,
+              config.engineProjectDir,
+              buildRunner,
               context.abort,
               context.directory,
             )

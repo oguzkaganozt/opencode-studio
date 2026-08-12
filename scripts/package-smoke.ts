@@ -44,13 +44,13 @@ try {
     throw new Error("missing packed cad_build.py")
   }
   if (!(await Bun.file(path.join(pkg, "studios/cad/engine/.python-version")).exists())) {
-    throw new Error("missing packed forge .python-version")
+    throw new Error("missing packed CAD engine .python-version")
   }
   if (!(await Bun.file(path.join(pkg, "studios/cad/engine/uv.lock")).exists())) {
-    throw new Error("missing packed forge uv.lock")
+    throw new Error("missing packed CAD engine uv.lock")
   }
   if (!(await Bun.file(path.join(pkg, "studios/cad/engine/pyproject.toml")).exists())) {
-    throw new Error("missing packed forge pyproject.toml")
+    throw new Error("missing packed CAD engine pyproject.toml")
   }
   if (!(await Bun.file(path.join(pkg, "dist/ui/index.html")).exists())) {
     throw new Error("missing packed UI")

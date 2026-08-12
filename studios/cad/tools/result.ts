@@ -13,7 +13,7 @@ export type CadToolEnvelope = {
   error?: { code: string; message: string }
 }
 
-export const BUILD123D_STRUCTURED_TOOLS = new Set([
+export const CAD_SESSION_STRUCTURED_TOOLS = new Set([
   "validate",
   "measure",
   "compare",
@@ -73,7 +73,7 @@ function stringList(value: unknown): string[] {
   return value.map((item) => String(item)).filter(Boolean)
 }
 
-export function structureBuild123dResult(input: {
+export function structureCadSessionResult(input: {
   entryName: string
   toolName: string
   text: string

@@ -11,7 +11,7 @@ export type PluginLoadContext = {
   packageRoot: string
   mediaProviderPackage: string
   resolveStudioRoot: typeof resolveStudioRoot
-  ensureForgeRuntimeDir: (packageRoot: string) => Promise<string>
+  ensureCadEngineDir: (packageRoot: string) => Promise<string>
 }
 
 export type ApiLoadContext = {
@@ -30,7 +30,7 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
     return loadCadPlugin({
       root,
       companionUrl: ctx.hostUrl ? `${ctx.hostUrl}/studio/studios/cad` : undefined,
-      forgeProjectDir: await ctx.ensureForgeRuntimeDir(ctx.packageRoot),
+      engineProjectDir: await ctx.ensureCadEngineDir(ctx.packageRoot),
     })
   },
   pcb: async (ctx) => {

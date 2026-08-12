@@ -1,4 +1,4 @@
-"""Persistent worker subprocess and parent-side proxy for build123d-mcp sessions.
+"""CAD runtime session worker (parent proxy + optional in-process session).
 
 Architecture:
   WorkerSession (parent)  ←── multiprocessing.Pipe ──→  worker_main (child)

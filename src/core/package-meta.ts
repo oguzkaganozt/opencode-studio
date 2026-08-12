@@ -57,39 +57,39 @@ export function agentSourcePath(packageRoot: string, studioId: StudioId) {
   return path.join(packageRoot, "studios", studioId, "agent", `${agentNameFor(studioId)}.md`)
 }
 
-const FORGE_RUNTIME_FILES = ["pyproject.toml", "uv.lock", "cad_build.py", ".python-version"] as const
+const CAD_ENGINE_FILES = ["pyproject.toml", "uv.lock", "cad_build.py", ".python-version"] as const
 
 /** Owned CAD session package directory mirrored into the engine runtime cache. */
-const FORGE_RUNTIME_DIRS = ["cad_runtime"] as const
+const CAD_ENGINE_DIRS = ["cad_runtime"] as const
 
 /** Packaged CAD engine sources inside the npm package (Python uv project). */
-export function forgeSourceDir(packageRoot: string) {
+export function cadEngineSourceDir(packageRoot: string) {
   return path.join(packageRoot, "studios", "cad", "engine")
 }
 
 /** XDG cache directory used as the writable uv project for the CAD engine. */
-export function forgeRuntimeDir() {
+export function cadEngineRuntimeDir() {
   const paths = envPaths("opencode-studio", { suffix: "" })
   return path.join(paths.cache, "cad-engine")
 }
 
-/** Cold `uv sync` budget (separate from design_build's 120s forge build timer). */
-export const FORGE_SYNC_TIMEOUT_MS = 600_000
+/** Cold `uv sync` budget (separate from cad_design_build timer). */
+export const CAD_ENGINE_SYNC_TIMEOUT_MS = 600_000
 
 /**
- * Run `uv sync --locked` for a forge project dir. Call before timed `forge build`
+ * Run `uv sync --locked` for the CAD engine project dir. Call before timed product build
  * so dependency install is not killed by the build timeout.
  */
-export async function syncForgeUvProject(
+export async function syncCadEngineUvProject(
   uvPath: string,
-  forgeProjectDir: string,
+  engineProjectDir: string,
   options?: { signal?: AbortSignal; timeoutMs?: number },
 ): Promise<void> {
-  const timeoutMs = options?.timeoutMs ?? FORGE_SYNC_TIMEOUT_MS
+  const timeoutMs = options?.timeoutMs ?? CAD_ENGINE_SYNC_TIMEOUT_MS
   const signal = options?.signal
-  if (signal?.aborted) throw new Error("Forge uv sync aborted")
+  if (signal?.aborted) throw new Error("CAD engine uv sync aborted")
 
-  const child = Bun.spawn([uvPath, "sync", "--locked", "--project", forgeProjectDir], {
+  const child = Bun.spawn([uvPath, "sync", "--locked", "--project", engineProjectDir], {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
@@ -111,9 +111,9 @@ export async function syncForgeUvProject(
   signal?.addEventListener("abort", onAbort, { once: true })
   try {
     const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-    if (signal?.aborted) throw new Error("Forge uv sync aborted")
+    if (signal?.aborted) throw new Error("CAD engine uv sync aborted")
     if (code !== 0) {
-      throw new Error(`Forge uv sync failed (exit ${code ?? 1}): ${stderr.trim() || "no stderr"}`)
+      throw new Error(`CAD engine uv sync failed (exit ${code ?? 1}): ${stderr.trim() || "no stderr"}`)
     }
   } finally {
     clearTimeout(timer)
@@ -122,15 +122,15 @@ export async function syncForgeUvProject(
 }
 
 /**
- * Sync essential forge project files into the XDG cache and return that path.
+ * Sync essential CAD engine project files into the XDG cache and return that path.
  * Keeps uv's venv/writable state out of the installed package tree.
  */
-export async function ensureForgeRuntimeDir(packageRoot: string) {
-  const source = forgeSourceDir(packageRoot)
-  const runtime = forgeRuntimeDir()
+export async function ensureCadEngineDir(packageRoot: string) {
+  const source = cadEngineSourceDir(packageRoot)
+  const runtime = cadEngineRuntimeDir()
   await mkdir(runtime, { recursive: true, mode: 0o700 })
 
-  for (const name of FORGE_RUNTIME_FILES) {
+  for (const name of CAD_ENGINE_FILES) {
     const from = path.join(source, name)
     const to = path.join(runtime, name)
     let sourceInfo: Awaited<ReturnType<typeof stat>>
@@ -138,7 +138,7 @@ export async function ensureForgeRuntimeDir(packageRoot: string) {
       sourceInfo = await stat(from)
     } catch {
       if (name === ".python-version") continue
-      throw new Error(`Missing forge source file: ${from}`)
+      throw new Error(`Missing CAD engine source file: ${from}`)
     }
     let needsCopy = true
     try {
@@ -150,13 +150,13 @@ export async function ensureForgeRuntimeDir(packageRoot: string) {
     if (needsCopy) await copyFile(from, to)
   }
 
-  for (const name of FORGE_RUNTIME_DIRS) {
+  for (const name of CAD_ENGINE_DIRS) {
     const from = path.join(source, name)
     const to = path.join(runtime, name)
     try {
       await stat(from)
     } catch {
-      throw new Error(`Missing forge source directory: ${from}`)
+      throw new Error(`Missing CAD engine source directory: ${from}`)
     }
     await cp(from, to, { recursive: true, force: true })
   }

@@ -50,7 +50,7 @@ SECTIONS: list[Section] = [
         "tell the user to run that pip command (or uv add build123d-drafting-helpers)\n"
         "and then retry.\n"
         "\n"
-        "The package is separate from build123d-mcp because it is also useful as\n"
+        "The package is separate from studio-cad-runtime because it is also useful as\n"
         "a standalone library. It is on the MCP server's import allowlist, so once\n"
         "installed it can be used directly inside execute() calls.\n"
         "\n"

@@ -22,12 +22,8 @@ snapshots — a feedback loop a one-shot script cannot give.
 Quick start: execute("from build123d import *"), build in small steps,
 register parts with show(part, "name"), measure() after every boolean,
 export() when done. Read the build123d://quickref resource before writing
-build code. Step-by-step workflows: build123d://skill/modeling (build 3D
-parts, incl. from technical drawings), build123d://skill/edit (modify an
-existing model), build123d://skill/drawing (multi-view engineering drawings),
-and build123d://skill/repair (repair a solid that fails the validity gate);
-install any into the project with
-install_skill().
+build code. OpenCode Studio agents should load the studio-cad skill for
+product workflow (multi-part FDM, design build, QC).
 """
 
 # --- MCP tool annotations (#368) --------------------------------------------- #
@@ -689,7 +685,7 @@ def last_error() -> str:
 
 @mcp.tool(annotations=_READ_ONLY)
 def version() -> str:
-    """Return the installed versions of the build123d-mcp server, its key dependencies (build123d, build123d-drafting-helpers), and the companion packages importable inside execute() (bd_warehouse for threads/fasteners/gears/bearings, augura for printability analysis). Use this to confirm which server build is running — e.g. to check whether a feature or fix is present, or whether the client is talking to a stale install."""
+    """Return the installed versions of the studio-cad-runtime, its key dependencies (build123d, build123d-drafting-helpers), and the companion packages importable inside execute() (bd_warehouse for threads/fasteners/gears/bearings, augura for printability analysis). Use this to confirm which server build is running — e.g. to check whether a feature or fix is present, or whether the client is talking to a stale install."""
     # Computed in-process (pure importlib.metadata, same venv as the worker), so
     # it still answers when the worker subprocess is down — exactly the stale /
     # broken-install case this tool exists to diagnose.
@@ -808,10 +804,8 @@ BUILD123D-MCP WORKFLOW GUIDE
    default line_width=0.5 and arrow_length=3.0 make witness lines render as
    thick filled rectangles. Override every parameter, not just font_size.
 
-   For a guided multi-view drawing workflow (choose views, scale/page size,
-   annotate, lint, export SVG/DXF/PDF), call install_skill() to write a
-   step-by-step skill file into the current project, or read the skill directly
-   from the build123d://skill/drawing resource.
+    For product CAD workflow (multi-part FDM, design build, QC gates), use the
+    OpenCode studio-cad skill rather than ad-hoc scripts.
 
 11. IMPORTING EXTERNAL FILES
    After import_cad_file(), the shape is a named object — use render_view(objects="name")
@@ -974,78 +968,6 @@ def suggest_view_layout(
         extents,
         centroid,
     )
-
-
-@mcp.resource(
-    "build123d://skill/drawing",
-    mime_type="text/plain",
-    description="The b123d-drawing engineering workflow skill: step-by-step guide for creating multi-view engineering drawings from build123d geometry (views, scale, annotation, lint, SVG/DXF/PDF export).",
-)
-def build123d_drawing_skill() -> str:
-    """b123d-drawing engineering workflow skill."""
-    from cad_runtime.tools.install_skill import _load_raw
-
-    return _load_raw("drawing")
-
-
-@mcp.resource(
-    "build123d://skill/modeling",
-    mime_type="text/plain",
-    description="The b123d-modeling workflow skill: step-by-step guide for building 3D parts and assemblies with build123d via this server — including extracting a spec from a technical drawing, the incremental build/measure/render loop, dominant-form correction after the first render, snapshots, and export.",
-)
-def build123d_modeling_skill() -> str:
-    """b123d-modeling workflow skill."""
-    from cad_runtime.tools.install_skill import _load_raw
-
-    return _load_raw("modeling")
-
-
-@mcp.resource(
-    "build123d://skill/edit",
-    mime_type="text/plain",
-    description="The b123d-edit workflow skill: modify existing build123d source code explicitly, then verify geometry deltas, fit, validity, and export-gate results with build123d-mcp.",
-)
-def build123d_edit_skill() -> str:
-    """b123d-edit workflow skill."""
-    from cad_runtime.tools.install_skill import _load_raw
-
-    return _load_raw("edit")
-
-
-@mcp.resource(
-    "build123d://skill/repair",
-    mime_type="text/plain",
-    description="The b123d-repair workflow skill: diagnose a validity-gate failure with validate()/export()/locate_gate_defects(), then write explicit build123d/OCP repair code in execute() using field-proven patterns, snapshots, and export-gate verification.",
-)
-def build123d_repair_skill() -> str:
-    """b123d-repair workflow skill."""
-    from cad_runtime.tools.install_skill import _load_raw
-
-    return _load_raw("repair")
-
-
-@mcp.tool(annotations=_MUTATING)
-def install_skill(target: str = "claude", force: bool = False, skill: str = "drawing") -> str:
-    """Copy a b123d workflow skill into the current project.
-
-    Writes the appropriate config file for the requested agent so the
-    step-by-step workflow is available in future sessions.
-
-    skill: which workflow to install (default "drawing")
-      - drawing   → multi-view engineering drawings from build123d geometry
-      - modeling  → build 3D parts/assemblies (incl. from technical drawings)
-      - edit      → modify existing build123d code and verify geometry deltas
-      - repair    → repair a solid that fails the validity gate
-    target: one of "claude" (default), "agents-md", "cursor", "windsurf"
-      - claude     → .claude/skills/<skill-dir>/SKILL.md  (Claude Code)
-      - agents-md  → AGENTS.md  (Codex CLI, Antigravity, GitHub Copilot, Cline)
-      - cursor     → .cursor/rules/<skill-dir>.mdc
-      - windsurf   → .windsurfrules
-    force: overwrite existing installation (default False)
-    """
-    from cad_runtime.tools.install_skill import install_skill as _install
-
-    return _install(target=target, force=force, skill=skill)
 
 
 @mcp.prompt(

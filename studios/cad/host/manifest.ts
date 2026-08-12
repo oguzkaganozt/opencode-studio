@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 
 export const DESIGN_SCHEMA = 1
-export const FORGE_ENGINE = "forge-cad/1"
+/** On-disk artifact engine id (must match engine/cad_build.py). Keep stable. */
+export const CAD_BUILD_ENGINE = "forge-cad/1"
 export const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/
 
 export type DesignPart = {
@@ -217,7 +218,7 @@ export function validateArtifactManifest(value: unknown): ArtifactManifest {
   const build = obj.build
   if (typeof build !== "object" || build === null) throw new ManifestError("manifest.json missing build metadata")
   const buildRecord = build as Record<string, unknown>
-  if (buildRecord.engine !== FORGE_ENGINE) throw new ManifestError(`Unsupported forge engine: ${String(buildRecord.engine)}`)
+  if (buildRecord.engine !== CAD_BUILD_ENGINE) throw new ManifestError(`Unsupported CAD build engine: ${String(buildRecord.engine)}`)
   if (typeof buildRecord.inputs !== "object" || buildRecord.inputs === null || Array.isArray(buildRecord.inputs)) {
     throw new ManifestError("manifest.json build inputs must be an object")
   }

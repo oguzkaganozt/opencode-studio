@@ -1,7 +1,7 @@
 import path from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { allStudioIds, maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } from "./config"
-import { ensureForgeRuntimeDir, loadPackageMeta } from "./core/package-meta"
+import { ensureCadEngineDir, loadPackageMeta } from "./core/package-meta"
 import { packageRootFrom } from "./core/paths"
 import { composeStudioPlugins, type StudioPluginContribution } from "./core/plugin-compose"
 import { assertNotRoot } from "./core/security"
@@ -114,7 +114,7 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       packageRoot,
       mediaProviderPackage: meta.mediaProviderSpecifier,
       resolveStudioRoot,
-      ensureForgeRuntimeDir,
+      ensureCadEngineDir,
     }
 
     const studioHooks = await Promise.all(

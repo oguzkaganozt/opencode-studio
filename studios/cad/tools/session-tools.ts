@@ -1,11 +1,11 @@
 import { tool } from "@opencode-ai/plugin"
 import { cadSessionToolName } from "./names"
-import { getBuild123dSession } from "./session"
+import { getCadRuntimeSession } from "./session"
 import catalog from "./catalog.json" with { type: "json" }
 import {
-  BUILD123D_STRUCTURED_TOOLS,
+  CAD_SESSION_STRUCTURED_TOOLS,
   formatCadToolResult,
-  structureBuild123dResult,
+  structureCadSessionResult,
 } from "./result"
 
 type JsonSchema = {
@@ -110,8 +110,8 @@ function jsonSchemaToShape(schema: JsonSchema): Record<string, Field> {
   return shape
 }
 
-export function createCadSessionTools(options: { forgeProjectDir: string; cwd: string }) {
-  const session = getBuild123dSession(options.forgeProjectDir, options.cwd)
+export function createCadSessionTools(options: { engineProjectDir: string; cwd: string }) {
+  const session = getCadRuntimeSession(options.engineProjectDir, options.cwd)
   const tools: Record<string, ReturnType<typeof tool>> = {}
 
   for (const entry of catalog.tools as CatalogTool[]) {
@@ -136,8 +136,8 @@ export function createCadSessionTools(options: { forgeProjectDir: string; cwd: s
           url: `data:${image.mimeType};base64,${image.data}`,
           filename: `${entry.name}-${index + 1}.${image.mimeType.includes("svg") ? "svg" : "png"}`,
         }))
-        if (BUILD123D_STRUCTURED_TOOLS.has(entry.name)) {
-          const envelope = structureBuild123dResult({
+        if (CAD_SESSION_STRUCTURED_TOOLS.has(entry.name)) {
+          const envelope = structureCadSessionResult({
             entryName: entry.name,
             toolName,
             text: result.text,
@@ -172,6 +172,4 @@ export function createCadSessionTools(options: { forgeProjectDir: string; cwd: s
   return tools
 }
 
-export function cadSessionToolNames() {
-  return (catalog.tools as CatalogTool[]).map((entry) => cadSessionToolName(entry.name))
-}
+

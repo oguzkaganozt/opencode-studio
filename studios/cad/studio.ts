@@ -3,7 +3,7 @@ import { STUDIO_TOOL_PERMISSIONS, type StudioDefinition } from "../../src/core/r
 export const cadStudio: StudioDefinition = {
   id: "cad",
   label: "CAD Studio",
-  description: "FDM-printable multi-part CAD products with build123d and Forge.",
+  description: "FDM-printable multi-part CAD products with build123d.",
   skill: "studio-cad",
   toolPermissions: STUDIO_TOOL_PERMISSIONS.cad,
   requiredEngines: ["uv"],

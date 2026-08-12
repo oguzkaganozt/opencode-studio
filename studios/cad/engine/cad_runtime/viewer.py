@@ -114,7 +114,7 @@ def encode_glb(verts: Iterable[Sequence[float]], tris: Iterable[Sequence[int]]) 
     bin_blob = pos_bytes + idx_bytes
 
     gltf = {
-        "asset": {"version": "2.0", "generator": "build123d-mcp"},
+        "asset": {"version": "2.0", "generator": "studio-cad-runtime"},
         "scene": 0,
         "scenes": [{"nodes": [0]}],
         "nodes": [{"mesh": 0}],

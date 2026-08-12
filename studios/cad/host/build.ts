@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto"
 import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { isInside } from "../../../src/core/paths"
-import { getBuild123dSession } from "../tools/session"
+import { getCadRuntimeSession } from "../tools/session"
 import { resolveDesignDirectory, type StudioLayout } from "./library"
 import { readArtifactManifest, readDesignManifest, scaffoldDesignManifest } from "./manifest"
 
 /** Timed budget for product build via the shared CAD runtime session. */
-const FORGE_BUILD_TIMEOUT_MS = 120_000
+const CAD_BUILD_TIMEOUT_MS = 120_000
 
-export type ForgeBuildResult = {
+export type CadBuildResult = {
   ok: boolean
   exitCode: number
   stdout: string
@@ -18,27 +18,27 @@ export type ForgeBuildResult = {
   designDir: string
 }
 
-export type ForgeRunner = (input: {
-  forgeProjectDir: string
+export type CadBuildRunner = (input: {
+  engineProjectDir: string
   designDir: string
   cwd: string
   signal?: AbortSignal
-}) => Promise<ForgeBuildResult>
+}) => Promise<CadBuildResult>
 
 /**
  * Build through the same studio-cad-runtime session as cad_execute / measure / …
  * (single agent-facing runtime; cad_build runs in-process inside that runtime).
  */
-export function createRuntimeForgeRunner(cwd: string): ForgeRunner {
-  return async ({ forgeProjectDir, designDir, signal }) => {
-    const session = getBuild123dSession(forgeProjectDir, cwd)
+export function createCadBuildRunner(cwd: string): CadBuildRunner {
+  return async ({ engineProjectDir, designDir, signal }) => {
+    const session = getCadRuntimeSession(engineProjectDir, cwd)
     try {
       const result = await session.callTool(
         "studio_build",
         { design_dir: designDir },
         {
           signal,
-          timeoutMs: FORGE_BUILD_TIMEOUT_MS,
+          timeoutMs: CAD_BUILD_TIMEOUT_MS,
           // Build shares the CAD process; do not wipe interactive session state on timeout/cancel.
           resetSessionOnFailure: false,
         },
@@ -95,20 +95,19 @@ export function createRuntimeForgeRunner(cwd: string): ForgeRunner {
   }
 }
 
-/** @deprecated Use createRuntimeForgeRunner(cwd) — kept name for call sites/tests. */
-export const defaultForgeRunner: ForgeRunner = createRuntimeForgeRunner(process.cwd())
+export const defaultCadBuildRunner: CadBuildRunner = createCadBuildRunner(process.cwd())
 
 export async function buildDesign(
   layout: StudioLayout,
   id: string,
-  forgeProjectDir: string,
-  runner: ForgeRunner = defaultForgeRunner,
+  engineProjectDir: string,
+  runner: CadBuildRunner = defaultCadBuildRunner,
   signal?: AbortSignal,
   cwd: string = process.cwd(),
-): Promise<ForgeBuildResult & { manifestPath: string | null }> {
+): Promise<CadBuildResult & { manifestPath: string | null }> {
   const designDir = await resolveDesignDirectory(layout, id)
   await readDesignManifest(designDir, id)
-  const result = await runner({ forgeProjectDir, designDir, cwd, signal })
+  const result = await runner({ engineProjectDir, designDir, cwd, signal })
   if (!result.ok) return { ...result, manifestPath: null }
   const artifact = await readArtifactManifest(designDir, id)
   if (!artifact) {
@@ -116,7 +115,7 @@ export async function buildDesign(
       ...result,
       ok: false,
       exitCode: 1,
-      stderr: `${result.stderr}\nForge exited successfully but manifest.json is missing`,
+      stderr: `${result.stderr}\nBuild exited successfully but manifest.json is missing`,
       manifestPath: null,
     }
   }

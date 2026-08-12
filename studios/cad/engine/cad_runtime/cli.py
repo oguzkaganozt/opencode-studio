@@ -1,46 +1,10 @@
-"""Command-line entry point for the build123d MCP server.
+"""Command-line entry point for the Studio CAD session runtime.
 
 Parses CLI arguments / environment variables, wires up the ``WorkerSession``,
 and starts the FastMCP server defined in ``server.py``. Kept separate so
 ``server.py`` stays focused on tool/resource/prompt registration.
 """
 
-
-def _cmd_install_skill(argv: list) -> None:
-    import argparse
-    import sys
-
-    from cad_runtime.tools.install_skill import SKILLS, TARGETS
-    from cad_runtime.tools.install_skill import install_skill as _install
-
-    p = argparse.ArgumentParser(
-        prog="studio-cad-runtime install-skill",
-        description="Copy a b123d workflow skill into the current project for the specified agent.",
-    )
-    p.add_argument(
-        "--target",
-        choices=TARGETS,
-        default="claude",
-        help="Agent to install for (default: claude)",
-    )
-    p.add_argument(
-        "--skill",
-        choices=tuple(SKILLS),
-        default="drawing",
-        help=f"Workflow to install: {'/'.join(SKILLS)} (default: drawing)",
-    )
-    p.add_argument("--force", action="store_true", help="Overwrite existing installation")
-    args = p.parse_args(argv)
-
-    from cad_runtime.tools.install_skill import _dest_exists
-
-    if not args.force and _dest_exists(args.target, skill=args.skill):
-        print(
-            f"Skill already installed for '{args.target}' — use --force to overwrite.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    print(_install(target=args.target, force=args.force, skill=args.skill))
 
 
 def main():
@@ -50,25 +14,13 @@ def main():
     from importlib.metadata import version
 
     from cad_runtime import server
-    from cad_runtime.tools.install_skill import SKILLS
     from cad_runtime.worker import InProcessSession, WorkerSession
 
-    if len(sys.argv) > 1 and sys.argv[1] == "install-skill":
-        _cmd_install_skill(sys.argv[2:])
-        return
-
-    _skill_list = "/".join(SKILLS)
-    _skill_epilog = f"""\
-Subcommands:
-  install-skill     Copy a b123d workflow skill ({_skill_list}) into .claude/skills/ of the current project
-                    Usage: studio-cad-runtime install-skill [--skill {_skill_list}] [--force]
-"""
     parser = argparse.ArgumentParser(
         prog="studio-cad-runtime",
         description="OpenCode Studio CAD session runtime on build123d (stdio protocol).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=_skill_epilog
-        + """
+        epilog="""
 MCP client configuration example:
   {
     "mcpServers": {

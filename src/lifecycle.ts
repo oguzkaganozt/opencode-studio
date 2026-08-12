@@ -31,8 +31,8 @@ import {
   agentNameFor,
   agentSourcePath,
   fileDigest,
-  ensureForgeRuntimeDir,
-  forgeRuntimeDir,
+  ensureCadEngineDir,
+  cadEngineRuntimeDir,
   LEGACY_MANAGED_MCP_KEY,
   loadPackageMeta,
   MANAGED_MARKER_NAME,
@@ -686,7 +686,7 @@ export async function configureStudios(
   }
 
   // Seed CAD engine sources into XDG cache so status/repair do not report unseeded on greenfield.
-  await ensureForgeRuntimeDir(packageRoot)
+  await ensureCadEngineDir(packageRoot)
 
   const installed: string[] = []
   const rollbacks: Array<() => Promise<void>> = []
@@ -1145,9 +1145,9 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     }
 
     if (studioId === "cad") {
-      const forgeDir = forgeRuntimeDir()
-      const pyproject = path.join(forgeDir, "pyproject.toml")
-      const venvDir = path.join(forgeDir, ".venv")
+      const engineDir = cadEngineRuntimeDir()
+      const pyproject = path.join(engineDir, "pyproject.toml")
+      const venvDir = path.join(engineDir, ".venv")
       let hasProject = false
       let hasVenv = false
       try {
@@ -1165,21 +1165,21 @@ export async function statusStudios(input: LifecyclePaths = {}) {
         checks.push({
           id: "cad-engine",
           status: "warn",
-          message: `CAD engine runtime not seeded at ${forgeDir}`,
+          message: `CAD engine runtime not seeded at ${engineDir}`,
           repair: "Run opencode-studio repair (seeds engine) or cad_design_build once",
         })
       } else if (!hasVenv) {
         checks.push({
           id: "cad-engine",
           status: "warn",
-          message: `CAD engine sources present but venv not synced (${forgeDir})`,
+          message: `CAD engine sources present but venv not synced (${engineDir})`,
           repair: "Run cad_design_build once (syncs engine deps automatically)",
         })
       } else {
         checks.push({
           id: "cad-engine",
           status: "pass",
-          message: `CAD engine venv ready (${forgeDir})`,
+          message: `CAD engine venv ready (${engineDir})`,
         })
       }
     }

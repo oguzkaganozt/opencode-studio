@@ -1,11 +1,11 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { createInterface, type Interface } from "node:readline"
 import { ensureUv } from "../../../src/core/engines"
-import { syncForgeUvProject } from "../../../src/core/package-meta"
+import { syncCadEngineUvProject } from "../../../src/core/package-meta"
 
-export const BUILD123D_SESSION_TIMEOUT_MS = 120_000
+export const CAD_RUNTIME_SESSION_TIMEOUT_MS = 120_000
 /** @deprecated Public tools use cad_* names; session protocol is internal. */
-export const BUILD123D_TOOL_PREFIX = "cad_"
+export const CAD_SESSION_TOOL_PREFIX = "cad_"
 
 type JsonRpcId = number
 type JsonRpcRequest = {
@@ -26,7 +26,7 @@ type JsonRpcResponse = {
   error?: { code: number; message: string; data?: unknown }
 }
 
-export type Build123dCallResult = {
+export type CadRuntimeCallResult = {
   text: string
   isError: boolean
   images: Array<{ mimeType: string; data: string }>
@@ -41,9 +41,9 @@ type Pending = {
 /**
  * Long-lived Studio CAD runtime (Python) owned by the CAD plugin.
  * One process (--in-process): session tools + studio_build. Stdio JSON-RPC.
- * Same forge uv project as product builds.
+ * Same CAD engine uv project as product builds.
  */
-export class Build123dSession {
+export class CadRuntimeSession {
   private child: ChildProcessWithoutNullStreams | null = null
   private reader: Interface | null = null
   private nextId = 1
@@ -53,7 +53,7 @@ export class Build123dSession {
   private closed = false
 
   constructor(
-    private readonly forgeProjectDir: string,
+    private readonly engineProjectDir: string,
     private readonly cwd: string,
   ) {}
 
@@ -66,9 +66,9 @@ export class Build123dSession {
       /** When false, timeout/abort rejects the call but keeps the Python session alive (for studio_build). Default true. */
       resetSessionOnFailure?: boolean
     },
-  ): Promise<Build123dCallResult> {
+  ): Promise<CadRuntimeCallResult> {
     await this.ensureStarted(options?.signal)
-    const timeoutMs = options?.timeoutMs ?? BUILD123D_SESSION_TIMEOUT_MS
+    const timeoutMs = options?.timeoutMs ?? CAD_RUNTIME_SESSION_TIMEOUT_MS
     const result = await this.request(
       "tools/call",
       {
@@ -158,13 +158,13 @@ export class Build123dSession {
   private async start(signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) throw new Error("build123d session start aborted")
     const uv = await ensureUv()
-    await syncForgeUvProject(uv.path, this.forgeProjectDir, { signal })
+    await syncCadEngineUvProject(uv.path, this.engineProjectDir, { signal })
 
     // Single Python CAD process: --in-process disables the runtime's internal
     // WorkerSession child so session + studio_build share one address space.
     const child = spawn(
       uv.path,
-      ["--project", this.forgeProjectDir, "run", "--no-sync", "studio-cad-runtime", "--in-process"],
+      ["--project", this.engineProjectDir, "run", "--no-sync", "studio-cad-runtime", "--in-process"],
       {
         cwd: this.cwd,
         stdio: ["pipe", "pipe", "pipe"],
@@ -300,7 +300,7 @@ export class Build123dSession {
   }
 }
 
-function parseToolResult(raw: unknown): Build123dCallResult {
+function parseToolResult(raw: unknown): CadRuntimeCallResult {
   if (!raw || typeof raw !== "object") {
     return { text: String(raw ?? ""), isError: false, images: [] }
   }
@@ -323,13 +323,13 @@ function parseToolResult(raw: unknown): Build123dCallResult {
   }
 }
 
-const sessions = new Map<string, Build123dSession>()
+const sessions = new Map<string, CadRuntimeSession>()
 
-export function getBuild123dSession(forgeProjectDir: string, cwd: string): Build123dSession {
-  const key = `${forgeProjectDir}::${cwd}`
+export function getCadRuntimeSession(engineProjectDir: string, cwd: string): CadRuntimeSession {
+  const key = `${engineProjectDir}::${cwd}`
   const existing = sessions.get(key)
   if (existing) return existing
-  const session = new Build123dSession(forgeProjectDir, cwd)
+  const session = new CadRuntimeSession(engineProjectDir, cwd)
   sessions.set(key, session)
   return session
 }

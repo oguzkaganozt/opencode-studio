@@ -4,7 +4,7 @@ import { createStudioPlugin } from "./tools"
 export type CadPluginContext = {
   root: string
   companionUrl?: string
-  forgeProjectDir: string
+  engineProjectDir: string
 }
 
 export function loadCadPlugin(ctx: CadPluginContext): Plugin {
@@ -13,6 +13,6 @@ export function loadCadPlugin(ctx: CadPluginContext): Plugin {
     plugin(context, {
       studioRoot: ctx.root,
       companionUrl: ctx.companionUrl,
-      forgeProjectDir: ctx.forgeProjectDir,
+      engineProjectDir: ctx.engineProjectDir,
     })
 }

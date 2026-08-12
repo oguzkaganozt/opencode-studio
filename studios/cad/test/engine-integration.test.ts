@@ -5,8 +5,8 @@ import path from "node:path"
 import { buildDesign } from "../host/build"
 import { initializeStudio } from "../host/library"
 
-const FORGE_PROJECT_DIR = path.resolve(import.meta.dir, "..", "engine")
-const FORGE_TIMEOUT_MS = 90_000
+const ENGINE_PROJECT_DIR = path.resolve(import.meta.dir, "..", "engine")
+const ENGINE_TIMEOUT_MS = 90_000
 
 const tmpRoots: string[] = []
 afterEach(async () => {
@@ -39,12 +39,12 @@ describe("design_build integration (real subprocess)", () => {
   test(
     "builds a design via uv --project subprocess and writes STEP/STL/GLB + manifest",
     async () => {
-      const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-forge-int-"))
+      const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-engine-int-"))
       tmpRoots.push(tmpRoot)
       await makeDesign(tmpRoot, "cube-test")
 
       const layout = await initializeStudio(tmpRoot)
-      const result = await buildDesign(layout, "cube-test", FORGE_PROJECT_DIR)
+      const result = await buildDesign(layout, "cube-test", ENGINE_PROJECT_DIR)
 
       expect(result.ok).toBe(true)
       expect(result.exitCode).toBe(0)
@@ -66,29 +66,29 @@ describe("design_build integration (real subprocess)", () => {
         expect(info.size).toBeGreaterThan(0)
       }
     },
-    FORGE_TIMEOUT_MS + 10_000,
+    ENGINE_TIMEOUT_MS + 10_000,
   )
 
   test(
     "failed build preserves previous output (subprocess)",
     async () => {
-      const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-forge-preserve-"))
+      const tmpRoot = await mkdtemp(path.join(tmpdir(), "cad-engine-preserve-"))
       tmpRoots.push(tmpRoot)
       const designDir = await makeDesign(tmpRoot, "preserve-test")
 
       const layout = await initializeStudio(tmpRoot)
-      const first = await buildDesign(layout, "preserve-test", FORGE_PROJECT_DIR)
+      const first = await buildDesign(layout, "preserve-test", ENGINE_PROJECT_DIR)
       expect(first.ok).toBe(true)
       const firstManifest = await readFile(path.join(designDir, "manifest.json"), "utf8")
 
       await writeFile(path.join(designDir, "parts", "cube.py"), "def build():\n    raise RuntimeError('intentional failure')\n")
-      const second = await buildDesign(layout, "preserve-test", FORGE_PROJECT_DIR)
+      const second = await buildDesign(layout, "preserve-test", ENGINE_PROJECT_DIR)
       expect(second.ok).toBe(false)
       expect(second.exitCode).not.toBe(0)
 
       const secondManifest = await readFile(path.join(designDir, "manifest.json"), "utf8")
       expect(secondManifest).toBe(firstManifest)
     },
-    (FORGE_TIMEOUT_MS + 10_000) * 2,
+    (ENGINE_TIMEOUT_MS + 10_000) * 2,
   )
 })

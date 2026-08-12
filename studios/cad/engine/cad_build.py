@@ -31,7 +31,7 @@ ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 OUTPUT_DIRS = ("step", "stl", "glb", "topo")
 ARTIFACTS_DIR = ".artifacts"
 LOCK_DIR = ".build.lock"
-FORGE_ENGINE = "forge-cad/1"
+CAD_BUILD_ENGINE = "forge-cad/1"  # on-disk artifact id; keep stable
 STEP_VOLUME_REL_TOL = 1e-7
 STEP_VOLUME_ABS_TOL_MM3 = 1e-6
 STEP_BOUNDS_ABS_TOL_MM = 1e-6
@@ -406,7 +406,7 @@ def build_design(design_path: str) -> Path:
             "id": manifest["id"],
             "parts": built_parts,
             "build": {
-                "engine": FORGE_ENGINE,
+                "engine": CAD_BUILD_ENGINE,
                 "inputs": input_hashes,
             },
         }
@@ -434,7 +434,7 @@ def build_design(design_path: str) -> Path:
 
 
 def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="forge")
+    parser = argparse.ArgumentParser(prog="studio-cad-build")
     subparsers = parser.add_subparsers(dest="command", required=True)
     build = subparsers.add_parser("build", help="Build a CAD Studio design in place")
     build.add_argument("design", help="Directory containing design.json")
@@ -448,7 +448,7 @@ def main() -> None:
             manifest_path = build_design(args.design)
             print(f"Build complete: {manifest_path}")
     except Exception as exc:
-        print(f"forge: {exc}", file=sys.stderr)
+        print(f"studio-cad-build: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
 

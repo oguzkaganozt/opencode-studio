@@ -18,7 +18,7 @@ const fakeContext = {
   async ask() {},
 } as any
 
-const fakeForgeRunner = async () => ({
+const fakeCadBuildRunner = async () => ({
   ok: true,
   exitCode: 0,
   stdout: "Build complete",
@@ -67,9 +67,9 @@ async function makeStudio() {
   tmpRoots.push(tmpRoot)
   const designsRoot = path.join(tmpRoot, "designs")
   await mkdir(designsRoot, { recursive: true })
-  await mkdir(path.join(tmpRoot, "forge"), { recursive: true })
+  await mkdir(path.join(tmpRoot, "engine"), { recursive: true })
   await initializeStudio(designsRoot)
-  return { designsRoot, forgeDir: path.join(tmpRoot, "forge") }
+  return { designsRoot, engineDir: path.join(tmpRoot, "engine") }
 }
 
 describe("cad plugin smoke", () => {
@@ -89,10 +89,10 @@ describe("cad plugin smoke", () => {
 
   test("registers tools and scaffolds a design", async () => {
     const studio = await makeStudio()
-    const plugin = createStudioPlugin({ forgeRunner: fakeForgeRunner as any })
+    const plugin = createStudioPlugin({ buildRunner: fakeCadBuildRunner as any })
     const hooks = await plugin(fakeContext, {
       studioRoot: studio.designsRoot,
-      forgeProjectDir: studio.forgeDir,
+      engineProjectDir: studio.engineDir,
       companionUrl: "http://127.0.0.1:4173",
     })
     const names = Object.keys(hooks.tool ?? {}).sort()
@@ -130,8 +130,8 @@ describe("cad plugin smoke", () => {
       await writeBuiltDesign(designDir, "demo")
       return { ok: true, exitCode: 0, stdout: "", stderr: "", manifestPath: null, designDir }
     }
-    const plugin = createStudioPlugin({ forgeRunner: runner as any })
-    const hooks = await plugin(fakeContext, { studioRoot: studio.designsRoot, forgeProjectDir: studio.forgeDir })
+    const plugin = createStudioPlugin({ buildRunner: runner as any })
+    const hooks = await plugin(fakeContext, { studioRoot: studio.designsRoot, engineProjectDir: studio.engineDir })
     await (hooks.tool as any).cad_design_create.execute({ id: "demo", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
     const built = await (hooks.tool as any).cad_design_build.execute({ id: "demo" }, { ...fakeContext, ask: async () => {} })
     const builtBody = JSON.parse(built.output)

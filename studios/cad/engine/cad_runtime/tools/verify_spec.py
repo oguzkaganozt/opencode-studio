@@ -553,7 +553,7 @@ def _check_features(session, object_name: str, features: list, out: list) -> Non
                     "requirement": f"feature {kind!r}",
                     "status": "UNVERIFIED",
                     "tier": "unverified",
-                    "note": f"feature kind {kind!r} is not recognised by build123d-mcp",
+                    "note": f"feature kind {kind!r} is not recognised by studio-cad-runtime",
                 }
             )
 
@@ -634,9 +634,9 @@ def _check_deferred(spec: dict, out: list) -> None:
     for t in spec.get("targets", []) or []:
         name = t.get("name")
         note = (
-            "declared unverifiable — no tool in build123d-mcp can prove this (e.g. needs a solver)"
+            "declared unverifiable — no tool in studio-cad-runtime can prove this (e.g. needs a solver)"
             if t.get("verifiable") is False
-            else "no checker for this target in build123d-mcp"
+            else "no checker for this target in studio-cad-runtime"
         )
         out.append(
             {

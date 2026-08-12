@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { Build123dSession } from "../tools/session"
+import { CadRuntimeSession } from "../tools/session"
 
-const FORGE_PROJECT_DIR = path.resolve(import.meta.dir, "..", "engine")
+const ENGINE_PROJECT_DIR = path.resolve(import.meta.dir, "..", "engine")
 
 describe("build123d session recovery", () => {
   test("restarts after initialization abort and request timeout", async () => {
-    const session = new Build123dSession(FORGE_PROJECT_DIR, process.cwd())
+    const session = new CadRuntimeSession(ENGINE_PROJECT_DIR, process.cwd())
     try {
       const controller = new AbortController()
       setTimeout(() => controller.abort(), 1)

@@ -4,7 +4,7 @@ import {
   designBuildSuccessResult,
   designCreateResult,
   extractFirstJson,
-  structureBuild123dResult,
+  structureCadSessionResult,
 } from "../tools/result"
 
 describe("extractFirstJson", () => {
@@ -20,11 +20,11 @@ describe("extractFirstJson", () => {
   })
 })
 
-describe("structureBuild123dResult", () => {
+describe("structureCadSessionResult", () => {
   test("normalize validate pass/fail", () => {
-    const pass = structureBuild123dResult({
+    const pass = structureCadSessionResult({
       entryName: "validate",
-      toolName: "build123d_validate",
+      toolName: "cad_validate",
       text: 'Validity gate: PASS\n{"passes_gate":true,"reasons":[],"warnings":[]}',
       isError: false,
     })
@@ -32,9 +32,9 @@ describe("structureBuild123dResult", () => {
     expect(pass.status).toBe("pass")
     expect(pass.data?.passes_gate).toBe(true)
 
-    const fail = structureBuild123dResult({
+    const fail = structureCadSessionResult({
       entryName: "validate",
-      toolName: "build123d_validate",
+      toolName: "cad_validate",
       text: 'Validity gate: FAIL — open shell\n{"passes_gate":false,"reasons":["open shell"],"warnings":[]}',
       isError: false,
     })
@@ -44,9 +44,9 @@ describe("structureBuild123dResult", () => {
   })
 
   test("normalize measure", () => {
-    const got = structureBuild123dResult({
+    const got = structureCadSessionResult({
       entryName: "measure",
-      toolName: "build123d_measure",
+      toolName: "cad_measure",
       text: JSON.stringify({
         volume: 1000,
         area: 600,
@@ -61,9 +61,9 @@ describe("structureBuild123dResult", () => {
   })
 
   test("normalize compare fit", () => {
-    const got = structureBuild123dResult({
+    const got = structureCadSessionResult({
       entryName: "compare",
-      toolName: "build123d_compare",
+      toolName: "cad_compare",
       text: JSON.stringify({
         clearance: 0.3,
         status: "apart",
@@ -77,9 +77,9 @@ describe("structureBuild123dResult", () => {
     expect(got.status).toBe("pass")
     expect(got.summary).toContain("apart")
 
-    const clash = structureBuild123dResult({
+    const clash = structureCadSessionResult({
       entryName: "compare",
-      toolName: "build123d_compare",
+      toolName: "cad_compare",
       text: JSON.stringify({
         clearance: 0,
         status: "interpenetrating",
@@ -95,9 +95,9 @@ describe("structureBuild123dResult", () => {
   })
 
   test("normalize printability", () => {
-    const pass = structureBuild123dResult({
+    const pass = structureCadSessionResult({
       entryName: "analyze_printability",
-      toolName: "build123d_analyze_printability",
+      toolName: "cad_analyze_printability",
       text: '0 findings — part looks printable\n\n{"findings":[]}',
       isError: false,
     })
@@ -105,9 +105,9 @@ describe("structureBuild123dResult", () => {
     expect(pass.status).toBe("pass")
     expect(pass.data?.error_count).toBe(0)
 
-    const fail = structureBuild123dResult({
+    const fail = structureCadSessionResult({
       entryName: "analyze_printability",
-      toolName: "build123d_analyze_printability",
+      toolName: "cad_analyze_printability",
       text: JSON.stringify({
         findings: [{ kind: "manifold", severity: "error", message: "not manifold" }],
       }),
@@ -119,9 +119,9 @@ describe("structureBuild123dResult", () => {
   })
 
   test("tool error becomes structured envelope", () => {
-    const got = structureBuild123dResult({
+    const got = structureCadSessionResult({
       entryName: "measure",
-      toolName: "build123d_measure",
+      toolName: "cad_measure",
       text: "boom",
       isError: true,
     })

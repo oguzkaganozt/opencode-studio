@@ -166,7 +166,7 @@ function DesignsPage() {
               className="cad-home-chip cad-home-chip--primary"
               onClick={() =>
                 requestAgentHandoff({
-                  text: "Create a new CAD design in Studio Home, model the parts, then design_build and open the viewer.",
+                  text: "Create a new CAD design in Studio Home, model the parts, then cad_design_build and open the viewer.",
                   source: "cad",
                   open: true,
                   copyFallback: true,
@@ -550,7 +550,7 @@ function DesignWorkspace({ designId }: { designId: string }) {
         ? ` Prefer STEP under step/ for: ${partNames.map((p) => `${p}.step`).join(", ")} (design ${designId}).`
         : ""
     blocks.push(
-      `Points = locations; regions = face zones; measures = viewer working distances (linked pairs and/or last pin pair). Working dimensions are intent only — verify on STEP with build123d measure/compare before manufacturing claims. Map face ids on STEP, edit part sources, then design_build.${stepHint}`,
+      `Points = locations; regions = face zones; measures = viewer working distances (linked pairs and/or last pin pair). Working dimensions are intent only — verify on STEP with cad_measure/cad_compare before manufacturing claims. Map face ids on STEP, edit part sources, then cad_design_build.${stepHint}`,
     )
     return blocks.join("\n")
   }
