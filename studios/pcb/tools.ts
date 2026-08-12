@@ -18,7 +18,7 @@ import {
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
 import { projectCircuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
-import { exportCircuit, runProjectBuild, searchComponents, simulateAnalogCircuit, SIMULATION_ESTIMATE_CAVEAT } from "./tsci"
+import { exportCircuit, runProjectBuild, SIMULATION_ESTIMATE_CAVEAT, searchComponents, simulateAnalogCircuit } from "./tsci"
 import { discoverProjects, encodeProjectId, projectSummary, resolveProject } from "./workspace"
 
 async function canonicalWorkspaceRoot(rawPath: string): Promise<string> {
@@ -335,7 +335,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
         // ── Simulation ───────────────────────────────────────────────────────
         pcb_sim_run: tool({
           description:
-            'Run the analog simulation declared by <analogsimulation> and probe elements in src/circuit.tsx. Returns named numeric time-series data and summaries for agent inspection. Simulation success is independent of designValid, fabricationReady, and assemblyReady. Missing models or invalid topology are returned as simulation diagnostics. Results are directional estimates, not engineering-grade. Declare <analogsimulation spiceEngine="ngspice" ... /> for the ngspice engine; the default spicey engine only emits voltage probes, so current probes require ngspice and may otherwise report empty series.',
+            'Run the analog simulations declared by <analogsimulation> and probe elements in src/circuit.tsx. Returns named numeric series with full-series summaries for agent inspection: transient (voltage/current over time) and AC sweep (magnitude in V/A plus phase in deg over frequency in Hz). Simulation success is independent of designValid, fabricationReady, and assemblyReady. Missing models or invalid topology are returned as simulation diagnostics. Results are directional estimates, not engineering-grade. Declare <analogsimulation spiceEngine="ngspice" ... /> for the ngspice engine; the default spicey engine only emits voltage probes, so current probes require ngspice and may otherwise report empty series.',
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
             maxPoints: tool.schema

@@ -142,8 +142,8 @@ export type WorkspaceInfo = {
 
 export type SimulationSeries = {
   name: string
-  kind: "voltage" | "current"
-  unit: "V" | "A"
+  kind: "voltage" | "current" | "phase"
+  unit: "V" | "A" | "deg"
   values: number[]
   summary: {
     first: number
@@ -158,11 +158,11 @@ export type SimulationSeries = {
 export type SimulationExperiment = {
   id: string
   name: string
-  analysis: "transient"
+  analysis: "transient" | "ac"
   pointsCount: number
   returnedPoints: number
   downsampled: boolean
-  axis: { name: "time"; unit: "ms"; values: number[] }
+  axis: { name: "time" | "frequency"; unit: "ms" | "Hz"; values: number[] }
   series: SimulationSeries[]
 }
 

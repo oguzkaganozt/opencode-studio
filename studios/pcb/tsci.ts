@@ -30,8 +30,8 @@ export type TsciResult = {
 
 export type AnalogSimulationSeries = {
   name: string
-  kind: "voltage" | "current"
-  unit: "V" | "A"
+  kind: "voltage" | "current" | "phase"
+  unit: "V" | "A" | "deg"
   values: number[]
   summary: {
     first: number
@@ -46,11 +46,11 @@ export type AnalogSimulationSeries = {
 export type AnalogSimulationExperiment = {
   id: string
   name: string
-  analysis: "transient"
+  analysis: "transient" | "ac"
   pointsCount: number
   returnedPoints: number
   downsampled: boolean
-  axis: { name: "time"; unit: "ms"; values: number[] }
+  axis: { name: "time" | "frequency"; unit: "ms" | "Hz"; values: number[] }
   series: AnalogSimulationSeries[]
 }
 
@@ -233,6 +233,105 @@ function summarizeValues(values: number[]): AnalogSimulationSeries["summary"] {
   }
 }
 
+const TRANSIENT_VOLTAGE_GRAPH = "simulation_transient_voltage_graph"
+const TRANSIENT_CURRENT_GRAPH = "simulation_transient_current_graph"
+const AC_VOLTAGE_GRAPH = "simulation_ac_sweep_voltage_graph"
+const AC_CURRENT_GRAPH = "simulation_ac_sweep_current_graph"
+
+function isAcGraph(type: string): boolean {
+  return type === AC_VOLTAGE_GRAPH || type === AC_CURRENT_GRAPH
+}
+
+function graphType(graph: Record<string, unknown>): string {
+  return typeof graph.type === "string" ? graph.type : ""
+}
+
+function graphName(graph: Record<string, unknown>): string {
+  return typeof graph.name === "string" ? graph.name : typeof graph.source_probe_name === "string" ? graph.source_probe_name : "probe"
+}
+
+function graphAxisValues(graph: Record<string, unknown>): number[] {
+  const value = isAcGraph(graphType(graph)) ? graph.frequencies_hz : graph.timestamps_ms
+  return numericArray(value)
+}
+
+function complexSamples(value: unknown): Array<{ re: number; im: number }> {
+  if (!Array.isArray(value)) return []
+  const samples: Array<{ re: number; im: number }> = []
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const { re, im } = item as Record<string, unknown>
+    if (typeof re !== "number" || !Number.isFinite(re) || typeof im !== "number" || !Number.isFinite(im)) return []
+    samples.push({ re, im })
+  }
+  return samples
+}
+
+function unwrapDegrees(degrees: number[]): number[] {
+  const unwrapped = [...degrees]
+  for (let index = 1; index < unwrapped.length; index++) {
+    let delta = unwrapped[index]! - unwrapped[index - 1]!
+    while (delta > 180) {
+      unwrapped[index] = unwrapped[index]! - 360
+      delta -= 360
+    }
+    while (delta < -180) {
+      unwrapped[index] = unwrapped[index]! + 360
+      delta += 360
+    }
+  }
+  return unwrapped
+}
+
+function seriesForGraph(graph: Record<string, unknown>, axis: number[], indexes: number[]): AnalogSimulationSeries[] {
+  const name = graphName(graph)
+  const type = graphType(graph)
+  switch (type) {
+    case TRANSIENT_VOLTAGE_GRAPH:
+    case TRANSIENT_CURRENT_GRAPH: {
+      const voltage = type === TRANSIENT_VOLTAGE_GRAPH
+      const values = numericArray(voltage ? graph.voltage_levels : graph.current_levels)
+      if (values.length !== axis.length) return []
+      const sampled = indexes.map((index) => values[index]!)
+      return [
+        {
+          name,
+          kind: voltage ? "voltage" : "current",
+          unit: voltage ? "V" : "A",
+          values: sampled,
+          summary: summarizeValues(values),
+        },
+      ]
+    }
+    case AC_VOLTAGE_GRAPH:
+    case AC_CURRENT_GRAPH: {
+      const voltage = type === AC_VOLTAGE_GRAPH
+      const samples = complexSamples(voltage ? graph.complex_voltages : graph.complex_currents)
+      if (samples.length !== axis.length) return []
+      const magnitudes = samples.map((sample) => Math.hypot(sample.re, sample.im))
+      const phases = samples.map((sample) => (Math.atan2(sample.im, sample.re) * 180) / Math.PI)
+      return [
+        {
+          name,
+          kind: voltage ? "voltage" : "current",
+          unit: voltage ? "V" : "A",
+          values: indexes.map((index) => magnitudes[index]!),
+          summary: summarizeValues(magnitudes),
+        },
+        {
+          name,
+          kind: "phase",
+          unit: "deg",
+          values: indexes.map((index) => phases[index]!),
+          summary: summarizeValues(unwrapDegrees(phases)),
+        },
+      ]
+    }
+    default:
+      return []
+  }
+}
+
 export function extractAnalogSimulationExperiments(circuitJson: unknown[], maxPoints = 500): AnalogSimulationExperiment[] {
   const experiments = new Map<string, { id: string; name: string; graphs: Array<Record<string, unknown>> }>()
   for (const element of circuitJson) {
@@ -250,7 +349,10 @@ export function extractAnalogSimulationExperiments(circuitJson: unknown[], maxPo
   for (const element of circuitJson) {
     if (!element || typeof element !== "object" || Array.isArray(element)) continue
     const row = element as Record<string, unknown>
-    if (row.type !== "simulation_transient_voltage_graph" && row.type !== "simulation_transient_current_graph") continue
+    const type = row.type
+    if (type !== TRANSIENT_VOLTAGE_GRAPH && type !== TRANSIENT_CURRENT_GRAPH && type !== AC_VOLTAGE_GRAPH && type !== AC_CURRENT_GRAPH) {
+      continue
+    }
     if (typeof row.simulation_experiment_id !== "string") continue
     const experiment = experiments.get(row.simulation_experiment_id) ?? {
       id: row.simulation_experiment_id,
@@ -263,36 +365,29 @@ export function extractAnalogSimulationExperiments(circuitJson: unknown[], maxPo
 
   const requestedPoints = Math.max(2, Math.min(maxPoints, 2000))
   return [...experiments.values()].flatMap((experiment) => {
-    const firstGraph = experiment.graphs.find((graph) => numericArray(graph.timestamps_ms).length > 0)
+    const firstGraph = experiment.graphs.find((graph) => graphAxisValues(graph).length > 0)
     if (!firstGraph) return []
-    const timestamps = numericArray(firstGraph.timestamps_ms)
-    const pointBudget = Math.max(2, Math.min(requestedPoints, Math.floor(5000 / (experiment.graphs.length + 1))))
-    const indexes = sampleIndexes(timestamps.length, pointBudget)
-    const series = experiment.graphs.flatMap((graph): AnalogSimulationSeries[] => {
-      const voltage = graph.type === "simulation_transient_voltage_graph"
-      const values = numericArray(voltage ? graph.voltage_levels : graph.current_levels)
-      if (values.length !== timestamps.length) return []
-      return [
-        {
-          name:
-            typeof graph.name === "string" ? graph.name : typeof graph.source_probe_name === "string" ? graph.source_probe_name : "probe",
-          kind: voltage ? "voltage" : "current",
-          unit: voltage ? "V" : "A",
-          values: indexes.map((index) => values[index]!),
-          summary: summarizeValues(values),
-        },
-      ]
+    const ac = isAcGraph(graphType(firstGraph))
+    const axisValues = graphAxisValues(firstGraph)
+    const seriesWeight = experiment.graphs.reduce((total, graph) => total + (isAcGraph(graphType(graph)) ? 2 : 1), 0)
+    const pointBudget = Math.max(2, Math.min(requestedPoints, Math.floor(5000 / (seriesWeight + 1))))
+    const indexes = sampleIndexes(axisValues.length, pointBudget)
+    const series = experiment.graphs.flatMap((graph) => {
+      if (isAcGraph(graphType(graph)) !== ac) return []
+      return seriesForGraph(graph, axisValues, indexes)
     })
     if (series.length === 0) return []
     return [
       {
         id: experiment.id,
         name: experiment.name,
-        analysis: "transient" as const,
-        pointsCount: timestamps.length,
+        analysis: ac ? ("ac" as const) : ("transient" as const),
+        pointsCount: axisValues.length,
         returnedPoints: indexes.length,
-        downsampled: indexes.length < timestamps.length,
-        axis: { name: "time" as const, unit: "ms" as const, values: indexes.map((index) => timestamps[index]!) },
+        downsampled: indexes.length < axisValues.length,
+        axis: ac
+          ? { name: "frequency" as const, unit: "Hz" as const, values: indexes.map((index) => axisValues[index]!) }
+          : { name: "time" as const, unit: "ms" as const, values: indexes.map((index) => axisValues[index]!) },
         series,
       },
     ]
@@ -626,7 +721,9 @@ async function finalizeBuild(result: TsciResult, projectDir: string, inputDigest
     if ((await buildInputDigest(projectDir)) !== inputDigest) {
       throw new Error("Project inputs changed while the build was running. Run pcb_circuit_build again.")
     }
-    const circuitJsonSha256 = createHash("sha256").update(await readFile(circuitJsonPath)).digest("hex")
+    const circuitJsonSha256 = createHash("sha256")
+      .update(await readFile(circuitJsonPath))
+      .digest("hex")
     await writeBuildInputStamp(projectDir, inputDigest, circuitJsonSha256)
     return {
       ...result,

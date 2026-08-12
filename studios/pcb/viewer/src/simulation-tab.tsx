@@ -47,14 +47,15 @@ function WaveformChart({ experiment, kind }: { experiment: SimulationExperiment;
   const width = 800
   const height = 220
   const unit = series[0]!.unit
-  const time = experiment.axis.values
+  const axis = experiment.axis.values
+  const title = kind === "voltage" ? "Voltage probes" : kind === "current" ? "Current probes" : "Phase probes"
 
   return (
     <section className="pcb-sim-chart" aria-label={`${kind} waveforms`}>
       <header className="pcb-sim-chart__header">
         <div>
           <p className="pcb-sim-eyebrow">{kind}</p>
-          <h3>{kind === "voltage" ? "Voltage probes" : "Current probes"}</h3>
+          <h3>{title}</h3>
         </div>
         <span className="font-mono text-[10px] text-[var(--osc-text-muted)]">
           {number(min)}–{number(max)} {unit}
@@ -69,7 +70,7 @@ function WaveformChart({ experiment, kind }: { experiment: SimulationExperiment;
         ))}
       </div>
       <div className="pcb-sim-chart__canvas">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${series.map((item) => item.name).join(", ")} over time`}>
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${series.map((item) => item.name).join(", ")} over ${experiment.axis.name}`}>
           <g className="pcb-sim-grid" aria-hidden>
             {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
               <line key={`y-${ratio}`} x1="0" x2={width} y1={ratio * height} y2={ratio * height} />
@@ -81,7 +82,7 @@ function WaveformChart({ experiment, kind }: { experiment: SimulationExperiment;
           {series.map((item, index) => (
             <path
               key={item.name}
-              d={linePath(item.values, time, min, max, width, height)}
+              d={linePath(item.values, axis, min, max, width, height)}
               fill="none"
               stroke={TRACE_COLORS[index % TRACE_COLORS.length]}
               strokeWidth="2.5"
@@ -90,8 +91,12 @@ function WaveformChart({ experiment, kind }: { experiment: SimulationExperiment;
           ))}
         </svg>
         <div className="pcb-sim-chart__axis" aria-hidden>
-          <span>{number(time[0] ?? 0)} ms</span>
-          <span>{number(time[time.length - 1] ?? 0)} ms</span>
+          <span>
+            {number(axis[0] ?? 0)} {experiment.axis.unit}
+          </span>
+          <span>
+            {number(axis[axis.length - 1] ?? 0)} {experiment.axis.unit}
+          </span>
         </div>
       </div>
     </section>
@@ -240,6 +245,7 @@ export default function SimulationTab({ projectId, directory }: { projectId: str
 
       <WaveformChart experiment={experiment} kind="voltage" />
       <WaveformChart experiment={experiment} kind="current" />
+      <WaveformChart experiment={experiment} kind="phase" />
       <ProbeTable experiment={experiment} />
     </div>
   )

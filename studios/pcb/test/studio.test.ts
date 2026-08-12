@@ -96,6 +96,78 @@ describe("pcb studio smoke", () => {
     ])
   })
 
+  test("extracts AC sweep graphs as magnitude and phase series over frequency", () => {
+    const experiments = extractAnalogSimulationExperiments(
+      [
+        { type: "simulation_experiment", simulation_experiment_id: "ac1", name: "bode" },
+        {
+          type: "simulation_ac_sweep_voltage_graph",
+          simulation_experiment_id: "ac1",
+          name: "VOUT",
+          frequencies_hz: [10, 100, 1000],
+          complex_voltages: [
+            { re: 1, im: 0 },
+            { re: 0, im: -1 },
+            { re: -2, im: 0 },
+          ],
+        },
+        {
+          type: "simulation_ac_sweep_current_graph",
+          simulation_experiment_id: "ac1",
+          name: "ILOAD",
+          frequencies_hz: [10, 100, 1000],
+          complex_currents: [
+            { re: 1, im: 0 },
+            { re: 0, im: -1 },
+            { re: -2, im: 0 },
+          ],
+        },
+      ],
+      500,
+    )
+    expect(experiments).toEqual([
+      {
+        id: "ac1",
+        name: "bode",
+        analysis: "ac",
+        pointsCount: 3,
+        returnedPoints: 3,
+        downsampled: false,
+        axis: { name: "frequency", unit: "Hz", values: [10, 100, 1000] },
+        series: [
+          {
+            name: "VOUT",
+            kind: "voltage",
+            unit: "V",
+            values: [1, 1, 2],
+            summary: { first: 1, last: 2, min: 1, max: 2, mean: 4 / 3, peakToPeak: 1 },
+          },
+          {
+            name: "VOUT",
+            kind: "phase",
+            unit: "deg",
+            values: [0, -90, 180],
+            summary: { first: 0, last: -180, min: -180, max: 0, mean: -90, peakToPeak: 180 },
+          },
+          {
+            name: "ILOAD",
+            kind: "current",
+            unit: "A",
+            values: [1, 1, 2],
+            summary: { first: 1, last: 2, min: 1, max: 2, mean: 4 / 3, peakToPeak: 1 },
+          },
+          {
+            name: "ILOAD",
+            kind: "phase",
+            unit: "deg",
+            values: [0, -90, 180],
+            summary: { first: 0, last: -180, min: -180, max: 0, mean: -90, peakToPeak: 180 },
+          },
+        ],
+      },
+    ])
+  })
+
   test("project ids roundtrip and path jail holds", () => {
     expect(decodeProjectId(encodeProjectId("nested/demo-board"))).toBe("nested/demo-board")
     expect(isInside("/ws", "/ws/a")).toBe(true)

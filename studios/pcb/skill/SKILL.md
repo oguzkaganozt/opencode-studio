@@ -56,10 +56,14 @@ rebuild (and re-export if needed) before asserting readiness.
    `<pcbnoterect ... />`, and label it with
    `<pcbnotetext text="PCB_STUDIO_PLACEHOLDER: U1 - exact footprint required" ... />`.
 4. Build incrementally: board and power, MCU, peripherals, then placement and
-   routing. Run `pcb_circuit_build` after each meaningful stage.
+   routing. User-facing parts (battery, switch, button, LED, programming header)
+   stay on top unless the user asks otherwise. Run `pcb_circuit_build` after each
+   meaningful stage.
    For circuits containing `<analogsimulation>` and probes, run `pcb_sim_run`
    and use its numeric series to verify electrical behavior. Simulation success
    does not imply `designValid`, fabrication readiness, or assembly readiness.
+   AC-sweep experiments return magnitude (V/A) and phase (deg) series over
+   frequency — use them for cutoff points, resonance peaks, and phase margin.
    Declare `<analogsimulation spiceEngine="ngspice" ... />` when the experiment
    needs the ngspice engine: the default spicey engine emits only voltage
    probes, so current probes require ngspice and otherwise return empty series.
