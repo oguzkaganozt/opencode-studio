@@ -1,6 +1,6 @@
 /** File contents for a minimal tscircuit project created by pcb_project_create. */
 
-export const TSCIRCUIT_VERSION = "0.0.2083"
+export const TSCIRCUIT_VERSION = "0.0.2306"
 export const TYPESCRIPT_VERSION = "5.9.3"
 
 function packageJson(projectName: string): string {

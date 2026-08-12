@@ -49,6 +49,9 @@ rebuild (and re-export if needed) before asserting readiness.
    `<pcbnotetext text="PCB_STUDIO_PLACEHOLDER: U1 - exact footprint required" ... />`.
 4. Build incrementally: board and power, MCU, peripherals, then placement and
    routing. Run `pcb_circuit_build` after each meaningful stage.
+   For circuits containing `<analogsimulation>` and probes, run `pcb_sim_run`
+   and use its numeric series to verify electrical behavior. Simulation success
+   does not imply `designValid`, fabrication readiness, or assembly readiness.
 5. After the first build, make targeted edits instead of rewriting the entire
    `src/circuit.tsx`. Read locally installed tscircuit source and types before
    broad web research.
@@ -64,7 +67,25 @@ rebuild (and re-export if needed) before asserting readiness.
    description / datasheet), promote it with `pcb_catalog_upsert` so later boards
    reuse metadata via `pcb_catalog_list` / `pcb_catalog_get`. Do not upsert
    placeholders, guessed MPNs, or supplier-only identities without an MPN.
-   The viewer BOM can also “Add to catalog” for the same write path.
+    The viewer BOM can also “Add to catalog” for the same write path.
+9. Treat electrical simulation as a parallel feedback axis. After relevant
+   source changes, run `pcb_circuit_build` for design/manufacturing diagnostics
+   and `pcb_sim_run` for electrical behavior. Use both to iterate, but never
+   infer `fabricationReady`/`assemblyReady` from simulation success or infer
+   electrical correctness from production readiness.
+10. For a real MOSFET, diode, op-amp, regulator, or driver whose behavior matters
+    to the experiment, check the exact catalog MPN with `pcb_spice_model_get`.
+    If missing, obtain a self-contained model from the manufacturer or another
+    explicitly trusted HTTPS source, verify every top-level model pin against the
+    datasheet and tscircuit chip pin labels, then store it with
+    `pcb_spice_model_upsert`. Preserve required helper `.SUBCKT` blocks and pass
+    the intended top-level `subcircuit` name whenever the source contains more
+    than one; never guess it from naming alone.
+    Apply the returned `<spicemodel>` snippet in `src/circuit.tsx`; never silently
+    substitute a generic model, auto-map pins, or treat a community archive as
+    manufacturer verification. Report model source URL and SHA-256 when citing
+    simulation results. If no trustworthy model exists, narrow the simulated
+    subcircuit and state which component behavior was not modeled.
 
 ## Worked micro-flow (first board)
 
@@ -122,3 +143,7 @@ Honesty rules:
   prove electrical correctness, datasheet compliance, or production fitness.
 - Claim fab only if `fabricationReady: true`; claim assembly only if
   `assemblyReady: true`. Partial boards stay labeled partial/blocked.
+- Claim a simulation only if `pcb_sim_run.success` is true and named experiments
+  contain probe series. Report missing models/convergence errors explicitly.
+- A successful simulation proves only the declared model and stimulus. It does
+  not prove the physical part, firmware, RF behavior, thermal behavior, or board.

@@ -4,9 +4,10 @@ import { safeContentDisposition } from "../../src/core/security"
 import { createSseResponse } from "../../src/core/sse"
 import { toCplCsv } from "./assembly"
 import { generateBom, toBomCsv } from "./bom"
-import { filterCatalogParts, getCatalogPart, loadCatalogParts, partSummary, upsertCatalogPart } from "./catalog"
+import { filterCatalogParts, getCatalogPart, loadCatalogParts, partDetail, partSummary, upsertCatalogPart } from "./catalog"
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
 import { circuitReadiness } from "./readiness"
+import { extractAnalogSimulationDiagnostics, extractAnalogSimulationExperiments } from "./tsci"
 import { ensureWatching, onProjectEvent } from "./watcher"
 import {
   type CircuitProject,
@@ -131,6 +132,25 @@ export function createPcbApi(workspaceRoot: string) {
     return serveWorkspaceFile(workspaceRoot, project.circuitJsonPath, "application/json")
   })
 
+  app.get("/projects/:id/simulation", async (ctx) => {
+    const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
+    const maxPoints = integerQuery(ctx.req.query("maxPoints"), 500, 2, 2000)
+    if (maxPoints === undefined) throw new ApiError(400, "maxPoints must be an integer between 2 and 2000")
+    const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
+    const experiments = extractAnalogSimulationExperiments(json, maxPoints)
+    const diagnostics = extractAnalogSimulationDiagnostics(json)
+    if (experiments.length === 0 && diagnostics.length === 0) {
+      return ctx.json({ error: "No simulation results. Add <analogsimulation> and named probes, then run pcb_sim_run." }, 404)
+    }
+    return ctx.json({
+      projectId: ctx.req.param("id"),
+      name: project.name,
+      simulationSuccess: experiments.length > 0 && diagnostics.length === 0,
+      experiments,
+      diagnostics,
+    })
+  })
+
   app.get("/projects/:id/bom", async (ctx) => {
     const { project, bom } = await loadProjectBom(workspaceRoot, ctx.req.param("id"))
     return ctx.json({
@@ -227,7 +247,7 @@ export function createPcbApi(workspaceRoot: string) {
   app.get("/catalog/:mpn", async (ctx) => {
     const part = await getCatalogPart(workspaceRoot, ctx.req.param("mpn"))
     if (!part) return ctx.json({ error: "Part not found" }, 404)
-    return ctx.json({ part })
+    return ctx.json({ part: partDetail(part) })
   })
 
   app.put("/catalog/:mpn", async (ctx) => {
@@ -252,7 +272,7 @@ export function createPcbApi(workspaceRoot: string) {
       const status = result.code === "invalid_mpn" || result.code === "invalid_datasheet" ? 400 : result.code === "catalog_full" ? 409 : 500
       throw new ApiError(status, result.error)
     }
-    return ctx.json({ created: result.created, path: result.path, part: result.part })
+    return ctx.json({ created: result.created, path: result.path, part: partDetail(result.part) })
   })
 
   return app

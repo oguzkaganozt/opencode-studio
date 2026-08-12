@@ -50,6 +50,7 @@ export type PartSummary = {
   description: string | null
   category: string | null
   datasheet: string | null
+  hasSpiceModel: boolean
 }
 
 export type CatalogPartDetail = {
@@ -58,6 +59,13 @@ export type CatalogPartDetail = {
   description?: string
   category?: string
   datasheet?: string
+  spiceModel?: {
+    sourceUrl: string
+    subcircuit: string
+    pins: string[]
+    pinMapping: Record<string, string>
+    sha256: string
+  }
   [key: string]: unknown
 }
 
@@ -132,6 +140,40 @@ export type WorkspaceInfo = {
   directory?: string
 }
 
+export type SimulationSeries = {
+  name: string
+  kind: "voltage" | "current"
+  unit: "V" | "A"
+  values: number[]
+  summary: {
+    first: number
+    last: number
+    min: number
+    max: number
+    mean: number
+    peakToPeak: number
+  }
+}
+
+export type SimulationExperiment = {
+  id: string
+  name: string
+  analysis: "transient"
+  pointsCount: number
+  returnedPoints: number
+  downsampled: boolean
+  axis: { name: "time"; unit: "ms"; values: number[] }
+  series: SimulationSeries[]
+}
+
+export type SimulationResponse = {
+  projectId: string
+  name: string
+  simulationSuccess: boolean
+  experiments: SimulationExperiment[]
+  diagnostics?: string[]
+}
+
 export const api = {
   workspace: (projectId?: string): Promise<WorkspaceInfo> => {
     const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""
@@ -167,6 +209,8 @@ export const api = {
   gerbersZipUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/gerbers.zip`),
   circuitJsonUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/circuit.json`),
   bom: (id: string): Promise<BomResponse> => fetchJson(apiPath(`/projects/${encodeURIComponent(id)}/bom`)),
+  simulation: (id: string, maxPoints = 500): Promise<SimulationResponse> =>
+    fetchJson(apiPath(`/projects/${encodeURIComponent(id)}/simulation?maxPoints=${maxPoints}`)),
   bomCsvUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/bom.csv`),
   assemblyCsvUrl: (id: string) => apiPath(`/projects/${encodeURIComponent(id)}/assembly.csv`),
   eventsUrl: () => apiPath("/events"),

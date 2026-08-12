@@ -210,6 +210,144 @@
   min-height: min(22rem, 48dvh);
 }
 
+[data-studio="pcb"] .pcb-sim-view {
+  display: grid;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+[data-studio="pcb"] .pcb-sim-overview,
+[data-studio="pcb"] .pcb-sim-chart {
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-lg);
+  background: var(--osc-bg-elevated);
+  box-shadow: var(--osc-shadow);
+}
+
+[data-studio="pcb"] .pcb-sim-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+[data-studio="pcb"] .pcb-sim-overview p {
+  margin: 0.45rem 0 0;
+  font-size: 12px;
+  color: var(--osc-text-muted);
+}
+
+[data-studio="pcb"] .pcb-sim-experiments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+[data-studio="pcb"] .pcb-sim-experiments [aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--osc-accent) 55%, var(--osc-border));
+  background: color-mix(in srgb, var(--osc-accent) 10%, var(--osc-surface));
+  color: var(--osc-text);
+}
+
+[data-studio="pcb"] .pcb-sim-chart {
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+[data-studio="pcb"] .pcb-sim-chart__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+[data-studio="pcb"] .pcb-sim-eyebrow {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--osc-text-faint);
+}
+
+[data-studio="pcb"] .pcb-sim-chart h3 {
+  margin: 0.15rem 0 0;
+  font-size: 14px;
+  color: var(--osc-text);
+}
+
+[data-studio="pcb"] .pcb-sim-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+  margin-top: 0.65rem;
+  font-family: var(--osc-font-mono);
+  font-size: 10px;
+  color: var(--osc-text-muted);
+}
+
+[data-studio="pcb"] .pcb-sim-chart__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+[data-studio="pcb"] .pcb-sim-chart__legend i {
+  width: 0.65rem;
+  height: 2px;
+  border-radius: 2px;
+}
+
+[data-studio="pcb"] .pcb-sim-chart__canvas {
+  margin-top: 0.65rem;
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-md);
+  background: var(--osc-bg-subtle);
+  padding: 0.55rem;
+}
+
+[data-studio="pcb"] .pcb-sim-chart__canvas svg {
+  display: block;
+  width: 100%;
+  min-height: 10rem;
+}
+
+[data-studio="pcb"] .pcb-sim-grid line {
+  stroke: var(--osc-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+[data-studio="pcb"] .pcb-sim-chart__axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.3rem;
+  font-family: var(--osc-font-mono);
+  font-size: 9px;
+  color: var(--osc-text-faint);
+}
+
+[data-studio="pcb"] .pcb-sim-table td {
+  white-space: nowrap;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--osc-border);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  [data-studio="pcb"] .pcb-sim-view {
+    padding: 0.5rem;
+  }
+
+  [data-studio="pcb"] .pcb-sim-chart__canvas svg {
+    min-height: 8rem;
+  }
+}
+
 [data-studio="pcb"] .pcb-bom-overview {
   display: grid;
   gap: 0.75rem;

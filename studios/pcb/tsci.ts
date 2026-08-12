@@ -18,6 +18,59 @@ export type TsciResult = {
   exitCode: number
 }
 
+export type AnalogSimulationSeries = {
+  name: string
+  kind: "voltage" | "current"
+  unit: "V" | "A"
+  values: number[]
+  summary: {
+    first: number
+    last: number
+    min: number
+    max: number
+    mean: number
+    peakToPeak: number
+  }
+}
+
+export type AnalogSimulationExperiment = {
+  id: string
+  name: string
+  analysis: "transient"
+  pointsCount: number
+  returnedPoints: number
+  downsampled: boolean
+  axis: { name: "time"; unit: "ms"; values: number[] }
+  series: AnalogSimulationSeries[]
+}
+
+export type AnalogSimulationResult = TsciResult & {
+  processSuccess: boolean
+  experiments: AnalogSimulationExperiment[]
+  diagnostics: string[]
+}
+
+const SPICE_PROPERTY_RE = /spice(?:model|pinmapping)/i
+
+export function extractAnalogSimulationDiagnostics(circuitJson: unknown[]): string[] {
+  const messages: string[] = []
+  for (const element of circuitJson) {
+    if (!element || typeof element !== "object" || Array.isArray(element)) continue
+    const row = element as Record<string, unknown>
+    if (typeof row.type !== "string" || !row.type.endsWith("_error")) continue
+    const message = typeof row.message === "string" ? row.message.trim() : ""
+    if (!message) continue
+    if (
+      row.type === "simulation_unknown_experiment_error" ||
+      row.type.startsWith("simulation_") ||
+      (row.type === "source_invalid_component_property_error" && SPICE_PROPERTY_RE.test(message))
+    ) {
+      messages.push(message)
+    }
+  }
+  return [...new Set(messages)]
+}
+
 export type ComponentSearchScope = "all" | "jlcpcb" | "tscircuit" | "kicad"
 
 export type ComponentLoadability = {
@@ -137,6 +190,116 @@ async function run(args: string[], cwd: string, signal?: AbortSignal): Promise<T
   if (engine) return runCommand([...engineCommand(engine), ...args], cwd, signal)
   // Last resort: npx (offline installs should hit the bundled tscircuit dependency).
   return runCommand(["npx", "--yes", "tsci", ...args], cwd, signal)
+}
+
+function sampleIndexes(length: number, maxPoints: number): number[] {
+  if (length <= maxPoints) return Array.from({ length }, (_, index) => index)
+  return Array.from({ length: maxPoints }, (_, index) => Math.round((index * (length - 1)) / (maxPoints - 1)))
+}
+
+function numericArray(value: unknown): number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isFinite(item)) ? value : []
+}
+
+function summarizeValues(values: number[]): AnalogSimulationSeries["summary"] {
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  return {
+    first: values[0]!,
+    last: values[values.length - 1]!,
+    min,
+    max,
+    mean: values.reduce((total, value) => total + value, 0) / values.length,
+    peakToPeak: max - min,
+  }
+}
+
+export function extractAnalogSimulationExperiments(circuitJson: unknown[], maxPoints = 500): AnalogSimulationExperiment[] {
+  const experiments = new Map<string, { id: string; name: string; graphs: Array<Record<string, unknown>> }>()
+  for (const element of circuitJson) {
+    if (!element || typeof element !== "object" || Array.isArray(element)) continue
+    const row = element as Record<string, unknown>
+    if (row.type === "simulation_experiment" && typeof row.simulation_experiment_id === "string") {
+      experiments.set(row.simulation_experiment_id, {
+        id: row.simulation_experiment_id,
+        name: typeof row.name === "string" ? row.name : row.simulation_experiment_id,
+        graphs: [],
+      })
+    }
+  }
+
+  for (const element of circuitJson) {
+    if (!element || typeof element !== "object" || Array.isArray(element)) continue
+    const row = element as Record<string, unknown>
+    if (row.type !== "simulation_transient_voltage_graph" && row.type !== "simulation_transient_current_graph") continue
+    if (typeof row.simulation_experiment_id !== "string") continue
+    const experiment = experiments.get(row.simulation_experiment_id) ?? {
+      id: row.simulation_experiment_id,
+      name: row.simulation_experiment_id,
+      graphs: [],
+    }
+    experiment.graphs.push(row)
+    experiments.set(experiment.id, experiment)
+  }
+
+  const requestedPoints = Math.max(2, Math.min(maxPoints, 2000))
+  return [...experiments.values()].flatMap((experiment) => {
+    const firstGraph = experiment.graphs.find((graph) => numericArray(graph.timestamps_ms).length > 0)
+    if (!firstGraph) return []
+    const timestamps = numericArray(firstGraph.timestamps_ms)
+    const pointBudget = Math.max(2, Math.min(requestedPoints, Math.floor(5000 / (experiment.graphs.length + 1))))
+    const indexes = sampleIndexes(timestamps.length, pointBudget)
+    const series = experiment.graphs.flatMap((graph): AnalogSimulationSeries[] => {
+      const voltage = graph.type === "simulation_transient_voltage_graph"
+      const values = numericArray(voltage ? graph.voltage_levels : graph.current_levels)
+      if (values.length !== timestamps.length) return []
+      return [
+        {
+          name:
+            typeof graph.name === "string" ? graph.name : typeof graph.source_probe_name === "string" ? graph.source_probe_name : "probe",
+          kind: voltage ? "voltage" : "current",
+          unit: voltage ? "V" : "A",
+          values: indexes.map((index) => values[index]!),
+          summary: summarizeValues(values),
+        },
+      ]
+    })
+    if (series.length === 0) return []
+    return [
+      {
+        id: experiment.id,
+        name: experiment.name,
+        analysis: "transient" as const,
+        pointsCount: timestamps.length,
+        returnedPoints: indexes.length,
+        downsampled: indexes.length < timestamps.length,
+        axis: { name: "time" as const, unit: "ms" as const, values: indexes.map((index) => timestamps[index]!) },
+        series,
+      },
+    ]
+  })
+}
+
+export async function simulateAnalogCircuit(projectDir: string, signal?: AbortSignal, maxPoints = 500): Promise<AnalogSimulationResult> {
+  const build = await runProjectBuild(projectDir, signal)
+  const circuitJson = build.artifacts.circuitJsonPath ? await readCircuitJson(projectDir, build.artifacts.circuitJsonPath) : []
+  const experiments = extractAnalogSimulationExperiments(circuitJson, maxPoints)
+  const simDiagnostics = extractAnalogSimulationDiagnostics(circuitJson)
+  const missingResults =
+    build.processSuccess && experiments.length === 0 && simDiagnostics.length === 0
+      ? "No analog simulation results found. Add <analogsimulation> and named probes."
+      : ""
+  const diagnostics = [...simDiagnostics, ...(missingResults ? [missingResults] : [])]
+  const success = build.processSuccess && experiments.length > 0 && simDiagnostics.length === 0
+  return {
+    success,
+    processSuccess: build.processSuccess,
+    experiments,
+    diagnostics,
+    stdout: build.stdout,
+    stderr: [build.stderr, ...diagnostics].filter(Boolean).join("\n"),
+    exitCode: build.exitCode,
+  }
 }
 
 function optionalString(value: unknown): string | null {

@@ -53,10 +53,19 @@
     "pcb_catalog_upsert": {
       "studio": "pcb"
     },
+    "pcb_spice_model_get": {
+      "studio": "pcb"
+    },
+    "pcb_spice_model_upsert": {
+      "studio": "pcb"
+    },
     "pcb_component_search": {
       "studio": "pcb"
     },
     "pcb_circuit_build": {
+      "studio": "pcb"
+    },
+    "pcb_sim_run": {
       "studio": "pcb"
     },
     "pcb_circuit_export": {
@@ -378,5 +387,5 @@
       }
     }
   },
-  "count": 72
+  "count": 75
 }
