@@ -35,6 +35,7 @@ async function httpSmoke(base: string) {
     ["cad", "/api/studios/cad/designs"],
     ["pcb", "/api/studios/pcb/projects"],
     ["media", "/api/studios/media/projects"],
+    ["fw", "/api/studios/fw/projects"],
     ["files", "/api/files/tree"],
   ]
   for (const [id, route] of apiProbes) {
@@ -246,6 +247,12 @@ async function browserSmoke(base: string) {
       },
       media: {
         wait: "Media Studio",
+        extra: async (p) => {
+          await p.getByRole("heading", { name: "Projects", exact: true }).waitFor()
+        },
+      },
+      fw: {
+        wait: "Firmware Studio",
         extra: async (p) => {
           await p.getByRole("heading", { name: "Projects", exact: true }).waitFor()
         },
@@ -478,7 +485,11 @@ try {
           ...STUDIO_IDS.map((id, index) => ({
             id: `session-${id}`,
             title: `${id.toUpperCase()} session`,
-            directory: path.join(domain, "studio", id === "cad" ? "designs" : id === "pcb" ? "circuits" : "media"),
+            directory: path.join(
+              domain,
+              "studio",
+              id === "cad" ? "designs" : id === "pcb" ? "circuits" : id === "fw" ? "firmware" : "media",
+            ),
             time: { created: 1_786_264_200_000 - index, updated: 1_786_264_200_000 - index },
           })),
         ])

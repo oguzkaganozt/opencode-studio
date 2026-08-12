@@ -11,6 +11,7 @@ permission:
   design_*: deny
   build123d_*: deny
   pcb_*: deny
+  fw_*: deny
   task:
     "*": deny
   skill:

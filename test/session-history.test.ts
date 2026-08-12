@@ -34,12 +34,15 @@ async function roots() {
   const cad = path.join(home, "studio", "designs")
   const pcb = path.join(home, "studio", "circuits")
   const media = path.join(home, "studio", "media")
+  const fw = path.join(home, "studio", "firmware")
   await mkdir(path.join(cad, "box"), { recursive: true })
   await writeFile(path.join(cad, "box", "design.json"), "{}")
   await mkdir(path.join(pcb, "boards", "demo", "src"), { recursive: true })
   await writeFile(path.join(pcb, "boards", "demo", "src", "circuit.tsx"), "export {}")
   await mkdir(path.join(media, "demo"), { recursive: true })
-  return { home, cad, pcb, media, studios: { cad, pcb, media } }
+  await mkdir(path.join(fw, "blink"), { recursive: true })
+  await writeFile(path.join(fw, "blink", "project.json"), '{"id":"blink","name":"blink","chip":"esp32c6"}')
+  return { home, cad, pcb, media, fw, studios: { cad, pcb, media, fw } }
 }
 
 describe("studioSessionHistory", () => {

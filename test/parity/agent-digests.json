@@ -1,14 +1,18 @@
 {
   "studio-cad": {
     "path": "studios/cad/agent/studio-cad.md",
-    "sha256": "f4b5c9f68198040985fa8bc996e683696c57b657488a790d646bea837d2c49bc"
+    "sha256": "e25af32d07c20bbf5fb5a68c3f19dc156b8588bde687133744c1c156f2a301b0"
   },
   "studio-pcb": {
     "path": "studios/pcb/agent/studio-pcb.md",
-    "sha256": "32597fcd037f8965ab2e0890ba7a8a88120f52de492d9b827753bd35ec8fa489"
+    "sha256": "c619ca960b40db57e16d71c7aa48ac77a0e9d7c772aa34f7fee0e62fef18f4c2"
   },
   "studio-media": {
     "path": "studios/media/agent/studio-media.md",
-    "sha256": "5b5770c8b12a49466ca0393a1aee8565a898571fb2a492552e814680bac34728"
+    "sha256": "49e671cfc84bbdab44588aaeb256af3a21a1ce5536eb3cf976edc2a769b6901f"
+  },
+  "studio-fw": {
+    "path": "studios/fw/agent/studio-fw.md",
+    "sha256": "997b1a88ce68d3bb3cd9fef02b8a085dcd06a26c2396ce14a0c5869d1fadf858"
   }
 }

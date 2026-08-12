@@ -42,6 +42,7 @@ const STUDIO_META: Record<string, { short: string; blurb: string }> = {
   cad: { short: "CAD", blurb: "Parts, assemblies, renders" },
   pcb: { short: "PCB", blurb: "Schematic, layout, BOM" },
   media: { short: "Media", blurb: "Image, audio, video" },
+  fw: { short: "FW", blurb: "Build, sim, UART" },
 }
 
 function MenuIcon() {
@@ -425,6 +426,11 @@ const viewerLoaders: Record<StudioId, React.LazyExoticComponent<() => React.Reac
   media: lazy(async () => {
     await import("@studios/media/viewer/src/styles.css")
     const mod = await import("@studios/media/viewer/src/app")
+    return { default: mod.App }
+  }),
+  fw: lazy(async () => {
+    await import("@studios/fw/viewer/src/styles.css")
+    const mod = await import("@studios/fw/viewer/src/app")
     return { default: mod.App }
   }),
 }

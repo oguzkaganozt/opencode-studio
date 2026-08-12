@@ -223,9 +223,11 @@ describe("configureStudios", () => {
       "skill:cad",
       "skill:pcb",
       "skill:media",
+      "skill:fw",
       "agent:cad",
       "agent:pcb",
       "agent:media",
+      "agent:fw",
       "cad-engine",
     ]
     expect(

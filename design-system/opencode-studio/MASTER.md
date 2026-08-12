@@ -20,7 +20,7 @@
 | UI font | Inter (`--osc-font-ui`) |
 | Mono | IBM Plex Mono (`--osc-font-mono`) |
 | Canvas | Dark `#0c0d10` / light `#f4f4f5` (`--osc-canvas-bg*`) |
-| Studio accents | CAD `#b45309` · PCB `#0e7490` · Files `#e11d48` |
+| Studio accents | CAD `#b45309` · PCB `#0e7490` · Media `#7c3aed` · FW `#059669` · Files `#e11d48` |
 | Theme | Light + dark first-class (`html[data-theme]`) |
 | Hairline | Warm OpenCode gradient under chrome (2px, no blur soup) |
 | Radius | sm 4 · md 8 · lg 12 (`--osc-radius-*`) |

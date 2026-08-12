@@ -403,6 +403,51 @@
     "cad_workflow_hints": {
       "studio": "cad"
     },
+    "fw_workspace_list": {
+      "studio": "fw",
+      "args": {}
+    },
+    "fw_project_create": {
+      "studio": "fw",
+      "args": {
+        "id": "string",
+        "chip": "string"
+      }
+    },
+    "fw_project_read": {
+      "studio": "fw",
+      "args": {
+        "projectId": "string"
+      }
+    },
+    "fw_caps": {
+      "studio": "fw",
+      "args": {
+        "chip": "string"
+      }
+    },
+    "fw_build": {
+      "studio": "fw",
+      "args": {
+        "projectId": "string"
+      }
+    },
+    "fw_sim_run": {
+      "studio": "fw",
+      "args": {
+        "projectId": "string",
+        "expect": "string",
+        "fail": "string",
+        "timeoutMs": "number"
+      }
+    },
+    "fw_sim_log": {
+      "studio": "fw",
+      "args": {
+        "projectId": "string",
+        "maxBytes": "number"
+      }
+    },
     "cad_suggest_view_layout": {
       "studio": "cad",
       "args": {
@@ -419,5 +464,5 @@
       }
     }
   },
-  "count": 80
+  "count": 87
 }

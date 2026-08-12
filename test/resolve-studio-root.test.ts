@@ -18,10 +18,12 @@ describe("resolveStudioRoot", () => {
     const cad = await resolveStudioRoot({ studioId: "cad", studioRoot: home })
     const pcb = await resolveStudioRoot({ studioId: "pcb", studioRoot: home })
     const media = await resolveStudioRoot({ studioId: "media", studioRoot: home })
+    const fw = await resolveStudioRoot({ studioId: "fw", studioRoot: home })
 
     expect(cad).toBe(await realpath(path.join(home, "studio", "designs")))
     expect(pcb).toBe(await realpath(path.join(home, "studio", "circuits")))
     expect(media).toBe(await realpath(path.join(home, "studio", "media")))
+    expect(fw).toBe(await realpath(path.join(home, "studio", "firmware")))
   })
 
   test("absolute roots overrides win over relative defaults", async () => {

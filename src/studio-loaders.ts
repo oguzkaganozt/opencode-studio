@@ -43,6 +43,11 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
     const root = await ctx.resolveStudioRoot({ studioId: "media", studioRoot: ctx.studioRoot, roots: ctx.roots })
     return loadMediaPlugin({ root, providerPackage: ctx.mediaProviderPackage })
   },
+  fw: async (ctx) => {
+    const { loadFwPlugin } = await import("../studios/fw/plugin")
+    const root = await ctx.resolveStudioRoot({ studioId: "fw", studioRoot: ctx.studioRoot, roots: ctx.roots })
+    return loadFwPlugin({ root })
+  },
 }
 
 export const apiLoaders: Record<StudioId, ApiLoader> = {
@@ -64,6 +69,11 @@ export const apiLoaders: Record<StudioId, ApiLoader> = {
     const { createMediaApi } = await import("../studios/media/api")
     const root = await ctx.resolveStudioRoot({ studioId: "media", studioRoot: ctx.studioRoot, roots: ctx.roots })
     return createMediaApi(root)
+  },
+  fw: async (ctx) => {
+    const { createFwApi } = await import("../studios/fw/api")
+    const root = await ctx.resolveStudioRoot({ studioId: "fw", studioRoot: ctx.studioRoot, roots: ctx.roots })
+    return createFwApi(root)
   },
 }
 

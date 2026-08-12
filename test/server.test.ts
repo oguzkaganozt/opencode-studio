@@ -78,7 +78,7 @@ describe("host server", () => {
     const response = await app.request("http://127.0.0.1:4173/api/status", { headers: { host: "127.0.0.1:4173" } })
     expect(response.status).toBe(200)
     const body = await response.json()
-    const expected = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "cad-engine"]
+    const expected = ["plugin-registration", "plugin-media-go", "skill:cad", "skill:pcb", "skill:media", "skill:fw", "cad-engine"]
     expect(
       body.checks
         .map((check: { id: string }) => check.id)

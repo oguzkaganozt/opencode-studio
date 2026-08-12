@@ -52,6 +52,7 @@ export function contextLink(context: AgentContext): { href: string; label: strin
   if (context.kind === "cad-project") return { href: `/studios/cad/designs/${id}`, label: "Open design" }
   if (context.kind === "pcb-project") return { href: `/studios/pcb/projects/${id}/schematic`, label: "Open project" }
   if (context.kind === "media-project") return { href: `/studios/media/projects/${id}`, label: "Open project" }
+  if (context.kind === "fw-project") return { href: `/studios/fw/projects/${id}/console`, label: "Open project" }
   return undefined
 }
 

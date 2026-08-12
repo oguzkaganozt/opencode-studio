@@ -5,6 +5,7 @@ hidden: true
 permission:
   pcb_*: allow
   cad_*: deny
+  fw_*: deny
   design_*: deny
   build123d_*: deny
   media_*: deny

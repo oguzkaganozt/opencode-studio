@@ -2,8 +2,9 @@
   "cad": ["tool"],
   "media-go": ["provider"],
   "pcb": ["tool"],
+  "fw": ["tool"],
   "composition": {
-    "order": ["cad", "pcb", "media"],
+    "order": ["cad", "pcb", "media", "fw"],
     "mutableTransforms": "sequential catalog order",
     "dispose": "reverse order",
     "duplicateTools": "reject",

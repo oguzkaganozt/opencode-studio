@@ -10,5 +10,9 @@
   "studio-media": {
     "path": "studios/media/skill/SKILL.md",
     "sha256": "3ccbe68d5d27cdab1a2b6017a54ae9b9ba893d48ec05128608b8127a0b08eec8"
+  },
+  "studio-fw": {
+    "path": "studios/fw/skill/SKILL.md",
+    "sha256": "dbe973204b2636178ea8ed809c62bf4ebc483827f03eeb4e6e670d348fc35d8e"
   }
 }

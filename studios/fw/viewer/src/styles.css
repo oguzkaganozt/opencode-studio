@@ -1,0 +1,126 @@
+@import "tailwindcss";
+@source ".";
+@import "@ui/tokens.css";
+
+[data-studio="fw"] {
+  background: var(--osc-bg);
+  color: var(--osc-text);
+  font-family: var(--osc-font-ui);
+}
+
+[data-studio="fw"] .font-mono,
+[data-studio="fw"] code {
+  font-family: var(--osc-font-mono);
+}
+
+.fw-project-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-lg);
+  background: var(--osc-bg-elevated);
+  padding: 1rem 1rem 1rem 1.15rem;
+  transition:
+    border-color var(--osc-motion-duration),
+    transform var(--osc-motion-duration);
+}
+
+.fw-project-card:hover,
+.fw-project-card:focus-visible {
+  border-color: var(--osc-border-strong);
+  transform: translateY(-1px);
+}
+
+.fw-project-card__rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--osc-accent-fw);
+}
+
+.fw-tablist {
+  display: flex;
+  gap: 0.15rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.fw-tablist::-webkit-scrollbar {
+  display: none;
+}
+
+.fw-tab {
+  min-height: 2.5rem;
+  border: 0;
+  background: transparent;
+  padding: 0.4rem 0.7rem;
+  color: var(--osc-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.fw-tab[aria-current="page"] {
+  color: var(--osc-text);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--osc-accent);
+}
+
+.fw-console {
+  min-height: min(22rem, 48dvh);
+  overflow: auto;
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-lg);
+  background: var(--osc-canvas-bg);
+  color: #e4e4e7;
+  font-family: var(--osc-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 0.75rem 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+html[data-theme="light"] .fw-console {
+  background: #18181b;
+}
+
+.fw-console__line {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fw-console__line:hover,
+.fw-console__line.is-selected {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.fw-console__line.is-fail {
+  color: #fca5a5;
+}
+
+.fw-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  font-family: var(--osc-font-mono);
+  font-size: 11px;
+  color: var(--osc-text-muted);
+}
+
+.fw-selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  border-top: 1px solid var(--osc-border);
+  background: var(--osc-bg-elevated);
+  padding: 0.5rem 0.75rem;
+  min-height: 2.75rem;
+}

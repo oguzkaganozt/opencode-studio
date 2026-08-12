@@ -35,9 +35,11 @@ const MANAGED_IDS = [
   "skill:cad",
   "skill:pcb",
   "skill:media",
+  "skill:fw",
   "agent:cad",
   "agent:pcb",
   "agent:media",
+  "agent:fw",
   "cad-engine",
 ] as const
 

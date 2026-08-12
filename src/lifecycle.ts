@@ -1144,6 +1144,34 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       })
     }
 
+    if (studioId === "fw") {
+      const [{ resolveEspEmu, resolveIdf, resolveQemu }, { fwChipSpec }] = await Promise.all([
+        import("../studios/fw/engines"),
+        import("../studios/fw/chips"),
+      ])
+      const idf = resolveIdf()
+      const emu = resolveEspEmu()
+      const qemu = resolveQemu(fwChipSpec("esp32"))
+      checks.push({
+        id: "engine:fw:idf",
+        status: idf ? "pass" : "warn",
+        message: idf ? `idf.py available (${idf.path})` : "ESP-IDF not cached yet — first fw_build downloads it",
+        repair: idf ? undefined : "Run fw_build once (downloads ESP-IDF into the Studio cache)",
+      })
+      checks.push({
+        id: "engine:fw:qemu",
+        status: qemu ? "pass" : "warn",
+        message: qemu ? `qemu-system-xtensa available (${qemu.path})` : "QEMU not cached yet — first esp32/esp32s3 fw_sim_run downloads it",
+        repair: qemu ? undefined : "Run fw_sim_run on an esp32 project once",
+      })
+      checks.push({
+        id: "engine:fw:esp-emu",
+        status: emu ? "pass" : "warn",
+        message: emu ? `esp-emu available (${emu.path})` : "esp-emu not cached yet — first c3/c6/h2/p4 fw_sim_run downloads it",
+        repair: emu ? undefined : "Run fw_sim_run on an esp32c6 project once",
+      })
+    }
+
     if (studioId === "cad") {
       const engineDir = cadEngineRuntimeDir()
       const pyproject = path.join(engineDir, "pyproject.toml")

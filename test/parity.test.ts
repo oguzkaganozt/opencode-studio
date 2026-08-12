@@ -40,7 +40,7 @@ describe("parity fixtures", () => {
   })
 
   test("hook composition policy is defined", () => {
-    expect(hooks.composition.order).toEqual(["cad", "pcb", "media"])
+    expect(hooks.composition.order).toEqual(["cad", "pcb", "media", "fw"])
     expect(hooks.media).toContain("provider")
     expect(hooks["media-go"]).toEqual(["provider"])
   })

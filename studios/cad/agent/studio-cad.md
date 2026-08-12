@@ -5,6 +5,7 @@ hidden: true
 permission:
   cad_*: allow
   pcb_*: deny
+  fw_*: deny
   media_*: deny
   fal_*: deny
   chatgpt_image_generate: deny
