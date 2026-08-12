@@ -36,15 +36,15 @@ type Field = any
 
 const CAD_SESSION_TOOL_GUIDANCE: Record<string, string> = {
   cad_execute:
-    "Named registry shapes (cad_import_cad_file/show) are bound into this Python namespace as identifiers when valid, and always via cad_objects[name] / cad_object(name). Only variables created by successful execute calls persist as new Python locals beyond the registry bindings.",
+    "build123d public names are preloaded. Active design params.py is bound as params and bare constants (e.g. BOX_L) after cad_design_create/read/build. Named registry shapes (show/import) bind as identifiers when valid, always via cad_objects[name]/cad_object(name). In-execute clearance() is exploratory; product-fit QC evidence requires cad_compare kind=fit.",
+  cad_compare:
+    'Returns structured JSON {ok, status, summary, data, next}. kind="fit": global min distance + fit_quality (gap|contact|clash|nested) + gap_verified. QC fit pass requires status=pass (positive gap or nested), not seat-contact touching. For snug lips, compare isolated mating solids so gap_verified=true. Prefer this over in-execute clearance() for fit QC.',
   cad_import_cad_file:
     "Registers the shape for named-object tools and binds it into the next cad_execute namespace (valid identifiers as bare names; always via cad_object(name)).",
   cad_validate:
     "Returns structured JSON {ok, status, summary, data, next}. Use data.passes_gate and status; do not re-parse free text.",
   cad_measure:
     "Returns structured JSON {ok, status, summary, data, next} with volume/bbox/topology in data.",
-  cad_compare:
-    'Returns structured JSON {ok, status, summary, data, next}. For kind="fit", clearance is the global minimum between complete shapes. An intended stop, detent, or other contact can therefore return clearance 0; this does not verify a nominal gap at a specific interface. Check staged poses for moving assemblies. Rigid overlap at a staged pose quantifies collision, not elastic accommodation, insertion force, or retention force.',
   cad_analyze_printability:
     "Returns structured JSON {ok, status, summary, data, next}. status is fail when any error-severity finding exists. The current world orientation is treated as the print orientation. Reorient the final source-built shape into its actual bed pose before analysis, and rerun this check after every geometry change.",
 }

@@ -211,24 +211,47 @@ function normalizeCompare(
   if (kind === "fit") {
     const status = typeof data.status === "string" ? data.status : "unknown"
     const clearance = typeof data.clearance === "number" ? data.clearance : null
-    const interpenetrating = status === "interpenetrating"
+    const fitQuality = typeof data.fit_quality === "string" ? data.fit_quality : null
+    const gapVerified = data.gap_verified === true
+    const interpenetrating = status === "interpenetrating" || fitQuality === "clash"
+    const touching = status === "touching" || fitQuality === "contact"
+    const nested = status === "containing" || fitQuality === "nested"
     const summary =
       prefix ||
-      `fit status=${status}${clearance !== null ? `, clearance=${clearance} mm` : ""} (global min distance; not a specific interface gap)`
+      `fit status=${status}${clearance !== null ? `, clearance=${clearance} mm` : ""}${
+        fitQuality ? `, quality=${fitQuality}` : ""
+      } (global min; seat contact ≠ snug interface gap)`
     if (interpenetrating) {
       warnings.push("interpenetrating: unintended overlap is a failure unless the design explicitly requires it")
     }
-    if (status === "touching") {
-      warnings.push("clearance 0 may be intentional contact; does not prove nominal gap at a target interface")
+    if (touching) {
+      warnings.push(
+        "seat contact only (gap_verified=false): does not prove snug/moving clearance at a lip or rail — isolate mating solids or accept contact-only fit",
+      )
     }
+    if (nested) {
+      warnings.push("one body nested in the other; clearance is wall thickness, not a press-fit lip gap")
+    }
+    // pass only when a positive gap is measured, or nested containment without clash.
+    // touching/contact is ok as a tool result but not QC fit-pass evidence.
+    let envelopeStatus: "pass" | "fail" | "unverified" = "unverified"
+    if (interpenetrating) envelopeStatus = "fail"
+    else if (gapVerified || nested) envelopeStatus = "pass"
+    else if (touching) envelopeStatus = "unverified"
+    else if (status === "apart") envelopeStatus = gapVerified ? "pass" : "unverified"
     return {
       ok: !interpenetrating,
       tool: toolName,
       summary,
-      status: interpenetrating ? "fail" : "pass",
-      data: { ...data, kind: "fit" },
+      status: envelopeStatus,
+      data: { ...data, kind: "fit", gap_verified: gapVerified, fit_quality: fitQuality ?? status },
       warnings,
-      next: ["cad_compare kind=align", "cad_analyze_printability on bed pose"],
+      next: touching
+        ? [
+            "cad_compare kind=fit on isolated lip/cavity solids to verify snug gap",
+            "or claim fit with contact-only findings (gap unverified)",
+          ]
+        : ["cad_compare kind=align", "cad_analyze_printability on bed pose"],
     }
   }
 

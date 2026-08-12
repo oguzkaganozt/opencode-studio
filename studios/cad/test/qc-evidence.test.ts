@@ -148,6 +148,47 @@ describe("QC evidence binding", () => {
     expect(report.printability.findings.join(" ")).toMatch(/missing parts: lid/)
   })
 
+  test("printability subjects match part ids with pose suffixes and hyphens", async () => {
+    const { normalizeSubject, subjectsCoverParts } = await import("../host/qc-evidence")
+    expect(normalizeSubject("base_print")).toBe("base")
+    expect(normalizeSubject("trim-left")).toBe("trim_left")
+    expect(normalizeSubject("trim_left_print")).toBe("trim_left")
+    expect(normalizeSubject("diffuser_print_side")).toBe("diffuser")
+    expect(normalizeSubject("body_built")).toBe("body")
+
+    const cover = subjectsCoverParts(
+      ["base_print", "diffuser_print_side", "trim_left_print", "trim_right_print", "foot_print"],
+      ["base", "diffuser", "trim-left", "trim-right", "foot"],
+    )
+    expect(cover.ok).toBe(true)
+    expect(cover.missing).toEqual([])
+
+    const session = qcSessionKey("/engine", "/cwd-d2")
+    setActiveQcDesign(session, "sconce")
+    clearQcEvidenceForDesign(session, "sconce")
+    for (const sub of ["base_print", "diffuser_print", "trim_left_print", "trim_right_print", "foot_print"]) {
+      recordQcEvidence(session, {
+        axis: "printability",
+        tool: "cad_analyze_printability",
+        ok: true,
+        status: "pass",
+        summary: `${sub} ok`,
+        subjects: [sub],
+      })
+    }
+    const report = await buildDesignQcReport({
+      id: "sconce",
+      entry: { ...entry("rev1", 5), id: "sconce", buildStatus: "unbuilt", partCount: 5 },
+      artifact: artifact(["base", "diffuser", "trim-left", "trim-right", "foot"]) as any,
+      evidenceKey: qcEvidenceKey("/engine", "/cwd-d2", "sconce"),
+      printability: { status: "pass", findings: [] },
+      fit: { status: "pass", findings: ["not applicable"] },
+      form: { status: "pass", findings: ["not applicable"] },
+    })
+    expect(report.printability.status).toBe("pass")
+    expect(report.printability.source).toBe("evidence")
+  })
+
   test("form freeform notes and strict not-applicable token", async () => {
     const key = qcEvidenceKey("/engine", "/cwd-e", "demo")
     const loose = await buildDesignQcReport({

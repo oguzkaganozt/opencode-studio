@@ -69,6 +69,8 @@ describe("structureCadSessionResult", () => {
         status: "apart",
         containment: "neither",
         intersection_volume: 0,
+        gap_verified: true,
+        fit_quality: "gap",
       }),
       isError: false,
       args: { kind: "fit", a: "body", b: "lid" },
@@ -76,6 +78,24 @@ describe("structureCadSessionResult", () => {
     expect(got.ok).toBe(true)
     expect(got.status).toBe("pass")
     expect(got.summary).toContain("apart")
+
+    const seat = structureCadSessionResult({
+      entryName: "compare",
+      toolName: "cad_compare",
+      text: JSON.stringify({
+        clearance: 0,
+        status: "touching",
+        containment: "neither",
+        intersection_volume: 0,
+        gap_verified: false,
+        fit_quality: "contact",
+      }),
+      isError: false,
+      args: { kind: "fit", a: "body", b: "lid" },
+    })
+    expect(seat.ok).toBe(true)
+    expect(seat.status).toBe("unverified")
+    expect(seat.warnings.some((w) => /gap_verified=false|seat contact/i.test(w))).toBe(true)
 
     const clash = structureCadSessionResult({
       entryName: "compare",
@@ -85,6 +105,8 @@ describe("structureCadSessionResult", () => {
         status: "interpenetrating",
         containment: "neither",
         intersection_volume: 12,
+        gap_verified: false,
+        fit_quality: "clash",
       }),
       isError: false,
       args: { kind: "fit" },

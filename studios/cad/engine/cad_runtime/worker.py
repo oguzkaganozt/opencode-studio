@@ -264,6 +264,10 @@ def _op_reset(session: Any, args: dict, library_index: Any) -> Any:
     return "Session reset."
 
 
+def _op_bind_design(session: Any, args: dict, library_index: Any) -> Any:
+    return session.bind_design_dir(args.get("design_dir", ""))
+
+
 def _op_search_library(session: Any, args: dict, library_index: Any) -> Any:
     if library_index is None:
         return "No part library configured."
@@ -875,6 +879,10 @@ class WorkerSession:
 
     @_op(_tool(f"{_T}.studio_build:studio_build"), _STUDIO_BUILD_TIMEOUT)
     def studio_build(self, design_dir: str = "") -> str:
+        raise NotImplementedError
+
+    @_op(_op_bind_design, _SHORT_TIMEOUT)
+    def bind_design(self, design_dir: str = "") -> str:
         raise NotImplementedError
 
     @_op(_tool(f"{_T}.inspect_drawing:inspect_drawing"), _SHORT_TIMEOUT)

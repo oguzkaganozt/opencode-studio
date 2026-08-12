@@ -397,12 +397,15 @@ show(result, "constrained_arc")""",
 - Name the final shape 'result' OR call show() — both trigger current_shape auto-detection
 - show(shape, "name")      registers object, prints vol + face count as immediate confirmation
 - named_face(shape, "top") returns the highest-Z face; also: bottom/front/back/left/right
-- find_edges(shape, geom="circle", radius=4.25, at_z=10.2) filters edges for fillet/chamfer; prints count + radii + Z levels""",
+- find_edges(shape, geom="circle", radius=4.25, at_z=10.2) filters edges for fillet/chamfer; prints count + radii + Z levels
+- locate_surface(shape, side="back") hit point/normal/inset/outset for freeform cutters/bosses
+- boolean_status(before, after, cutter=...) reports missed cuts (outside/tangent/noop)""",
     ),
     Section(
         text="""\
 ## Common gotchas
-- After every -, +, & : call measure() and check topology.faces — a failed boolean leaves counts unchanged
+- After every -, +, & : call measure() / boolean_status(before, after, cutter=...) — a failed boolean leaves volume unchanged
+- Freeform cutter outside solid: locate_surface(body, side="rear") then cut from outset_point along -normal
 - fillet/chamfer radius too large → OCC kernel exception; reduce radius or select fewer edges
 - Cylinder/Sphere are centred at origin; use .move() or align= to reposition
 - Locations() inside BuildPart shifts the construction origin — it does NOT move the whole part

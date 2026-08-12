@@ -9,8 +9,10 @@ from pathlib import Path
 
 
 def studio_build(session, design_dir: str = "") -> str:
-    """Run forge build_design on design_dir. session is unused (disk is source of truth)."""
-    del session  # API compatibility with worker tool handlers
+    """Run forge build_design on design_dir. Disk sources are the source of truth.
+
+    Binds design_dir into the interactive session so execute() sees params.py.
+    """
     if not isinstance(design_dir, str) or not design_dir.strip():
         return json.dumps(
             {
@@ -23,6 +25,10 @@ def studio_build(session, design_dir: str = "") -> str:
             },
             indent=2,
         )
+
+    bind = getattr(session, "bind_design_dir", None)
+    if callable(bind):
+        bind(design_dir)
 
     forge_root = Path(__file__).resolve().parents[2]
     root_str = str(forge_root)

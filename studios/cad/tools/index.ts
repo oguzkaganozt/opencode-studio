@@ -4,6 +4,7 @@ import { tool } from "@opencode-ai/plugin"
 import manifest from "../../../package.json" with { type: "json" }
 import { formatToolJson } from "../../../src/core/format-tool-json"
 import { createCadSessionTools } from "./session-tools"
+import { getCadRuntimeSession } from "./session"
 import { buildDesign, createCadBuildRunner, type CadBuildRunner, scaffoldDesign } from "../host/build"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "../host/manifest"
@@ -38,6 +39,24 @@ function asJson(value: unknown) {
 function truncate(value: string, max = MAX_TOOL_OUTPUT_BYTES) {
   if (value.length <= max) return value
   return `${value.slice(0, max)}\n\n[truncated at ${max} bytes]`
+}
+
+/** Bind design_dir into the CAD execute session so params.py is available (best-effort). */
+async function bindActiveDesign(
+  engineProjectDir: string,
+  cwd: string,
+  designDir: string,
+  signal?: AbortSignal,
+) {
+  try {
+    await getCadRuntimeSession(engineProjectDir, cwd).callTool(
+      "bind_design",
+      { design_dir: designDir },
+      { signal, resetSessionOnFailure: false },
+    )
+  } catch {
+    /* session may not be up yet; first execute/build will bind again */
+  }
 }
 
 async function companionReachable(companionUrl: string) {
@@ -136,6 +155,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               args.id,
               args.parts.map((part) => ({ id: part.id, source: part.source })),
             )
+            await bindActiveDesign(config.engineProjectDir, context.directory || "", designDir, context.abort)
             const envelope = designCreateResult({
               id: args.id,
               designDir,
@@ -163,6 +183,12 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
+            await bindActiveDesign(
+              config.engineProjectDir,
+              context.directory || "",
+              entry.directory,
+              context.abort,
+            )
             const design = await readDesignManifest(entry.directory, args.id)
             const artifact = await readArtifactManifest(entry.directory, args.id)
             const manifestPath = path.join(entry.directory, "manifest.json")

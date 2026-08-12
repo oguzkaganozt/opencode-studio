@@ -409,6 +409,18 @@ def _clearance_report(a, b) -> str:
     else:
         status = "apart"
 
+    # gap_verified: a positive surface gap exists (not seat contact / clash).
+    # touching seats are common on lids; they do not prove a snug lip clearance.
+    gap_verified = status == "apart" and dist > 1e-6
+    if status == "interpenetrating":
+        fit_quality = "clash"
+    elif status == "touching":
+        fit_quality = "contact"
+    elif status == "containing":
+        fit_quality = "nested"
+    else:
+        fit_quality = "gap"
+
     return json.dumps(
         {
             "clearance": dist,
@@ -417,6 +429,8 @@ def _clearance_report(a, b) -> str:
             "intersection_volume": intersection if intersection is not None else 0.0,
             "a_volume_outside_b": a_outside_b,
             "b_volume_outside_a": b_outside_a,
+            "gap_verified": gap_verified,
+            "fit_quality": fit_quality,
         },
         indent=2,
     )

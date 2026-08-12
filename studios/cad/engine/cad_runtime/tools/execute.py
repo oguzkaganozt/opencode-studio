@@ -24,15 +24,26 @@ _SUGGESTED_FIXES = {
     ),
     "fillet_fail": (
         "Fillet radius may be too large or the selected edges are non-manifold; "
-        "try a smaller radius or select fewer edges."
+        "try a smaller radius or select fewer edges. "
+        "Algebra API: part.fillet(radius, edge_list) — radius first."
+    ),
+    "fillet_api": (
+        "Solid method order is part.fillet(radius, edges) / "
+        "part.chamfer(length, length2_or_None, edges). "
+        "Context form is fillet(edges, radius=r)."
+    ),
+    "rotated_attr": (
+        "Use shape.rotate(Axis.Z, angle_deg) or shape.move(Location((x,y,z),(rx,ry,rz))); "
+        "there is no .rotated on build123d Shape."
     ),
     "timeout": (
         "The code exceeded the execution time limit; "
         "break the operation into smaller steps or raise --exec-timeout."
     ),
     "import_blocked": (
-        "That import is not in the allowlist; "
-        "use only build123d, math, numpy, or other permitted modules."
+        "That import is not in the allowlist (os/sys/pathlib/importlib blocked). "
+        "build123d is preloaded; active design params are already bound as params/bare names — "
+        "do not reload params. Use math/numpy/json only if needed."
     ),
     "call_blocked": (
         "That builtin/attribute is blocked by the sandbox (getattr, vars, eval, exec, "
@@ -57,8 +68,14 @@ def _classify_from_error_string(error_result: str) -> dict:
         cls = "syntax_error"
     elif "AttributeError" in msg and "ShapeList" in msg:
         cls = "shapelist_attr"
+    elif "AttributeError" in msg and "rotated" in msg_lower:
+        cls = "rotated_attr"
     elif "ShapeList" in msg or ("index" in msg_lower and "faces" in msg):
         cls = "selector_empty"
+    elif "TypeError" in msg and (
+        "fillet" in msg_lower or "chamfer" in msg_lower or "edge_list" in msg_lower
+    ):
+        cls = "fillet_api"
     elif "fillet" in msg_lower or "non-manifold" in msg_lower:
         cls = "fillet_fail"
     elif "ExecutionTimeout" in msg:

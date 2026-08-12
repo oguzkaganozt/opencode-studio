@@ -661,6 +661,12 @@ def studio_build(design_dir: str) -> str:
     return _resolve_session().studio_build(design_dir=design_dir)
 
 
+@mcp.tool(annotations=_IDEMPOTENT)
+def bind_design(design_dir: str) -> str:
+    """Bind a design directory into the execute() session so params.py is importable and its public constants are available as bare names. Called automatically by studio design lifecycle tools; agents rarely need this directly."""
+    return _resolve_session().bind_design(design_dir=design_dir)
+
+
 @mcp.tool(annotations=_READ_ONLY)
 def repair_hints(error_text: str) -> str:
     """Given an error message or validity-gate reason, return targeted fix suggestions for common build123d mistakes and gate failures: wrong Location syntax, missing .part, CadQuery idioms, blocked imports, degenerate boolean results, fillet edge selection, B-rep defects, mesh non-manifold/open-edge failures, and more. Pass the full error string from execute(), last_error(), validate(), or export()."""

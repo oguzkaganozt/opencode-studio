@@ -1,8 +1,12 @@
 import copy
+import importlib
 import io
 import signal
+import sys
 import time
+import types
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 import keyword
 from typing import Any
 
@@ -20,6 +24,8 @@ _INJECTED = frozenset(
         "show",
         "named_face",
         "find_edges",
+        "locate_surface",
+        "boolean_status",
         "annotate",
         "register_centerline",
         "set_page",
@@ -39,6 +45,9 @@ _INJECTED = frozenset(
         # Studio: registry bindings available inside execute()
         "cad_objects",
         "cad_object",
+        # Active design params module (rebound each execute when design_dir is set)
+        "params",
+        "build123d",
     }
 )
 
@@ -80,6 +89,10 @@ class Session:
         self.drawing_page: dict[str, Any] | None = None
         self.geometry_refs: dict[str, Any] = {}
         self.execute_history: list[str] = []
+        # Active product design directory (params.py live here). None until bound.
+        self.design_dir: str | None = None
+        self._params_bound_names: tuple[str, ...] = ()
+        self._design_path_inserted: str | None = None
         # Live-viewer delta tracking: name -> id(shape) at the last delta pull,
         # used to identity-diff changed shapes (see worker._op_pull_viewer_deltas).
         self._viewer_baseline: dict[str, int] = {}
@@ -102,8 +115,116 @@ class Session:
             else:
                 self.object_groups.pop(aggregate, None)
 
+    def _seed_build123d(self) -> None:
+        """Keep build123d public names in the execute namespace across reset/chunks."""
+        try:
+            import build123d
+        except ImportError:
+            return
+        self.namespace["build123d"] = build123d
+        for name in dir(build123d):
+            if name.startswith("_") or name in _INJECTED:
+                continue
+            self.namespace[name] = getattr(build123d, name)
+
+    def bind_design_dir(self, design_dir: str) -> str:
+        """Point execute() at a design directory so params.py is importable/bound."""
+        import json
+
+        raw = (design_dir or "").strip()
+        if not raw:
+            self._clear_design_bind()
+            return json.dumps({"ok": True, "design_dir": None, "params": False})
+        path = Path(raw).expanduser().resolve()
+        if not path.is_dir():
+            return json.dumps(
+                {"ok": False, "error": f"design_dir is not a directory: {path}"}
+            )
+        self.design_dir = str(path)
+        bound = self._refresh_design_params()
+        return json.dumps(
+            {
+                "ok": True,
+                "design_dir": self.design_dir,
+                "params": bound,
+                "params_names": list(self._params_bound_names),
+            }
+        )
+
+    def _clear_design_bind(self) -> None:
+        for name in self._params_bound_names:
+            self.namespace.pop(name, None)
+        self._params_bound_names = ()
+        self.namespace.pop("params", None)
+        if self._design_path_inserted and self._design_path_inserted in sys.path:
+            try:
+                sys.path.remove(self._design_path_inserted)
+            except ValueError:
+                pass
+        self._design_path_inserted = None
+        sys.modules.pop("params", None)
+        self.design_dir = None
+
+    def _refresh_design_params(self) -> bool:
+        """Re-import params.py from design_dir into the execute namespace.
+
+        Binds the module as ``params`` and non-callable public assignments as bare
+        names (e.g. BOX_L) so execute code can use shared dims without mirroring.
+        Returns True when params imported successfully.
+        """
+        for name in self._params_bound_names:
+            # Keep agent overrides only until refresh; disk is source of truth.
+            if name not in self.objects:
+                self.namespace.pop(name, None)
+        self._params_bound_names = ()
+
+        if not self.design_dir:
+            self.namespace.pop("params", None)
+            return False
+
+        design = self.design_dir
+        if self._design_path_inserted and self._design_path_inserted != design:
+            if self._design_path_inserted in sys.path:
+                try:
+                    sys.path.remove(self._design_path_inserted)
+                except ValueError:
+                    pass
+            self._design_path_inserted = None
+        if design not in sys.path:
+            sys.path.insert(0, design)
+            self._design_path_inserted = design
+        else:
+            self._design_path_inserted = design
+
+        sys.modules.pop("params", None)
+        try:
+            mod = importlib.import_module("params")
+        except Exception:
+            self.namespace.pop("params", None)
+            return False
+
+        self.namespace["params"] = mod
+        bound: list[str] = []
+        for name, val in vars(mod).items():
+            if name.startswith("_") or name in _INJECTED:
+                continue
+            if not name.isidentifier() or keyword.iskeyword(name):
+                continue
+            if isinstance(val, types.ModuleType):
+                continue
+            if callable(val) and not isinstance(val, type):
+                continue
+            # Registry shapes win over param names.
+            if name in self.objects:
+                continue
+            self.namespace[name] = val
+            bound.append(name)
+        self._params_bound_names = tuple(bound)
+        return True
+
     def _inject_builtins(self) -> None:
         self.namespace["__builtins__"] = make_restricted_builtins()
+        self._seed_build123d()
         objects = self.objects
 
         session_ref = self
@@ -297,6 +418,56 @@ class Session:
 
         self.namespace["named_face"] = named_face
 
+        def locate_surface(
+            shape: Any = None,
+            side: str | None = "back",
+            point: Any = None,
+            min_area: float = 0.5,
+            inset: float = 1.0,
+            outset: float = 8.0,
+        ) -> dict:
+            """Hit point + normal on a solid for freeform cutters/bosses.
+
+            side: front/back/rear/left/right/top/bottom (world axes).
+            point: optional (x,y,z) — pick closest face (can combine with side).
+            Returns dict with point, normal, inset_point, outset_point, plane, hint.
+            """
+            from cad_runtime.tools.surface_locate import (
+                format_locate_surface,
+                locate_surface as _locate_surface,
+            )
+
+            s = shape if shape is not None else session_ref.current_shape
+            if s is None:
+                raise ValueError("locate_surface: no shape given and no current shape")
+            data = _locate_surface(
+                s,
+                side=side,
+                point=tuple(point) if point is not None else None,
+                min_area=min_area,
+                inset=inset,
+                outset=outset,
+            )
+            print(format_locate_surface(data))
+            return data
+
+        self.namespace["locate_surface"] = locate_surface
+
+        def boolean_status(before: Any, after: Any, cutter: Any = None, tol: float = 1e-3) -> dict:
+            """Did a boolean change volume? Optional cutter relation (outside/tangent/ok)."""
+            from cad_runtime.tools.surface_locate import (
+                boolean_status as _boolean_status,
+                format_boolean_status,
+            )
+
+            data = _boolean_status(before, after, cutter=cutter, tol=tol)
+            print(format_boolean_status(data))
+            if data.get("hint"):
+                print(f"hint: {data['hint']}")
+            return data
+
+        self.namespace["boolean_status"] = boolean_status
+
         def find_edges(
             shape: Any,
             geom: str | None = None,
@@ -476,6 +647,10 @@ class Session:
                 )
             )
             print(f"clearance: {data['status']}, clearance={data['clearance']}")
+            print(
+                "note: product-fit QC evidence requires cad_compare(kind='fit') "
+                "on registered names; in-execute clearance() is exploratory only"
+            )
             return data
 
         self.namespace["clearance"] = clearance
@@ -622,6 +797,23 @@ class Session:
 
         before_summary = self._shape_summary(before) if before is not None else None
 
+        def _shell_fill_warnings(summary: dict) -> list[str]:
+            """Flag nearly-solid shells (common when cavity boolean is skipped)."""
+            try:
+                bbox_vol = float(summary["size_x"]) * float(summary["size_y"]) * float(summary["size_z"])
+                vol = float(summary["vol"])
+            except Exception:
+                return []
+            if bbox_vol < 1.0 or vol < 1e-6:
+                return []
+            fill = vol / bbox_vol
+            if fill >= 0.85:
+                return [
+                    f"Warning: solid fill ratio {fill:.0%} of bbox — looks nearly solid; "
+                    "confirm cavity/shell boolean ran (hollow product expected for enclosures)"
+                ]
+            return []
+
         if before_summary is None:
             diag = (
                 f"--- current_shape ---\n"
@@ -629,7 +821,7 @@ class Session:
                 f"bbox: {after['size_x']:.4g}×{after['size_y']:.4g}×{after['size_z']:.4g} mm  |  "
                 f"{after['faces']}f {after['edges']}e {after['verts']}v"
             )
-            return diag, []
+            return diag, _shell_fill_warnings(after)
 
         b = before_summary
         a = after
@@ -655,10 +847,9 @@ class Session:
             f"{a['verts']}v{fmt_int_delta(a['verts'] - b['verts'])}"
         )
 
-        warnings: list[str] = []
+        warnings: list[str] = list(_shell_fill_warnings(a))
 
-        # Boolean no-op: shape was rebound (different object) but every
-        # measurable property is bit-identical. Likely the boolean missed.
+        # Boolean no-op: shape rebound but metrics unchanged / volume barely moved.
         identical = (
             shape is not before
             and a["vol"] == b["vol"]
@@ -672,10 +863,20 @@ class Session:
             and a["center_y"] == b["center_y"]
             and a["center_z"] == b["center_z"]
         )
+        vol_tol = max(1e-3, 1e-6 * max(abs(b["vol"]), 1.0))
+        near_noop = shape is not before and abs(dvol) < vol_tol and b["vol"] > 1e-6
         if identical:
             warnings.append(
                 "Warning: shape was rebound but volume/topology/bbox unchanged "
-                "— boolean may have missed (no intersection?)"
+                "— boolean may have missed (cutter outside or tangent). "
+                "Use locate_surface(body, side='back') for hit/normal, then "
+                "boolean_status(before, after, cutter=cutter)."
+            )
+        elif near_noop:
+            warnings.append(
+                f"Warning: volume almost unchanged (ΔV={dvol:.4g} mm³) after geometry update "
+                "— likely missed boolean/cut. Call boolean_status(before, after, cutter=...) "
+                "or relocate with locate_surface(...)."
             )
 
         # Degenerate: previously had volume, now ≈ 0. Failed loft/extrude/intersection —
@@ -724,6 +925,9 @@ class Session:
 
     def execute(self, code: str) -> str:
         self._sync_registry_into_namespace()
+        # Keep disk params.py in sync for the active design (if any).
+        if self.design_dir:
+            self._refresh_design_params()
         # Layer 1: AST check before anything runs
         try:
             check_ast(code)
@@ -1003,6 +1207,7 @@ class Session:
         return ", ".join(changed)
 
     def reset(self) -> None:
+        design_dir = self.design_dir
         self.namespace.clear()
         self.current_shape = None
         self.objects.clear()
@@ -1014,4 +1219,9 @@ class Session:
         self.geometry_refs.clear()
         self.execute_history = []
         self._viewer_baseline.clear()
+        self._params_bound_names = ()
+        # Keep design_dir across reset; re-bind after builtins.
+        self.design_dir = design_dir
         self._inject_builtins()
+        if self.design_dir:
+            self._refresh_design_params()

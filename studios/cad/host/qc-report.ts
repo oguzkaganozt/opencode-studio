@@ -193,10 +193,22 @@ function bindFit(input: {
         source: "rejected",
       }
     }
-    if (!latest.ok || latest.status !== "pass") {
+    if (!latest.ok || latest.status === "fail") {
       return {
-        status: latest.status === "fail" ? "fail" : "unverified",
+        status: "fail",
         findings: [...findings, `pass rejected: latest fit evidence is ${latest.status}: ${latest.summary}`],
+        source: "rejected",
+        evidence: evidenceMeta(latest),
+      }
+    }
+    if (latest.status !== "pass") {
+      // touching/contact evidence is not enough for multi-part snug claims
+      return {
+        status: "unverified",
+        findings: [
+          ...findings,
+          `pass rejected: fit evidence is ${latest.status} (need gap_verified pass via cad_compare kind=fit on mating solids, or single-part not applicable): ${latest.summary}`,
+        ],
         source: "rejected",
         evidence: evidenceMeta(latest),
       }

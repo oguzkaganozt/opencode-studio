@@ -87,12 +87,19 @@ export function latestQcEvidence(
   return null
 }
 
-/** Normalize session object names toward design part ids (body_built → body). */
+/**
+ * Normalize session object names toward design part ids.
+ * body_built / base_print / trim_left_print_side / trim-left → matching stem.
+ */
 export function normalizeSubject(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/(_built|_print|_bed|_assembled|_asm)$/i, "")
+  let s = name.trim().toLowerCase().replace(/-/g, "_")
+  // Strip pose/import suffixes repeatedly (…_print_side → …_print → stem).
+  let prev = ""
+  while (s !== prev) {
+    prev = s
+    s = s.replace(/(_built|_print|_bed|_assembled|_asm|_pose|_side|_viz)$/i, "")
+  }
+  return s
 }
 
 export function subjectsCoverParts(subjects: string[], partIds: string[]): { ok: boolean; missing: string[] } {

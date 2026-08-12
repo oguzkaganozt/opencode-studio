@@ -92,11 +92,32 @@ _HINTS: list[tuple[list[str], str]] = [
         "For combined translation + rotation: `Location((x,y,z), (rx,ry,rz))`.",
     ),
     (
-        [r"[Ff]illet.*edge", r"[Ee]dge.*fillet", r"ValueError.*edges.*fillet"],
+        [r"[Ff]illet.*edge", r"[Ee]dge.*fillet", r"ValueError.*edges.*fillet", r"Failed creating a fillet"],
         "Fillet edge selection: edges must be non-tangent and the radius must be smaller "
-        "than the adjacent wall thickness. Select edges with "
-        "`shape.edges().filter_by(Axis.Z)` or index them with `shape.edges()[0]`. "
-        "Avoid `shape.edges()` (all edges) on complex shapes — pick specific ones.",
+        "than the adjacent wall thickness (and smaller than half the short edge length). "
+        "Select edges with `shape.edges().filter_by(Axis.Z)` or index them with "
+        "`shape.edges()[0]`. Avoid `shape.edges()` (all edges) on complex shapes — pick "
+        "specific ones. Algebra API: `part.fillet(radius, edge_list)` "
+        "(radius first), not `part.fillet(edges, radius)`.",
+    ),
+    (
+        [
+            r"TypeError.*fillet",
+            r"fillet\(\) missing.*edge_list",
+            r"TypeError.*chamfer",
+            r"chamfer\(\) missing.*edge_list",
+            r"'float' object is not iterable",
+        ],
+        "Solid fillet/chamfer argument order: "
+        "`part.fillet(radius, edge_list)` or `part.chamfer(length, None, edge_list)` / "
+        "`part.chamfer(length, length2, edge_list)`. "
+        "Do not call `part.fillet(edges, radius)` or `part.chamfer(length)` without edges. "
+        "BuildPart/context form uses `fillet(edges, radius=r)` / `chamfer(edges, length=…)`.",
+    ),
+    (
+        [r"has no attribute 'rotated'", r"AttributeError.*rotated"],
+        "build123d Shape has no `.rotated`. Use `shape.rotate(Axis.Z, angle_deg)` or "
+        "`shape.move(Location((x, y, z), (rx, ry, rz)))`.",
     ),
     (
         [
@@ -104,9 +125,9 @@ _HINTS: list[tuple[list[str], str]] = [
             r"BuildSketch|Align|Axis|Location|Plane|Vector|Color|Compound|Shell|"
             r"Fillet|Chamfer|extrude|loft|sweep)\b"
         ],
-        "build123d name not in scope. Add `from build123d import *` at the top of "
-        "the execute() call. If it was imported in a previous call, re-run that import "
-        "or include it in this snippet.",
+        "build123d names are preloaded into execute(); if still missing after reset, "
+        "call `from build123d import *` once. Do not import sys/os — design params are "
+        "bound automatically when a design is active (use BOX_L or params.BOX_L).",
     ),
     (
         [r"Call to '.*' is not allowed", r"Access to dunder attribute .* is not allowed"],
@@ -126,13 +147,11 @@ _HINTS: list[tuple[list[str], str]] = [
         "Import blocked. Allowed modules include: build123d, bd_warehouse, math, numpy, "
         "json, re, collections, itertools, functools, copy, typing, dataclasses, enum, "
         "and most OCP geometry sub-modules (OCP.gp, OCP.BRepGProp, OCP.TopExp, etc.). "
-        "Blocked: os, sys, pathlib, subprocess, socket (file/network/shell access). "
-        "Pure-Python packages on sys.path whose imports stay within the allowed list "
-        "above are permitted automatically — no config needed. "
-        "For project geometry (e.g. a build_shaft() function), export to STEP and use "
-        "import_cad_file(path, name) to load it without any import restrictions. "
-        "To force-allow a package that imports os or similar, use --allow-imports or "
-        "BUILD123D_ALLOW_IMPORTS env var.",
+        "Blocked: os, sys, pathlib, subprocess, socket, importlib (file/network/shell). "
+        "Active design params.py is already bound — use bare constants (BOX_L) or params.X; "
+        "do not importlib.reload params. "
+        "Pure-Python packages on sys.path whose imports stay within the allowlist are OK. "
+        "For project geometry, export STEP and import_cad_file(path, name).",
     ),
     (
         [r"Constraint failed", r"AssertionError"],
