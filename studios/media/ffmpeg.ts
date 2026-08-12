@@ -133,3 +133,50 @@ export function extractAudioArguments(input: { source: string; output: string; f
   args.push(input.output)
   return args
 }
+
+export function cropImageArguments(input: {
+  source: string
+  output: string
+  x: number
+  y: number
+  width: number
+  height: number
+  format: "png" | "webp"
+}) {
+  const filter = `crop=${Math.floor(input.width)}:${Math.floor(input.height)}:${Math.floor(input.x)}:${Math.floor(input.y)}`
+  const args = ["-nostdin", "-hide_banner", "-n", "-i", input.source, "-vf", filter, "-frames:v", "1"]
+  if (input.format === "webp") args.push("-c:v", "libwebp", "-quality", "90")
+  else args.push("-c:v", "png")
+  args.push(input.output)
+  return args
+}
+
+/** Concat demuxer list body; paths must be absolute and already validated. */
+export function concatListBody(paths: string[]) {
+  return `${paths.map((filePath) => `file '${filePath.replaceAll("'", "'\\''")}'`).join("\n")}\n`
+}
+
+export function concatVideoArguments(input: { listPath: string; output: string }) {
+  return [
+    "-nostdin",
+    "-hide_banner",
+    "-n",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-i",
+    input.listPath,
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-crf",
+    "23",
+    "-c:a",
+    "aac",
+    "-movflags",
+    "+faststart",
+    input.output,
+  ]
+}

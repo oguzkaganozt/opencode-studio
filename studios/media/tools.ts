@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
-import { chmod, link, rm } from "node:fs/promises"
+import { chmod, link, mkdtemp, rm, writeFile } from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
 import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
@@ -27,7 +28,17 @@ import {
   requireFalKey,
   throwIfAborted,
 } from "./fal"
-import { type ConvertPreset, convertArguments, extractAudioArguments, probeMedia, runMediaProcess, trimArguments } from "./ffmpeg"
+import {
+  type ConvertPreset,
+  concatListBody,
+  concatVideoArguments,
+  convertArguments,
+  cropImageArguments,
+  extractAudioArguments,
+  probeMedia,
+  runMediaProcess,
+  trimArguments,
+} from "./ffmpeg"
 import { initializeLibrary, inspectManagedAsset, type LibraryModality, openManagedAsset, personalOutputPath, scanLibrary } from "./library"
 import { canonicalStudioRoot, prepareNewOutput, verifyNewOutput, verifyOutputParent, writeNewFileAtomic } from "./studio-path"
 import { resolveMediaProjectDirectory } from "./workspace"
@@ -280,6 +291,36 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
       } finally {
         await source.handle.close()
       }
+    }
+
+    async function probeVideoStream(media: Awaited<ReturnType<typeof openManagedAsset>>, signal: AbortSignal) {
+      const probe = await probeMedia({
+        binary: config.ffprobePath,
+        filePath: media.filePath,
+        signal,
+        inputFd: media.handle.fd,
+        beforeSpawn: dependencies.beforeMediaSpawn,
+      })
+      const streams = Array.isArray(probe.streams) ? (probe.streams as Array<Record<string, unknown>>) : []
+      const video = streams.find((stream) => stream.codec_type === "video")
+      const [fpsNumerator, fpsDenominator] = String(video?.avg_frame_rate ?? video?.r_frame_rate ?? "")
+        .split("/")
+        .map((value) => Number(value))
+      const width = Number(video?.width)
+      const height = Number(video?.height)
+      return {
+        width: Number.isFinite(width) ? width : undefined,
+        height: Number.isFinite(height) ? height : undefined,
+        fps:
+          Number.isFinite(fpsNumerator) && Number.isFinite(fpsDenominator) && fpsDenominator > 0
+            ? fpsNumerator / fpsDenominator
+            : undefined,
+        hasAudio: streams.some((stream) => stream.codec_type === "audio"),
+      }
+    }
+
+    function formatFps(value: number | undefined) {
+      return value === undefined ? "?" : `${value.toFixed(3).replace(/\.?0+$/, "")}fps`
     }
 
     return {
@@ -675,6 +716,289 @@ export function createMediaStudioPlugin(dependencies: MediaStudioPluginDependenc
                 }
               },
             })
+          },
+        }),
+
+        media_image_crop: tool({
+          description:
+            "Crop an image to a pixel bbox (x,y,w,h in source pixels). Never overwrites the source. Use viewer bbox selection values when present.",
+          args: {
+            filePath: tool.schema.string().describe("Workspace image path"),
+            x: tool.schema.number().int().min(0),
+            y: tool.schema.number().int().min(0),
+            width: tool.schema.number().int().min(1).max(8192),
+            height: tool.schema.number().int().min(1).max(8192),
+            outputPath: tool.schema.string().optional().describe("Optional .png or .webp path under the Media project"),
+          },
+          async execute(args, toolContext) {
+            const { studioRoot, workspaceRoot } = await projectFor(toolContext)
+            const source = await openManagedAsset({
+              root: studioRoot,
+              workspaceRoot,
+              filePath: args.filePath,
+              signal: toolContext.abort,
+              ask: toolContext.ask,
+            })
+            try {
+              if (source.modality !== "image") throw new Error("media_image_crop requires image input")
+              const info = await probeVideoStream(source, toolContext.abort)
+              if (info.width === undefined || info.height === undefined) {
+                throw new Error(`Could not read dimensions of image: ${args.filePath}`)
+              }
+              const x = Math.floor(args.x)
+              const y = Math.floor(args.y)
+              const width = Math.floor(args.width)
+              const height = Math.floor(args.height)
+              if (x + width > info.width || y + height > info.height) {
+                throw new Error(
+                  `Crop bbox (${x},${y} ${width}x${height}) exceeds image bounds ${info.width}x${info.height} for ${args.filePath}`,
+                )
+              }
+            } finally {
+              await source.handle.close()
+            }
+            return runFfmpegMutation({
+              filePath: args.filePath,
+              toolContext,
+              outputPath: args.outputPath,
+              message: (filePath) => `Cropped image to ${filePath}`,
+              plan: (source) => {
+                if (source.modality !== "image") throw new Error("media_image_crop requires image input")
+                const format = args.outputPath?.toLowerCase().endsWith(".webp") ? "webp" : "png"
+                return {
+                  outputModality: "image" as const,
+                  extension: format,
+                  defaultName: (stem) => `${stem}-crop-${randomUUID().slice(0, 8)}.${format}`,
+                  ffmpegArgs: (output) =>
+                    cropImageArguments({
+                      source: "/dev/fd/3",
+                      output,
+                      x: Math.floor(args.x),
+                      y: Math.floor(args.y),
+                      width: Math.floor(args.width),
+                      height: Math.floor(args.height),
+                      format,
+                    }),
+                }
+              },
+            })
+          },
+        }),
+
+        media_image_edit: tool({
+          description:
+            "Edit an existing project image with a natural-language prompt via ChatGPT subscription (source used as reference). Optional bbox crops first. Prefer media_image_crop for pure crops.",
+          args: {
+            filePath: tool.schema.string().describe("Workspace image path to edit"),
+            prompt: tool.schema.string().min(1).describe("Edit instruction"),
+            x: tool.schema.number().int().min(0).optional(),
+            y: tool.schema.number().int().min(0).optional(),
+            width: tool.schema.number().int().min(1).max(8192).optional(),
+            height: tool.schema.number().int().min(1).max(8192).optional(),
+            outputPath: tool.schema.string().optional().describe("Optional PNG path under the Media project"),
+            quality: tool.schema.enum(["low", "medium", "high", "auto"]).default("auto"),
+          },
+          async execute(args, toolContext) {
+            const { library, studioRoot, workspaceRoot } = await projectFor(toolContext)
+            const hasBBox = [args.x, args.y, args.width, args.height].every((value) => value !== undefined)
+            if ([args.x, args.y, args.width, args.height].some((value) => value !== undefined) && !hasBBox) {
+              throw new Error("media_image_edit bbox requires x, y, width, and height together")
+            }
+            const source = await openManagedAsset({
+              root: studioRoot,
+              workspaceRoot,
+              filePath: args.filePath,
+              signal: toolContext.abort,
+              ask: toolContext.ask,
+            })
+            let cropPath: string | undefined
+            try {
+              if (source.modality !== "image") throw new Error("media_image_edit requires image input")
+              let referencePath = source.filePath
+              if (hasBBox) {
+                const info = await probeVideoStream(source, toolContext.abort)
+                if (info.width === undefined || info.height === undefined) {
+                  throw new Error(`Could not read dimensions of image: ${args.filePath}`)
+                }
+                const x = Math.floor(args.x!)
+                const y = Math.floor(args.y!)
+                const width = Math.floor(args.width!)
+                const height = Math.floor(args.height!)
+                if (x + width > info.width || y + height > info.height) {
+                  throw new Error(
+                    `Edit bbox (${x},${y} ${width}x${height}) exceeds image bounds ${info.width}x${info.height} for ${args.filePath}`,
+                  )
+                }
+                const stem = path.basename(source.filePath, path.extname(source.filePath))
+                const cropOutput = personalOutputPath(library, undefined, `${stem}-editcrop-${randomUUID().slice(0, 8)}.png`)
+                const target = await prepareNewOutput({ root: studioRoot, outputPath: cropOutput, ask: toolContext.ask })
+                const temporaryPath = path.join(
+                  path.dirname(target.outputPath),
+                  `.${path.basename(target.outputPath, path.extname(target.outputPath))}.${randomUUID()}.tmp.png`,
+                )
+                try {
+                  await runMediaProcess({
+                    binary: config.ffmpegPath,
+                    args: cropImageArguments({
+                      source: "/dev/fd/3",
+                      output: temporaryPath,
+                      x,
+                      y,
+                      width,
+                      height,
+                      format: "png",
+                    }),
+                    signal: toolContext.abort,
+                    inputFd: source.handle.fd,
+                    beforeSpawn: async () => {
+                      await dependencies.beforeMediaSpawn?.()
+                      await verifyNewOutput(studioRoot, target.outputPath)
+                      await verifyNewOutput(studioRoot, temporaryPath)
+                    },
+                  })
+                  await chmod(temporaryPath, 0o660)
+                  await inspectCreatedMedia(temporaryPath)
+                  await link(temporaryPath, target.outputPath)
+                  cropPath = target.outputPath
+                  referencePath = target.outputPath
+                } finally {
+                  await rm(temporaryPath, { force: true })
+                }
+              }
+
+              try {
+                const auth = await loadChatGPTAuth()
+                if (!auth) throw new Error("OpenCode is not authenticated with ChatGPT OAuth")
+                const referenceImages = await readReferenceImages({
+                  paths: [referencePath],
+                  root: workspaceRoot,
+                  signal: toolContext.abort,
+                  ask: toolContext.ask,
+                })
+                const outputPath = personalOutputPath(library, args.outputPath, `edit-${Date.now()}-${randomUUID().slice(0, 8)}.png`)
+                if (path.extname(outputPath).toLowerCase() !== ".png") throw new Error("media_image_edit outputPath must end in .png")
+                const target = await prepareNewOutput({ root: studioRoot, outputPath, ask: toolContext.ask })
+                const base64 = await generateChatGPTImage({
+                  auth,
+                  args: {
+                    prompt: args.prompt,
+                    quality: args.quality ?? "auto",
+                    images: [referencePath],
+                  },
+                  referenceImages,
+                  signal: toolContext.abort,
+                })
+                const image = decodeGeneratedPng(base64)
+                await verifyOutputParent(studioRoot, target.outputPath)
+                await writeNewFileAtomic(target.outputPath, image.bytes)
+                return {
+                  title: target.outputPath,
+                  output: `Edited image with ChatGPT: ${target.outputPath}`,
+                  metadata: {
+                    filePath: target.outputPath,
+                    mime: "image/png",
+                    bytes: image.bytes.length,
+                    width: image.width,
+                    height: image.height,
+                    provider: "chatgpt",
+                    billing: "subscription",
+                    sourcePath: source.filePath,
+                    cropPath,
+                  },
+                }
+              } catch (error) {
+                if (cropPath) await rm(cropPath, { force: true })
+                throw error
+              }
+            } finally {
+              await source.handle.close()
+            }
+          },
+        }),
+
+        media_video_concat: tool({
+          description: "Concatenate two or more project videos into a new MP4 (re-encoded). Does not modify sources.",
+          args: {
+            filePaths: tool.schema.array(tool.schema.string()).min(2).max(32).describe("Ordered workspace video paths"),
+            outputPath: tool.schema.string().optional().describe("Optional .mp4 path under the Media project"),
+          },
+          async execute(args, toolContext) {
+            const { library, studioRoot, workspaceRoot } = await projectFor(toolContext)
+            const opened: Array<Awaited<ReturnType<typeof openManagedAsset>>> = []
+            const tempDir = await mkdtemp(path.join(os.tmpdir(), "osc-media-concat-"))
+            try {
+              const absPaths: string[] = []
+              let reference: Awaited<ReturnType<typeof probeVideoStream>> | undefined
+              for (const filePath of args.filePaths) {
+                const media = await openManagedAsset({
+                  root: studioRoot,
+                  workspaceRoot,
+                  filePath,
+                  signal: toolContext.abort,
+                  ask: toolContext.ask,
+                })
+                opened.push(media)
+                if (media.modality !== "video") throw new Error(`media_video_concat requires video inputs: ${filePath}`)
+                const info = await probeVideoStream(media, toolContext.abort)
+                if (!reference) {
+                  reference = info
+                } else if (
+                  info.width !== reference.width ||
+                  info.height !== reference.height ||
+                  (info.fps !== undefined && reference.fps !== undefined && Math.abs(info.fps - reference.fps) > 0.01) ||
+                  info.hasAudio !== reference.hasAudio
+                ) {
+                  throw new Error(
+                    `media_video_concat requires matching resolution, frame rate, and audio layout. ` +
+                      `"${filePath}" is ${info.width ?? "?"}x${info.height ?? "?"}@${formatFps(info.fps)}${info.hasAudio ? "" : " (no audio)"}, ` +
+                      `but the first input is ${reference.width ?? "?"}x${reference.height ?? "?"}@${formatFps(reference.fps)}${reference.hasAudio ? "" : " (no audio)"}. ` +
+                      `Normalize inputs with media_convert (same preset) first.`,
+                  )
+                }
+                absPaths.push(media.filePath)
+              }
+              const listPath = path.join(tempDir, "list.txt")
+              await writeFile(listPath, concatListBody(absPaths), "utf8")
+              const outputPath = personalOutputPath(library, args.outputPath, `concat-${Date.now()}-${randomUUID().slice(0, 8)}.mp4`)
+              if (path.extname(outputPath).toLowerCase() !== ".mp4") throw new Error("media_video_concat outputPath must end in .mp4")
+              const target = await prepareNewOutput({ root: studioRoot, outputPath, ask: toolContext.ask })
+              const temporaryPath = path.join(
+                path.dirname(target.outputPath),
+                `.${path.basename(target.outputPath, path.extname(target.outputPath))}.${randomUUID()}.tmp.mp4`,
+              )
+              try {
+                await runMediaProcess({
+                  binary: config.ffmpegPath,
+                  args: concatVideoArguments({ listPath, output: temporaryPath }),
+                  signal: toolContext.abort,
+                  beforeSpawn: async () => {
+                    await dependencies.beforeMediaSpawn?.()
+                    await verifyNewOutput(studioRoot, target.outputPath)
+                    await verifyNewOutput(studioRoot, temporaryPath)
+                  },
+                })
+                await chmod(temporaryPath, 0o660)
+                await inspectCreatedMedia(temporaryPath)
+                try {
+                  await link(temporaryPath, target.outputPath)
+                } catch (error) {
+                  if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+                    throw new Error(`Output file already exists: ${target.outputPath}`)
+                  }
+                  throw error
+                }
+                return {
+                  title: target.outputPath,
+                  output: `Concatenated video to ${target.outputPath}`,
+                  metadata: await inspectManagedAsset(studioRoot, target.outputPath),
+                }
+              } finally {
+                await rm(temporaryPath, { force: true })
+              }
+            } finally {
+              await Promise.all(opened.map((media) => media.handle.close()))
+              await rm(tempDir, { recursive: true, force: true })
+            }
           },
         }),
 
