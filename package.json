@@ -19,6 +19,7 @@
     "dist",
     "scripts/postinstall-completion.mjs",
     "studios/cad/forge/forge_cli.py",
+    "studios/cad/forge/cad_runtime/**",
     "studios/cad/forge/pyproject.toml",
     "studios/cad/forge/uv.lock",
     "studios/cad/forge/.python-version",

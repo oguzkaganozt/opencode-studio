@@ -4,10 +4,16 @@ import { tool } from "@opencode-ai/plugin"
 import manifest from "../../package.json" with { type: "json" }
 import { formatToolJson } from "../../src/core/format-tool-json"
 import { createBuild123dTools } from "./build123d-tools"
-import { buildDesign, defaultForgeRunner, type ForgeRunner, scaffoldDesign } from "./forge"
+import { buildDesign, createRuntimeForgeRunner, type ForgeRunner, scaffoldDesign } from "./forge"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "./library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
 import { buildDesignQcReport, type QcAxisStatus } from "./qc-report"
+import {
+  designBuildFailureResult,
+  designBuildSuccessResult,
+  designCreateResult,
+  formatCadToolResult,
+} from "./tool-result"
 
 const PACKAGE_NAME = `${manifest.name}@${manifest.version}`
 const MAX_TOOL_OUTPUT_BYTES = 60_000
@@ -59,7 +65,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
   return async (context, rawOptions) => {
     const config = options(rawOptions, context.directory)
     const layout = await initializeStudio(config.studioRoot)
-    const forgeRunner = dependencies.forgeRunner ?? defaultForgeRunner
+    const forgeRunner = dependencies.forgeRunner ?? createRuntimeForgeRunner(context.directory)
     const build123dTools = createBuild123dTools({
       forgeProjectDir: config.forgeProjectDir,
       cwd: context.directory,
@@ -67,7 +73,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
     return {
       tool: {
         ...build123dTools,
-        design_list: tool({
+        cad_design_list: tool({
           description:
             "List CAD designs discovered under the CAD domain root (default studio/designs/). Each entry reports id, build status, and part count.",
           args: {},
@@ -85,9 +91,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
         }),
 
-        design_create: tool({
+        cad_design_create: tool({
           description:
-            "Scaffold a new CAD design directory with design.json (schema 1), params.py, and parts/. Use this in Phase 0 after deciding the part decomposition. Source files for individual parts are written separately during Phase 1.",
+            "Scaffold a new CAD design directory with design.json (schema 1), params.py, and parts/. Returns structured JSON {ok, status, summary, data, next}. Use in Phase 0 after deciding the part decomposition. Source files for individual parts are written separately during Phase 1.",
           args: {
             id: tool.schema.string().min(1).describe("Lowercase design id matching ^[a-z0-9][a-z0-9_-]*$"),
             parts: tool.schema
@@ -101,7 +107,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 }),
               )
               .min(1)
-              .describe("Initial part list; each part gets a placeholder source that must be modeled before design_build."),
+              .describe("Initial part list; each part gets a placeholder source that must be modeled before cad_design_build."),
           },
           async execute(args, context) {
             if (!ID_PATTERN.test(args.id)) throw new Error(`Invalid design id: ${args.id}`)
@@ -123,10 +129,16 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               args.id,
               args.parts.map((part) => ({ id: part.id, source: part.source })),
             )
+            const envelope = designCreateResult({
+              id: args.id,
+              designDir,
+              parts: manifest.parts,
+            })
             return {
               title: designDir,
-              output: `Scaffolded design "${args.id}" at ${designDir}. design.json lists ${manifest.parts.length} part(s).`,
+              output: formatCadToolResult(envelope),
               metadata: {
+                ok: true,
                 designDir,
                 parts: manifest.parts,
               },
@@ -134,9 +146,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
         }),
 
-        design_read: tool({
+        cad_design_read: tool({
           description:
-            "Read the canonical design/build summary, resolved artifact paths with existence checks, metrics, revision, and render inventory. Use after design_build; do not follow it with raw manifest reads or artifact globs.",
+            "Read the canonical design/build summary, resolved artifact paths with existence checks, metrics, revision, and render inventory. Use after cad_design_build; do not follow it with raw manifest reads or artifact globs.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
           },
@@ -173,9 +185,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
         }),
 
-        design_build: tool({
+        cad_design_build: tool({
           description:
-            "Deterministically build a CAD design and validate source plus round-tripped STEP geometry as one valid solid before exporting STEP/STL/GLB and manifest.json. A failed build preserves the previous output. Build success does not verify assembly or printability. Do not revalidate or remeasure unchanged STEP artifacts solely to repeat build guarantees.",
+            "Deterministically build a CAD design and validate source plus round-tripped STEP geometry as one valid solid before exporting STEP/STL/GLB and manifest.json. Returns structured JSON {ok, status, summary, data, next, error?}. A failed build preserves the previous output. Build success does not verify assembly or printability. Do not revalidate or remeasure unchanged STEP artifacts solely to repeat build guarantees.",
           args: {
             id: tool.schema.string().min(1).describe("Design id to build."),
           },
@@ -193,41 +205,57 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               always: [],
               metadata: {},
             })
-            const result = await buildDesign(layout, args.id, config.forgeProjectDir, forgeRunner, context.abort)
+            const result = await buildDesign(
+              layout,
+              args.id,
+              config.forgeProjectDir,
+              forgeRunner,
+              context.abort,
+              context.directory,
+            )
             if (!result.ok) {
+              const envelope = designBuildFailureResult({
+                id: args.id,
+                exitCode: result.exitCode,
+                designDir: result.designDir,
+                stdout: truncate(result.stdout),
+                stderr: truncate(result.stderr),
+              })
               return {
                 title: `Design build failed: ${args.id}`,
-                output: `Build failed (exit ${result.exitCode}).\n\nstdout:\n${truncate(result.stdout)}\n\nstderr:\n${truncate(result.stderr)}`,
-                metadata: { ok: false, exitCode: result.exitCode, designDir: result.designDir },
+                output: formatCadToolResult(envelope),
+                metadata: { ok: false, exitCode: result.exitCode, designDir: result.designDir, status: "fail" },
               }
             }
             const artifact = await readArtifactManifest(entry.directory, args.id)
             if (!artifact || !result.manifestPath) throw new Error(`manifest.json not found after build: ${args.id}`)
-            const summary = {
+            const envelope = designBuildSuccessResult({
+              id: args.id,
               revision: artifactRevision(artifact),
               manifestPath: path.resolve(result.manifestPath),
+              designDir: result.designDir,
               parts: artifact.parts.map((part) => ({
                 id: part.id,
                 stepPath: path.resolve(entry.directory, part.files.step),
                 metrics: part.metrics,
               })),
-              message: "Build succeeded; design verification was not performed.",
-            }
+            })
             return {
               title: `Built design: ${args.id}`,
-              output: asJson(summary),
+              output: formatCadToolResult(envelope),
               metadata: {
                 ok: true,
                 exitCode: result.exitCode,
                 designDir: result.designDir,
-                revision: summary.revision,
-                manifestPath: summary.manifestPath,
+                revision: envelope.data?.revision,
+                manifestPath: envelope.data?.manifestPath,
+                status: "pass",
               },
             }
           },
         }),
 
-        design_view: tool({
+        cad_design_view: tool({
           description:
             "Return the companion viewer URL for the design. Open it in a browser to inspect the 3D assembly, click surfaces to get coordinate/normal feedback, and use the Prompt button to send a feedback prompt into the companion agent composer.",
           args: {
@@ -252,16 +280,16 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
         }),
 
-        design_qc_report: tool({
+        cad_design_qc_report: tool({
           description:
-            "Multi-axis CAD QC report. Artifact status is computed from design_build outputs; printability, fit, and form statuses are supplied from prior build123d_* session checks (default unverified). complete is true only when every axis is pass. Never claim design complete without this report.",
+            "Multi-axis CAD QC report. Artifact status is computed from cad_design_build outputs; printability, fit, and form statuses are supplied from prior cad_* session checks (default unverified). complete is true only when every axis is pass. Never claim design complete without this report.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
             printability: tool.schema
               .object({
                 status: tool.schema
                   .enum(["pass", "fail", "unverified"] as const)
-                  .describe("From build123d_analyze_printability on bed poses."),
+                  .describe("From cad_analyze_printability on bed poses."),
                 findings: tool.schema.array(tool.schema.string()).optional().describe("Unresolved print findings."),
               })
               .optional(),
@@ -269,7 +297,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               .object({
                 status: tool.schema
                   .enum(["pass", "fail", "unverified"] as const)
-                  .describe("From build123d_compare fit/align and motion staging."),
+                  .describe("From cad_compare fit/align and motion staging."),
                 findings: tool.schema.array(tool.schema.string()).optional().describe("Fit/retention caveats."),
               })
               .optional(),

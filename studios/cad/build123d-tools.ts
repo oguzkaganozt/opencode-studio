@@ -1,6 +1,12 @@
 import { tool } from "@opencode-ai/plugin"
-import { BUILD123D_TOOL_PREFIX, getBuild123dSession } from "./build123d-session"
+import { cadSessionToolName } from "./cad-names"
+import { getBuild123dSession } from "./build123d-session"
 import catalog from "./build123d-tools.json" with { type: "json" }
+import {
+  BUILD123D_STRUCTURED_TOOLS,
+  formatCadToolResult,
+  structureBuild123dResult,
+} from "./tool-result"
 
 type JsonSchema = {
   type?: string | string[]
@@ -22,15 +28,19 @@ type CatalogTool = {
 
 type Field = any
 
-const BUILD123D_TOOL_GUIDANCE: Record<string, string> = {
-  build123d_execute:
-    "The execute Python namespace and the show()/import named-object registry are separate: only variables created by successful execute calls persist as Python variables. Do not assume imported names, objects, or current_shape exist inside execute().",
-  build123d_import_cad_file:
-    "The imported name is registered for named-object tools but is not bound as a Python variable inside build123d_execute().",
-  build123d_compare:
-    'For kind="fit", clearance is the global minimum between complete shapes. An intended stop, detent, or other contact can therefore return clearance 0; this does not verify a nominal gap at a specific interface. Check staged poses for moving assemblies. Rigid overlap at a staged pose quantifies collision, not elastic accommodation, insertion force, or retention force.',
-  build123d_analyze_printability:
-    "The current world orientation is treated as the print orientation. Reorient the final source-built shape into its actual bed pose before analysis, and rerun this check after every geometry change.",
+const CAD_SESSION_TOOL_GUIDANCE: Record<string, string> = {
+  cad_execute:
+    "Named registry shapes (cad_import_cad_file/show) are bound into this Python namespace as identifiers when valid, and always via cad_objects[name] / cad_object(name). Only variables created by successful execute calls persist as new Python locals beyond the registry bindings.",
+  cad_import_cad_file:
+    "Registers the shape for named-object tools and binds it into the next cad_execute namespace (valid identifiers as bare names; always via cad_object(name)).",
+  cad_validate:
+    "Returns structured JSON {ok, status, summary, data, next}. Use data.passes_gate and status; do not re-parse free text.",
+  cad_measure:
+    "Returns structured JSON {ok, status, summary, data, next} with volume/bbox/topology in data.",
+  cad_compare:
+    'Returns structured JSON {ok, status, summary, data, next}. For kind="fit", clearance is the global minimum between complete shapes. An intended stop, detent, or other contact can therefore return clearance 0; this does not verify a nominal gap at a specific interface. Check staged poses for moving assemblies. Rigid overlap at a staged pose quantifies collision, not elastic accommodation, insertion force, or retention force.',
+  cad_analyze_printability:
+    "Returns structured JSON {ok, status, summary, data, next}. status is fail when any error-severity finding exists. The current world orientation is treated as the print orientation. Reorient the final source-built shape into its actual bed pose before analysis, and rerun this check after every geometry change.",
 }
 
 function schemaToZod(schema: JsonSchema | undefined): Field {
@@ -105,8 +115,8 @@ export function createBuild123dTools(options: { forgeProjectDir: string; cwd: st
   const tools: Record<string, ReturnType<typeof tool>> = {}
 
   for (const entry of catalog.tools as CatalogTool[]) {
-    const toolName = `${BUILD123D_TOOL_PREFIX}${entry.name}`
-    const guidance = BUILD123D_TOOL_GUIDANCE[toolName]
+    const toolName = cadSessionToolName(entry.name)
+    const guidance = CAD_SESSION_TOOL_GUIDANCE[toolName]
     const description = guidance ? `${entry.description} ${guidance}` : entry.description
     const args = jsonSchemaToShape(entry.inputSchema ?? { type: "object", properties: {} })
 
@@ -126,8 +136,28 @@ export function createBuild123dTools(options: { forgeProjectDir: string; cwd: st
           url: `data:${image.mimeType};base64,${image.data}`,
           filename: `${entry.name}-${index + 1}.${image.mimeType.includes("svg") ? "svg" : "png"}`,
         }))
+        if (BUILD123D_STRUCTURED_TOOLS.has(entry.name)) {
+          const envelope = structureBuild123dResult({
+            entryName: entry.name,
+            toolName,
+            text: result.text,
+            isError: result.isError,
+            args: cleaned,
+          })
+          return {
+            title: envelope.ok ? toolName : `${toolName} failed`,
+            output: formatCadToolResult(envelope),
+            metadata: {
+              tool: toolName,
+              ok: envelope.ok,
+              status: envelope.status,
+              summary: envelope.summary,
+            },
+            attachments: attachments.length > 0 ? attachments : undefined,
+          }
+        }
         if (result.isError) {
-          throw new Error(result.text || `build123d_${entry.name} failed`)
+          throw new Error(result.text || `${toolName} failed`)
         }
         return {
           title: toolName,
@@ -142,6 +172,6 @@ export function createBuild123dTools(options: { forgeProjectDir: string; cwd: st
   return tools
 }
 
-export function build123dToolNames() {
-  return (catalog.tools as CatalogTool[]).map((entry) => `${BUILD123D_TOOL_PREFIX}${entry.name}`)
+export function cadSessionToolNames() {
+  return (catalog.tools as CatalogTool[]).map((entry) => cadSessionToolName(entry.name))
 }

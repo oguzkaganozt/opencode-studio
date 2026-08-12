@@ -18,7 +18,7 @@ describe("parity fixtures", () => {
   test("tool inventory is frozen", () => {
     expect(tools.count).toBe(Object.keys(tools.tools).length)
     expect(Object.keys(tools.tools).sort()).toContain("read_media")
-    expect(Object.keys(tools.tools).sort()).toContain("design_build")
+    expect(Object.keys(tools.tools).sort()).toContain("cad_design_build")
     expect(Object.keys(tools.tools).sort()).toContain("pcb_circuit_build")
   })
 
@@ -94,7 +94,7 @@ describe("live tool inventory", () => {
       const composed = await plugin({ directory: workspace } as any, {})
       const names = listComposedToolNames(composed)
       expect(names).toContain("read_media")
-      expect(names).toContain("design_build")
+      expect(names).toContain("cad_design_build")
       expect(names).toContain("pcb_circuit_build")
     } finally {
       await rm(root, { recursive: true, force: true })

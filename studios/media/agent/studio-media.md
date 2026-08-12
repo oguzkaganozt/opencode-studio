@@ -7,6 +7,7 @@ permission:
   fal_*: allow
   chatgpt_image_generate: allow
   read_media: allow
+  cad_*: deny
   design_*: deny
   build123d_*: deny
   pcb_*: deny

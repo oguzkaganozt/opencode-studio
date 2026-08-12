@@ -4,7 +4,7 @@ description: >
   Load before Media Studio image, audio, or video work — generate/edit/import/convert/trim
   thumbnails or clips, chatgpt_image_generate, fal_* paid generation, media_download,
   media_list/info/probe, or Media project asset paths. Not for mechanical CAD product
-  renders (studio-cad + build123d_render_view into designs/<id>/renders/) or PCB artifacts
+  renders (studio-cad + cad_render_view into designs/<id>/renders/) or PCB artifacts
   (studio-pcb).
 license: proprietary
 compatibility: opencode

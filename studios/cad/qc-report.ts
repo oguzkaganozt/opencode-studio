@@ -83,7 +83,7 @@ export async function buildDesignQcReport(input: {
   const artifactFindings: string[] = []
   if (!artifact || entry.buildStatus === "unbuilt") {
     artifactStatus = "fail"
-    artifactFindings.push("no built artifacts; run design_build")
+    artifactFindings.push("no built artifacts; run cad_design_build")
   } else if (entry.buildStatus === "stale") {
     artifactStatus = "fail"
     artifactFindings.push("build is stale relative to sources")

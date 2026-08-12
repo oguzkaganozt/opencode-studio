@@ -5,7 +5,7 @@ import { ID_PATTERN } from "./manifest"
 
 /**
  * Observation-only Companion events for CAD designs.
- * Rebuilds still belong to agent tools (`design_build`), not the viewer.
+ * Rebuilds still belong to agent tools (`cad_design_build`), not the viewer.
  */
 export type DesignEvent = {
   type: "designs-changed" | "design-changed"

@@ -2,7 +2,7 @@ export const STUDIO_IDS = ["cad", "pcb", "media"] as const
 export type StudioId = (typeof STUDIO_IDS)[number]
 
 export const STUDIO_TOOL_PERMISSIONS: Record<StudioId, readonly string[]> = {
-  cad: ["design_*", "build123d_*"],
+  cad: ["cad_*"],
   pcb: ["pcb_*"],
   media: ["media_*", "fal_*", "chatgpt_image_generate", "read_media"],
 }

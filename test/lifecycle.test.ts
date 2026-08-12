@@ -73,7 +73,7 @@ describe("configureStudios", () => {
     expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(false)
     expect(openCode.mcp?.build123d).toBeUndefined()
     expect(openCode.permission["pcb_*"]).toBe("deny")
-    expect(openCode.permission["design_*"]).toBe("deny")
+    expect(openCode.permission["cad_*"]).toBe("deny")
     expect(openCode.permission["media_*"]).toBe("deny")
     expect(openCode.permission.skill["studio-media"]).toBe("deny")
     expect(await Bun.file(path.join(ctx.workspace, "opencode.json")).exists()).toBe(false)

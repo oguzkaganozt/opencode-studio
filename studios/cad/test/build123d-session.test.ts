@@ -14,7 +14,8 @@ describe("build123d session recovery", () => {
 
       const afterAbort = await session.callTool("version", {}, { timeoutMs: 60_000 })
       expect(afterAbort.isError).toBe(false)
-      expect(afterAbort.text).toContain("build123d-mcp: 0.3.80")
+      expect(afterAbort.text).toContain("forge-cad")
+      expect(afterAbort.text).toMatch(/forge-cad: \d+\.\d+/)
 
       await expect(session.callTool("health_check", {}, { timeoutMs: 1 })).rejects.toThrow(/timed out/)
 

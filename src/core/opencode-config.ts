@@ -127,7 +127,12 @@ export function withMcp(config: OpenCodeConfig, mcp: Record<string, unknown> | u
 type PermissionAction = "allow" | "ask" | "deny"
 const PERMISSION_ACTIONS = new Set<PermissionAction>(["allow", "ask", "deny"])
 
-export const MANAGED_STUDIO_TOOL_PERMISSIONS = STUDIO_IDS.flatMap((id) => STUDIO_TOOL_PERMISSIONS[id])
+export const MANAGED_STUDIO_TOOL_PERMISSIONS = [
+  ...STUDIO_IDS.flatMap((id) => STUDIO_TOOL_PERMISSIONS[id]),
+  // Legacy CAD public names — keep denied so old installs cannot leak after rename.
+  "design_*",
+  "build123d_*",
+] as const
 
 function permissionObject(value: unknown, label: string): Record<string, unknown> {
   if (value === undefined) return {}

@@ -1,17 +1,13 @@
-import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { ensureUv } from "../../src/core/engines"
-import { syncForgeUvProject } from "../../src/core/package-meta"
 import { isInside } from "../../src/core/paths"
+import { getBuild123dSession } from "./build123d-session"
 import { resolveDesignDirectory, type StudioLayout } from "./library"
 import { readArtifactManifest, readDesignManifest, scaffoldDesignManifest } from "./manifest"
 
-/** Timed budget for the forge *build* only (deps are synced separately). */
+/** Timed budget for product build via the shared CAD runtime session. */
 const FORGE_BUILD_TIMEOUT_MS = 120_000
-const FORGE_KILL_GRACE_MS = 2_000
-const MAX_PROCESS_OUTPUT_BYTES = 64 * 1024
 
 export type ForgeBuildResult = {
   ok: boolean
@@ -22,86 +18,85 @@ export type ForgeBuildResult = {
   designDir: string
 }
 
-export type ForgeRunner = (input: { forgeProjectDir: string; designDir: string; signal?: AbortSignal }) => Promise<ForgeBuildResult>
+export type ForgeRunner = (input: {
+  forgeProjectDir: string
+  designDir: string
+  cwd: string
+  signal?: AbortSignal
+}) => Promise<ForgeBuildResult>
 
-export const defaultForgeRunner: ForgeRunner = async ({ forgeProjectDir, designDir, signal }) => {
-  const uv = await ensureUv()
-  // Dep install outside the build timer — cold OCP/uv must not compete with 120s build kill.
-  try {
-    await syncForgeUvProject(uv.path, forgeProjectDir, { signal })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return {
-      ok: false,
-      exitCode: signal?.aborted ? 130 : 1,
-      stdout: "",
-      stderr: message,
-      manifestPath: null,
-      designDir,
-    }
-  }
-
-  // --no-sync: environment already prepared; timer covers geometry build only.
-  const child = spawn(uv.path, ["--project", forgeProjectDir, "run", "--no-sync", "forge", "build", designDir], {
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  })
-  let stdout = ""
-  let stderr = ""
-  let termination: "timeout" | "abort" | null = null
-  let killTimer: ReturnType<typeof setTimeout> | undefined
-  const append = (current: string, chunk: Buffer) => {
-    if (current.length >= MAX_PROCESS_OUTPUT_BYTES) return current
-    const next = current + chunk.toString()
-    return next.length > MAX_PROCESS_OUTPUT_BYTES ? `${next.slice(0, MAX_PROCESS_OUTPUT_BYTES)}\n[process output truncated]` : next
-  }
-  const killGroup = (killSignal: NodeJS.Signals) => {
-    if (!child.pid) return
+/**
+ * Build through the same studio-cad-runtime session as cad_execute / measure / …
+ * (single agent-facing runtime; forge_cli runs in-process inside that runtime).
+ */
+export function createRuntimeForgeRunner(cwd: string): ForgeRunner {
+  return async ({ forgeProjectDir, designDir, signal }) => {
+    const session = getBuild123dSession(forgeProjectDir, cwd)
     try {
-      process.kill(-child.pid, killSignal)
-    } catch {
-      child.kill(killSignal)
+      const result = await session.callTool(
+        "studio_build",
+        { design_dir: designDir },
+        {
+          signal,
+          timeoutMs: FORGE_BUILD_TIMEOUT_MS,
+          // Build shares the CAD process; do not wipe interactive session state on timeout/cancel.
+          resetSessionOnFailure: false,
+        },
+      )
+      if (result.isError) {
+        return {
+          ok: false,
+          exitCode: signal?.aborted ? 130 : 1,
+          stdout: "",
+          stderr: result.text || "studio_build failed",
+          manifestPath: null,
+          designDir,
+        }
+      }
+      let parsed: {
+        ok?: boolean
+        exitCode?: number
+        stdout?: string
+        stderr?: string
+        manifestPath?: string | null
+        designDir?: string
+      }
+      try {
+        parsed = JSON.parse(result.text) as typeof parsed
+      } catch {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: result.text,
+          stderr: "studio_build returned non-JSON output",
+          manifestPath: null,
+          designDir,
+        }
+      }
+      return {
+        ok: parsed.ok === true,
+        exitCode: typeof parsed.exitCode === "number" ? parsed.exitCode : parsed.ok ? 0 : 1,
+        stdout: typeof parsed.stdout === "string" ? parsed.stdout : "",
+        stderr: typeof parsed.stderr === "string" ? parsed.stderr : "",
+        manifestPath: typeof parsed.manifestPath === "string" ? parsed.manifestPath : null,
+        designDir: typeof parsed.designDir === "string" ? parsed.designDir : designDir,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        ok: false,
+        exitCode: signal?.aborted ? 130 : 1,
+        stdout: "",
+        stderr: message,
+        manifestPath: null,
+        designDir,
+      }
     }
-  }
-  const terminate = (reason: "timeout" | "abort") => {
-    if (termination) return
-    termination = reason
-    killGroup("SIGTERM")
-    killTimer = setTimeout(() => killGroup("SIGKILL"), FORGE_KILL_GRACE_MS)
-  }
-  const timer = setTimeout(() => {
-    terminate("timeout")
-  }, FORGE_BUILD_TIMEOUT_MS)
-  const abort = () => terminate("abort")
-  signal?.addEventListener("abort", abort, { once: true })
-  if (signal?.aborted) abort()
-  try {
-    child.stdout?.on("data", (chunk) => {
-      stdout = append(stdout, chunk)
-    })
-    child.stderr?.on("data", (chunk) => {
-      stderr = append(stderr, chunk)
-    })
-    const { status, closeSignal } = await new Promise<{ status: number | null; closeSignal: NodeJS.Signals | null }>((resolve, reject) => {
-      child.on("error", reject)
-      child.on("close", (status, closeSignal) => resolve({ status, closeSignal }))
-    })
-    const code = status ?? (termination === "timeout" ? 124 : termination === "abort" ? 130 : 1)
-    if (closeSignal) stderr = append(stderr, Buffer.from(`\nProcess terminated by ${closeSignal}`))
-    return {
-      ok: code === 0 && termination === null && closeSignal === null,
-      exitCode: code,
-      stdout,
-      stderr,
-      manifestPath: null,
-      designDir,
-    }
-  } finally {
-    clearTimeout(timer)
-    if (killTimer) clearTimeout(killTimer)
-    signal?.removeEventListener("abort", abort)
   }
 }
+
+/** @deprecated Use createRuntimeForgeRunner(cwd) — kept name for call sites/tests. */
+export const defaultForgeRunner: ForgeRunner = createRuntimeForgeRunner(process.cwd())
 
 export async function buildDesign(
   layout: StudioLayout,
@@ -109,10 +104,11 @@ export async function buildDesign(
   forgeProjectDir: string,
   runner: ForgeRunner = defaultForgeRunner,
   signal?: AbortSignal,
+  cwd: string = process.cwd(),
 ): Promise<ForgeBuildResult & { manifestPath: string | null }> {
   const designDir = await resolveDesignDirectory(layout, id)
   await readDesignManifest(designDir, id)
-  const result = await runner({ forgeProjectDir, designDir, signal })
+  const result = await runner({ forgeProjectDir, designDir, cwd, signal })
   if (!result.ok) return { ...result, manifestPath: null }
   const artifact = await readArtifactManifest(designDir, id)
   if (!artifact) {
@@ -178,7 +174,7 @@ export async function scaffoldDesign(
       await mkdir(path.dirname(sourcePath), { recursive: true })
       await writeFile(
         sourcePath,
-        `"""Parametric source for ${part.id}."""\n\ndef build():\n    raise NotImplementedError("Model ${part.id} before design_build")\n`,
+        `"""Parametric source for ${part.id}."""\n\ndef build():\n    raise NotImplementedError("Model ${part.id} before cad_design_build")\n`,
         { encoding: "utf8", flag: "wx" },
       )
     }

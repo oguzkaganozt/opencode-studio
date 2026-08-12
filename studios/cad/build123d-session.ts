@@ -4,7 +4,8 @@ import { ensureUv } from "../../src/core/engines"
 import { syncForgeUvProject } from "../../src/core/package-meta"
 
 export const BUILD123D_SESSION_TIMEOUT_MS = 120_000
-export const BUILD123D_TOOL_PREFIX = "build123d_"
+/** @deprecated Public tools use cad_* names; session protocol is internal. */
+export const BUILD123D_TOOL_PREFIX = "cad_"
 
 type JsonRpcId = number
 type JsonRpcRequest = {
@@ -38,8 +39,9 @@ type Pending = {
 }
 
 /**
- * Long-lived build123d-mcp child process owned by the CAD plugin.
- * Speaks MCP stdio (newline-delimited JSON-RPC). Same forge uv project as design_build.
+ * Long-lived Studio CAD runtime (Python) owned by the CAD plugin.
+ * One process (--in-process): session tools + studio_build. Stdio JSON-RPC.
+ * Same forge uv project as product builds.
  */
 export class Build123dSession {
   private child: ChildProcessWithoutNullStreams | null = null
@@ -58,7 +60,12 @@ export class Build123dSession {
   async callTool(
     name: string,
     args: Record<string, unknown>,
-    options?: { signal?: AbortSignal; timeoutMs?: number },
+    options?: {
+      signal?: AbortSignal
+      timeoutMs?: number
+      /** When false, timeout/abort rejects the call but keeps the Python session alive (for studio_build). Default true. */
+      resetSessionOnFailure?: boolean
+    },
   ): Promise<Build123dCallResult> {
     await this.ensureStarted(options?.signal)
     const timeoutMs = options?.timeoutMs ?? BUILD123D_SESSION_TIMEOUT_MS
@@ -70,6 +77,7 @@ export class Build123dSession {
       },
       timeoutMs,
       options?.signal,
+      options?.resetSessionOnFailure !== false,
     )
     return parseToolResult(result)
   }
@@ -152,12 +160,21 @@ export class Build123dSession {
     const uv = await ensureUv()
     await syncForgeUvProject(uv.path, this.forgeProjectDir, { signal })
 
-    const child = spawn(uv.path, ["--project", this.forgeProjectDir, "run", "--no-sync", "build123d-mcp"], {
-      cwd: this.cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env },
-      detached: true,
-    })
+    // Single Python CAD process: --in-process disables the runtime's internal
+    // WorkerSession child so session + studio_build share one address space.
+    const child = spawn(
+      uv.path,
+      ["--project", this.forgeProjectDir, "run", "--no-sync", "studio-cad-runtime", "--in-process"],
+      {
+        cwd: this.cwd,
+        stdio: ["pipe", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          BUILD123D_IN_PROCESS: "1",
+        },
+        detached: true,
+      },
+    )
     this.child = child
     this.reader = createInterface({ input: child.stdout, crlfDelay: Infinity })
     this.reader.on("line", (line) => this.onLine(line))
@@ -221,7 +238,13 @@ export class Build123dSession {
     this.write(payload)
   }
 
-  private request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+  private request(
+    method: string,
+    params: unknown,
+    timeoutMs: number,
+    signal?: AbortSignal,
+    resetSessionOnFailure = true,
+  ): Promise<unknown> {
     if (!this.child?.stdin) return Promise.reject(new Error("build123d session not running"))
     if (signal?.aborted) return Promise.reject(new Error(`build123d ${method} aborted`))
     const id = this.nextId++
@@ -230,16 +253,22 @@ export class Build123dSession {
       const timer = setTimeout(() => {
         this.pending.delete(id)
         signal?.removeEventListener("abort", onAbort)
-        const error = new Error(`build123d ${method} timed out after ${timeoutMs}ms; session reset`)
+        const error = new Error(
+          resetSessionOnFailure
+            ? `build123d ${method} timed out after ${timeoutMs}ms; session reset`
+            : `build123d ${method} timed out after ${timeoutMs}ms`,
+        )
         reject(error)
-        void this.stopChild(error)
+        if (resetSessionOnFailure) void this.stopChild(error)
       }, timeoutMs)
       const onAbort = () => {
         this.pending.delete(id)
         clearTimeout(timer)
-        const error = new Error(`build123d ${method} aborted; session reset`)
+        const error = new Error(
+          resetSessionOnFailure ? `build123d ${method} aborted; session reset` : `build123d ${method} aborted`,
+        )
         reject(error)
-        void this.stopChild(error)
+        if (resetSessionOnFailure) void this.stopChild(error)
       }
       signal?.addEventListener("abort", onAbort, { once: true })
       this.pending.set(id, {

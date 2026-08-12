@@ -124,26 +124,6 @@ wheels = [
 ]
 
 [[package]]
-name = "build123d-mcp"
-version = "0.3.80"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "augura" },
-    { name = "bd-warehouse" },
-    { name = "build123d" },
-    { name = "build123d-drafting-helpers" },
-    { name = "defusedxml" },
-    { name = "mcp" },
-    { name = "resvg-py" },
-    { name = "scipy" },
-    { name = "vtk" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/33/65/3c1eef45814517118872c0be6c065b327c81c3aa1977e4fba6d71865dbd2/build123d_mcp-0.3.80.tar.gz", hash = "sha256:8f64bff5632fec02b0421eacb80b997ed31f71415096e836005694716043bab9", size = 7749167, upload-time = "2026-07-27T05:22:12.5Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/25/f6a9a8d7a417add4a5ff8e5008a423388600a9f243c3073214c7e909c481/build123d_mcp-0.3.80-py3-none-any.whl", hash = "sha256:a374d5623c5e87bb68e407d56c7039f5eae42365a029eec10d0a19e64a288526", size = 304347, upload-time = "2026-07-27T05:22:10.484Z" },
-]
-
-[[package]]
 name = "cadquery-ocp-novtk"
 version = "7.9.3.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -578,21 +558,33 @@ wheels = [
 
 [[package]]
 name = "forge-cad"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "augura" },
+    { name = "bd-warehouse" },
     { name = "build123d" },
-    { name = "build123d-mcp" },
+    { name = "build123d-drafting-helpers" },
+    { name = "defusedxml" },
     { name = "mcp" },
+    { name = "resvg-py" },
+    { name = "scipy" },
     { name = "trimesh" },
+    { name = "vtk" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "augura", specifier = ">=0.1.6" },
+    { name = "bd-warehouse" },
     { name = "build123d", specifier = "==0.11.1" },
-    { name = "build123d-mcp", specifier = "==0.3.80" },
+    { name = "build123d-drafting-helpers", specifier = ">=0.10.0" },
+    { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "mcp", specifier = ">=1.9,<2" },
+    { name = "resvg-py" },
+    { name = "scipy" },
     { name = "trimesh", specifier = "==4.12.2" },
+    { name = "vtk", specifier = ">=9.3" },
 ]
 
 [[package]]

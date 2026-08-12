@@ -1162,14 +1162,14 @@ export async function statusStudios(input: LifecyclePaths = {}) {
           id: "cad-forge",
           status: "warn",
           message: `Forge runtime not seeded at ${forgeDir}`,
-          repair: "Run design_build once (syncs forge deps automatically)",
+          repair: "Run cad_design_build once (syncs forge deps automatically)",
         })
       } else if (!hasVenv) {
         checks.push({
           id: "cad-forge",
           status: "warn",
           message: `Forge sources present but venv not synced (${forgeDir})`,
-          repair: "Run design_build once (syncs forge deps automatically)",
+          repair: "Run cad_design_build once (syncs forge deps automatically)",
         })
       } else {
         checks.push({

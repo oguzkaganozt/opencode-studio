@@ -1,0 +1,94 @@
+import json
+import re
+
+from cad_runtime.tools.repair_hints import _HINTS
+
+_SUGGESTED_FIXES = {
+    "boolean_fail": (
+        "Check that both operands are valid solids and their intersection is non-empty; "
+        "try visualising each shape separately before the boolean."
+    ),
+    "syntax_error": (
+        "Fix the Python syntax error at the indicated line; "
+        "check for missing colons, unmatched brackets, or wrong indentation."
+    ),
+    "selector_empty": (
+        "The selector returned an empty list; "
+        "use inspect_drawing() or measure() to list available faces/edges before selecting."
+    ),
+    "shapelist_attr": (
+        "Box() + Cylinder() returns a ShapeList, not a fused Part — it won't have "
+        ".volume, .faces(), etc. Fix: wrap in Part(): `Part() + Box(...) + Cylinder(...)`, "
+        "or fuse explicitly: `Box(...).fuse(Cylinder(...))`, "
+        "or iterate solids: `sum(s.volume for s in result.solids())`."
+    ),
+    "fillet_fail": (
+        "Fillet radius may be too large or the selected edges are non-manifold; "
+        "try a smaller radius or select fewer edges."
+    ),
+    "timeout": (
+        "The code exceeded the execution time limit; "
+        "break the operation into smaller steps or raise --exec-timeout."
+    ),
+    "import_blocked": (
+        "That import is not in the allowlist; "
+        "use only build123d, math, numpy, or other permitted modules."
+    ),
+    "call_blocked": (
+        "That builtin/attribute is blocked by the sandbox (getattr, vars, eval, exec, "
+        "open, explicit dunders); hasattr() and dir() are allowed. Probe attributes with "
+        "hasattr/try-except/isinstance, or run the server with --no-sandbox if trusted."
+    ),
+    "unknown": (
+        "Review the full error message and traceback for clues; "
+        "call last_error() for the line number and excerpt."
+    ),
+}
+
+
+def _classify_from_error_string(error_result: str) -> dict:
+    """Classify an error string (as returned by session.execute) into a failure_class."""
+    msg = error_result
+    msg_lower = msg.lower()
+
+    if "Can't get geom adaptor" in msg:
+        cls = "boolean_fail"
+    elif "SyntaxError" in msg or "IndentationError" in msg:
+        cls = "syntax_error"
+    elif "AttributeError" in msg and "ShapeList" in msg:
+        cls = "shapelist_attr"
+    elif "ShapeList" in msg or ("index" in msg_lower and "faces" in msg):
+        cls = "selector_empty"
+    elif "fillet" in msg_lower or "non-manifold" in msg_lower:
+        cls = "fillet_fail"
+    elif "ExecutionTimeout" in msg:
+        cls = "timeout"
+    elif ("Call to" in msg or "dunder attribute" in msg) and "not allowed" in msg:
+        cls = "call_blocked"
+    elif "not allowed" in msg:
+        cls = "import_blocked"
+    else:
+        cls = "unknown"
+
+    return {"failure_class": cls, "suggested_fix": _SUGGESTED_FIXES[cls]}
+
+
+def execute_code(session, code: str) -> str:
+    result = session.execute(code)
+    if result.startswith("Error:") or result.startswith("Constraint failed"):
+        matched = [hint for patterns, hint in _HINTS if any(re.search(p, result) for p in patterns)]
+        if matched:
+            result += "\n\nHint: " + ("\n      ".join(matched))
+
+        classification = _classify_from_error_string(result)
+        result += "\n\n" + json.dumps(classification)
+        return result
+
+    try:
+        obj_types = session.objects_types()
+        parts = ", ".join(f"{name} ({desc})" for name, desc in obj_types.items()) or "(none)"
+        result = result.rstrip("\n") + f"\n\nSession objects: {parts}"
+    except Exception:
+        pass  # don't mask a successful execute if the objects summary fails
+
+    return result

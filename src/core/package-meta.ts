@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { copyFile, mkdir, readFile, stat } from "node:fs/promises"
+import { cp, copyFile, mkdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import envPaths from "env-paths"
 import type { StudioId } from "./registry"
@@ -58,6 +58,9 @@ export function agentSourcePath(packageRoot: string, studioId: StudioId) {
 }
 
 const FORGE_RUNTIME_FILES = ["pyproject.toml", "uv.lock", "forge_cli.py", ".python-version"] as const
+
+/** Owned CAD session package directory mirrored into the forge runtime cache. */
+const FORGE_RUNTIME_DIRS = ["cad_runtime"] as const
 
 /** Packaged forge sources inside the npm package. */
 export function forgeSourceDir(packageRoot: string) {
@@ -145,6 +148,17 @@ export async function ensureForgeRuntimeDir(packageRoot: string) {
       needsCopy = true
     }
     if (needsCopy) await copyFile(from, to)
+  }
+
+  for (const name of FORGE_RUNTIME_DIRS) {
+    const from = path.join(source, name)
+    const to = path.join(runtime, name)
+    try {
+      await stat(from)
+    } catch {
+      throw new Error(`Missing forge source directory: ${from}`)
+    }
+    await cp(from, to, { recursive: true, force: true })
   }
 
   return runtime

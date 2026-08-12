@@ -96,18 +96,31 @@ describe("cad plugin smoke", () => {
       companionUrl: "http://127.0.0.1:4173",
     })
     const names = Object.keys(hooks.tool ?? {}).sort()
-    expect(names.filter((name) => name.startsWith("design_"))).toEqual(
-      ["design_build", "design_create", "design_list", "design_qc_report", "design_read", "design_view"].sort(),
-    )
-    expect(names.filter((name) => name.startsWith("build123d_")).length).toBeGreaterThan(20)
-    expect(names).toContain("build123d_execute")
-    expect(names).toContain("build123d_measure")
-    const created = await (hooks.tool as any).design_create.execute(
+    for (const name of [
+      "cad_design_build",
+      "cad_design_create",
+      "cad_design_list",
+      "cad_design_qc_report",
+      "cad_design_read",
+      "cad_design_view",
+    ]) {
+      expect(names).toContain(name)
+    }
+    expect(names.filter((name) => name.startsWith("cad_")).length).toBeGreaterThan(30)
+    expect(names).toContain("cad_execute")
+    expect(names).toContain("cad_measure")
+    expect(names.some((name) => name.startsWith("design_") || name.startsWith("build123d_"))).toBe(false)
+    const created = await (hooks.tool as any).cad_design_create.execute(
       { id: "test-design", parts: [{ id: "body" }] },
       { ...fakeContext, ask: async () => {} },
     )
     expect(created.title).toContain("test-design")
-    const listed = JSON.parse(await (hooks.tool as any).design_list.execute({}))
+    const createdBody = JSON.parse(created.output)
+    expect(createdBody.ok).toBe(true)
+    expect(createdBody.tool).toBe("cad_design_create")
+    expect(createdBody.data.id).toBe("test-design")
+    expect(createdBody.next?.length).toBeGreaterThan(0)
+    const listed = JSON.parse(await (hooks.tool as any).cad_design_list.execute({}))
     expect(listed.designs[0].partCount).toBe(1)
   })
 
@@ -119,18 +132,22 @@ describe("cad plugin smoke", () => {
     }
     const plugin = createStudioPlugin({ forgeRunner: runner as any })
     const hooks = await plugin(fakeContext, { studioRoot: studio.designsRoot, forgeProjectDir: studio.forgeDir })
-    await (hooks.tool as any).design_create.execute({ id: "demo", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
-    const built = await (hooks.tool as any).design_build.execute({ id: "demo" }, { ...fakeContext, ask: async () => {} })
-    expect(JSON.parse(built.output).parts[0].metrics.solid_count).toBe(1)
+    await (hooks.tool as any).cad_design_create.execute({ id: "demo", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
+    const built = await (hooks.tool as any).cad_design_build.execute({ id: "demo" }, { ...fakeContext, ask: async () => {} })
+    const builtBody = JSON.parse(built.output)
+    expect(builtBody.ok).toBe(true)
+    expect(builtBody.tool).toBe("cad_design_build")
+    expect(builtBody.data.parts[0].metrics.solid_count).toBe(1)
+    expect(builtBody.warnings.join(" ")).toMatch(/not run/i)
 
-    const incomplete = JSON.parse((await (hooks.tool as any).design_qc_report.execute({ id: "demo" })).output)
+    const incomplete = JSON.parse((await (hooks.tool as any).cad_design_qc_report.execute({ id: "demo" })).output)
     expect(incomplete.complete).toBe(false)
     expect(incomplete.artifact.status).toBe("pass")
     expect(incomplete.blockedBy).toEqual(expect.arrayContaining(["printability", "fit", "form"]))
 
     const complete = JSON.parse(
       (
-        await (hooks.tool as any).design_qc_report.execute({
+        await (hooks.tool as any).cad_design_qc_report.execute({
           id: "demo",
           printability: { status: "pass", findings: [] },
           fit: { status: "pass", findings: ["ok"] },
