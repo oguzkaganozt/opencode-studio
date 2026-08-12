@@ -7,6 +7,7 @@
       "!!node_modules",
       "!!studios/cad/engine",
       "!!studios/*/viewer",
+      "!!studios/cad/test/benchmarks/runs",
       "!!ui/public",
       "!!studios/*/viewer/node_modules"
     ]

@@ -180,9 +180,13 @@ export async function createFilesApi(workspaceRoot: string, options?: { publicBa
     if (!info.isDirectory()) throw new FilesError(400, "Not a directory")
 
     const entries: FileEntry[] = []
+    let truncated = false
     const opened = await opendir(absolute)
     for await (const entry of opened) {
-      if (entries.length >= MAX_LIST_ENTRIES) break
+      if (entries.length >= MAX_LIST_ENTRIES) {
+        truncated = true
+        break
+      }
       if (entry.isSymbolicLink()) continue
       // Hide all dotfiles (including .env) from the tree listing.
       if (entry.name.startsWith(".")) continue
@@ -215,7 +219,7 @@ export async function createFilesApi(workspaceRoot: string, options?: { publicBa
       if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1
       return a.name.localeCompare(b.name, "en-US")
     })
-    return ctx.json({ path: relative, entries })
+    return ctx.json({ path: relative, entries, truncated })
   })
 
   app.get("/stat", async (ctx) => {

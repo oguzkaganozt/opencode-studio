@@ -73,13 +73,18 @@ function pruneRestarts(now = Date.now()) {
   restartTimestamps = restartTimestamps.filter((t) => now - t < RESTART_WINDOW_MS)
 }
 
-function canRestart(): boolean {
+export function canRestart(): boolean {
   pruneRestarts()
   return restartTimestamps.length < MAX_RESTARTS
 }
 
-function noteRestart() {
+export function noteRestart() {
   restartTimestamps.push(Date.now())
+}
+
+/** Watchdog decision after a failed health probe: false-blip guard vs restart. */
+export function healthMissDecision(healthMisses: number, childAlive: boolean): "wait" | "restart" {
+  return childAlive && healthMisses < HEALTH_MISS_BEFORE_RESTART ? "wait" : "restart"
 }
 
 export function supervisorStatus(): SupervisorStatus {
@@ -113,7 +118,7 @@ async function tickWatchdog() {
   // Process gone → restart immediately. Flaky /global/health with a live child needs two misses.
   if (childStillRunning(state)) {
     healthMisses += 1
-    if (healthMisses < HEALTH_MISS_BEFORE_RESTART) {
+    if (healthMissDecision(healthMisses, true) === "wait") {
       console.error(`[opencode-studio] OpenCode health miss ${healthMisses}/${HEALTH_MISS_BEFORE_RESTART}; waiting…`)
       return
     }
@@ -287,7 +292,7 @@ export async function restartOwnedOpenCode(env: NodeJS.ProcessEnv = process.env)
   return restartOpenCode(env)
 }
 
-async function restartOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
+export async function restartOpenCode(env: NodeJS.ProcessEnv): Promise<SuperviseResult> {
   if (restartFlight) return restartFlight
   if (!canRestart()) return { ok: false, reason: "OpenCode restart budget exhausted (5 / 5min)" }
   noteRestart()

@@ -3,24 +3,14 @@ import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import manifest from "../../../package.json" with { type: "json" }
 import { formatToolJson } from "../../../src/core/format-tool-json"
-import { createCadSessionTools } from "./session-tools"
-import { getCadRuntimeSession } from "./session"
-import { buildDesign, createCadBuildRunner, type CadBuildRunner, scaffoldDesign } from "../host/build"
+import { buildDesign, type CadBuildRunner, createCadBuildRunner, scaffoldDesign } from "../host/build"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "../host/manifest"
+import { clearQcEvidenceForDesign, clearQcSession, qcEvidenceKey, qcSessionKey, setActiveQcDesign } from "../host/qc-evidence"
 import { buildDesignQcReport, type QcAxisStatus } from "../host/qc-report"
-import {
-  clearQcEvidenceForDesign,
-  qcEvidenceKey,
-  qcSessionKey,
-  setActiveQcDesign,
-} from "../host/qc-evidence"
-import {
-  designBuildFailureResult,
-  designBuildSuccessResult,
-  designCreateResult,
-  formatCadToolResult,
-} from "./result"
+import { designBuildFailureResult, designBuildSuccessResult, designCreateResult, formatCadToolResult } from "./result"
+import { closeAllCadRuntimeSessions, closeCadRuntimeSession, getCadRuntimeSession } from "./session"
+import { createCadSessionTools } from "./session-tools"
 
 const PACKAGE_NAME = `${manifest.name}@${manifest.version}`
 const MAX_TOOL_OUTPUT_BYTES = 60_000
@@ -42,12 +32,7 @@ function truncate(value: string, max = MAX_TOOL_OUTPUT_BYTES) {
 }
 
 /** Bind design_dir into the CAD execute session so params.py is available (best-effort). */
-async function bindActiveDesign(
-  engineProjectDir: string,
-  cwd: string,
-  designDir: string,
-  signal?: AbortSignal,
-) {
+async function bindActiveDesign(engineProjectDir: string, cwd: string, designDir: string, signal?: AbortSignal) {
   try {
     await getCadRuntimeSession(engineProjectDir, cwd).callTool(
       "bind_design",
@@ -77,7 +62,12 @@ function resolvePathOption(value: unknown, fallback: string, base: string, name:
 
 function options(input: PluginOptions | undefined, directory: string): Options {
   const studioRoot = resolvePathOption(input?.studioRoot, ".", directory, "studioRoot")
-  const engineProjectDir = resolvePathOption(input?.engineProjectDir, path.resolve(import.meta.dir, "..", "engine"), directory, "engineProjectDir")
+  const engineProjectDir = resolvePathOption(
+    input?.engineProjectDir,
+    path.resolve(import.meta.dir, "..", "engine"),
+    directory,
+    "engineProjectDir",
+  )
   const companionUrl = typeof input?.companionUrl === "string" && input.companionUrl.length > 0 ? input.companionUrl : undefined
   return { studioRoot, engineProjectDir, companionUrl }
 }
@@ -96,6 +86,23 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
       cwd: context.directory,
     })
     return {
+      event: async ({ event }) => {
+        if (event.type !== "session.deleted") return
+        const directory = event.properties.info.directory
+        if (!directory) return
+        // Each session owns a persistent Python runtime process; tear it down
+        // with the session instead of leaking it until host exit.
+        const sessionKey = qcSessionKey(config.engineProjectDir, directory)
+        await closeCadRuntimeSession(config.engineProjectDir, directory)
+        clearQcSession(sessionKey)
+      },
+
+      dispose: async () => {
+        // Runtime children are detached; on host shutdown they would outlive
+        // this process. Close everything this module spawned.
+        await closeAllCadRuntimeSessions()
+      },
+
       tool: {
         ...build123dTools,
         cad_design_list: tool({
@@ -183,12 +190,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
-            await bindActiveDesign(
-              config.engineProjectDir,
-              context.directory || "",
-              entry.directory,
-              context.abort,
-            )
+            await bindActiveDesign(config.engineProjectDir, context.directory || "", entry.directory, context.abort)
             const design = await readDesignManifest(entry.directory, args.id)
             const artifact = await readArtifactManifest(entry.directory, args.id)
             const manifestPath = path.join(entry.directory, "manifest.json")
@@ -239,17 +241,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               always: [],
               metadata: {},
             })
-            const result = await buildDesign(
-              layout,
-              args.id,
-              config.engineProjectDir,
-              buildRunner,
-              context.abort,
-              context.directory,
-            )
+            const result = await buildDesign(layout, args.id, config.engineProjectDir, buildRunner, context.abort, context.directory)
             const sessionKey = qcSessionKey(config.engineProjectDir, context.directory || "")
             setActiveQcDesign(sessionKey, args.id)
-            const evidenceKey = qcEvidenceKey(config.engineProjectDir, context.directory || "", args.id)
             if (!result.ok) {
               const envelope = designBuildFailureResult({
                 id: args.id,

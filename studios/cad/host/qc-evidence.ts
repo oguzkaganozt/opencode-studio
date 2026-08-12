@@ -50,9 +50,7 @@ export function recordQcEvidence(
   }
   const list = ledger.get(key) ?? []
   const subjectsKey = (row.subjects ?? []).join(",")
-  const next = list.filter(
-    (item) => !(item.axis === row.axis && item.tool === row.tool && (item.subjects ?? []).join(",") === subjectsKey),
-  )
+  const next = list.filter((item) => !(item.axis === row.axis && item.tool === row.tool && (item.subjects ?? []).join(",") === subjectsKey))
   next.push(row)
   ledger.set(key, next.slice(-60))
   return true
@@ -60,6 +58,15 @@ export function recordQcEvidence(
 
 export function clearQcEvidenceForDesign(sessionKey: string, designId: string): void {
   ledger.delete(`${sessionKey}::${designId}`)
+}
+
+/** Drop every ledger row and the active-design marker for a session key. */
+export function clearQcSession(sessionKey: string): void {
+  activeDesign.delete(sessionKey)
+  const prefix = `${sessionKey}::`
+  for (const key of ledger.keys()) {
+    if (key.startsWith(prefix)) ledger.delete(key)
+  }
 }
 
 /** @deprecated use clearQcEvidenceForDesign */
@@ -102,14 +109,45 @@ export function normalizeSubject(name: string): string {
   return s
 }
 
+/**
+ * Light normalization for design part ids: case and separators only.
+ * Unlike normalizeSubject, pose/import suffixes are NOT stripped — a part named
+ * `base_side` stays distinct from `base`, so one analysis on `base` cannot
+ * accidentally cover a stem-sharing sibling part.
+ */
+function normalizePartId(id: string): string {
+  return id.trim().toLowerCase().replace(/-/g, "_")
+}
+
+/**
+ * Candidate normalized names for a subject: the raw name plus each
+ * pose-suffix-stripped form (e.g. `base_side_built` → `base_side` → `base`).
+ * The longest candidate that matches a part id wins, so a subject covers the
+ * most specific part it was measured on — `base_side_built` covers `base_side`,
+ * never its sibling `base`.
+ */
+function subjectCandidates(name: string): string[] {
+  const out: string[] = []
+  let s = name.trim().toLowerCase().replace(/-/g, "_")
+  while (true) {
+    out.push(s)
+    const next = s.replace(/(_built|_print|_bed|_assembled|_asm|_pose|_side|_viz)$/i, "")
+    if (next === s) return out
+    s = next
+  }
+}
+
 export function subjectsCoverParts(subjects: string[], partIds: string[]): { ok: boolean; missing: string[] } {
   if (partIds.length === 0) return { ok: true, missing: [] }
-  const normalized = new Set(subjects.map(normalizeSubject).filter(Boolean))
+  const covered = new Set<string>()
+  const parts = partIds.map(normalizePartId).sort((a, b) => b.length - a.length)
+  for (const subject of subjects) {
+    const candidates = subjectCandidates(normalizePartId(subject))
+    const hit = parts.find((n) => candidates.includes(n))
+    if (hit) covered.add(hit)
+  }
   // current_shape alone cannot cover multi-part
-  const missing = partIds.filter((id) => {
-    const n = normalizeSubject(id)
-    return !normalized.has(n) && ![...normalized].some((s) => s === n || s.startsWith(`${n}_`) || n.startsWith(`${s}_`))
-  })
+  const missing = partIds.filter((id) => !covered.has(normalizePartId(id)))
   return { ok: missing.length === 0, missing }
 }
 

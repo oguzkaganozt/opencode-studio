@@ -76,4 +76,60 @@ describe("media plugin smoke", () => {
     const value = await hooks()
     await expect((value.tool as any).media_list.execute({}, { directory: root } as any)).rejects.toThrow(/directly under/)
   })
+
+  test("messages transform promotes native media from every read_media turn", async () => {
+    const value = await hooks()
+    const transform = value["experimental.chat.messages.transform"] as
+      | ((input: unknown, output: { messages: unknown }) => Promise<void>)
+      | undefined
+    expect(transform).toBeDefined()
+
+    const mediaPart = {
+      id: "p1",
+      sessionID: "s1",
+      messageID: "m1",
+      type: "file",
+      mime: "video/mp4",
+      url: "data:video/mp4;base64,AAAA",
+      filename: "clip.mp4",
+    }
+    const messages = [
+      {
+        info: { id: "m0", role: "user", sessionID: "s1", time: { created: 1 } },
+        parts: [{ id: "p0", sessionID: "s1", messageID: "m0", type: "text", text: "read clip.mp4" }],
+      },
+      {
+        info: { id: "m1", role: "assistant", sessionID: "s1", time: { created: 2 } },
+        parts: [
+          {
+            id: "p1t",
+            sessionID: "s1",
+            messageID: "m1",
+            type: "tool",
+            tool: "read_media",
+            state: { status: "completed", attachments: [mediaPart] },
+          },
+        ],
+      },
+      {
+        info: { id: "m2", role: "user", sessionID: "s1", time: { created: 3 } },
+        parts: [{ id: "p2", sessionID: "s1", messageID: "m2", type: "text", text: "follow-up question" }],
+      },
+    ]
+
+    await transform!({ sessionID: "s1" }, { messages } as never)
+
+    const toolPart = (messages[1].parts as Array<Record<string, unknown>>).find(
+      (part) => part.type === "tool" && part.tool === "read_media",
+    )!
+    const state = toolPart.state as { attachments: unknown[] }
+    expect(state.attachments).toEqual([])
+
+    const promoted = messages.filter((message) =>
+      (message.parts as Array<Record<string, unknown>>).some((part) => part.type === "file" && part.mime === "video/mp4"),
+    )
+    expect(promoted.length).toBe(1)
+    expect(promoted[0]!.info.id).toBe("m1_native_media")
+    expect(promoted[0]!.info.role).toBe("user")
+  })
 })

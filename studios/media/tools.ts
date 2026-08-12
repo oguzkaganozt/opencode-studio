@@ -100,7 +100,6 @@ function isNativeMediaPart(part: Part) {
 
 function promoteToolMedia(messages: Array<{ info: any; parts: Part[] }>, strip: boolean) {
   const output: typeof messages = []
-  const latest = messages.at(-1)
 
   for (const message of messages) {
     output.push(message)
@@ -112,7 +111,11 @@ function promoteToolMedia(messages: Array<{ info: any; parts: Part[] }>, strip: 
       const media = (part.state.attachments ?? []).filter(isNativeMediaPart)
       if (media.length === 0) continue
       part.state.attachments = (part.state.attachments ?? []).filter((item) => !isNativeMediaPart(item))
-      if (!strip && message === latest) attachments.push(...media)
+      // Re-promote media for EVERY completed read_media part, not just the last
+      // message: on a follow-up turn the assistant tool message is not the latest
+      // message, and dropping its media would silently erase earlier video/audio
+      // context from what the model receives. Compaction (strip) drops it on purpose.
+      if (!strip) attachments.push(...media)
     }
 
     if (strip || attachments.length === 0) continue

@@ -12,9 +12,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "code"
-        ],
+        "required": ["code"],
         "title": "executeArguments",
         "type": "object"
       }
@@ -367,9 +365,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "filename"
-        ],
+        "required": ["filename"],
         "title": "exportArguments",
         "type": "object"
       }
@@ -437,9 +433,7 @@
             "title": "Look At"
           }
         },
-        "required": [
-          "viewport_origin"
-        ],
+        "required": ["viewport_origin"],
         "title": "view_axesArguments",
         "type": "object"
       }
@@ -499,9 +493,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "svg_path"
-        ],
+        "required": ["svg_path"],
         "title": "render_drawingArguments",
         "type": "object"
       }
@@ -516,9 +508,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "svg_path"
-        ],
+        "required": ["svg_path"],
         "title": "save_drawing_annotationsArguments",
         "type": "object"
       }
@@ -533,9 +523,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "save_snapshotArguments",
         "type": "object"
       }
@@ -550,9 +538,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "restore_snapshotArguments",
         "type": "object"
       }
@@ -619,9 +605,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "a"
-        ],
+        "required": ["a"],
         "title": "compareArguments",
         "type": "object"
       }
@@ -720,10 +704,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "object_name",
-          "selector"
-        ],
+        "required": ["object_name", "selector"],
         "title": "resolveArguments",
         "type": "object"
       }
@@ -758,9 +739,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "path"
-        ],
+        "required": ["path"],
         "title": "import_cad_fileArguments",
         "type": "object"
       }
@@ -775,9 +754,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "error_text"
-        ],
+        "required": ["error_text"],
         "title": "repair_hintsArguments",
         "type": "object"
       }

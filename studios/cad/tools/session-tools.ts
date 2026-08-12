@@ -1,18 +1,9 @@
 import { tool } from "@opencode-ai/plugin"
-import { cadSessionToolName } from "./names"
-import { getCadRuntimeSession } from "./session"
+import { axisForSessionTool, qcSessionKey, recordQcEvidence, subjectsFromArgs } from "../host/qc-evidence"
 import catalog from "./catalog.json" with { type: "json" }
-import {
-  axisForSessionTool,
-  qcSessionKey,
-  recordQcEvidence,
-  subjectsFromArgs,
-} from "../host/qc-evidence"
-import {
-  CAD_SESSION_STRUCTURED_TOOLS,
-  formatCadToolResult,
-  structureCadSessionResult,
-} from "./result"
+import { cadSessionToolName } from "./names"
+import { CAD_SESSION_STRUCTURED_TOOLS, formatCadToolResult, structureCadSessionResult } from "./result"
+import { getCadRuntimeSession } from "./session"
 
 type JsonSchema = {
   type?: string | string[]
@@ -41,10 +32,8 @@ const CAD_SESSION_TOOL_GUIDANCE: Record<string, string> = {
     'Returns structured JSON {ok, status, summary, data, next}. kind="fit": global min distance + fit_quality (gap|contact|clash|nested) + gap_verified. QC fit pass requires status=pass (positive gap or nested), not seat-contact touching. For snug lips, compare isolated mating solids so gap_verified=true. Prefer this over in-execute clearance() for fit QC.',
   cad_import_cad_file:
     "Registers the shape for named-object tools and binds it into the next cad_execute namespace (valid identifiers as bare names; always via cad_object(name)).",
-  cad_validate:
-    "Returns structured JSON {ok, status, summary, data, next}. Use data.passes_gate and status; do not re-parse free text.",
-  cad_measure:
-    "Returns structured JSON {ok, status, summary, data, next} with volume/bbox/topology in data.",
+  cad_validate: "Returns structured JSON {ok, status, summary, data, next}. Use data.passes_gate and status; do not re-parse free text.",
+  cad_measure: "Returns structured JSON {ok, status, summary, data, next} with volume/bbox/topology in data.",
   cad_analyze_printability:
     "Returns structured JSON {ok, status, summary, data, next}. status is fail when any error-severity finding exists. The current world orientation is treated as the print orientation. Reorient the final source-built shape into its actual bed pose before analysis, and rerun this check after every geometry change.",
   cad_analyze_form:
@@ -191,5 +180,3 @@ export function createCadSessionTools(options: { engineProjectDir: string; cwd: 
 
   return tools
 }
-
-

@@ -13,7 +13,7 @@ type FileEntry = {
   preview: "image" | "audio" | "video" | "text" | "none"
 }
 
-type TreeResponse = { path: string; entries: FileEntry[] }
+type TreeResponse = { path: string; entries: FileEntry[]; truncated?: boolean }
 type ContentResponse = {
   path: string
   preview: string
@@ -634,6 +634,12 @@ export function FilesExplorer({
                   )
                 })}
               </ul>
+            )}
+            {treeQuery.data?.truncated && (
+              <div className="border-t border-[var(--osc-border)] px-3 py-2 text-[11px] text-[var(--osc-text-muted)]" role="note">
+                Listing limited to {treeQuery.data.entries.length.toLocaleString()} entries — some files are hidden. Filter by name or open
+                a subfolder to reach the rest.
+              </div>
             )}
           </div>
         </div>

@@ -194,6 +194,29 @@
         "min_feature": "number"
       }
     },
+    "cad_analyze_form": {
+      "studio": "cad",
+      "args": {
+        "object_name": "string",
+        "axis": "string",
+        "num_stations": "integer",
+        "stations": "string",
+        "contract": "string",
+        "tol_mm": "number",
+        "tol_frac": "number",
+        "t_mode": "string"
+      }
+    },
+    "cad_form_review": {
+      "studio": "cad",
+      "args": {
+        "reference": "array",
+        "renders": "array",
+        "verdict": "string",
+        "findings": "array",
+        "id": "string"
+      }
+    },
     "cad_cross_sections": {
       "studio": "cad",
       "args": {
@@ -378,5 +401,5 @@
       }
     }
   },
-  "count": 72
+  "count": 74
 }

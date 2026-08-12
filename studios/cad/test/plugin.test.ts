@@ -140,9 +140,7 @@ describe("cad plugin smoke", () => {
     expect(builtBody.data.parts[0].metrics.solid_count).toBe(1)
     expect(builtBody.warnings.join(" ")).toMatch(/not run/i)
 
-    const incomplete = JSON.parse(
-      (await (hooks.tool as any).cad_design_qc_report.execute({ id: "demo" }, fakeContext)).output,
-    )
+    const incomplete = JSON.parse((await (hooks.tool as any).cad_design_qc_report.execute({ id: "demo" }, fakeContext)).output)
     expect(incomplete.complete).toBe(false)
     expect(incomplete.artifact.status).toBe("pass")
     expect(incomplete.blockedBy).toEqual(expect.arrayContaining(["printability", "fit", "form"]))

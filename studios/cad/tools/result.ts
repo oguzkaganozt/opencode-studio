@@ -13,30 +13,24 @@ export type CadToolEnvelope = {
   error?: { code: string; message: string }
 }
 
-export const CAD_SESSION_STRUCTURED_TOOLS = new Set([
-  "validate",
-  "measure",
-  "compare",
-  "analyze_printability",
-  "analyze_form",
-])
+export const CAD_SESSION_STRUCTURED_TOOLS = new Set(["validate", "measure", "compare", "analyze_printability", "analyze_form"])
 
 const MAX_BYTES = 60_000
 
 /** Extract the first balanced JSON value from MCP text that may have a prose prefix. */
 export function extractFirstJson(text: string): { prefix: string; value: unknown } | null {
-  const start = text.search(/[{\[]/)
+  const start = text.search(/[{[]/)
   if (start < 0) return null
   const open = text[start]!
   const close = open === "{" ? "}" : "]"
   let depth = 0
   let inString = false
-  let escape = false
+  let inEscape = false
   for (let i = start; i < text.length; i++) {
     const c = text[i]!
     if (inString) {
-      if (escape) escape = false
-      else if (c === "\\") escape = true
+      if (inEscape) inEscape = false
+      else if (c === "\\") inEscape = true
       else if (c === '"') inString = false
       continue
     }
@@ -163,17 +157,11 @@ function normalizeValidate(toolName: string, data: Record<string, unknown>, pref
   return {
     ok: passes,
     tool: toolName,
-    summary:
-      prefix ||
-      (passes
-        ? "Validity gate: PASS"
-        : `Validity gate: FAIL${reasons.length ? ` — ${reasons.join("; ")}` : ""}`),
+    summary: prefix || (passes ? "Validity gate: PASS" : `Validity gate: FAIL${reasons.length ? ` — ${reasons.join("; ")}` : ""}`),
     status: passes ? "pass" : "fail",
     data,
     warnings,
-    next: passes
-      ? ["cad_measure", "cad_analyze_printability"]
-      : ["cad_locate_gate_defects", "cad_repair_hints"],
+    next: passes ? ["cad_measure", "cad_analyze_printability"] : ["cad_locate_gate_defects", "cad_repair_hints"],
   }
 }
 
@@ -202,12 +190,7 @@ function normalizeMeasure(toolName: string, data: Record<string, unknown>, prefi
   }
 }
 
-function normalizeCompare(
-  toolName: string,
-  data: Record<string, unknown>,
-  prefix: string,
-  args: Record<string, unknown>,
-): CadToolEnvelope {
+function normalizeCompare(toolName: string, data: Record<string, unknown>, prefix: string, args: Record<string, unknown>): CadToolEnvelope {
   const kind = String(args.kind ?? "shape").toLowerCase()
   const warnings = stringList(data.warnings)
 
@@ -284,8 +267,7 @@ function normalizeCompare(
 
 function normalizeForm(toolName: string, data: Record<string, unknown>, prefix: string): CadToolEnvelope {
   const statusRaw = typeof data.status === "string" ? data.status.toLowerCase() : "unverified"
-  const status: CadToolStatus =
-    statusRaw === "pass" || statusRaw === "fail" || statusRaw === "unverified" ? statusRaw : "unverified"
+  const status: CadToolStatus = statusRaw === "pass" || statusRaw === "fail" || statusRaw === "unverified" ? statusRaw : "unverified"
   const stations = Array.isArray(data.stations) ? data.stations : []
   const comparisons = Array.isArray(data.comparisons) ? data.comparisons : []
   const mismatched = comparisons.filter((row) => {
@@ -303,7 +285,7 @@ function normalizeForm(toolName: string, data: Record<string, unknown>, prefix: 
     warnings.push("Freeform QC pass needs contract match via cad_analyze_form; prismatic uses form finding 'not applicable'")
   }
   return {
-    ok: status !== "fail" && status !== "error",
+    ok: status !== "fail",
     tool: toolName,
     summary,
     status,
@@ -355,10 +337,7 @@ function normalizePrintability(toolName: string, data: Record<string, unknown>, 
       warning_count: warnFindings.length,
       orientation_note: "Current world orientation is treated as print orientation",
     },
-    warnings: [
-      ...warnFindings.map((f) => f.message),
-      "Reorient to bed pose before citing printability for QC",
-    ],
+    warnings: [...warnFindings.map((f) => f.message), "Reorient to bed pose before citing printability for QC"],
     next: ok ? ["cad_design_build when sources are saved"] : ["Fix geometry in cad_execute", "Re-run analyze_printability"],
   }
 }
@@ -438,11 +417,7 @@ export function designBuildFailureResult(input: {
       errors: message ? [{ message }] : [],
     },
     warnings: ["Previous generated artifacts were preserved."],
-    next: [
-      "Fix parts/*.py / params.py sources",
-      "Reproduce with cad_execute + validate before rebuilding",
-      "cad_design_build",
-    ],
+    next: ["Fix parts/*.py / params.py sources", "Reproduce with cad_execute + validate before rebuilding", "cad_design_build"],
     error: { code: "build_failed", message: message || `exit ${input.exitCode}` },
   }
 }
@@ -452,8 +427,6 @@ function extractBuildFailureMessage(stderr: string, stdout: string): string {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-  const hit =
-    lines.find((line) => /error|exception|traceback|failed|invalid/i.test(line) && line.length < 300) ??
-    lines[lines.length - 1]
+  const hit = lines.find((line) => /error|exception|traceback|failed|invalid/i.test(line) && line.length < 300) ?? lines[lines.length - 1]
   return hit ?? ""
 }

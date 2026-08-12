@@ -56,9 +56,9 @@ export function zshCompletionScript(binName = "opencode-studio") {
     `      _arguments '--workspace[Domain data root]:path:_files -/' '--dry-run' '--json' '(-h --help)'{-h,--help} ;;`,
     `    upgrade)`,
     `      _arguments '--check' '(-y --yes)'{-y,--yes} '--json' '(-h --help)'{-h,--help} ;;`,
-    `  esac`,
+    `    esac`,
     `}`,
-    `_${id}`,
+    `compdef _${id} ${binName}`,
     "",
   ].join("\n")
 }

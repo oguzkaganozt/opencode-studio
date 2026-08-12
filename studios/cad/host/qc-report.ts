@@ -1,13 +1,7 @@
 import type { DesignEntry } from "./library"
 import { listRenders, mapArtifactPartFiles } from "./library"
 import type { ArtifactManifest } from "./manifest"
-import {
-  latestQcEvidence,
-  listQcEvidence,
-  subjectsCoverParts,
-  type QcEvidenceAxis,
-  type QcEvidenceRecord,
-} from "./qc-evidence"
+import { latestQcEvidence, listQcEvidence, normalizeSubject, type QcEvidenceRecord, subjectsCoverParts } from "./qc-evidence"
 
 export type QcAxisStatus = "pass" | "fail" | "unverified"
 
@@ -64,12 +58,7 @@ function evidenceMeta(evidence: QcEvidenceRecord): NonNullable<QcAxisReport["evi
   }
 }
 
-function bindPrintability(input: {
-  claimed?: QcAxisInput
-  designKey: string
-  revision: string | null
-  partIds: string[]
-}): QcAxisReport {
+function bindPrintability(input: { claimed?: QcAxisInput; designKey: string; revision: string | null; partIds: string[] }): QcAxisReport {
   const findings = input.claimed?.findings?.map((f) => f.trim()).filter(Boolean) ?? []
   const claim = input.claimed?.status
   const rows = listQcEvidence(input.designKey, "printability").filter((row) => {
@@ -90,6 +79,36 @@ function bindPrintability(input: {
         source: "rejected",
       }
     }
+    // Newest row per normalized subject must be a pass: a fail recorded later
+    // (e.g. a bed-pose printability fail after an in-session pass on the same
+    // part) overrides the earlier pass evidence. In-session runs often record
+    // the subject as `current_shape`; on a single-part design that maps to the
+    // part id so a later named fail still overrides it.
+    const overrideSubject = (subject: string) => (subject === "current_shape" && input.partIds.length === 1 ? input.partIds[0]! : subject)
+    const newestBySubject = new Map<string, QcEvidenceRecord>()
+    for (const row of rows) {
+      for (const subject of row.subjects ?? []) {
+        newestBySubject.set(normalizeSubject(overrideSubject(subject)), row)
+      }
+    }
+    const overridden = passRows
+      .flatMap((row) => row.subjects ?? [])
+      .find((subject) => {
+        const row = newestBySubject.get(normalizeSubject(overrideSubject(subject)))
+        return row !== undefined && (row.status !== "pass" || !row.ok)
+      })
+    if (overridden !== undefined) {
+      const row = newestBySubject.get(normalizeSubject(overrideSubject(overridden)))!
+      return {
+        status: "fail",
+        findings: [
+          ...findings,
+          `pass rejected: newer printability evidence (${row.status}: ${row.summary}) overrides the earlier pass for ${overridden}`,
+        ],
+        source: "rejected",
+        evidence: evidenceMeta(row),
+      }
+    }
     const allSubjects = passRows.flatMap((r) => r.subjects ?? [])
     // Multi-part: every artifact part must appear in evidence subjects (current_shape alone insufficient).
     if (input.partIds.length > 1) {
@@ -100,10 +119,7 @@ function bindPrintability(input: {
       if (!coverage.ok) {
         return {
           status: "unverified",
-          findings: [
-            ...findings,
-            `pass rejected: printability evidence missing parts: ${coverage.missing.join(", ")}`,
-          ],
+          findings: [...findings, `pass rejected: printability evidence missing parts: ${coverage.missing.join(", ")}`],
           source: "rejected",
           evidence: evidenceMeta(passRows[passRows.length - 1]!),
         }
@@ -118,10 +134,7 @@ function bindPrintability(input: {
       if (!coverage.ok && !onlyCurrent && allSubjects.length > 0) {
         return {
           status: "unverified",
-          findings: [
-            ...findings,
-            `pass rejected: printability evidence subjects do not cover part ${input.partIds[0]}`,
-          ],
+          findings: [...findings, `pass rejected: printability evidence subjects do not cover part ${input.partIds[0]}`],
           source: "rejected",
           evidence: evidenceMeta(passRows[passRows.length - 1]!),
         }
@@ -158,17 +171,13 @@ function bindPrintability(input: {
   }
 }
 
-function bindFit(input: {
-  claimed?: QcAxisInput
-  designKey: string
-  revision: string | null
-  partCount: number
-}): QcAxisReport {
+function bindFit(input: { claimed?: QcAxisInput; designKey: string; revision: string | null; partIds: string[] }): QcAxisReport {
   const findings = input.claimed?.findings?.map((f) => f.trim()).filter(Boolean) ?? []
   const claim = input.claimed?.status
+  const partCount = input.partIds.length
 
   // Single-part designs: fit N/A without compare.
-  if (input.partCount <= 1 && claim === "pass" && isNotApplicableFinding(findings)) {
+  if (partCount <= 1 && claim === "pass" && isNotApplicableFinding(findings)) {
     return { status: "pass", findings: ["not applicable"], source: "agent" }
   }
 
@@ -180,7 +189,7 @@ function bindFit(input: {
         status: "unverified",
         findings: [
           ...findings,
-          input.partCount <= 1
+          input.partIds.length <= 1
             ? "pass rejected: single-part fit requires finding 'not applicable', or multi-part needs cad_compare kind=fit"
             : "pass rejected: no cad_compare kind=fit pass evidence for this design",
         ],
@@ -207,6 +216,25 @@ function bindFit(input: {
         evidence: evidenceMeta(latest),
       }
     }
+    // Fit is pair-scoped: at least one compared subject must be a design part,
+    // so a pass between scratch objects cannot stand in for the design, while a
+    // mating-pair compare on a multi-part design (e.g. body+lid of body/lid/base)
+    // still counts as design-scoped evidence.
+    if (partCount > 1) {
+      const subjects = (latest.subjects ?? []).filter((s) => s !== "current_shape")
+      const coverage = subjectsCoverParts(subjects, input.partIds)
+      if (coverage.missing.length === input.partIds.length) {
+        return {
+          status: "unverified",
+          findings: [
+            ...findings,
+            `pass rejected: fit evidence compares ${subjects.join(", ") || "no design parts"}, none of which are design parts — run cad_compare kind=fit on the mating parts`,
+          ],
+          source: "rejected",
+          evidence: evidenceMeta(latest),
+        }
+      }
+    }
     return { status: "pass", findings, source: "evidence", evidence: evidenceMeta(latest) }
   }
 
@@ -227,11 +255,7 @@ function bindFit(input: {
   }
 }
 
-function bindForm(input: {
-  claimed?: QcAxisInput
-  designKey: string
-  revision: string | null
-}): QcAxisReport {
+function bindForm(input: { claimed?: QcAxisInput; designKey: string; revision: string | null }): QcAxisReport {
   const findings = input.claimed?.findings?.map((f) => f.trim()).filter(Boolean) ?? []
   const claim = input.claimed?.status
 
@@ -300,11 +324,7 @@ function bindForm(input: {
 
   return {
     status: "unverified",
-    findings: findings.length
-      ? findings
-      : latest
-        ? [`evidence available via ${latest.tool} but axis not claimed`]
-        : ["not reported"],
+    findings: findings.length ? findings : latest ? [`evidence available via ${latest.tool} but axis not claimed`] : ["not reported"],
     source: latest ? "evidence" : "agent",
     evidence: latest ? evidenceMeta(latest) : undefined,
   }
@@ -369,7 +389,7 @@ export async function buildDesignQcReport(input: {
     claimed: input.fit,
     designKey: input.evidenceKey,
     revision,
-    partCount: partIds.length || (artifact?.parts.length ?? 0),
+    partIds,
   })
   const form = bindForm({
     claimed: input.form,

@@ -26,15 +26,17 @@ describe("parity fixtures", () => {
     const expected = STUDIO_IDS.map((id) => `studio-${id}`).sort()
     expect(Object.keys(digests).sort()).toEqual(expected)
     expect(Object.keys(agentDigests).sort()).toEqual(expected)
+    const mismatches: string[] = []
     for (const fixture of [digests, agentDigests]) {
       for (const [_name, meta] of Object.entries(fixture as Record<string, { path: string; sha256: string }>)) {
         const file = path.join(packageRoot, meta.path)
         const hash = createHash("sha256")
           .update(await readFile(file))
           .digest("hex")
-        expect(hash).toBe(meta.sha256)
+        if (hash !== meta.sha256) mismatches.push(`${meta.path}: fixture ${meta.sha256.slice(0, 12)}, source ${hash.slice(0, 12)}`)
       }
     }
+    expect(mismatches).toEqual([])
   })
 
   test("hook composition policy is defined", () => {

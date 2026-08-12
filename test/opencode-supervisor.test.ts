@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import {
+  canRestart,
   ensureOpenCodeServer,
+  healthMissDecision,
+  noteRestart,
   resetOpenCodeSupervisorForTests,
+  restartOpenCode,
   restartOwnedOpenCode,
   superviseDisabled,
   supervisedChildEnv,
@@ -65,5 +69,42 @@ describe("supervisor status / restart", () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toMatch(/ENOENT|no such file/i)
     expect(Date.now() - started).toBeLessThan(5_000)
+  })
+})
+
+describe("watchdog restart loop", () => {
+  afterEach(async () => {
+    await resetOpenCodeSupervisorForTests()
+  })
+
+  test("health miss decision: false blip guard waits, then restarts", () => {
+    expect(healthMissDecision(0, true)).toBe("wait")
+    expect(healthMissDecision(1, true)).toBe("wait")
+    expect(healthMissDecision(2, true)).toBe("restart")
+    // A dead child restarts immediately on the first miss.
+    expect(healthMissDecision(0, false)).toBe("restart")
+  })
+
+  test("restart budget blocks after 5 restarts in the window", async () => {
+    for (let i = 0; i < 5; i++) noteRestart()
+    expect(canRestart()).toBe(false)
+    const result = await restartOpenCode({})
+    expect(result).toEqual({ ok: false, reason: "OpenCode restart budget exhausted (5 / 5min)" })
+    expect(supervisorStatus().restartsInWindow).toBe(5)
+  })
+
+  test("concurrent restarts share one flight and note a single restart", async () => {
+    const env = { OPENCODE_BIN: "/definitely/missing/opencode", XDG_CACHE_HOME: "/tmp/opencode-studio-supervisor-test" }
+    const [a, b] = await Promise.all([restartOpenCode(env), restartOpenCode(env)])
+    expect(a).toBe(b)
+    expect(supervisorStatus().restartsInWindow).toBe(1)
+  })
+
+  test("a failed pre-flight restart consumes one restart slot", async () => {
+    const result = await restartOpenCode({ OPENCODE_BIN: "/definitely/missing/opencode" })
+    // Not supervised: the flight short-circuits before spawning.
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toMatch(/supervision stopped/)
+    expect(supervisorStatus().restartsInWindow).toBe(1)
   })
 })

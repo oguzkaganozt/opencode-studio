@@ -3,7 +3,14 @@ import { createInterface, type Interface } from "node:readline"
 import { ensureUv } from "../../../src/core/engines"
 import { syncCadEngineUvProject } from "../../../src/core/package-meta"
 
-export const CAD_RUNTIME_SESSION_TIMEOUT_MS = 120_000
+/**
+ * Host-side ceiling for a single JSON-RPC tool call. Must exceed the engine's
+ * worst-case legitimate render envelope (tessellation 75s + VTK 60s + margin
+ * = 150s, see cad_runtime/worker.py `_RENDER_TIMEOUT`): the runtime runs
+ * `--in-process` here, where its own op timeouts do not apply, so this timer
+ * is the only backstop and a timeout resets (kills) the whole build123d session.
+ */
+export const CAD_RUNTIME_SESSION_TIMEOUT_MS = 180_000
 /** @deprecated Public tools use cad_* names; session protocol is internal. */
 export const CAD_SESSION_TOOL_PREFIX = "cad_"
 
@@ -162,19 +169,15 @@ export class CadRuntimeSession {
 
     // Single Python CAD process: --in-process disables the runtime's internal
     // WorkerSession child so session + studio_build share one address space.
-    const child = spawn(
-      uv.path,
-      ["--project", this.engineProjectDir, "run", "--no-sync", "studio-cad-runtime", "--in-process"],
-      {
-        cwd: this.cwd,
-        stdio: ["pipe", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          BUILD123D_IN_PROCESS: "1",
-        },
-        detached: true,
+    const child = spawn(uv.path, ["--project", this.engineProjectDir, "run", "--no-sync", "studio-cad-runtime", "--in-process"], {
+      cwd: this.cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        BUILD123D_IN_PROCESS: "1",
       },
-    )
+      detached: true,
+    })
     this.child = child
     this.reader = createInterface({ input: child.stdout, crlfDelay: Infinity })
     this.reader.on("line", (line) => this.onLine(line))
@@ -264,9 +267,7 @@ export class CadRuntimeSession {
       const onAbort = () => {
         this.pending.delete(id)
         clearTimeout(timer)
-        const error = new Error(
-          resetSessionOnFailure ? `build123d ${method} aborted; session reset` : `build123d ${method} aborted`,
-        )
+        const error = new Error(resetSessionOnFailure ? `build123d ${method} aborted; session reset` : `build123d ${method} aborted`)
         reject(error)
         if (resetSessionOnFailure) void this.stopChild(error)
       }
@@ -332,4 +333,20 @@ export function getCadRuntimeSession(engineProjectDir: string, cwd: string): Cad
   const session = new CadRuntimeSession(engineProjectDir, cwd)
   sessions.set(key, session)
   return session
+}
+
+/** Close and evict the runtime session for one cwd (e.g. `session.deleted`). */
+export async function closeCadRuntimeSession(engineProjectDir: string, cwd: string): Promise<void> {
+  const key = `${engineProjectDir}::${cwd}`
+  const session = sessions.get(key)
+  if (!session) return
+  sessions.delete(key)
+  await session.close()
+}
+
+/** Close and evict every runtime session (host shutdown). */
+export function closeAllCadRuntimeSessions(): Promise<void> {
+  const all = [...sessions.values()]
+  sessions.clear()
+  return Promise.allSettled(all.map((session) => session.close())).then(() => undefined)
 }

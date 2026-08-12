@@ -63,19 +63,36 @@ export function resolveTsci(): ResolvedEngine | null {
   return null
 }
 
+function cacheBinaryPath(cacheDir: string): string {
+  return path.join(cacheDir, process.platform === "win32" ? "uv.exe" : "uv")
+}
+
 function uvCacheDir() {
   return path.join(envPaths("opencode-studio", { suffix: "" }).cache, "bin")
 }
 
 export function uvCachePath() {
-  const name = process.platform === "win32" ? "uv.exe" : "uv"
-  return path.join(uvCacheDir(), name)
+  return cacheBinaryPath(uvCacheDir())
 }
 
-export function resolveUv(): ResolvedEngine | null {
-  const onPath = Bun.which("uv")
+export type UvEnvironment = {
+  which: (name: string) => string | null
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  cacheDir: string
+}
+
+function defaultUvEnv(): UvEnvironment {
+  return {
+    which: (name) => Bun.which(name),
+    fetch: globalThis.fetch,
+    cacheDir: uvCacheDir(),
+  }
+}
+
+export function resolveUv(env: Pick<UvEnvironment, "which" | "cacheDir"> = defaultUvEnv()): ResolvedEngine | null {
+  const onPath = env.which("uv")
   if (onPath) return { id: "uv", path: onPath, source: "path" }
-  const cached = uvCachePath()
+  const cached = cacheBinaryPath(env.cacheDir)
   if (fileOk(cached)) return { id: "uv", path: cached, source: "cache" }
   return null
 }
@@ -91,20 +108,20 @@ function uvReleaseAsset(): string {
   throw new Error(`No bundled uv binary for ${platform}/${arch}`)
 }
 
-/** Ensure uv is available: PATH → cache → download official release into XDG cache. */
-export async function ensureUv(): Promise<ResolvedEngine> {
-  const existing = resolveUv()
+/** Ensure uv is available: PATH → cache → download official release into cache. */
+export async function ensureUv(env: UvEnvironment = defaultUvEnv()): Promise<ResolvedEngine> {
+  const existing = resolveUv(env)
   if (existing) return existing
 
   const asset = uvReleaseAsset()
   const url = `https://github.com/astral-sh/uv/releases/download/${BUNDLED_UV_VERSION}/${asset}`
-  const dest = uvCachePath()
-  await mkdir(uvCacheDir(), { recursive: true, mode: 0o755 })
+  const dest = cacheBinaryPath(env.cacheDir)
+  await mkdir(env.cacheDir, { recursive: true, mode: 0o755 })
 
   const staging = await mkdtemp(path.join(tmpdir(), "osc-uv-"))
   try {
     const archivePath = path.join(staging, asset)
-    const response = await fetch(url)
+    const response = await env.fetch(url)
     if (!response.ok) throw new Error(`Failed to download uv ${BUNDLED_UV_VERSION}: HTTP ${response.status}`)
     await Bun.write(archivePath, response)
 

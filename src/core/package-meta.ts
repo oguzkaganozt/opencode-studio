@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { cp, copyFile, mkdir, readFile, stat } from "node:fs/promises"
+import { copyFile, cp, mkdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import envPaths from "env-paths"
 import type { StudioId } from "./registry"

@@ -11,8 +11,9 @@ describe("extractFirstJson", () => {
   test("parses JSON after prose prefix", () => {
     const text = 'Validity gate: PASS\n{\n  "passes_gate": true,\n  "reasons": []\n}'
     const got = extractFirstJson(text)
-    expect(got?.prefix).toContain("PASS")
-    expect((got?.value as { passes_gate: boolean }).passes_gate).toBe(true)
+    expect(got).not.toBeNull()
+    expect(got!.prefix).toContain("PASS")
+    expect((got!.value as { passes_gate: boolean }).passes_gate).toBe(true)
   })
 
   test("returns null without JSON", () => {
@@ -121,7 +122,7 @@ describe("structureCadSessionResult", () => {
       entryName: "analyze_form",
       toolName: "cad_analyze_form",
       text:
-        'form pass, axis=Z, 3/3 stations\n\n' +
+        "form pass, axis=Z, 3/3 stations\n\n" +
         JSON.stringify({
           status: "pass",
           character: "varying",

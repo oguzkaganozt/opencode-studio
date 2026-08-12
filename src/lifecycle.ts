@@ -30,9 +30,9 @@ import {
 import {
   agentNameFor,
   agentSourcePath,
-  fileDigest,
-  ensureCadEngineDir,
   cadEngineRuntimeDir,
+  ensureCadEngineDir,
+  fileDigest,
   LEGACY_MANAGED_MCP_KEY,
   loadPackageMeta,
   MANAGED_MARKER_NAME,

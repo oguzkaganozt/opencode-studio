@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { buildDesignQcReport } from "../host/qc-report"
 import type { DesignEntry } from "../host/library"
 import {
   clearQcEvidenceForDesign,
@@ -9,6 +8,7 @@ import {
   recordQcEvidence,
   setActiveQcDesign,
 } from "../host/qc-evidence"
+import { buildDesignQcReport } from "../host/qc-report"
 
 function entry(revision: string | null = "rev1", partCount = 1): DesignEntry {
   return {
@@ -210,10 +210,7 @@ describe("QC evidence binding", () => {
       evidenceKey: key,
       form: {
         status: "pass",
-        findings: [
-          "form contract: 5 stations along Z with varying section",
-          "front/side/iso views match reference silhouettes",
-        ],
+        findings: ["form contract: 5 stations along Z with varying section", "front/side/iso views match reference silhouettes"],
       },
     })
     expect(notesOnly.form.status).toBe("unverified")
@@ -291,6 +288,171 @@ describe("QC evidence binding", () => {
     clearQcEvidenceForDesign(session, "drop")
     expect(listHas(session, "keep")).toBe(true)
     expect(listHas(session, "drop")).toBe(false)
+  })
+
+  test("rejects a pass claim when newer fail evidence overrides the earlier pass", async () => {
+    const session = qcSessionKey("/engine", "/cwd-g")
+    setActiveQcDesign(session, "demo")
+    clearQcEvidenceForDesign(session, "demo")
+    // Phase 1: in-session pass on the current shape subject.
+    recordQcEvidence(session, {
+      axis: "printability",
+      tool: "cad_analyze_printability",
+      ok: true,
+      status: "pass",
+      summary: "0 error findings",
+      subjects: ["body"],
+    })
+    // Phase 2: bed-pose fail on the same part (suffix-normalized to `body`).
+    recordQcEvidence(session, {
+      axis: "printability",
+      tool: "cad_analyze_printability",
+      ok: false,
+      status: "fail",
+      summary: "overhang on body_built",
+      subjects: ["body_built"],
+    })
+    const report = await buildDesignQcReport({
+      id: "demo",
+      entry: { ...entry(), buildStatus: "unbuilt" },
+      artifact: artifact(["body"]) as any,
+      evidenceKey: qcEvidenceKey("/engine", "/cwd-g", "demo"),
+      printability: { status: "pass" },
+      fit: { status: "pass", findings: ["not applicable"] },
+      form: { status: "pass", findings: ["not applicable"] },
+    })
+    expect(report.printability.status).toBe("fail")
+    expect(report.printability.source).toBe("rejected")
+    expect(report.printability.findings.join(" ")).toMatch(/newer printability evidence/)
+  })
+
+  test("accepts a pass claim when the newest evidence per subject is a pass", async () => {
+    const session = qcSessionKey("/engine", "/cwd-h")
+    setActiveQcDesign(session, "demo")
+    clearQcEvidenceForDesign(session, "demo")
+    recordQcEvidence(session, {
+      axis: "printability",
+      tool: "cad_analyze_printability",
+      ok: false,
+      status: "fail",
+      summary: "overhang",
+      subjects: ["body_built"],
+    })
+    recordQcEvidence(session, {
+      axis: "printability",
+      tool: "cad_analyze_printability",
+      ok: true,
+      status: "pass",
+      summary: "0 error findings after rework",
+      subjects: ["body"],
+    })
+    const report = await buildDesignQcReport({
+      id: "demo",
+      entry: { ...entry(), buildStatus: "unbuilt" },
+      artifact: artifact(["body"]) as any,
+      evidenceKey: qcEvidenceKey("/engine", "/cwd-h", "demo"),
+      printability: { status: "pass" },
+      fit: { status: "pass", findings: ["not applicable"] },
+      form: { status: "pass", findings: ["not applicable"] },
+    })
+    expect(report.printability.status).toBe("pass")
+  })
+
+  test("a named bed-pose fail overrides an in-session current_shape pass", async () => {
+    const session = qcSessionKey("/engine", "/cwd-j")
+    setActiveQcDesign(session, "demo")
+    clearQcEvidenceForDesign(session, "demo")
+    // In-session run without object_name records the subject as current_shape.
+    recordQcEvidence(session, {
+      axis: "printability",
+      tool: "cad_analyze_printability",
+      ok: true,
+      status: "pass",
+      summary: "0 error findings",
+      subjects: ["current_shape"],
+    })
+    // Bed-pose run with object_name records the named part.
+    recordQcEvidence(session, {
+      axis: "printability",
+      tool: "cad_analyze_printability",
+      ok: false,
+      status: "fail",
+      summary: "overhang on body_built",
+      subjects: ["body_built"],
+    })
+    const report = await buildDesignQcReport({
+      id: "demo",
+      entry: { ...entry(), buildStatus: "unbuilt" },
+      artifact: artifact(["body"]) as any,
+      evidenceKey: qcEvidenceKey("/engine", "/cwd-j", "demo"),
+      printability: { status: "pass" },
+      fit: { status: "pass", findings: ["not applicable"] },
+      form: { status: "pass", findings: ["not applicable"] },
+    })
+    expect(report.printability.status).toBe("fail")
+    expect(report.printability.findings.join(" ")).toMatch(/newer printability evidence/)
+  })
+
+  test("fit pass evidence must relate to at least one design part", async () => {
+    const session = qcSessionKey("/engine", "/cwd-i")
+    setActiveQcDesign(session, "demo")
+    clearQcEvidenceForDesign(session, "demo")
+    recordQcEvidence(session, {
+      axis: "fit",
+      tool: "cad_compare",
+      ok: true,
+      status: "pass",
+      summary: "apart, clearance=0.5mm",
+      subjects: ["scratch_a", "scratch_b"],
+    })
+    const report = await buildDesignQcReport({
+      id: "demo",
+      entry: { ...entry(), buildStatus: "unbuilt" },
+      artifact: artifact(["body", "lid"]) as any,
+      evidenceKey: qcEvidenceKey("/engine", "/cwd-i", "demo"),
+      printability: { status: "pass", findings: [] },
+      fit: { status: "pass", findings: [] },
+      form: { status: "pass", findings: ["not applicable"] },
+    })
+    expect(report.fit.status).toBe("unverified")
+    expect(report.fit.findings.join(" ")).toMatch(/none of which are design parts/)
+  })
+
+  test("a mating-pair fit compare counts as evidence on a larger design", async () => {
+    const session = qcSessionKey("/engine", "/cwd-k")
+    setActiveQcDesign(session, "demo")
+    clearQcEvidenceForDesign(session, "demo")
+    recordQcEvidence(session, {
+      axis: "fit",
+      tool: "cad_compare",
+      ok: true,
+      status: "pass",
+      summary: "apart, clearance=0.3mm",
+      subjects: ["body", "lid"],
+    })
+    const report = await buildDesignQcReport({
+      id: "demo",
+      entry: { ...entry(), buildStatus: "unbuilt" },
+      artifact: artifact(["body", "lid", "base"]) as any,
+      evidenceKey: qcEvidenceKey("/engine", "/cwd-k", "demo"),
+      printability: { status: "pass", findings: [] },
+      fit: { status: "pass", findings: [] },
+      form: { status: "pass", findings: ["not applicable"] },
+    })
+    expect(report.fit.status).toBe("pass")
+  })
+
+  test("printability subjects cannot cover stem-sharing sibling parts", async () => {
+    const { subjectsCoverParts } = await import("../host/qc-evidence")
+    // One analysis on `base` must not cover a distinct part named `base_side`.
+    const cover = subjectsCoverParts(["base"], ["base", "base_side"])
+    expect(cover.ok).toBe(false)
+    expect(cover.missing).toEqual(["base_side"])
+    // A pose-suffixed subject maps to the most specific part: `base_side_built`
+    // covers `base_side` (not `base`), and never both parts of the pair.
+    expect(subjectsCoverParts(["base_side"], ["base_side"]).ok).toBe(true)
+    expect(subjectsCoverParts(["base_side_built"], ["base", "base_side"]).missing).toEqual(["base"])
+    expect(subjectsCoverParts(["base_side_print"], ["base", "base_side"]).missing).toEqual(["base"])
   })
 })
 
