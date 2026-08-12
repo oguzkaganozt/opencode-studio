@@ -264,7 +264,11 @@ function resolveMissingTraceWarnings(
   })
 }
 
-export function manufacturingBlockers(value: unknown, inspection?: CircuitInspection, options?: ManufacturingBlockerOptions): ManufacturingBlocker[] {
+export function manufacturingBlockers(
+  value: unknown,
+  inspection?: CircuitInspection,
+  options?: ManufacturingBlockerOptions,
+): ManufacturingBlocker[] {
   const elements = parseCircuitJson(value)
   const resolved = inspection ?? inspectCircuitJson(elements)
   const byId = elementByIdMap(elements)
@@ -350,14 +354,10 @@ export function manufacturingBlockers(value: unknown, inspection?: CircuitInspec
       if (typeof name !== "string") return true
       if (name.includes("_internal_")) return false
       if (intentionallyUnconnected.has(element.source_port_id as string)) return false
-      return !elements.some(
-        (pcbPort) => pcbPort.type === "pcb_port" && pcbPort.source_port_id === element.source_port_id,
-      )
+      return !elements.some((pcbPort) => pcbPort.type === "pcb_port" && pcbPort.source_port_id === element.source_port_id)
     })
     .map((element) => {
-      const component = element.source_component_id
-        ? byId.get(element.source_component_id as string)
-        : undefined
+      const component = element.source_component_id ? byId.get(element.source_component_id as string) : undefined
       const refdes = stringField(component, "name")
       const name = stringField(element, "name")
       return refdes ? `${refdes}.${name} has no PCB pad (footprint pad mapping may be incomplete)` : `${name} has no PCB pad`

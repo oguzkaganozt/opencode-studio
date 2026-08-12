@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { circuitJsonUntampered, writeBuildInputStamp } from "../artifact-freshness"
@@ -51,8 +51,8 @@ describe("noConnect intent bridge (#4443)", () => {
   })
 
   test("ignores elements without name or noConnect", () => {
-    expect(parseNoConnectIntents("<switch type=\"spdt\" />")).toEqual(new Map())
-    expect(parseNoConnectIntents("<board width=\"10mm\" />")).toEqual(new Map())
+    expect(parseNoConnectIntents('<switch type="spdt" />')).toEqual(new Map())
+    expect(parseNoConnectIntents('<board width="10mm" />')).toEqual(new Map())
   })
 
   test("matches ports via name or port_hints aliases", () => {
@@ -110,7 +110,7 @@ describe("artifact integrity (gate bypass shield)", () => {
     await writeBuildInputStamp(dir, "input-digest", sha256)
     expect(await circuitJsonUntampered(dir, circuitPath)).toBe(true)
 
-    await writeFile(circuitPath, content + "\n")
+    await writeFile(circuitPath, `${content}\n`)
     expect(await circuitJsonUntampered(dir, circuitPath)).toBe(false)
     expect(await readFile(circuitPath, "utf8")).toContain("source_component")
   })
