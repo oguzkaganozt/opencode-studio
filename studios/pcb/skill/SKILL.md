@@ -31,11 +31,19 @@ rebuild (and re-export if needed) before asserting readiness.
    on a new Studio Home; create entries after parts are verified (see step 8).
 2. New project: `pcb_project_create` (name/directory) unless an existing id already
    covers the work. Then edit `src/circuit.tsx`.
-3. Decide exact parts before claiming a production-oriented design. Record the
-   MPN, pinout, footprint, and whether each complex device is a module or bare
-   IC. Prefer `pcb_catalog_get` when the MPN is already catalogued. Otherwise call
-   `pcb_component_search` with each named complex part's exact MPN before
-   inspecting `node_modules` or searching the web. Treat search results as
+3. Lock part **classes**, not part numbers, during design. For every part record
+   the footprint family, value, pinout, and whether each complex device is a
+   module or bare IC. A part class is **standard and buyable** when all three
+   hold: (a) the package is a nameable IPC/JEDEC family (0603, 0805, SOIC-8,
+   SOT-23-5, 2.54mm header — not a vendor-specific pad layout), (b) the value is
+   a standard E-series value (10/22/33/47/100/330/470/1k/10k/100k; 1n/10n/100n/
+   1µ/10µ), and (c) one `pcb_component_search` with `source: "jlcpcb"` for that
+   package+value returns `supplierPartNumbers`. If all three hold, design with
+   the class and **do not hunt MPN variants** — one search per part class is
+   enough; repeated searches to "find the best match" do not improve the layout.
+   Only parts that fail the test (exotic value/package, or footprints that only
+   exist as an LCSC-bound part record, e.g. `jlcpcb:C...` footprints) need the
+   exact part searched during design — for those, treat search results as
    candidates, not catalog approval.
    For an exact JLCPCB match, use the returned `supplierPartNumbers` and verify
    the generated pinout and footprint; `packageDescription` is metadata, not a
@@ -67,11 +75,17 @@ rebuild (and re-export if needed) before asserting readiness.
    CPL are blocked while placeholders, unverified complex part identities,
    supplier footprint mismatches, unconnected non-`noConnect` pins, incomplete
    BOM identity, or missing/malformed placements remain.
-8. After a BOM line has a **verified** exact MPN (and optional manufacturer /
-   description / datasheet), promote it with `pcb_catalog_upsert` so later boards
-   reuse metadata via `pcb_catalog_list` / `pcb_catalog_get`. Do not upsert
-   placeholders, guessed MPNs, or supplier-only identities without an MPN.
-    The viewer BOM can also “Add to catalog” for the same write path.
+8. Resolve exact MPNs at BOM finalization, after the design is validated. For
+   each part class from step 3, run one `pcb_component_search` for the MPN and
+   accept it only when its footprint matches the routed footprint and its specs
+   meet the design value. Prefer `pcb_catalog_get` when the MPN is already
+   catalogued. After a BOM line has a **verified** exact MPN (and optional
+   manufacturer / description / datasheet), promote it with `pcb_catalog_upsert`
+   so later boards reuse metadata via `pcb_catalog_list` / `pcb_catalog_get`.
+   Do not upsert placeholders, guessed MPNs, or supplier-only identities without
+   an MPN. The viewer BOM can also “Add to catalog” for the same write path.
+   A footprint mismatch found here is a localized re-place, not a redesign:
+   rebuild, re-verify, re-export.
 9. Treat electrical simulation as a parallel feedback axis. After relevant
    source changes, run `pcb_circuit_build` for design/manufacturing diagnostics
    and `pcb_sim_run` for electrical behavior. Use both to iterate, but never
