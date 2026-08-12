@@ -552,6 +552,12 @@ export function AgentPanel({
     })
   }, [contextRevision, healthOk, refreshRuntimeState])
 
+  useEffect(() => {
+    if (!busy || !healthOk) return
+    const timer = setInterval(() => void refreshRuntimeState().catch(() => {}), 2_500)
+    return () => clearInterval(timer)
+  }, [busy, healthOk, refreshRuntimeState])
+
   const loadedSessionRef = useRef<string | undefined>(undefined)
   useEffect(() => {
     void contextRevision
