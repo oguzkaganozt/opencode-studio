@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { StudioError } from "./core/errors"
 import { atomicWriteJson, canonicalExistingDirectory, ensureDirectory, isInside } from "./core/paths"
-import { isLegacyStudioId, isStudioId, STUDIO_IDS, type StudioId } from "./core/registry"
+import { isStudioId, STUDIO_IDS, type StudioId } from "./core/registry"
 import { resolveStudioConfigHome, type UserPathOptions } from "./core/user-paths"
 import { getStudioDefinition } from "./studios"
 
@@ -38,13 +38,10 @@ function parseRoots(raw: unknown, warnings: string[], strict: boolean): Partial<
   const roots: Partial<Record<StudioId, string>> = {}
   for (const [key, root] of Object.entries(raw as Record<string, unknown>)) {
     if (!isStudioId(key)) {
-      if (isLegacyStudioId(key)) {
-        warnings.push(`Ignoring legacy roots.${key}`)
-      } else if (strict) {
+      if (strict) {
         throw new StudioError("invalid_config", `Unknown Studio ID in roots: ${key}`)
-      } else {
-        warnings.push(`Ignoring unknown roots.${key}`)
       }
+      warnings.push(`Ignoring unknown roots.${key}`)
       continue
     }
     if (typeof root !== "string" || root.length === 0 || root.includes("\0") || !path.isAbsolute(root)) {

@@ -9,9 +9,6 @@ export const STUDIO_TOOL_PERMISSIONS: Record<StudioId, readonly string[]> = {
 
 export const STUDIO_SKILL_NAMES = STUDIO_IDS.map((id) => `studio-${id}` as const)
 
-/** Legacy studio ids stripped from config with a warning. */
-export const LEGACY_STUDIO_IDS = ["startup"] as const
-
 export type StudioRootDefault = "studio_home"
 
 export type StudioDoctorCheck = {
@@ -45,10 +42,6 @@ export type StudioDefinition = {
 
 export function isStudioId(value: string): value is StudioId {
   return (STUDIO_IDS as readonly string[]).includes(value)
-}
-
-export function isLegacyStudioId(value: string): boolean {
-  return (LEGACY_STUDIO_IDS as readonly string[]).includes(value)
 }
 
 /** Ensure a key set matches STUDIO_IDS exactly (order-independent). */

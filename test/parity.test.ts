@@ -20,7 +20,6 @@ describe("parity fixtures", () => {
     expect(Object.keys(tools.tools).sort()).toContain("read_media")
     expect(Object.keys(tools.tools).sort()).toContain("design_build")
     expect(Object.keys(tools.tools).sort()).toContain("pcb_circuit_build")
-    expect(Object.keys(tools.tools).sort()).not.toContain("startup_upsert")
   })
 
   test("skill and agent digests match every Studio source", async () => {
