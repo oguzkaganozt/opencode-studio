@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { scaffoldFwProject } from "../scaffold"
@@ -21,6 +21,7 @@ describe("fw scaffold", () => {
     const main = await readFile(path.join(created.directory, "main", "main.c"), "utf8")
     expect(main).toContain("app_main")
     expect(await readFile(path.join(created.directory, "CMakeLists.txt"), "utf8")).toContain("IDF_PATH")
+    expect(await readdir(root)).toEqual(["hello"])
   })
 
   test("refuses to overwrite an existing project", async () => {

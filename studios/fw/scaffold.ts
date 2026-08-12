@@ -1,4 +1,5 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { type FwChip, fwChipSpec } from "./chips"
 import { FW_PROJECT_ID, type FwProjectManifest, projectJsonPath } from "./workspace"
@@ -29,13 +30,38 @@ export async function scaffoldFwProject(root: string, id: string, chip: FwChip) 
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
   }
-  const mainDir = path.join(directory, "main")
-  await mkdir(mainDir, { recursive: true })
-  const manifest: FwProjectManifest = { id, name: id, chip }
-  await writeFile(projectJsonPath(directory), `${JSON.stringify(manifest, null, 2)}\n`)
-  await writeFile(path.join(directory, "CMakeLists.txt"), CMAKE_ROOT)
-  await writeFile(path.join(directory, "sdkconfig.defaults"), "")
-  await writeFile(path.join(mainDir, "CMakeLists.txt"), CMAKE_MAIN)
-  await writeFile(path.join(mainDir, "main.c"), MAIN_C)
+
+  const staging = path.join(root, `.${id}.${randomUUID()}.tmp`)
+  try {
+    const mainDir = path.join(staging, "main")
+    await mkdir(mainDir, { recursive: true })
+    const manifest: FwProjectManifest = { id, name: id, chip }
+    await writeFile(projectJsonPath(staging), `${JSON.stringify(manifest, null, 2)}\n`)
+    await writeFile(path.join(staging, "CMakeLists.txt"), CMAKE_ROOT)
+    await writeFile(path.join(staging, "sdkconfig.defaults"), "")
+    await writeFile(path.join(mainDir, "CMakeLists.txt"), CMAKE_MAIN)
+    await writeFile(path.join(mainDir, "main.c"), MAIN_C)
+    try {
+      await rename(staging, directory)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOTEMPTY" || (error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new Error(`Firmware project already exists: ${id}`)
+      }
+      try {
+        const entries = await readdir(directory)
+        if (entries.length === 0) {
+          await rm(directory, { recursive: true, force: true })
+          await rename(staging, directory)
+        } else {
+          throw error
+        }
+      } catch (inner) {
+        if (inner === error) throw error
+        throw inner
+      }
+    }
+  } finally {
+    await rm(staging, { recursive: true, force: true }).catch(() => {})
+  }
   return { id, directory, chip }
 }

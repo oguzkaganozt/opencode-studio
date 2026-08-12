@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { Hono } from "hono"
+import { createSseResponse } from "../../src/core/sse"
+import { ensureFwWatching, onFwProjectEvent } from "./watcher"
 import {
   buildLogPath,
   buildRecordPath,
@@ -93,6 +95,14 @@ export function createFwApi(root: string) {
       run,
       uart: await readTail(uartLogPath(project.directory)),
       buildLog: await readTail(buildLogPath(project.directory)),
+    })
+  })
+
+  app.get("/events", async (ctx) => {
+    await ensureFwWatching(root)
+    return createSseResponse({
+      signal: ctx.req.raw.signal,
+      subscribe: (emit) => onFwProjectEvent(emit),
     })
   })
 

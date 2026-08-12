@@ -63,3 +63,7 @@ export function readWorkspace(projectId?: string) {
 export function readProject(id: string) {
   return fetchJson<FwProjectDetail>(api(`/projects/${encodeURIComponent(id)}`))
 }
+
+export function eventsUrl() {
+  return api("/events")
+}

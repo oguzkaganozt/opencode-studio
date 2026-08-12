@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import { Link, Navigate, Route, Routes, useParams } from "react-router"
 import { claimAgentContext } from "@ui/agent-context"
@@ -8,7 +8,29 @@ import { EmptyState } from "@ui/components/empty-state"
 import { ErrorState } from "@ui/components/error-state"
 import { StudioHomeHeader } from "@ui/components/studio-home"
 import { StudioNavLink, StudioShell } from "@ui/components/studio-shell"
-import { listProjects, readProject, readWorkspace, studioHref, type FwProjectDetail } from "./api"
+import { eventsUrl, listProjects, readProject, readWorkspace, studioHref, type FwProjectDetail } from "./api"
+
+function useFwEvents() {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    const es = new EventSource(eventsUrl())
+    es.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data as string) as { type?: string; projectId?: string }
+        if (event.type === "projects-changed") {
+          void queryClient.invalidateQueries({ queryKey: ["fw", "projects"] })
+        }
+        if (event.type === "artifacts-changed") {
+          void queryClient.invalidateQueries({ queryKey: ["fw", "projects"] })
+          if (event.projectId) void queryClient.invalidateQueries({ queryKey: ["fw", "project", event.projectId] })
+        }
+      } catch {
+        // malformed event — ignore
+      }
+    }
+    return () => es.close()
+  }, [queryClient])
+}
 
 type ViewTab = "console" | "run" | "build" | "pins"
 
@@ -23,6 +45,7 @@ function statusTone(value: boolean | null | undefined): "ok" | "fail" | "neutral
 }
 
 function ProjectsPage() {
+  useFwEvents()
   const projects = useQuery({ queryKey: ["fw", "projects"], queryFn: listProjects })
   const workspace = useQuery({ queryKey: ["fw", "workspace"], queryFn: () => readWorkspace() })
 
@@ -205,6 +228,7 @@ function PinsView({ project }: { project: FwProjectDetail }) {
 }
 
 function ProjectPage() {
+  useFwEvents()
   const { projectId = "", tab: rawTab } = useParams()
   const tab: ViewTab = isViewTab(rawTab) ? rawTab : "console"
   const project = useQuery({
