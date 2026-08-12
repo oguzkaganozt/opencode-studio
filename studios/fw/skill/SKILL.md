@@ -60,6 +60,13 @@ Do not tell the user to install ESP-IDF, QEMU, or esp-emu by hand.
 | Compile | `fw_build` |
 | Simulate | `fw_sim_run` |
 | Read UART | `fw_sim_log` |
+| Publish SPEC.json | `fw_spec` |
+
+## Spec
+
+After a successful sim, call `fw_spec` to write `SPEC.json` in the project directory.
+Other studios open that file with the stock `read` tool. Do not call `cad_*` or `pcb_*`.
+`status: blocked` means not ready (no current sim). After source edits, rebuild, re-sim, and `fw_spec` again — the file does not update itself.
 
 ## Viewer
 

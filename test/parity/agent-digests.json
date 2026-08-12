@@ -1,11 +1,11 @@
 {
   "studio-cad": {
     "path": "studios/cad/agent/studio-cad.md",
-    "sha256": "e25af32d07c20bbf5fb5a68c3f19dc156b8588bde687133744c1c156f2a301b0"
+    "sha256": "59822485ea99c501947156d85522a5a8631cc4af1748722581e2db38973802a9"
   },
   "studio-pcb": {
     "path": "studios/pcb/agent/studio-pcb.md",
-    "sha256": "c619ca960b40db57e16d71c7aa48ac77a0e9d7c772aa34f7fee0e62fef18f4c2"
+    "sha256": "7a92016e1f7ab61514c1105ba5a00a96a051592fbb52d440b535275adcf290a3"
   },
   "studio-media": {
     "path": "studios/media/agent/studio-media.md",
@@ -13,6 +13,6 @@
   },
   "studio-fw": {
     "path": "studios/fw/agent/studio-fw.md",
-    "sha256": "997b1a88ce68d3bb3cd9fef02b8a085dcd06a26c2396ce14a0c5869d1fadf858"
+    "sha256": "f6d0e680420b5feff4eb6e8409bd90594e1ad852a06f8447175fedbbd94aa7ed"
   }
 }

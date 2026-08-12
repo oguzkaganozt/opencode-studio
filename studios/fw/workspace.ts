@@ -30,6 +30,7 @@ export type FwRunRecord = {
   finishedAt: string
   exitCode: number | null
   logPath: string
+  sourceHash?: string
 }
 
 export type FwProject = {

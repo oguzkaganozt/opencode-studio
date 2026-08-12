@@ -3,11 +3,14 @@ import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import manifest from "../../../package.json" with { type: "json" }
 import { formatToolJson } from "../../../src/core/format-tool-json"
+import type { SpecRoots } from "../../../src/core/spec"
+import { createSpecTools } from "../../../src/core/spec-tools"
 import { buildDesign, type CadBuildRunner, createCadBuildRunner, scaffoldDesign } from "../host/build"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "../host/manifest"
 import { clearQcEvidenceForDesign, clearQcSession, qcEvidenceKey, qcSessionKey, setActiveQcDesign } from "../host/qc-evidence"
 import { buildDesignQcReport, type QcAxisStatus } from "../host/qc-report"
+import { publishCadSpec } from "../spec"
 import { designBuildFailureResult, designBuildSuccessResult, designCreateResult, formatCadToolResult } from "./result"
 import { closeAllCadRuntimeSessions, closeCadRuntimeSession, getCadRuntimeSession } from "./session"
 import { createCadSessionTools } from "./session-tools"
@@ -20,6 +23,7 @@ type Options = {
   studioRoot: string
   engineProjectDir: string
   companionUrl?: string
+  specRoots?: SpecRoots
 }
 
 function asJson(value: unknown) {
@@ -69,7 +73,8 @@ function options(input: PluginOptions | undefined, directory: string): Options {
     "engineProjectDir",
   )
   const companionUrl = typeof input?.companionUrl === "string" && input.companionUrl.length > 0 ? input.companionUrl : undefined
-  return { studioRoot, engineProjectDir, companionUrl }
+  const specRoots = input?.specRoots as SpecRoots | undefined
+  return { studioRoot, engineProjectDir, companionUrl, specRoots }
 }
 
 export type StudioPluginDependencies = {
@@ -105,6 +110,11 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
       tool: {
         ...build123dTools,
+        ...createSpecTools({
+          owner: "cad",
+          publish: (id, summary) =>
+            publishCadSpec(config.specRoots ?? { cad: layout.root, pcb: layout.root, fw: layout.root }, id, summary),
+        }),
         cad_design_list: tool({
           description:
             "List CAD designs discovered under the CAD domain root (default studio/designs/). Each entry reports id, build status, and part count.",

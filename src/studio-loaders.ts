@@ -2,6 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import type { Hono } from "hono"
 import type { resolveStudioRoot } from "./config"
 import { assertCatalogComplete, type StudioId } from "./core/registry"
+import { resolveSpecRoots } from "./core/spec"
 
 export type PluginLoadContext = {
   studioRoot: string
@@ -31,12 +32,13 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
       root,
       companionUrl: ctx.hostUrl ? `${ctx.hostUrl}/studio/studios/cad` : undefined,
       engineProjectDir: await ctx.ensureCadEngineDir(ctx.packageRoot),
+      specRoots: await resolveSpecRoots(ctx),
     })
   },
   pcb: async (ctx) => {
     const { loadPcbPlugin } = await import("../studios/pcb/plugin")
     const root = await ctx.resolveStudioRoot({ studioId: "pcb", studioRoot: ctx.studioRoot, roots: ctx.roots })
-    return loadPcbPlugin({ root })
+    return loadPcbPlugin({ root, specRoots: await resolveSpecRoots(ctx) })
   },
   media: async (ctx) => {
     const { loadMediaPlugin } = await import("../studios/media/plugin")
@@ -46,7 +48,7 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
   fw: async (ctx) => {
     const { loadFwPlugin } = await import("../studios/fw/plugin")
     const root = await ctx.resolveStudioRoot({ studioId: "fw", studioRoot: ctx.studioRoot, roots: ctx.roots })
-    return loadFwPlugin({ root })
+    return loadFwPlugin({ root, specRoots: await resolveSpecRoots(ctx) })
   },
 }
 

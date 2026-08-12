@@ -222,6 +222,12 @@ Report to the user:
 
 Do not hand-author generated measurements as canonical source - always read them from `manifest.json`.
 
+## Spec
+
+After a successful build, call `cad_spec` to write `SPEC.json` for PCB/FW.
+They open that file with the stock `read` tool. Do not use `pcb_*` or `fw_*`.
+`blocked` = not built. After source edits, rebuild and `cad_spec` again — the file does not update itself.
+
 ## Companion viewer
 
 Call `cad_design_view(id)` for the design URL and companion reachability. Prefer **`opencode-studio up`** (supervises OpenCode + Studio host, fixed Studio Home). If `reachable` is false: run `opencode-studio up`, open **http://127.0.0.1:4173/studio**, retry `cad_design_view`. Do **not** run `opencode-studio serve` (removed). UI is `/studio`; bare `/` is optional OpenCode web. CAD viewer lists built designs; pick/region annotations send to the native Agent panel; SSE refreshes on build/source change.

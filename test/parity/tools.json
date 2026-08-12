@@ -403,6 +403,27 @@
     "cad_workflow_hints": {
       "studio": "cad"
     },
+    "cad_spec": {
+      "studio": "cad",
+      "args": {
+        "id": "string",
+        "summary": "string"
+      }
+    },
+    "pcb_spec": {
+      "studio": "pcb",
+      "args": {
+        "id": "string",
+        "summary": "string"
+      }
+    },
+    "fw_spec": {
+      "studio": "fw",
+      "args": {
+        "id": "string",
+        "summary": "string"
+      }
+    },
     "fw_workspace_list": {
       "studio": "fw",
       "args": {}
@@ -464,5 +485,5 @@
       }
     }
   },
-  "count": 87
+  "count": 90
 }

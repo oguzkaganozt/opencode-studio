@@ -4,7 +4,7 @@ description: >
   Load before any electronics/PCB work with pcb_* tools — schematics, PCB layout,
   tscircuit TSX, Circuit JSON diagnostics, DRC, Gerber, BOM, CPL/Pick & Place,
   part search/catalog, footprints, routing, or viewer diagnostics. Not for mechanical
-  FDM CAD (studio-cad) or workspace image/audio/video generation (studio-media).
+  FDM CAD (studio-cad), firmware (studio-fw), or workspace image/audio/video generation (studio-media).
 license: proprietary
 compatibility: opencode
 ---
@@ -169,3 +169,9 @@ Honesty rules:
   contain probe series. Report missing models/convergence errors explicitly.
 - A successful simulation proves only the declared model and stimulus. It does
   not prove the physical part, firmware, RF behavior, thermal behavior, or board.
+
+## Spec
+
+After fabrication readiness is known, call `pcb_spec` to write `SPEC.json`.
+CAD/FW open that file with the stock `read` tool — they must not use `pcb_*`.
+`blocked` = not fab-ready. After source edits, rebuild and `pcb_spec` again — the file does not update itself.

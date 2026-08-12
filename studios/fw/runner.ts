@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { hashSourceFiles, listSourceFiles } from "../../src/core/spec"
+import { FW_SPEC_SOURCES } from "../../src/core/spec-resolve"
 import { type FwChipSpec, fwChipSpec } from "./chips"
 import { ensureIdf, ensureSimEngine, idfCommand, idfEnv, type ResolvedFwBinary } from "./engines"
 import { buildLogPath, buildRecordPath, type FwBuildRecord, type FwProject, type FwRunRecord, simDir, uartLogPath } from "./workspace"
@@ -215,6 +217,7 @@ export async function simulateFwProject(
 
   const log = cap(`${result.stdout}${result.stderr ? `\n${result.stderr}` : ""}`)
   const ok = result.reason === "expect" || (result.reason === "exit" && result.code === 0 && !options.expect)
+  const sourceHash = await hashSourceFiles(await listSourceFiles(project.directory, FW_SPEC_SOURCES))
   const record: FwRunRecord = {
     ok,
     reason: result.reason,
@@ -227,6 +230,7 @@ export async function simulateFwProject(
     finishedAt: new Date().toISOString(),
     exitCode: result.code,
     logPath: uartLogPath(project.directory),
+    sourceHash,
   }
   await writeFile(record.logPath, log)
   await writeFile(path.join(simDir(project.directory), "last.json"), `${JSON.stringify(record, null, 2)}\n`)

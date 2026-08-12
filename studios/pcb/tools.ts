@@ -4,6 +4,8 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import { formatToolJson } from "../../src/core/format-tool-json"
 import { canonicalExistingDirectory } from "../../src/core/paths"
+import type { SpecRoots } from "../../src/core/spec"
+import { createSpecTools } from "../../src/core/spec-tools"
 import { toCplCsv } from "./assembly"
 import {
   filterCatalogParts,
@@ -18,6 +20,7 @@ import {
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
 import { projectCircuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
+import { publishPcbSpec } from "./spec"
 import { exportCircuit, runProjectBuild, SIMULATION_ESTIMATE_CAVEAT, searchComponents, simulateAnalogCircuit } from "./tsci"
 import { discoverProjects, encodeProjectId, projectSummary, resolveProject } from "./workspace"
 
@@ -68,12 +71,17 @@ async function readProjectSvg(
   }
 }
 
-export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plugin {
+export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRoots?: SpecRoots }): Plugin {
   return async (context) => {
     const workspaceRoot = await canonicalWorkspaceRoot(options?.workspaceRoot ?? context.directory)
+    const specRoots = options?.specRoots ?? { cad: workspaceRoot, pcb: workspaceRoot, fw: workspaceRoot }
 
     return {
       tool: {
+        ...createSpecTools({
+          owner: "pcb",
+          publish: (id, summary) => publishPcbSpec(specRoots, id, summary),
+        }),
         // ── Workspace discovery ───────────────────────────────────────────────
         pcb_workspace_list: tool({
           description:

@@ -4,10 +4,13 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import { formatToolJson } from "../../src/core/format-tool-json"
 import { canonicalExistingDirectory } from "../../src/core/paths"
+import type { SpecRoots } from "../../src/core/spec"
+import { createSpecTools } from "../../src/core/spec-tools"
 import { FW_CHIPS, type FwChip, fwChipPublic, fwChipSpec, isFwChip, listFwChips } from "./chips"
 import { describeEngine } from "./engines"
 import { buildFwProject, type RunCommand, simulateFwProject } from "./runner"
 import { scaffoldFwProject } from "./scaffold"
+import { publishFwSpec } from "./spec"
 import {
   buildRecordPath,
   type FwBuildRecord,
@@ -52,12 +55,17 @@ async function readTail(filePath: string, maxBytes: number) {
   }
 }
 
-export function createFwStudioPlugin(options?: { workspaceRoot?: string; runCommand?: RunCommand }): Plugin {
+export function createFwStudioPlugin(options?: { workspaceRoot?: string; runCommand?: RunCommand; specRoots?: SpecRoots }): Plugin {
   return async (context) => {
     const workspaceRoot = await canonicalWorkspaceRoot(options?.workspaceRoot ?? context.directory)
+    const specRoots = options?.specRoots ?? { cad: workspaceRoot, pcb: workspaceRoot, fw: workspaceRoot }
 
     return {
       tool: {
+        ...createSpecTools({
+          owner: "fw",
+          publish: (id, summary) => publishFwSpec(specRoots, id, summary),
+        }),
         fw_workspace_list: tool({
           description: "List Firmware Studio projects under the firmware domain root. Returns chip, engine, and capabilities.",
           args: {},
