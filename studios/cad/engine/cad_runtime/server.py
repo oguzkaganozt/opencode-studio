@@ -335,6 +335,53 @@ def analyze_printability(
 
 
 @mcp.tool(annotations=_READ_ONLY)
+def analyze_form(
+    object_name: str = "",
+    axis: str = "Z",
+    num_stations: int = 5,
+    stations: str = "",
+    contract: str = "",
+    tol_mm: float = 2.0,
+    tol_frac: float = 0.05,
+    t_mode: str = "from_min",
+) -> str:
+    """Measure freeform silhouette stations for QC form evidence.
+
+    Slices the solid along axis and reports per-station width, depth, area, and
+    in-plane center. Optionally compares against a numeric form contract.
+
+    object_name: named object from show() (default: current shape).
+    axis: station axis X, Y, or Z (default Z).
+    num_stations: evenly spaced stations when stations/contract omitted (default 5).
+    stations: optional explicit world positions in mm when no contract, e.g. '0,40,80'.
+    contract: optional targets — JSON
+      '[{"t":0,"width":40,"depth":28},{"t":50,"width":52,"depth":30}]'
+      or compact '0:40x28, 50:52x30'. Required for form QC pass (freeform).
+      Contract proves geometry vs declared stations only — not brief/image fidelity.
+    t_mode: how contract t is interpreted (default 'from_min'):
+      from_min — mm from axis bbox min (design height 0..H; recommended for briefs);
+      absolute — world coordinate on the axis;
+      normalized — fraction of axis span in [0,1].
+    tol_mm: absolute width/depth tolerance in mm (default 2).
+    tol_frac: relative tolerance vs target (default 0.05); effective tol = max(tol_mm, |target|*tol_frac).
+
+    Returns plain-text summary + JSON: stations, character (varying|near_prismatic),
+    comparisons, status (pass|fail|unverified). status=pass only when a contract
+    is supplied and every station is within tolerance.
+    """
+    return _resolve_session().analyze_form(
+        object_name,
+        axis,
+        num_stations,
+        stations,
+        contract,
+        tol_mm,
+        tol_frac,
+        t_mode,
+    )
+
+
+@mcp.tool(annotations=_READ_ONLY)
 def cross_sections(object_name: str = "", axis: str = "Z", num_slices: int = 10) -> str:
     """Compute cross-sectional areas at evenly spaced planes along an axis. Returns a list of {position, area} pairs. axis: X, Y, or Z (default Z). num_slices: number of planes (default 10, minimum 2). Useful for detecting internal voids, wall-thickness variation, or verifying that a shape's cross-section profile matches a reference. object_name: named object from show() (default: current shape)."""
     return _resolve_session().cross_sections(object_name, axis, num_slices)

@@ -116,6 +116,7 @@ export function subjectsCoverParts(subjects: string[], partIds: string[]): { ok:
 /** Map structured session tool results into QC axes. */
 export function axisForSessionTool(entryName: string, args?: Record<string, unknown>): QcEvidenceAxis | null {
   if (entryName === "analyze_printability") return "printability"
+  if (entryName === "analyze_form") return "form"
   if (entryName === "compare") {
     const kind = String(args?.kind ?? "shape").toLowerCase()
     // Fit gate requires clearance/interpenetration evidence — align alone is not enough.
@@ -128,7 +129,7 @@ export function axisForSessionTool(entryName: string, args?: Record<string, unkn
 
 export function subjectsFromArgs(entryName: string, args?: Record<string, unknown>): string[] {
   if (!args) return []
-  if (entryName === "analyze_printability" || entryName === "validate") {
+  if (entryName === "analyze_printability" || entryName === "analyze_form" || entryName === "validate") {
     const name = typeof args.object_name === "string" ? args.object_name.trim() : ""
     return name ? [name] : ["current_shape"]
   }

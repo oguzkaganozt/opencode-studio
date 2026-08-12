@@ -243,6 +243,56 @@
       }
     },
     {
+      "name": "analyze_form",
+      "description": "Measure freeform silhouette stations for QC form evidence.\n\n    Slices the solid along axis and reports per-station width, depth, area, and\n    in-plane center. Optionally compares against a numeric form contract.\n\n    object_name: named object from show() (default: current shape).\n    axis: station axis X, Y, or Z (default Z).\n    num_stations: evenly spaced stations when stations/contract omitted (default 5).\n    stations: optional explicit world positions in mm when no contract, e.g. '0,40,80'.\n    contract: optional targets — JSON\n      '[{\"t\":0,\"width\":40,\"depth\":28},{\"t\":50,\"width\":52,\"depth\":30}]'\n      or compact '0:40x28, 50:52x30'. Required for form QC pass (freeform).\n      Contract proves geometry vs declared stations only — not brief/image fidelity.\n    t_mode: how contract t is interpreted (default 'from_min'):\n      from_min — mm from axis bbox min (design height 0..H; recommended for briefs);\n      absolute — world coordinate on the axis;\n      normalized — fraction of axis span in [0,1].\n    tol_mm: absolute width/depth tolerance in mm (default 2).\n    tol_frac: relative tolerance vs target (default 0.05); effective tol = max(tol_mm, |target|*tol_frac).\n\n    Returns plain-text summary + JSON: stations, character (varying|near_prismatic),\n    comparisons, status (pass|fail|unverified). status=pass only when a contract\n    is supplied and every station is within tolerance.\n    ",
+      "inputSchema": {
+        "properties": {
+          "object_name": {
+            "default": "",
+            "title": "Object Name",
+            "type": "string"
+          },
+          "axis": {
+            "default": "Z",
+            "title": "Axis",
+            "type": "string"
+          },
+          "num_stations": {
+            "default": 5,
+            "title": "Num Stations",
+            "type": "integer"
+          },
+          "stations": {
+            "default": "",
+            "title": "Stations",
+            "type": "string"
+          },
+          "contract": {
+            "default": "",
+            "title": "Contract",
+            "type": "string"
+          },
+          "tol_mm": {
+            "default": 2.0,
+            "title": "Tol Mm",
+            "type": "number"
+          },
+          "tol_frac": {
+            "default": 0.05,
+            "title": "Tol Frac",
+            "type": "number"
+          },
+          "t_mode": {
+            "default": "from_min",
+            "title": "T Mode",
+            "type": "string"
+          }
+        },
+        "title": "analyze_formArguments",
+        "type": "object"
+      }
+    },
+    {
       "name": "cross_sections",
       "description": "Compute cross-sectional areas at evenly spaced planes along an axis. Returns a list of {position, area} pairs. axis: X, Y, or Z (default Z). num_slices: number of planes (default 10, minimum 2). Useful for detecting internal voids, wall-thickness variation, or verifying that a shape's cross-section profile matches a reference. object_name: named object from show() (default: current shape).",
       "inputSchema": {

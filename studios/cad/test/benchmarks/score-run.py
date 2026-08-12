@@ -35,6 +35,7 @@ def score(run_dir: Path, designs_root: Path) -> dict:
     qc_out = None
     design_ids: list[str] = []
     fit_statuses: list[str] = []
+    form_statuses: list[str] = []
 
     for e in events:
         ts = e.get("timestamp")
@@ -63,6 +64,13 @@ def score(run_dir: Path, designs_root: Path) -> dict:
                 except json.JSONDecodeError:
                     m = re.search(r'"status"\s*:\s*"([^"]+)"', out)
                     fit_statuses.append(m.group(1) if m else "?")
+            if tool == "cad_analyze_form":
+                try:
+                    data = json.loads(out) if out.strip().startswith("{") else {}
+                    form_statuses.append(str(data.get("status") or "?"))
+                except json.JSONDecodeError:
+                    m = re.search(r'"status"\s*:\s*"([^"]+)"', out)
+                    form_statuses.append(m.group(1) if m else out[:40] or "?")
         if et == "step_finish" or part.get("type") == "step-finish":
             steps += 1
             tok = part.get("tokens") or {}
@@ -127,6 +135,7 @@ def score(run_dir: Path, designs_root: Path) -> dict:
         "execute_fails": [f for f in fails if f.startswith("cad_execute") or f.startswith("invalid")],
         "fail_count": len(fails),
         "fit_compare_statuses": fit_statuses,
+        "form_analyze_statuses": form_statuses,
         "qc": {"complete": complete, "blockedBy": blocked},
         "parts": parts,
         "artifacts": artifacts,
@@ -134,7 +143,8 @@ def score(run_dir: Path, designs_root: Path) -> dict:
             "has_build": tools.get("cad_design_build", 0) > 0,
             "has_qc_report": tools.get("cad_design_qc_report", 0) > 0,
             "has_fit_compare": tools.get("cad_compare", 0) > 0,
-            "all_step_present": bool(artifacts) and all(v.get("step") for v in artifacts.values()),
+            "has_form_analyze": tools.get("cad_analyze_form", 0) > 0,
+            "all_step_present": bool(parts) and all(v.get("step") for v in artifacts.values()),
             "complete_true": complete is True,
         },
         "final_text_head": final[:400],
@@ -145,6 +155,8 @@ def score(run_dir: Path, designs_root: Path) -> dict:
         "pass_fit_tool_used": report["checks"]["has_fit_compare"],
         "fit_gap_pass_seen": any(s == "pass" for s in fit_statuses),
         "fit_only_contact": fit_statuses and all(s == "unverified" for s in fit_statuses),
+        "pass_form_tool_used": report["checks"]["has_form_analyze"],
+        "form_contract_pass_seen": any(s == "pass" for s in form_statuses),
     }
     return report
 

@@ -18,6 +18,7 @@ export const CAD_SESSION_STRUCTURED_TOOLS = new Set([
   "measure",
   "compare",
   "analyze_printability",
+  "analyze_form",
 ])
 
 const MAX_BYTES = 60_000
@@ -141,6 +142,8 @@ export function structureCadSessionResult(input: {
       return normalizeCompare(toolName, data, extracted.prefix, args)
     case "analyze_printability":
       return normalizePrintability(toolName, data, extracted.prefix)
+    case "analyze_form":
+      return normalizeForm(toolName, data, extracted.prefix)
     default:
       return {
         ok: true,
@@ -276,6 +279,47 @@ function normalizeCompare(
     data: { ...data, kind },
     warnings,
     next: [],
+  }
+}
+
+function normalizeForm(toolName: string, data: Record<string, unknown>, prefix: string): CadToolEnvelope {
+  const statusRaw = typeof data.status === "string" ? data.status.toLowerCase() : "unverified"
+  const status: CadToolStatus =
+    statusRaw === "pass" || statusRaw === "fail" || statusRaw === "unverified" ? statusRaw : "unverified"
+  const stations = Array.isArray(data.stations) ? data.stations : []
+  const comparisons = Array.isArray(data.comparisons) ? data.comparisons : []
+  const mismatched = comparisons.filter((row) => {
+    const r = asRecord(row)
+    return r ? r.ok === false : false
+  }).length
+  const character = typeof data.character === "string" ? data.character : "unknown"
+  const contractMatched = data.contract_matched === true
+  const summary =
+    prefix ||
+    `form ${status}: ${stations.length} station(s), ${character}` +
+      (comparisons.length ? `, contract_mismatches=${mismatched}` : ", no contract")
+  const warnings = stringList(data.warnings)
+  if (!contractMatched && status !== "pass") {
+    warnings.push("Freeform QC pass needs contract match via cad_analyze_form; prismatic uses form finding 'not applicable'")
+  }
+  return {
+    ok: status !== "fail" && status !== "error",
+    tool: toolName,
+    summary,
+    status,
+    data: {
+      ...data,
+      station_count: stations.length,
+      mismatch_count: mismatched,
+      contract_matched: contractMatched,
+    },
+    warnings,
+    next:
+      status === "pass"
+        ? ["cad_form_review (optional visual feedback)", "cad_design_qc_report form pass"]
+        : status === "unverified"
+          ? ["Provide contract='t:widthxdepth,...' from form brief", "Re-run cad_analyze_form"]
+          : ["Adjust loft/sweep stations or contract targets", "Re-run cad_analyze_form"],
   }
 }
 

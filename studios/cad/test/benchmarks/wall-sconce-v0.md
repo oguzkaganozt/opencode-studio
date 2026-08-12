@@ -51,5 +51,5 @@ Also judge manually / from renders:
 - frosted panel reads as thin shell/plate, not a solid brick
 - base is distinct lower mass; brass bits separate or clearly split
 - `complete: true` if claimed
-- form findings substantive (not bare `not applicable` unless agent wrongly classifies prismatic)
+- freeform: `cad_analyze_form` contract pass (not notes-only); prismatic mis-classify as N/A is a fail
 - wall time / tokens / execute fails

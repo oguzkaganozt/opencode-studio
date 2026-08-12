@@ -116,6 +116,60 @@ describe("structureCadSessionResult", () => {
     expect(clash.warnings.some((w) => /interpenetrat/i.test(w))).toBe(true)
   })
 
+  test("normalize form analyze", () => {
+    const pass = structureCadSessionResult({
+      entryName: "analyze_form",
+      toolName: "cad_analyze_form",
+      text:
+        'form pass, axis=Z, 3/3 stations\n\n' +
+        JSON.stringify({
+          status: "pass",
+          character: "varying",
+          stations: [{ t: 0 }, { t: 1 }, { t: 2 }],
+          comparisons: [{ ok: true }, { ok: true }],
+          contract_matched: true,
+          warnings: [],
+        }),
+      isError: false,
+    })
+    expect(pass.ok).toBe(true)
+    expect(pass.status).toBe("pass")
+    expect(pass.data?.contract_matched).toBe(true)
+
+    const unverified = structureCadSessionResult({
+      entryName: "analyze_form",
+      toolName: "cad_analyze_form",
+      text: JSON.stringify({
+        status: "unverified",
+        character: "varying",
+        stations: [{ t: 0 }, { t: 1 }],
+        comparisons: [],
+        contract_matched: false,
+        warnings: ["no contract"],
+      }),
+      isError: false,
+    })
+    expect(unverified.status).toBe("unverified")
+    expect(unverified.ok).toBe(true)
+    expect(unverified.warnings.some((w) => /contract/i.test(w))).toBe(true)
+
+    const fail = structureCadSessionResult({
+      entryName: "analyze_form",
+      toolName: "cad_analyze_form",
+      text: JSON.stringify({
+        status: "fail",
+        character: "varying",
+        stations: [{ t: 0 }],
+        comparisons: [{ ok: false }],
+        contract_matched: false,
+        warnings: [],
+      }),
+      isError: false,
+    })
+    expect(fail.status).toBe("fail")
+    expect(fail.ok).toBe(false)
+  })
+
   test("normalize printability", () => {
     const pass = structureCadSessionResult({
       entryName: "analyze_printability",

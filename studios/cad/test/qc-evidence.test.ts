@@ -189,8 +189,11 @@ describe("QC evidence binding", () => {
     expect(report.printability.source).toBe("evidence")
   })
 
-  test("form freeform notes and strict not-applicable token", async () => {
+  test("form requires analyze_form evidence or strict not-applicable", async () => {
+    const session = qcSessionKey("/engine", "/cwd-e")
     const key = qcEvidenceKey("/engine", "/cwd-e", "demo")
+    clearQcEvidenceForDesign(session, "demo")
+
     const loose = await buildDesignQcReport({
       id: "demo",
       entry: { ...entry(), buildStatus: "unbuilt" },
@@ -200,7 +203,7 @@ describe("QC evidence binding", () => {
     })
     expect(loose.form.status).toBe("unverified")
 
-    const freeform = await buildDesignQcReport({
+    const notesOnly = await buildDesignQcReport({
       id: "demo",
       entry: { ...entry(), buildStatus: "unbuilt" },
       artifact: null,
@@ -213,7 +216,56 @@ describe("QC evidence binding", () => {
         ],
       },
     })
+    expect(notesOnly.form.status).toBe("unverified")
+    expect(notesOnly.form.source).toBe("rejected")
+
+    const na = await buildDesignQcReport({
+      id: "demo",
+      entry: { ...entry(), buildStatus: "unbuilt" },
+      artifact: null,
+      evidenceKey: key,
+      form: { status: "pass", findings: ["not applicable"] },
+    })
+    expect(na.form.status).toBe("pass")
+
+    setActiveQcDesign(session, "demo")
+    recordQcEvidence(session, {
+      axis: "form",
+      tool: "cad_analyze_form",
+      ok: true,
+      status: "pass",
+      summary: "form pass, contract matched",
+      subjects: ["shell"],
+    })
+    const freeform = await buildDesignQcReport({
+      id: "demo",
+      entry: { ...entry(), buildStatus: "unbuilt" },
+      artifact: null,
+      evidenceKey: key,
+      form: { status: "pass", findings: ["stations match contract"] },
+    })
     expect(freeform.form.status).toBe("pass")
+    expect(freeform.form.source).toBe("evidence")
+
+    // N/A rejected when prior form evidence already shows varying freeform.
+    clearQcEvidenceForDesign(session, "demo")
+    recordQcEvidence(session, {
+      axis: "form",
+      tool: "cad_analyze_form",
+      ok: true,
+      status: "unverified",
+      summary: "form unverified, axis=Z, t_mode=from_min, 5/5 stations, varying, width_var=12.0%",
+      subjects: ["shell"],
+    })
+    const naOnVarying = await buildDesignQcReport({
+      id: "demo",
+      entry: { ...entry(), buildStatus: "unbuilt" },
+      artifact: null,
+      evidenceKey: key,
+      form: { status: "pass", findings: ["not applicable"] },
+    })
+    expect(naOnVarying.form.status).toBe("unverified")
+    expect(naOnVarying.form.source).toBe("rejected")
   })
 
   test("clear on one design does not wipe another", () => {

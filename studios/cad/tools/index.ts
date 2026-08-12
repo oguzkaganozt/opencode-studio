@@ -321,9 +321,116 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
         }),
 
+        cad_form_review: tool({
+          description:
+            "Advisory visual form review only — does NOT unlock form QC pass. Attach reference photo(s) and CAD render(s) with a silhouette rubric. Prefer after cad_analyze_form. Pass optional verdict/findings for your own notes; gate still requires cad_analyze_form contract match (or prismatic 'not applicable').",
+          args: {
+            reference: tool.schema
+              .union([tool.schema.string(), tool.schema.array(tool.schema.string())])
+              .describe("Path(s) to reference image(s)."),
+            renders: tool.schema
+              .union([tool.schema.string(), tool.schema.array(tool.schema.string())])
+              .describe("Path(s) to CAD render PNG/SVG (front/side/iso preferred)."),
+            verdict: tool.schema
+              .enum(["pass", "fail", "unsure"] as const)
+              .optional()
+              .describe("Optional advisory verdict after comparing attachments."),
+            findings: tool.schema
+              .array(tool.schema.string())
+              .optional()
+              .describe("Optional silhouette notes (proportions, taper, crown, base)."),
+            id: tool.schema.string().optional().describe("Optional design id for context."),
+          },
+          async execute(args, context) {
+            const cwd = context.directory || process.cwd()
+            const toList = (v: string | string[]) => (Array.isArray(v) ? v : v ? [v] : [])
+            const resolvePath = (p: string) => (path.isAbsolute(p) ? p : path.resolve(cwd, p))
+            const refs = toList(args.reference as string | string[]).map(resolvePath)
+            const renders = toList(args.renders as string | string[]).map(resolvePath)
+            const missing: string[] = []
+            const attachments: Array<{ type: "file"; mime: string; url: string; filename: string }> = []
+            const mimeFor = (filePath: string) => {
+              const ext = path.extname(filePath).toLowerCase()
+              if (ext === ".png") return "image/png"
+              if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg"
+              if (ext === ".webp") return "image/webp"
+              if (ext === ".svg") return "image/svg+xml"
+              if (ext === ".gif") return "image/gif"
+              return "application/octet-stream"
+            }
+            for (const [label, list] of [
+              ["reference", refs],
+              ["render", renders],
+            ] as const) {
+              for (const filePath of list) {
+                const file = Bun.file(filePath)
+                if (!(await file.exists())) {
+                  missing.push(filePath)
+                  continue
+                }
+                const buf = Buffer.from(await file.arrayBuffer())
+                const mime = mimeFor(filePath)
+                attachments.push({
+                  type: "file",
+                  mime,
+                  url: `data:${mime};base64,${buf.toString("base64")}`,
+                  filename: `${label}-${path.basename(filePath)}`,
+                })
+              }
+            }
+            const findings = (args.findings as string[] | undefined)?.map((f) => f.trim()).filter(Boolean) ?? []
+            const verdict = (args.verdict as "pass" | "fail" | "unsure" | undefined) ?? "unsure"
+            const envelope = {
+              ok: missing.length === 0,
+              tool: "cad_form_review",
+              summary:
+                missing.length > 0
+                  ? `form review incomplete — missing files: ${missing.join(", ")}`
+                  : `form review advisory=${verdict}; ${attachments.length} image(s); not QC form evidence`,
+              status: missing.length > 0 ? "fail" : "unverified",
+              data: {
+                advisory: true,
+                unlocks_form_pass: false,
+                id: args.id ?? null,
+                verdict,
+                findings,
+                reference: refs,
+                renders,
+                missing,
+                rubric: [
+                  "Compare overall proportions (height:width) front and side",
+                  "Check taper / changing silhouette along primary axis",
+                  "Check crown, shoulders, base foot print vs reference",
+                  "Ignore materials/lighting; geometry silhouette only",
+                  "Hard form pass still requires cad_analyze_form contract match",
+                ],
+              },
+              warnings: [
+                "cad_form_review is feedback only and does not record form QC evidence",
+                ...(missing.length ? [`missing: ${missing.join(", ")}`] : []),
+              ],
+              next: [
+                "cad_analyze_form with numeric contract for form QC pass",
+                "cad_design_qc_report form claim after analyze_form pass (or prismatic N/A)",
+              ],
+            }
+            return {
+              title: missing.length ? "form review incomplete" : `form review: ${verdict}`,
+              output: formatCadToolResult(envelope as any),
+              metadata: {
+                tool: "cad_form_review",
+                advisory: true,
+                verdict,
+                ok: envelope.ok,
+              },
+              attachments: attachments.length > 0 ? attachments : undefined,
+            }
+          },
+        }),
+
         cad_design_qc_report: tool({
           description:
-            "Multi-axis CAD QC report (design-scoped evidence). Artifact from cad_design_build. printability pass needs cad_analyze_printability evidence covering parts. fit pass needs cad_compare kind=fit (multi-part) or finding 'not applicable' (single-part). form pass: exact finding 'not applicable' (prismatic) or substantive freeform notes. Bare pass without evidence is rejected. complete only when every axis is pass.",
+            "Multi-axis CAD QC report (design-scoped evidence). Artifact from cad_design_build. printability pass needs cad_analyze_printability evidence covering parts. fit pass needs cad_compare kind=fit (multi-part) or finding 'not applicable' (single-part). form pass: exact finding 'not applicable' (prismatic) or cad_analyze_form pass (contract match). cad_form_review is advisory only. Bare pass without evidence is rejected. complete only when every axis is pass.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
             printability: tool.schema
@@ -346,7 +453,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               .object({
                 status: tool.schema
                   .enum(["pass", "fail", "unverified"] as const)
-                  .describe("Prismatic: pass + finding 'not applicable'. Freeform: substantive station/view notes."),
+                  .describe("Prismatic: pass + finding 'not applicable'. Freeform: after cad_analyze_form contract pass."),
                 findings: tool.schema.array(tool.schema.string()).optional().describe("Form notes; exact 'not applicable' for prismatic."),
               })
               .optional(),

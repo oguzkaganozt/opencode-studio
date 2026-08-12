@@ -55,12 +55,6 @@ function isNotApplicableFinding(findings: string[]): boolean {
   return findings.some((f) => f.trim().toLowerCase() === "not applicable")
 }
 
-/** Freeform form: agent must supply substantive notes (no session form tool yet). */
-function formFreeformNotesOk(findings: string[]): boolean {
-  const substantive = findings.map((f) => f.trim()).filter((f) => f.length >= 12 && f.toLowerCase() !== "not applicable")
-  return substantive.length >= 2 || substantive.join(" ").length >= 40
-}
-
 function evidenceMeta(evidence: QcEvidenceRecord): NonNullable<QcAxisReport["evidence"]> {
   return {
     tool: evidence.tool,
@@ -233,39 +227,86 @@ function bindFit(input: {
   }
 }
 
-function bindForm(input: { claimed?: QcAxisInput }): QcAxisReport {
+function bindForm(input: {
+  claimed?: QcAxisInput
+  designKey: string
+  revision: string | null
+}): QcAxisReport {
   const findings = input.claimed?.findings?.map((f) => f.trim()).filter(Boolean) ?? []
   const claim = input.claimed?.status
 
-  if (claim === "pass") {
-    if (isNotApplicableFinding(findings)) {
-      return { status: "pass", findings: ["not applicable"], source: "agent" }
-    }
-    if (formFreeformNotesOk(findings)) {
+  const latest = latestQcEvidence(input.designKey, "form", {
+    revision: input.revision,
+    tool: "cad_analyze_form",
+  })
+
+  // Prismatic N/A — reject if session evidence already shows a varying freeform body.
+  if (claim === "pass" && isNotApplicableFinding(findings)) {
+    if (latest && /\bvarying\b/i.test(latest.summary)) {
       return {
-        status: "pass",
-        findings,
-        source: "agent",
+        status: "unverified",
+        findings: [
+          ...findings,
+          "pass rejected: form evidence character=varying — cannot claim 'not applicable'; run cad_analyze_form with contract or fix geometry",
+        ],
+        source: "rejected",
+        evidence: evidenceMeta(latest),
       }
     }
-    return {
-      status: "unverified",
-      findings: [
-        ...findings,
-        "pass rejected: form requires finding 'not applicable' (prismatic) or substantive freeform notes (≥2 findings or ≥40 chars)",
-      ],
-      source: "rejected",
-    }
+    return { status: "pass", findings: ["not applicable"], source: "agent" }
   }
 
-  if (claim === "fail") {
-    return { status: "fail", findings: findings.length ? findings : ["reported fail"], source: "agent" }
+  if (claim === "pass") {
+    if (!latest) {
+      return {
+        status: "unverified",
+        findings: [
+          ...findings,
+          "pass rejected: freeform form needs cad_analyze_form pass evidence (contract match), or finding 'not applicable' (prismatic)",
+        ],
+        source: "rejected",
+      }
+    }
+    if (!latest.ok || latest.status === "fail") {
+      return {
+        status: "fail",
+        findings: [...findings, `pass rejected: latest form evidence is ${latest.status}: ${latest.summary}`],
+        source: "rejected",
+        evidence: evidenceMeta(latest),
+      }
+    }
+    if (latest.status !== "pass") {
+      return {
+        status: "unverified",
+        findings: [
+          ...findings,
+          `pass rejected: form evidence is ${latest.status} (need contract match via cad_analyze_form): ${latest.summary}`,
+        ],
+        source: "rejected",
+        evidence: evidenceMeta(latest),
+      }
+    }
+    return { status: "pass", findings, source: "evidence", evidence: evidenceMeta(latest) }
+  }
+
+  if (claim === "fail" || (latest && latest.status === "fail")) {
+    return {
+      status: "fail",
+      findings: findings.length ? findings : latest ? [latest.summary] : ["reported fail"],
+      source: latest ? "evidence" : "agent",
+      evidence: latest ? evidenceMeta(latest) : undefined,
+    }
   }
 
   return {
     status: "unverified",
-    findings: findings.length ? findings : ["not reported"],
-    source: "agent",
+    findings: findings.length
+      ? findings
+      : latest
+        ? [`evidence available via ${latest.tool} but axis not claimed`]
+        : ["not reported"],
+    source: latest ? "evidence" : "agent",
+    evidence: latest ? evidenceMeta(latest) : undefined,
   }
 }
 
@@ -330,7 +371,11 @@ export async function buildDesignQcReport(input: {
     revision,
     partCount: partIds.length || (artifact?.parts.length ?? 0),
   })
-  const form = bindForm({ claimed: input.form })
+  const form = bindForm({
+    claimed: input.form,
+    designKey: input.evidenceKey,
+    revision,
+  })
   const renders = await listRenders(entry.directory)
 
   const blockedBy: string[] = []
@@ -341,8 +386,8 @@ export async function buildDesignQcReport(input: {
 
   const complete = blockedBy.length === 0
   const summary = complete
-    ? "All QC axes pass with design-scoped evidence rules. Still does not prove material, strain, or production fitness."
-    : `Incomplete: blocked by ${blockedBy.join(", ")}. Pass requires design-scoped session evidence (printability/fit) or documented form notes.`
+    ? "All QC axes pass with design-scoped evidence rules. Form contract match proves declared stations only (not brief/image fidelity). Still does not prove material, strain, or production fitness."
+    : `Incomplete: blocked by ${blockedBy.join(", ")}. Pass requires design-scoped session evidence (printability/fit/form) or prismatic form N/A.`
 
   return {
     id,

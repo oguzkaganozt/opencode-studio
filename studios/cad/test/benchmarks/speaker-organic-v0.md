@@ -50,6 +50,7 @@ Also judge from renders / STL:
 - outer envelope is curved/organic, not a filleted box
 - dual driver layout readable on front
 - multi-part assembly with real openings (not solid decorative block)
-- form findings substantive (stations / multi-view), not bare `not applicable`
+- `cad_analyze_form` with numeric contract (stations); form pass from evidence, not notes-only
+- optional `cad_form_review` for visual feedback (does not unlock form pass)
 - `complete: true` if claimed
 - wall time / tokens / execute fails

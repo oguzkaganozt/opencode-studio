@@ -66,16 +66,9 @@ Choose the simplest construction that actually controls the requested form:
 - Build and verify the master outer envelope before adding seams, openings, bosses, or cosmetic fillets. If the dominant silhouette is wrong, rebuild the envelope instead of patching it.
 - For hollow section-driven parts, use `thicken()` only when the offset remains valid and preserves wall thickness. If it fails or distorts tight curvature, build matched inner sections and subtract the inner loft from the outer loft.
 
-At the accepted stations, measure more than cross-sectional area. Intersect the source-built body with planes and report area, in-plane width/depth, and centre so constant-area shape changes and centre drift remain visible:
+Lock the form contract with `cad_analyze_form` (numeric `contract` of station width×depth). Example from the brief (t = mm from axis min, default `t_mode=from_min`): `contract="0:40x28, 50:52x30, 100:36x22"`. Freeform form **pass** requires `status=pass`. Contract match proves geometry vs **declared** stations only — derive targets from the brief/reference before measuring; do not feed measured widths back as the contract. Optional `cad_form_review` is visual feedback only. Multi-part: run on the dominant freeform envelope (not every prismatic trim).
 
-```python
-for station in stations:
-    section = body & Plane.XY.offset(station)  # adapt the plane to the form axis
-    bounds = section.bounding_box()
-    print(station, section.area, bounds.size.X, bounds.size.Y, section.center())
-```
-
-The presence of a BSpline face, a high face count, or one flattering render is not form-fidelity evidence. Hundreds of narrow surface faces, visible station bands, or a faceted highlight on a continuously smooth reference are failure evidence even when every face is technically a BSpline. If a smooth loft is brittle, simplify and align its sections or switch to guide-surface construction; do not silently downgrade the form to pass the build. Compare the station report and front/side/isometric renders with the form contract. If they are missing or contradictory, report `Build succeeded; form fidelity unverified.` and do not call the design complete.
+The presence of a BSpline face, a high face count, or one flattering render is not form-fidelity evidence. Hundreds of narrow surface faces, visible station bands, or a faceted highlight on a continuously smooth reference are failure evidence even when every face is technically a BSpline. If a smooth loft is brittle, simplify and align its sections or switch to guide-surface construction; do not silently downgrade the form to pass the build. If `cad_analyze_form` fails or is missing, report `Build succeeded; form fidelity unverified.` and do not call the design complete.
 
 ## Tools Available
 
@@ -86,7 +79,7 @@ All CAD capabilities are native `cad_*` tools on build123d (confirm with `cad_ve
 Treat this skill as the default workflow.
 
 Hot-path tools return structured JSON envelopes `{ok, status, summary, data, warnings, next, error?}`:
-`cad_validate`, `cad_measure`, `cad_compare`, `cad_analyze_printability`, `cad_design_create`, `cad_design_build`. Prefer `status`/`data` over free-text parsing.
+`cad_validate`, `cad_measure`, `cad_compare`, `cad_analyze_printability`, `cad_analyze_form`, `cad_design_create`, `cad_design_build`. Prefer `status`/`data` over free-text parsing.
 
 - `cad_execute(code)` - run build123d code in a persistent Python namespace. Use `show(object, "name")` to register named objects. Registry shapes from `import_cad_file` / `show` are bound into execute as bare names when the name is a valid identifier, and always via `cad_objects[name]` or `cad_object(name)`. Prefer those over assuming a separate world.
 - `cad_session_state()` - inspect current session objects, variables, and snapshots.
@@ -96,6 +89,7 @@ Hot-path tools return structured JSON envelopes `{ok, status, summary, data, war
 - `cad_render_view(direction, save_to, objects)` - render named objects. Directions are `iso`, `front`, `side`, and `top`. Save PNGs under `studio/designs/<design-id>/renders/<part-id>-<view>.png` (domain root + id) so the companion viewer can display them. Do not use `studio-media` / `media_*` for these evidence renders.
 - `cad_compare(a, b, kind, axis, mode)` - comparison tool. Use `kind="fit"` for clearance/interpenetration, `kind="align"` for alignment, `kind="shape"` for geometry deltas, and `kind="snapshot"` for snapshot deltas. Fit clearance is the global minimum between complete shapes; an intended stop or detent can make it zero without proving a nominal gap at a target interface.
 - `cad_analyze_printability(object_name, ...)` - FDM overhang, wall thickness, manifold, stability, and bed-fit checks. It treats the object's current world orientation as its print orientation.
+- `cad_analyze_form(object_name, axis?, contract?, t_mode?, …)` - freeform station measure (width/depth/center). Default `t_mode=from_min` (brief heights 0..H). **pass** only with numeric contract match; records form evidence. Without contract → `unverified`. Proves declared stations, not image fidelity.
 - `cad_resolve(object_name, selector, label)` - create a geometry reference: `@cad[part#label]`.
 - `cad_save_snapshot(name)` / `cad_restore_snapshot(name)` - checkpoint/rollback for safe experimentation.
 - `cad_find_holes`, `cad_find_bosses`, `cad_find_bored_bosses`, `cad_find_countersinks`, `cad_find_hole_patterns` - feature recognition.
@@ -110,7 +104,8 @@ Inside `cad_execute`, composable Python helpers such as `clearance(a, b)`, `alig
 - `cad_design_read(id)` - read the canonical design/build summary, resolved artifact paths with existence checks, metrics, revision, and render inventory. Do not follow it with raw manifest reads or artifact globs.
 - `cad_design_build(id)` - deterministically validate source and round-tripped STEP geometry as one valid solid, export STEP/STL/GLB, and write `manifest.json`. It does not run assembly or printability verification. Do not revalidate or remeasure unchanged STEP solely to repeat build guarantees. A failed build preserves the previous output.
 - `cad_design_view(id)` - return the companion viewer URL and whether the companion health endpoint is reachable.
-- `cad_design_qc_report(id, printability?, fit?, form?)` - multi-axis QC gate (design-scoped evidence). Artifact from build outputs. printability **pass** needs `cad_analyze_printability` evidence covering parts. fit **pass** needs `cad_compare kind=fit` (multi-part) or exact finding `not applicable` (single-part). form **pass**: exact finding `not applicable` (prismatic) or substantive freeform notes (≥2 findings / ≥40 chars). Align-only compare does not count as fit. Bare pass without evidence is rejected.
+- `cad_form_review(reference, renders, verdict?, findings?)` - advisory silhouette feedback with image attachments. Does **not** unlock form pass.
+- `cad_design_qc_report(id, printability?, fit?, form?)` - multi-axis QC gate (design-scoped evidence). Artifact from build outputs. printability **pass** needs `cad_analyze_printability` evidence covering parts. fit **pass** needs `cad_compare kind=fit` (multi-part) or exact finding `not applicable` (single-part). form **pass**: exact finding `not applicable` (prismatic; rejected if session form evidence is `varying`) or `cad_analyze_form` pass (contract match). Align-only compare does not count as fit. Bare pass without evidence is rejected.
 
 ### Responsibility boundary
 
@@ -210,13 +205,13 @@ Before saying `complete`:
 
 - Build success is not verification. Every validation, fit/alignment, and printability result must pass.
 - Report artifact build, printability verification, mechanical fit, and form fidelity as **separate** statuses; success in one never implies success in another.
-- When Manufactured Freeform Mode applies, report form fidelity separately with its station and multi-view evidence. Missing evidence blocks completion. For prismatic designs, set form to `pass` with finding `not applicable`.
+- When Manufactured Freeform Mode applies, run `cad_analyze_form` with the form-contract stations as `contract` and claim form pass only from that evidence. Optional `cad_form_review` for visual feedback. Missing analyze_form evidence blocks completion. For prismatic designs, set form to `pass` with finding `not applicable`.
 - Any reported wall below 1.2 mm blocks completion unless a separate geometry tool result localizes and measures it as a false positive. Source parameters, labels such as `chamfer` or `rail`, and verbal interpretation are not evidence.
 - A single-pose fit does not prove retention. Without motion or mechanism evidence, set fit to `fail` with finding `closed-position fit passes; retention unverified` — never fit `pass` with a retention caveat. The tool treats `pass` as claim-complete for that axis.
 - If retention is not a product requirement, static fit may be `pass` with finding `retention not required`.
 - If any printability finding or other check remains failed or unresolved, do not say `complete`, `implemented`, or `fabricated`; say `Build succeeded, verification failed.` and list it.
 
-Call `cad_design_read(id)` for metrics, then **must** call `cad_design_qc_report(id, { printability, fit, form })` after real session checks. printability/fit pass is evidence-bound (ledger from `cad_analyze_printability` / `cad_compare`); inventing pass without those tools fails the gate. Form: pass + `not applicable` for prismatic, or evidence notes for freeform. Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete.
+Call `cad_design_read(id)` for metrics, then **must** call `cad_design_qc_report(id, { printability, fit, form })` after real session checks. printability/fit/form pass is evidence-bound (ledger from `cad_analyze_printability` / `cad_compare` / `cad_analyze_form`); inventing pass without those tools fails the gate. Form: pass + `not applicable` for prismatic, or `cad_analyze_form` contract pass for freeform (`cad_form_review` is advisory only). Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete.
 
 Report to the user:
 

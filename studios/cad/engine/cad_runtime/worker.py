@@ -826,6 +826,20 @@ class WorkerSession:
     ) -> str:
         raise NotImplementedError
 
+    @_op(_tool(f"{_T}.analyze_form:analyze_form"), _GEOMETRY_TIMEOUT)
+    def analyze_form(
+        self,
+        object_name: str = "",
+        axis: str = "Z",
+        num_stations: int = 5,
+        stations: str = "",
+        contract: str = "",
+        tol_mm: float = 2.0,
+        tol_frac: float = 0.05,
+        t_mode: str = "from_min",
+    ) -> str:
+        raise NotImplementedError
+
     @_op(_tool(f"{_T}.health_check:health_check"), _RENDER_TIMEOUT)
     def health_check(self) -> str:
         raise NotImplementedError

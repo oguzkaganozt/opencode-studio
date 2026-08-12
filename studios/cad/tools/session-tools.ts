@@ -47,6 +47,8 @@ const CAD_SESSION_TOOL_GUIDANCE: Record<string, string> = {
     "Returns structured JSON {ok, status, summary, data, next} with volume/bbox/topology in data.",
   cad_analyze_printability:
     "Returns structured JSON {ok, status, summary, data, next}. status is fail when any error-severity finding exists. The current world orientation is treated as the print orientation. Reorient the final source-built shape into its actual bed pose before analysis, and rerun this check after every geometry change.",
+  cad_analyze_form:
+    "Returns structured JSON {ok, status, summary, data, next}. Slices the solid into stations (width/depth/center). status=pass only with a numeric contract within tol. Records form QC evidence. Prismatic designs should skip this and claim form pass with finding 'not applicable'. Optional cad_form_review is visual feedback only and does not unlock form pass.",
 }
 
 function schemaToZod(schema: JsonSchema | undefined): Field {

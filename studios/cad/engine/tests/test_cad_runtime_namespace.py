@@ -64,6 +64,51 @@ class CadRuntimeNamespaceTests(unittest.TestCase):
             self.assertNotIn("Error:", out)
             self.assertIn("params-ok", out)
 
+    def test_analyze_form_contract_pass_and_box_near_prismatic(self) -> None:
+        from build123d import Box
+        from cad_runtime.tools.analyze_form import analyze_form
+        from cad_runtime.session import Session
+
+        session = Session(exec_timeout=30)
+        # Centered box: world Z in [-50, 50]; from_min maps brief t=0..100 onto that span.
+        session.objects["block"] = Box(40, 28, 100)
+        out = analyze_form(session, object_name="block", axis="Z", num_stations=4)
+        self.assertIn("near_prismatic", out)
+        data = json.loads(out.split("\n\n", 1)[1])
+        self.assertEqual(data["status"], "unverified")
+        self.assertEqual(data["t_mode"], "from_min")
+        self.assertGreaterEqual(len(data["stations"]), 2)
+
+        # Brief-style contract (0..H from axis min) on a centered solid must pass.
+        brief = analyze_form(
+            session,
+            object_name="block",
+            axis="Z",
+            contract="5:40x28, 50:40x28, 95:40x28",
+            tol_mm=1.0,
+        )
+        bdata = json.loads(brief.split("\n\n", 1)[1])
+        self.assertEqual(bdata["status"], "pass", brief)
+        self.assertTrue(bdata["contract_matched"])
+
+        # Rebuild contract from measured from_min stations.
+        mids = data["stations"]
+        contract = ",".join(f"{s['t_from_min']}:{s['width']}x{s['depth']}" for s in mids)
+        matched = analyze_form(session, object_name="block", axis="Z", contract=contract, tol_mm=0.5)
+        mdata = json.loads(matched.split("\n\n", 1)[1])
+        self.assertEqual(mdata["status"], "pass")
+        self.assertTrue(mdata["contract_matched"])
+
+        bad = analyze_form(
+            session,
+            object_name="block",
+            axis="Z",
+            contract="0:10x10, 50:10x10, 100:10x10",
+            tol_mm=1.0,
+        )
+        fail_data = json.loads(bad.split("\n\n", 1)[1])
+        self.assertEqual(fail_data["status"], "fail")
+
     def test_repair_hints_for_rotated_and_chamfer_api(self) -> None:
         from cad_runtime.tools.execute import execute_code
         from cad_runtime.session import Session
