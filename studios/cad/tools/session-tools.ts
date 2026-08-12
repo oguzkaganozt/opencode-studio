@@ -3,6 +3,12 @@ import { cadSessionToolName } from "./names"
 import { getCadRuntimeSession } from "./session"
 import catalog from "./catalog.json" with { type: "json" }
 import {
+  axisForSessionTool,
+  qcSessionKey,
+  recordQcEvidence,
+  subjectsFromArgs,
+} from "../host/qc-evidence"
+import {
   CAD_SESSION_STRUCTURED_TOOLS,
   formatCadToolResult,
   structureCadSessionResult,
@@ -144,6 +150,17 @@ export function createCadSessionTools(options: { engineProjectDir: string; cwd: 
             isError: result.isError,
             args: cleaned,
           })
+          const axis = axisForSessionTool(entry.name, cleaned)
+          if (axis) {
+            recordQcEvidence(qcSessionKey(options.engineProjectDir, options.cwd), {
+              axis,
+              tool: toolName,
+              ok: envelope.ok,
+              status: envelope.status,
+              summary: envelope.summary,
+              subjects: subjectsFromArgs(entry.name, cleaned),
+            })
+          }
           return {
             title: envelope.ok ? toolName : `${toolName} failed`,
             output: formatCadToolResult(envelope),
@@ -152,6 +169,7 @@ export function createCadSessionTools(options: { engineProjectDir: string; cwd: 
               ok: envelope.ok,
               status: envelope.status,
               summary: envelope.summary,
+              qcAxis: axis ?? undefined,
             },
             attachments: attachments.length > 0 ? attachments : undefined,
           }

@@ -1,7 +1,7 @@
 {
   "studio-cad": {
     "path": "studios/cad/agent/studio-cad.md",
-    "sha256": "c3b1961012cda6d16387ba99b5394732e894ea81f0d09be879386e7642818875"
+    "sha256": "374e4743ed4b9af71134c1cab033b91c67647a3ede5baa35df57643ccb4ebb8d"
   },
   "studio-pcb": {
     "path": "studios/pcb/agent/studio-pcb.md",

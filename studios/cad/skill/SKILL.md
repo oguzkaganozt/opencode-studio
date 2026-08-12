@@ -110,7 +110,7 @@ Inside `cad_execute`, composable Python helpers such as `clearance(a, b)`, `alig
 - `cad_design_read(id)` - read the canonical design/build summary, resolved artifact paths with existence checks, metrics, revision, and render inventory. Do not follow it with raw manifest reads or artifact globs.
 - `cad_design_build(id)` - deterministically validate source and round-tripped STEP geometry as one valid solid, export STEP/STL/GLB, and write `manifest.json`. It does not run assembly or printability verification. Do not revalidate or remeasure unchanged STEP solely to repeat build guarantees. A failed build preserves the previous output.
 - `cad_design_view(id)` - return the companion viewer URL and whether the companion health endpoint is reachable.
-- `cad_design_qc_report(id, printability?, fit?, form?)` - multi-axis QC gate. Artifact status is computed from build outputs; print/fit/form come from your prior `cad_*` checks (default `unverified`). `complete` is true only when every axis is `pass`. Call this before claiming the design complete.
+- `cad_design_qc_report(id, printability?, fit?, form?)` - multi-axis QC gate (design-scoped evidence). Artifact from build outputs. printability **pass** needs `cad_analyze_printability` evidence covering parts. fit **pass** needs `cad_compare kind=fit` (multi-part) or exact finding `not applicable` (single-part). form **pass**: exact finding `not applicable` (prismatic) or substantive freeform notes (≥2 findings / ≥40 chars). Align-only compare does not count as fit. Bare pass without evidence is rejected.
 
 ### Responsibility boundary
 
@@ -216,7 +216,7 @@ Before saying `complete`:
 - If retention is not a product requirement, static fit may be `pass` with finding `retention not required`.
 - If any printability finding or other check remains failed or unresolved, do not say `complete`, `implemented`, or `fabricated`; say `Build succeeded, verification failed.` and list it.
 
-Call `cad_design_read(id)` for metrics, then **must** call `cad_design_qc_report(id, { printability, fit, form })` with statuses from your prior `cad_*` session checks. Do not invent pass axes. Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete.
+Call `cad_design_read(id)` for metrics, then **must** call `cad_design_qc_report(id, { printability, fit, form })` after real session checks. printability/fit pass is evidence-bound (ledger from `cad_analyze_printability` / `cad_compare`); inventing pass without those tools fails the gate. Form: pass + `not applicable` for prismatic, or evidence notes for freeform. Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete.
 
 Report to the user:
 

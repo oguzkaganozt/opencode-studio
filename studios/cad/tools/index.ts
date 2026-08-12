@@ -9,6 +9,12 @@ import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDe
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "../host/manifest"
 import { buildDesignQcReport, type QcAxisStatus } from "../host/qc-report"
 import {
+  clearQcEvidenceForDesign,
+  qcEvidenceKey,
+  qcSessionKey,
+  setActiveQcDesign,
+} from "../host/qc-evidence"
+import {
   designBuildFailureResult,
   designBuildSuccessResult,
   designCreateResult,
@@ -124,6 +130,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               always: [],
               metadata: {},
             })
+            setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             const { designDir, manifest } = await scaffoldDesign(
               layout,
               args.id,
@@ -152,7 +159,8 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
           },
-          async execute(args) {
+          async execute(args, context) {
+            setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
             const design = await readDesignManifest(entry.directory, args.id)
@@ -213,6 +221,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               context.abort,
               context.directory,
             )
+            const sessionKey = qcSessionKey(config.engineProjectDir, context.directory || "")
+            setActiveQcDesign(sessionKey, args.id)
+            const evidenceKey = qcEvidenceKey(config.engineProjectDir, context.directory || "", args.id)
             if (!result.ok) {
               const envelope = designBuildFailureResult({
                 id: args.id,
@@ -227,11 +238,14 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 metadata: { ok: false, exitCode: result.exitCode, designDir: result.designDir, status: "fail" },
               }
             }
+            // New artifacts invalidate prior session QC evidence for this runtime key.
+            clearQcEvidenceForDesign(sessionKey, args.id)
             const artifact = await readArtifactManifest(entry.directory, args.id)
             if (!artifact || !result.manifestPath) throw new Error(`manifest.json not found after build: ${args.id}`)
+            const revision = artifactRevision(artifact)
             const envelope = designBuildSuccessResult({
               id: args.id,
-              revision: artifactRevision(artifact),
+              revision,
               manifestPath: path.resolve(result.manifestPath),
               designDir: result.designDir,
               parts: artifact.parts.map((part) => ({
@@ -261,7 +275,8 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           args: {
             id: tool.schema.string().min(1).describe("Design id to view."),
           },
-          async execute(args) {
+          async execute(args, context) {
+            setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             if (!(await findDesign(layout, args.id))) throw new Error(`Design not found: ${args.id}`)
             if (!config.companionUrl) {
               const result = {
@@ -282,14 +297,14 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_qc_report: tool({
           description:
-            "Multi-axis CAD QC report. Artifact status is computed from cad_design_build outputs; printability, fit, and form statuses are supplied from prior cad_* session checks (default unverified). complete is true only when every axis is pass. Never claim design complete without this report.",
+            "Multi-axis CAD QC report (design-scoped evidence). Artifact from cad_design_build. printability pass needs cad_analyze_printability evidence covering parts. fit pass needs cad_compare kind=fit (multi-part) or finding 'not applicable' (single-part). form pass: exact finding 'not applicable' (prismatic) or substantive freeform notes. Bare pass without evidence is rejected. complete only when every axis is pass.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
             printability: tool.schema
               .object({
                 status: tool.schema
                   .enum(["pass", "fail", "unverified"] as const)
-                  .describe("From cad_analyze_printability on bed poses."),
+                  .describe("Claim only after cad_analyze_printability; pass needs ledger evidence."),
                 findings: tool.schema.array(tool.schema.string()).optional().describe("Unresolved print findings."),
               })
               .optional(),
@@ -297,7 +312,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               .object({
                 status: tool.schema
                   .enum(["pass", "fail", "unverified"] as const)
-                  .describe("From cad_compare fit/align and motion staging."),
+                  .describe("Multi-part: after cad_compare kind=fit. Single-part: pass + finding 'not applicable'."),
                 findings: tool.schema.array(tool.schema.string()).optional().describe("Fit/retention caveats."),
               })
               .optional(),
@@ -305,12 +320,13 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               .object({
                 status: tool.schema
                   .enum(["pass", "fail", "unverified"] as const)
-                  .describe("Form fidelity for freeform; use pass + finding 'not applicable' for prismatic designs."),
-                findings: tool.schema.array(tool.schema.string()).optional().describe("Station/multi-view evidence notes."),
+                  .describe("Prismatic: pass + finding 'not applicable'. Freeform: substantive station/view notes."),
+                findings: tool.schema.array(tool.schema.string()).optional().describe("Form notes; exact 'not applicable' for prismatic."),
               })
               .optional(),
           },
-          async execute(args) {
+          async execute(args, context) {
+            setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
             const artifact = await readArtifactManifest(entry.directory, args.id)
@@ -318,6 +334,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               id: args.id,
               entry,
               artifact,
+              evidenceKey: qcEvidenceKey(config.engineProjectDir, context.directory || "", args.id),
               printability: args.printability as { status: QcAxisStatus; findings?: string[] } | undefined,
               fit: args.fit as { status: QcAxisStatus; findings?: string[] } | undefined,
               form: args.form as { status: QcAxisStatus; findings?: string[] } | undefined,

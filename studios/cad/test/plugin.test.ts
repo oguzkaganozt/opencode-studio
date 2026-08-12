@@ -140,21 +140,31 @@ describe("cad plugin smoke", () => {
     expect(builtBody.data.parts[0].metrics.solid_count).toBe(1)
     expect(builtBody.warnings.join(" ")).toMatch(/not run/i)
 
-    const incomplete = JSON.parse((await (hooks.tool as any).cad_design_qc_report.execute({ id: "demo" })).output)
+    const incomplete = JSON.parse(
+      (await (hooks.tool as any).cad_design_qc_report.execute({ id: "demo" }, fakeContext)).output,
+    )
     expect(incomplete.complete).toBe(false)
     expect(incomplete.artifact.status).toBe("pass")
     expect(incomplete.blockedBy).toEqual(expect.arrayContaining(["printability", "fit", "form"]))
 
-    const complete = JSON.parse(
+    // Bare pass without session evidence must not complete.
+    const forged = JSON.parse(
       (
-        await (hooks.tool as any).cad_design_qc_report.execute({
-          id: "demo",
-          printability: { status: "pass", findings: [] },
-          fit: { status: "pass", findings: ["ok"] },
-          form: { status: "pass", findings: ["ok"] },
-        })
+        await (hooks.tool as any).cad_design_qc_report.execute(
+          {
+            id: "demo",
+            printability: { status: "pass", findings: [] },
+            fit: { status: "pass", findings: ["ok"] },
+            form: { status: "pass", findings: ["not applicable"] },
+          },
+          fakeContext,
+        )
       ).output,
     )
-    expect(complete.complete).toBe(true)
+    expect(forged.complete).toBe(false)
+    expect(forged.printability.status).toBe("unverified")
+    expect(forged.fit.status).toBe("unverified")
+    expect(forged.form.status).toBe("pass")
+    expect(forged.printability.source).toBe("rejected")
   })
 })
