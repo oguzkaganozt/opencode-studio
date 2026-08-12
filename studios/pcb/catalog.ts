@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import yaml from "js-yaml"
@@ -10,7 +11,24 @@ export type CatalogPart = {
   description?: string
   datasheet?: string
   category?: string
+  spiceModel?: CatalogSpiceModel
   [key: string]: unknown
+}
+
+export type CatalogSpiceModel = {
+  source: string
+  sourceUrl: string
+  subcircuit: string
+  pins: string[]
+  pinMapping: Record<string, string>
+  sha256: string
+}
+
+export type CatalogSpiceModelInput = {
+  source: string
+  sourceUrl: string
+  subcircuit?: string
+  pinMapping: Record<string, string>
 }
 
 export type CatalogReason = "catalog_directory_missing" | "catalog_unreadable" | "catalog_empty" | "no_matches" | "part_not_found"
@@ -27,6 +45,7 @@ export type CatalogState = {
 
 const CATALOG_SUBDIR = path.join("catalog", "parts")
 const MAX_PART_FILE_BYTES = 256 * 1024
+const MAX_SPICE_MODEL_BYTES = 48 * 1024
 const MAX_CATALOG_PARTS = 2000
 const MAX_MPN_FILE_CHARS = 180
 /** Legacy plain filenames (no encoding). */
@@ -50,20 +69,152 @@ function isSafeCatalogStem(stem: string): boolean {
   return Boolean(stem) && !stem.includes("..") && !stem.includes("/") && !stem.includes("\\") && !stem.includes("\0")
 }
 
-const KNOWN_PART_KEYS = new Set(["mpn", "manufacturer", "description", "datasheet", "category"])
+const KNOWN_PART_KEYS = new Set(["mpn", "manufacturer", "description", "datasheet", "category", "spiceModel"])
 
 function isScalarExtra(value: unknown): value is string | number | boolean {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
 }
 
-function parsePart(raw: unknown, mpnFallback: string): CatalogPart {
+type ParsedSubcircuit = { subcircuit: string; pins: string[]; hasParameters: boolean; start: number; end: number }
+
+function parseSubcircuits(source: string): ParsedSubcircuit[] | null {
+  const lines = source.split(/\r?\n/)
+  const parsed: ParsedSubcircuit[] = []
+  for (let start = 0; start < lines.length; start++) {
+    if (!/^\s*\.subckt\s+/i.test(lines[start]!)) continue
+    const declaration = [lines[start]!.trim()]
+    while (start + declaration.length < lines.length && /^\s*\+/.test(lines[start + declaration.length]!)) {
+      declaration.push(lines[start + declaration.length]!.trim().replace(/^\+\s*/, ""))
+    }
+    const tokens = declaration.join(" ").split(/\s+/).slice(1)
+    const subcircuit = tokens.shift()
+    const paramsIndex = tokens.findIndex((token) => /^params?:/i.test(token))
+    const pins = paramsIndex === -1 ? tokens : tokens.slice(0, paramsIndex)
+    if (!subcircuit || pins.length === 0) return null
+
+    let end = start + declaration.length
+    for (; end < lines.length; end++) {
+      if (/^\s*\.subckt\s+/i.test(lines[end]!)) return null
+      const match = lines[end]!.match(/^\s*\.ends(?:\s+(\S+))?\s*$/i)
+      if (!match) continue
+      if (match[1] && match[1].toLowerCase() !== subcircuit.toLowerCase()) return null
+      break
+    }
+    if (end >= lines.length) return null
+    parsed.push({ subcircuit, pins, hasParameters: paramsIndex !== -1, start, end })
+    start = end
+  }
+  if (parsed.length === 0 || new Set(parsed.map((item) => item.subcircuit.toLowerCase())).size !== parsed.length) return null
+  return parsed
+}
+
+function selectSubcircuit(
+  source: string,
+  requested: string | undefined,
+): { source: string; subcircuit: string; pins: string[] } | { error: string } {
+  const parsed = parseSubcircuits(source)
+  if (!parsed) return { error: "SPICE model must contain valid, uniquely named .SUBCKT blocks with pins and matching .ENDS" }
+  const requestedName = requested?.trim()
+  if (parsed.length > 1 && !requestedName) {
+    return {
+      error: `subcircuit is required when source contains multiple .SUBCKT blocks: ${parsed.map((item) => item.subcircuit).join(", ")}`,
+    }
+  }
+  const selected = requestedName ? parsed.find((item) => item.subcircuit.toLowerCase() === requestedName.toLowerCase()) : parsed[0]
+  if (!selected) return { error: `subcircuit must select one declared .SUBCKT: ${parsed.map((item) => item.subcircuit).join(", ")}` }
+  if (selected.hasParameters) {
+    return { error: "selected top-level .SUBCKT parameters are not supported by the current tscircuit SPICE converter" }
+  }
+
+  // circuit-json-to-spice invokes the first declaration, so put the selected
+  // top-level block first while retaining all self-contained helper models.
+  if (selected.start === parsed[0]!.start) return { source, subcircuit: selected.subcircuit, pins: selected.pins }
+  const lines = source.split(/\r?\n/)
+  const selectedLines = lines.slice(selected.start, selected.end + 1)
+  lines.splice(selected.start, selected.end - selected.start + 1)
+  lines.splice(parsed[0]!.start, 0, ...selectedLines)
+  return { source: lines.join("\n").trim(), subcircuit: selected.subcircuit, pins: selected.pins }
+}
+
+export function validateSpiceModel(input: CatalogSpiceModelInput): { ok: true; model: CatalogSpiceModel } | { ok: false; error: string } {
+  const source = input.source.trim()
+  if (!source || Buffer.byteLength(source, "utf8") > MAX_SPICE_MODEL_BYTES || source.includes("\0")) {
+    return { ok: false, error: `SPICE model source must be non-empty and at most ${MAX_SPICE_MODEL_BYTES} bytes` }
+  }
+  if (/^\s*\.(?:include|inc|lib|control|endc|shell|system|exec)\b/im.test(source)) {
+    return { ok: false, error: "SPICE model must be self-contained; external includes, libraries, and command directives are not allowed" }
+  }
+  const selected = selectSubcircuit(source, input.subcircuit)
+  if ("error" in selected) return { ok: false, error: selected.error }
+
+  let sourceUrl: URL
+  try {
+    sourceUrl = new URL(input.sourceUrl)
+  } catch {
+    return { ok: false, error: "SPICE model sourceUrl must be a valid HTTPS URL" }
+  }
+  if (sourceUrl.protocol !== "https:" || sourceUrl.username || sourceUrl.password) {
+    return { ok: false, error: "SPICE model sourceUrl must be a credential-free HTTPS URL" }
+  }
+
+  const mapping = Object.fromEntries(Object.entries(input.pinMapping).map(([key, value]) => [key.trim(), value.trim()]))
+  if (
+    Object.keys(mapping).some((key) => !key || !selected.pins.includes(key)) ||
+    Object.values(mapping).some((value) => !/^[A-Za-z0-9_+.-]+$/.test(value)) ||
+    selected.pins.some((pin) => !mapping[pin]) ||
+    Object.keys(mapping).length !== selected.pins.length ||
+    new Set(Object.values(mapping)).size !== Object.values(mapping).length
+  ) {
+    return { ok: false, error: `spicePinMapping must map every selected .SUBCKT pin exactly once: ${selected.pins.join(", ")}` }
+  }
+
+  const normalizedSource = `${selected.source}\n`
+  return {
+    ok: true,
+    model: {
+      source: normalizedSource,
+      sourceUrl: sourceUrl.toString(),
+      subcircuit: selected.subcircuit,
+      pins: selected.pins,
+      pinMapping: mapping,
+      sha256: createHash("sha256").update(normalizedSource).digest("hex"),
+    },
+  }
+}
+
+function parseSpiceModel(value: unknown): { model?: CatalogSpiceModel; invalid: boolean } {
+  if (value === undefined || value === null) return { invalid: false }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { invalid: true }
+  const record = value as Record<string, unknown>
+  if (
+    typeof record.source !== "string" ||
+    typeof record.sourceUrl !== "string" ||
+    !record.pinMapping ||
+    typeof record.pinMapping !== "object"
+  ) {
+    return { invalid: true }
+  }
+  const pinMapping = Object.fromEntries(
+    Object.entries(record.pinMapping as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  )
+  const result = validateSpiceModel({
+    source: record.source,
+    sourceUrl: record.sourceUrl,
+    ...(typeof record.subcircuit === "string" ? { subcircuit: record.subcircuit } : {}),
+    pinMapping,
+  })
+  return result.ok ? { model: result.model, invalid: false } : { invalid: true }
+}
+
+function parsePart(raw: unknown, mpnFallback: string): { part: CatalogPart; spiceModelInvalid: boolean } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { mpn: mpnFallback }
+    return { part: { mpn: mpnFallback }, spiceModelInvalid: false }
   }
   const record = raw as Record<string, unknown>
   const mpn = typeof record.mpn === "string" && record.mpn.trim() ? record.mpn.trim() : mpnFallback
   const datasheetRaw = typeof record.datasheet === "string" ? record.datasheet : undefined
   const datasheet = datasheetRaw ? (safeExternalHref(datasheetRaw) ?? undefined) : undefined
+  const spice = parseSpiceModel(record.spiceModel)
   const extras: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(record)) {
     if (KNOWN_PART_KEYS.has(key)) continue
@@ -71,12 +222,16 @@ function parsePart(raw: unknown, mpnFallback: string): CatalogPart {
     else if (Array.isArray(value) && value.every((item) => isScalarExtra(item) || item === null)) extras[key] = value
   }
   return {
-    mpn,
-    ...(typeof record.manufacturer === "string" ? { manufacturer: record.manufacturer } : {}),
-    ...(typeof record.description === "string" ? { description: record.description } : {}),
-    ...(typeof record.category === "string" ? { category: record.category } : {}),
-    ...(datasheet ? { datasheet } : {}),
-    ...extras,
+    part: {
+      mpn,
+      ...(typeof record.manufacturer === "string" ? { manufacturer: record.manufacturer } : {}),
+      ...(typeof record.description === "string" ? { description: record.description } : {}),
+      ...(typeof record.category === "string" ? { category: record.category } : {}),
+      ...(datasheet ? { datasheet } : {}),
+      ...(spice.model ? { spiceModel: spice.model } : {}),
+      ...extras,
+    },
+    spiceModelInvalid: spice.invalid,
   }
 }
 
@@ -128,7 +283,12 @@ export async function inspectCatalog(workspaceRoot: string): Promise<CatalogStat
       }
       const content = await readFile(filePath, "utf8")
       const raw = yaml.load(content)
-      parts.push(parsePart(raw, mpnFallback))
+      const parsed = parsePart(raw, mpnFallback)
+      if (parsed.spiceModelInvalid) {
+        malformedCount++
+        continue
+      }
+      parts.push(parsed.part)
     } catch {
       malformedCount++
     }
@@ -171,13 +331,14 @@ export type CatalogUpsertInput = {
   description?: string | null
   datasheet?: string | null
   category?: string | null
+  spiceModel?: CatalogSpiceModelInput | null
   /** When true, replace existing file fields; default merges non-empty input over existing. */
   replace?: boolean
 }
 
 export type CatalogUpsertResult =
   | { ok: true; created: boolean; path: string; part: CatalogPart }
-  | { ok: false; error: string; code: "invalid_mpn" | "invalid_datasheet" | "write_failed" | "catalog_full" }
+  | { ok: false; error: string; code: "invalid_mpn" | "invalid_datasheet" | "invalid_spice_model" | "write_failed" | "catalog_full" }
 
 function optionalTrimmed(value: string | null | undefined): string | undefined {
   if (typeof value !== "string") return undefined
@@ -220,7 +381,7 @@ async function findCatalogPartRecord(workspaceRoot: string, mpn: string): Promis
       const info = await lstat(filePath)
       if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_PART_FILE_BYTES) continue
       const content = await readFile(filePath, "utf8")
-      const part = parsePart(yaml.load(content), mpnFallback)
+      const part = parsePart(yaml.load(content), mpnFallback).part
       if (part.mpn.trim().toLowerCase() === target || mpnFallback.toLowerCase() === target) {
         return { fileName: file, part }
       }
@@ -237,6 +398,7 @@ function serializePart(part: CatalogPart): string {
   if (part.description) body.description = part.description
   if (part.category) body.category = part.category
   if (part.datasheet) body.datasheet = part.datasheet
+  if (part.spiceModel) body.spiceModel = part.spiceModel
   for (const [key, value] of Object.entries(part)) {
     if (KNOWN_PART_KEYS.has(key)) continue
     if (isScalarExtra(value) || (Array.isArray(value) && value.every((item) => isScalarExtra(item) || item === null))) {
@@ -262,6 +424,10 @@ export async function upsertCatalogPart(workspaceRoot: string, input: CatalogUps
   const datasheet = datasheetRaw ? safeExternalHref(datasheetRaw) : undefined
   if (datasheetRaw && !datasheet) {
     return { ok: false, error: "datasheet must be an http(s) URL", code: "invalid_datasheet" }
+  }
+  const spiceModelResult = input.spiceModel ? validateSpiceModel(input.spiceModel) : null
+  if (spiceModelResult && !spiceModelResult.ok) {
+    return { ok: false, error: spiceModelResult.error, code: "invalid_spice_model" }
   }
 
   const dir = catalogPartsDir(workspaceRoot)
@@ -294,6 +460,7 @@ export async function upsertCatalogPart(workspaceRoot: string, input: CatalogUps
     ...(optionalTrimmed(input.description ?? undefined) ? { description: optionalTrimmed(input.description ?? undefined) } : {}),
     ...(optionalTrimmed(input.category ?? undefined) ? { category: optionalTrimmed(input.category ?? undefined) } : {}),
     ...(datasheet ? { datasheet } : {}),
+    ...(spiceModelResult?.ok ? { spiceModel: spiceModelResult.model } : {}),
   }
 
   const existing = existingRecord?.part
@@ -307,6 +474,7 @@ export async function upsertCatalogPart(workspaceRoot: string, input: CatalogUps
           ...(incoming.description ? { description: incoming.description } : {}),
           ...(incoming.category ? { category: incoming.category } : {}),
           ...(incoming.datasheet ? { datasheet: incoming.datasheet } : {}),
+          ...(input.spiceModel === null ? { spiceModel: undefined } : incoming.spiceModel ? { spiceModel: incoming.spiceModel } : {}),
         }
 
   try {
@@ -338,5 +506,30 @@ export function partSummary(part: CatalogPart) {
     description: part.description ?? null,
     category: part.category ?? null,
     datasheet: part.datasheet ?? null,
+    hasSpiceModel: Boolean(part.spiceModel),
   }
+}
+
+export function partDetail(part: CatalogPart) {
+  const { spiceModel, ...rest } = part
+  return {
+    ...rest,
+    ...(spiceModel
+      ? {
+          spiceModel: {
+            sourceUrl: spiceModel.sourceUrl,
+            subcircuit: spiceModel.subcircuit,
+            pins: spiceModel.pins,
+            pinMapping: spiceModel.pinMapping,
+            sha256: spiceModel.sha256,
+          },
+        }
+      : {}),
+  }
+}
+
+export function spiceModelSnippet(part: CatalogPart): string | null {
+  const model = part.spiceModel
+  if (!model) return null
+  return `spiceModel={\n  <spicemodel\n    source={${JSON.stringify(model.source)}}\n    spicePinMapping={${JSON.stringify(model.pinMapping, null, 2)}}\n  />\n}`
 }

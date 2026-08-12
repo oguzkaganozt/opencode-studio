@@ -21,6 +21,9 @@ export function PartRow({ part, onSelect }: { part: PartSummary; onSelect: () =>
       <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[var(--osc-text)]">{part.manufacturer ?? "—"}</td>
       <td className="px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.description ?? "—"}</td>
       <td className="whitespace-nowrap px-4 py-2.5 text-sm text-[var(--osc-text-muted)]">{part.category ?? "—"}</td>
+      <td className="whitespace-nowrap px-4 py-2.5 text-sm">
+        {part.hasSpiceModel ? <span className="pcb-data-card__tag">SPICE</span> : <span className="text-[var(--osc-text-faint)]">—</span>}
+      </td>
       <td className="px-4 py-2.5 text-sm">
         <DatasheetLink href={part.datasheet} />
       </td>
@@ -35,7 +38,10 @@ export function PartCard({ part, onSelect }: { part: PartSummary; onSelect: () =
         <button type="button" className="pcb-table-link min-w-0 truncate text-left font-mono" onClick={onSelect}>
           {part.mpn}
         </button>
-        {part.category ? <span className="pcb-data-card__tag">{part.category}</span> : null}
+        <div className="flex shrink-0 flex-wrap gap-1">
+          {part.hasSpiceModel ? <span className="pcb-data-card__tag">SPICE</span> : null}
+          {part.category ? <span className="pcb-data-card__tag">{part.category}</span> : null}
+        </div>
       </div>
       <p className="mt-2 text-[13px] text-[var(--osc-text)]">{part.manufacturer ?? "Manufacturer unknown"}</p>
       {part.description ? <p className="mt-1 text-[12px] leading-relaxed text-[var(--osc-text-muted)]">{part.description}</p> : null}
@@ -90,7 +96,7 @@ export function CatalogPage() {
 
   const requestCatalogHelp = () => {
     requestAgentHandoff({
-      text: "Populate the Studio Home PCB catalog (catalog/parts/*.yaml) using pcb_catalog_upsert for verified MPNs only — prefer promoting identities already present on built project BOMs, with manufacturer/description/datasheet when known. Do not invent MPNs or footprints.",
+      text: "Populate the Studio Home PCB catalog (catalog/parts/*.yaml) using pcb_catalog_upsert for verified MPNs only. For analog/power parts that need realistic simulation, use pcb_spice_model_upsert only with a self-contained manufacturer model, HTTPS provenance, and datasheet-verified pin mapping. Do not invent MPNs, footprints, models, or pin mappings.",
       source: "pcb",
       directory: rootInfo?.root,
       open: true,
@@ -167,6 +173,7 @@ export function CatalogPage() {
                     <th scope="col">Manufacturer</th>
                     <th scope="col">Description</th>
                     <th scope="col">Category</th>
+                    <th scope="col">Simulation</th>
                     <th scope="col">
                       <span className="sr-only">Datasheet</span>
                     </th>
@@ -204,4 +211,3 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay])
   return debounced
 }
-

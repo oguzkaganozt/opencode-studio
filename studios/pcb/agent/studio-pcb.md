@@ -1,5 +1,5 @@
 ---
-description: PCB Studio electronics design with pcb_* tools.
+description: PCB Studio electronics design and simulation with pcb_* tools.
 mode: primary
 hidden: true
 permission:

@@ -1,8 +1,17 @@
-import { mkdir, rm } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { mkdir, readFile, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { engineCommand, resolveTsci } from "../../src/core/engines"
-import { artifactFreshness, buildInputDigest, clearBuildInputStamp, staleArtifactMessage, writeBuildInputStamp } from "./artifact-freshness"
+import {
+  artifactFreshness,
+  buildInputDigest,
+  circuitJsonUntampered,
+  clearBuildInputStamp,
+  staleArtifactMessage,
+  tamperedArtifactMessage,
+  writeBuildInputStamp,
+} from "./artifact-freshness"
 import {
   type CircuitInspection,
   inspectCircuitJson,
@@ -10,12 +19,69 @@ import {
   manufacturingBlockers,
   readCircuitJson,
 } from "./circuit-json"
+import { loadNoConnectIntents } from "./tsx-intent"
 
 export type TsciResult = {
   success: boolean
   stdout: string
   stderr: string
   exitCode: number
+}
+
+export type AnalogSimulationSeries = {
+  name: string
+  kind: "voltage" | "current" | "phase"
+  unit: "V" | "A" | "deg"
+  values: number[]
+  summary: {
+    first: number
+    last: number
+    min: number
+    max: number
+    mean: number
+    peakToPeak: number
+  }
+}
+
+export type AnalogSimulationExperiment = {
+  id: string
+  name: string
+  analysis: "transient" | "ac"
+  pointsCount: number
+  returnedPoints: number
+  downsampled: boolean
+  axis: { name: "time" | "frequency"; unit: "ms" | "Hz"; values: number[] }
+  series: AnalogSimulationSeries[]
+}
+
+export type AnalogSimulationResult = TsciResult & {
+  processSuccess: boolean
+  experiments: AnalogSimulationExperiment[]
+  diagnostics: string[]
+}
+
+export const SIMULATION_ESTIMATE_CAVEAT =
+  "Directional estimate, not engineering-grade — SPICE convergence and ideal tscircuit parts limit accuracy."
+
+const SPICE_PROPERTY_RE = /spice(?:model|pinmapping)/i
+
+export function extractAnalogSimulationDiagnostics(circuitJson: unknown[]): string[] {
+  const messages: string[] = []
+  for (const element of circuitJson) {
+    if (!element || typeof element !== "object" || Array.isArray(element)) continue
+    const row = element as Record<string, unknown>
+    if (typeof row.type !== "string" || !row.type.endsWith("_error")) continue
+    const message = typeof row.message === "string" ? row.message.trim() : ""
+    if (!message) continue
+    if (
+      row.type === "simulation_unknown_experiment_error" ||
+      row.type.startsWith("simulation_") ||
+      (row.type === "source_invalid_component_property_error" && (row.property_name === "spiceModel" || SPICE_PROPERTY_RE.test(message)))
+    ) {
+      messages.push(message)
+    }
+  }
+  return [...new Set(messages)]
 }
 
 export type ComponentSearchScope = "all" | "jlcpcb" | "tscircuit" | "kicad"
@@ -137,6 +203,217 @@ async function run(args: string[], cwd: string, signal?: AbortSignal): Promise<T
   if (engine) return runCommand([...engineCommand(engine), ...args], cwd, signal)
   // Last resort: npx (offline installs should hit the bundled tscircuit dependency).
   return runCommand(["npx", "--yes", "tsci", ...args], cwd, signal)
+}
+
+function sampleIndexes(length: number, maxPoints: number): number[] {
+  if (length <= maxPoints) return Array.from({ length }, (_, index) => index)
+  return Array.from({ length: maxPoints }, (_, index) => Math.round((index * (length - 1)) / (maxPoints - 1)))
+}
+
+function numericArray(value: unknown): number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isFinite(item)) ? value : []
+}
+
+function summarizeValues(values: number[]): AnalogSimulationSeries["summary"] {
+  let min = Infinity
+  let max = -Infinity
+  let total = 0
+  for (const value of values) {
+    if (value < min) min = value
+    if (value > max) max = value
+    total += value
+  }
+  return {
+    first: values[0]!,
+    last: values[values.length - 1]!,
+    min,
+    max,
+    mean: total / values.length,
+    peakToPeak: max - min,
+  }
+}
+
+const TRANSIENT_VOLTAGE_GRAPH = "simulation_transient_voltage_graph"
+const TRANSIENT_CURRENT_GRAPH = "simulation_transient_current_graph"
+const AC_VOLTAGE_GRAPH = "simulation_ac_sweep_voltage_graph"
+const AC_CURRENT_GRAPH = "simulation_ac_sweep_current_graph"
+
+function isAcGraph(type: string): boolean {
+  return type === AC_VOLTAGE_GRAPH || type === AC_CURRENT_GRAPH
+}
+
+function graphType(graph: Record<string, unknown>): string {
+  return typeof graph.type === "string" ? graph.type : ""
+}
+
+function graphName(graph: Record<string, unknown>): string {
+  return typeof graph.name === "string" ? graph.name : typeof graph.source_probe_name === "string" ? graph.source_probe_name : "probe"
+}
+
+function graphAxisValues(graph: Record<string, unknown>): number[] {
+  const value = isAcGraph(graphType(graph)) ? graph.frequencies_hz : graph.timestamps_ms
+  return numericArray(value)
+}
+
+function complexSamples(value: unknown): Array<{ re: number; im: number }> {
+  if (!Array.isArray(value)) return []
+  const samples: Array<{ re: number; im: number }> = []
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const { re, im } = item as Record<string, unknown>
+    if (typeof re !== "number" || !Number.isFinite(re) || typeof im !== "number" || !Number.isFinite(im)) return []
+    samples.push({ re, im })
+  }
+  return samples
+}
+
+function unwrapDegrees(degrees: number[]): number[] {
+  const unwrapped = [...degrees]
+  for (let index = 1; index < unwrapped.length; index++) {
+    let delta = unwrapped[index]! - unwrapped[index - 1]!
+    while (delta > 180) {
+      unwrapped[index] = unwrapped[index]! - 360
+      delta -= 360
+    }
+    while (delta < -180) {
+      unwrapped[index] = unwrapped[index]! + 360
+      delta += 360
+    }
+  }
+  return unwrapped
+}
+
+function seriesForGraph(graph: Record<string, unknown>, axis: number[], indexes: number[]): AnalogSimulationSeries[] {
+  const name = graphName(graph)
+  const type = graphType(graph)
+  switch (type) {
+    case TRANSIENT_VOLTAGE_GRAPH:
+    case TRANSIENT_CURRENT_GRAPH: {
+      const voltage = type === TRANSIENT_VOLTAGE_GRAPH
+      const values = numericArray(voltage ? graph.voltage_levels : graph.current_levels)
+      if (values.length !== axis.length) return []
+      const sampled = indexes.map((index) => values[index]!)
+      return [
+        {
+          name,
+          kind: voltage ? "voltage" : "current",
+          unit: voltage ? "V" : "A",
+          values: sampled,
+          summary: summarizeValues(values),
+        },
+      ]
+    }
+    case AC_VOLTAGE_GRAPH:
+    case AC_CURRENT_GRAPH: {
+      const voltage = type === AC_VOLTAGE_GRAPH
+      const samples = complexSamples(voltage ? graph.complex_voltages : graph.complex_currents)
+      if (samples.length !== axis.length) return []
+      const magnitudes = samples.map((sample) => Math.hypot(sample.re, sample.im))
+      const phases = samples.map((sample) => (Math.atan2(sample.im, sample.re) * 180) / Math.PI)
+      return [
+        {
+          name,
+          kind: voltage ? "voltage" : "current",
+          unit: voltage ? "V" : "A",
+          values: indexes.map((index) => magnitudes[index]!),
+          summary: summarizeValues(magnitudes),
+        },
+        {
+          name,
+          kind: "phase",
+          unit: "deg",
+          values: indexes.map((index) => phases[index]!),
+          summary: summarizeValues(unwrapDegrees(phases)),
+        },
+      ]
+    }
+    default:
+      return []
+  }
+}
+
+export function extractAnalogSimulationExperiments(circuitJson: unknown[], maxPoints = 500): AnalogSimulationExperiment[] {
+  const experiments = new Map<string, { id: string; name: string; graphs: Array<Record<string, unknown>> }>()
+  for (const element of circuitJson) {
+    if (!element || typeof element !== "object" || Array.isArray(element)) continue
+    const row = element as Record<string, unknown>
+    if (row.type === "simulation_experiment" && typeof row.simulation_experiment_id === "string") {
+      experiments.set(row.simulation_experiment_id, {
+        id: row.simulation_experiment_id,
+        name: typeof row.name === "string" ? row.name : row.simulation_experiment_id,
+        graphs: [],
+      })
+    }
+  }
+
+  for (const element of circuitJson) {
+    if (!element || typeof element !== "object" || Array.isArray(element)) continue
+    const row = element as Record<string, unknown>
+    const type = row.type
+    if (type !== TRANSIENT_VOLTAGE_GRAPH && type !== TRANSIENT_CURRENT_GRAPH && type !== AC_VOLTAGE_GRAPH && type !== AC_CURRENT_GRAPH) {
+      continue
+    }
+    if (typeof row.simulation_experiment_id !== "string") continue
+    const experiment = experiments.get(row.simulation_experiment_id) ?? {
+      id: row.simulation_experiment_id,
+      name: row.simulation_experiment_id,
+      graphs: [],
+    }
+    experiment.graphs.push(row)
+    experiments.set(experiment.id, experiment)
+  }
+
+  const requestedPoints = Math.max(2, Math.min(maxPoints, 2000))
+  return [...experiments.values()].flatMap((experiment) => {
+    const firstGraph = experiment.graphs.find((graph) => graphAxisValues(graph).length > 0)
+    if (!firstGraph) return []
+    const ac = isAcGraph(graphType(firstGraph))
+    const axisValues = graphAxisValues(firstGraph)
+    const seriesWeight = experiment.graphs.reduce((total, graph) => total + (isAcGraph(graphType(graph)) ? 2 : 1), 0)
+    const pointBudget = Math.max(2, Math.min(requestedPoints, Math.floor(5000 / (seriesWeight + 1))))
+    const indexes = sampleIndexes(axisValues.length, pointBudget)
+    const series = experiment.graphs.flatMap((graph) => {
+      if (isAcGraph(graphType(graph)) !== ac) return []
+      return seriesForGraph(graph, axisValues, indexes)
+    })
+    if (series.length === 0) return []
+    return [
+      {
+        id: experiment.id,
+        name: experiment.name,
+        analysis: ac ? ("ac" as const) : ("transient" as const),
+        pointsCount: axisValues.length,
+        returnedPoints: indexes.length,
+        downsampled: indexes.length < axisValues.length,
+        axis: ac
+          ? { name: "frequency" as const, unit: "Hz" as const, values: indexes.map((index) => axisValues[index]!) }
+          : { name: "time" as const, unit: "ms" as const, values: indexes.map((index) => axisValues[index]!) },
+        series,
+      },
+    ]
+  })
+}
+
+export async function simulateAnalogCircuit(projectDir: string, signal?: AbortSignal, maxPoints = 500): Promise<AnalogSimulationResult> {
+  const build = await runProjectBuild(projectDir, signal)
+  const circuitJson = build.artifacts.circuitJsonPath ? await readCircuitJson(projectDir, build.artifacts.circuitJsonPath) : []
+  const experiments = extractAnalogSimulationExperiments(circuitJson, maxPoints)
+  const simDiagnostics = extractAnalogSimulationDiagnostics(circuitJson)
+  const missingResults =
+    build.processSuccess && experiments.length === 0 && simDiagnostics.length === 0
+      ? "No analog simulation results found. Add <analogsimulation> and named probes."
+      : ""
+  const diagnostics = [...simDiagnostics, ...(missingResults ? [missingResults] : [])]
+  const success = build.processSuccess && experiments.length > 0 && simDiagnostics.length === 0
+  return {
+    success,
+    processSuccess: build.processSuccess,
+    experiments,
+    diagnostics,
+    stdout: build.stdout,
+    stderr: [build.stderr, ...diagnostics].filter(Boolean).join("\n"),
+    exitCode: build.exitCode,
+  }
 }
 
 function optionalString(value: unknown): string | null {
@@ -439,11 +716,15 @@ async function finalizeBuild(result: TsciResult, projectDir: string, inputDigest
 
   const circuitJsonPath = path.join(projectDir, "dist", "src", "circuit", "circuit.json")
   try {
-    const inspection = inspectCircuitJson(await readCircuitJson(projectDir, circuitJsonPath))
+    const circuitJson = await readCircuitJson(projectDir, circuitJsonPath)
+    const inspection = inspectCircuitJson(circuitJson)
     if ((await buildInputDigest(projectDir)) !== inputDigest) {
       throw new Error("Project inputs changed while the build was running. Run pcb_circuit_build again.")
     }
-    await writeBuildInputStamp(projectDir, inputDigest)
+    const circuitJsonSha256 = createHash("sha256")
+      .update(await readFile(circuitJsonPath))
+      .digest("hex")
+    await writeBuildInputStamp(projectDir, inputDigest, circuitJsonSha256)
     return {
       ...result,
       success: inspection.designValid,
@@ -486,7 +767,24 @@ export async function exportCircuit(
   await assertFreshCircuitJson(projectDir, absoluteCircuitJsonPath)
   const circuitJson = await readCircuitJson(projectDir, absoluteCircuitJsonPath)
   const inspection = inspectCircuitJson(circuitJson)
-  const blockers = manufacturingBlockers(circuitJson)
+  if (!(await circuitJsonUntampered(projectDir, absoluteCircuitJsonPath))) {
+    return {
+      success: false,
+      stdout: "",
+      stderr: tamperedArtifactMessage(),
+      exitCode: 1,
+      processSuccess: true,
+      artifactGenerationSucceeded: false,
+      designValid: inspection.designValid,
+      debugOnly: false,
+      generatedFormats: [],
+      blockedFormats: formats.includes("gerber") ? ["gerber"] : [],
+      manufacturingBlockers: [{ type: "invalid_design", count: 1, messages: [tamperedArtifactMessage()] }],
+      artifacts: { circuitJsonPath: absoluteCircuitJsonPath, schematicSvgPath: null, pcbSvgPath: null, gerbersZipPath: null },
+      inspection,
+    }
+  }
+  const blockers = manufacturingBlockers(circuitJson, undefined, { noConnect: await loadNoConnectIntents(projectDir) })
   const artifacts: BuildArtifacts = {
     circuitJsonPath: absoluteCircuitJsonPath,
     schematicSvgPath: null,

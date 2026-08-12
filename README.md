@@ -56,7 +56,7 @@ Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent 
 | --- | --- |
 | `http://127.0.0.1:4173/studio` | Studio shell (native Agent panel) |
 | `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
-| `http://127.0.0.1:4173/studio/studios/pcb` | PCB viewer |
+| `http://127.0.0.1:4173/studio/studios/pcb` | PCB schematic, layout, Simulation, BOM, and 3D viewer |
 | `http://127.0.0.1:4173/studio/studios/media` | Media projects and asset browser |
 | Status (drawer footer) | Compact health modal: repair / restart agent |
 | `http://127.0.0.1:4173/` or `/opencode` | Optional OpenCode web UI (same-origin proxy) |

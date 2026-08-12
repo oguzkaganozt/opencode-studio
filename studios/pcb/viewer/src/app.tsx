@@ -20,6 +20,7 @@ const CadViewerTab = lazy(() => import("./cad-viewer-tab"))
 const SchematicTab = lazy(() => import("./schematic-tab"))
 const PcbTab = lazy(() => import("./pcb-tab"))
 const BomTab = lazy(() => import("./bom-tab"))
+const SimulationTab = lazy(() => import("./simulation-tab"))
 
 /** Compact health for cards/detail — one primary signal. */
 function CardHealth({ project, stale = false }: { project: ProjectSummary; stale?: boolean }) {
@@ -258,7 +259,7 @@ function ProjectsPage() {
 
 // ── Project / Circuit Viewer ──────────────────────────────────────────────────
 
-const VIEW_TABS = ["schematic", "pcb", "bom", "3d", "json"] as const
+const VIEW_TABS = ["schematic", "pcb", "simulation", "bom", "3d", "json"] as const
 type ViewTab = (typeof VIEW_TABS)[number]
 
 function isViewTab(value: string | undefined): value is ViewTab {
@@ -270,6 +271,7 @@ function tabLabel(tab: ViewTab) {
   if (tab === "schematic") return "Schematic"
   if (tab === "pcb") return "PCB Layout"
   if (tab === "bom") return "BOM"
+  if (tab === "simulation") return "Simulation"
   return "3D"
 }
 
@@ -330,6 +332,7 @@ function ProjectPage() {
     void queryClient.invalidateQueries({ queryKey: ["pcb", "project", id] })
     void queryClient.invalidateQueries({ queryKey: ["pcb", "projects"] })
     void queryClient.invalidateQueries({ queryKey: ["pcb", "circuitJson", id] })
+    void queryClient.invalidateQueries({ queryKey: ["pcb", "simulation", id] })
   })
 
   if (isLoading)
@@ -470,6 +473,11 @@ function ProjectPage() {
                 <BomTab projectId={id} directory={project.directory} />
               </Suspense>
             )}
+            {tab === "simulation" && id && (
+              <Suspense fallback={<LoadingState label="Loading simulation results…" />}>
+                <SimulationTab projectId={id} directory={project.directory} />
+              </Suspense>
+            )}
             {tab === "json" && id && <CircuitJsonViewer projectId={id} directory={project.directory} />}
           </ViewerErrorBoundary>
         </section>
@@ -497,6 +505,7 @@ function useProjectEvents(projectId: string | undefined) {
           setBuildState({ status: "idle" })
           queryClient.invalidateQueries({ queryKey: ["pcb", "circuitJson", projectId] })
           queryClient.invalidateQueries({ queryKey: ["pcb", "bom", projectId] })
+          queryClient.invalidateQueries({ queryKey: ["pcb", "simulation", projectId] })
           queryClient.invalidateQueries({ queryKey: ["pcb", "project", projectId] })
           queryClient.invalidateQueries({ queryKey: ["pcb", "projects"] })
         }

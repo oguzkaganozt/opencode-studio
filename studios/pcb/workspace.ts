@@ -4,7 +4,7 @@ import path from "node:path"
 import { isInside } from "../../src/core/paths"
 import { artifactFreshness, staleArtifactMessage } from "./artifact-freshness"
 import { type CircuitInspection, inspectCircuitJson, readCircuitJson } from "./circuit-json"
-import { circuitReadiness } from "./readiness"
+import { projectCircuitReadiness } from "./readiness"
 
 export type CircuitProject = {
   id: string
@@ -118,7 +118,7 @@ async function loadProject(descriptor: CircuitProjectDescriptor): Promise<Circui
     try {
       const circuit = await readCircuitJson(canonicalDir, circuitJsonPath)
       inspection = inspectCircuitJson(circuit)
-      const readiness = circuitReadiness(circuit, { inspection })
+      const readiness = await projectCircuitReadiness(canonicalDir, circuit, { inspection })
       fabricationReady = readiness.fabricationReady
       assemblyReady = readiness.assemblyReady
     } catch {

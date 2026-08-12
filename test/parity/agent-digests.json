@@ -5,7 +5,7 @@
   },
   "studio-pcb": {
     "path": "studios/pcb/agent/studio-pcb.md",
-    "sha256": "59cbc83b0445c9dd48c5ee68c8bc6d33b82c64ae1db5439b5d4627bace0d5458"
+    "sha256": "32597fcd037f8965ab2e0890ba7a8a88120f52de492d9b827753bd35ec8fa489"
   },
   "studio-media": {
     "path": "studios/media/agent/studio-media.md",
