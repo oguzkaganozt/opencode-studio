@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { buildDesign } from "../forge"
-import { initializeStudio } from "../library"
+import { buildDesign } from "../host/build"
+import { initializeStudio } from "../host/library"
 
-const FORGE_PROJECT_DIR = path.resolve(import.meta.dir, "..", "forge")
+const FORGE_PROJECT_DIR = path.resolve(import.meta.dir, "..", "engine")
 const FORGE_TIMEOUT_MS = 90_000
 
 const tmpRoots: string[] = []

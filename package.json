@@ -18,12 +18,12 @@
   "files": [
     "dist",
     "scripts/postinstall-completion.mjs",
-    "studios/cad/forge/forge_cli.py",
-    "studios/cad/forge/cad_runtime/**",
-    "studios/cad/forge/pyproject.toml",
-    "studios/cad/forge/uv.lock",
-    "studios/cad/forge/.python-version",
-    "studios/cad/build123d-tools.json",
+    "studios/cad/engine/cad_build.py",
+    "studios/cad/engine/cad_runtime/**",
+    "studios/cad/engine/pyproject.toml",
+    "studios/cad/engine/uv.lock",
+    "studios/cad/engine/.python-version",
+    "studios/cad/tools/catalog.json",
     "studios/*/skill/SKILL.md",
     "studios/*/agent/*.md",
     "README.md"
@@ -31,7 +31,7 @@
   "scripts": {
     "postinstall": "node scripts/postinstall-completion.mjs",
     "test": "bun test ./test/ ./ui/ ./studios/ ./src/platform/media/test/",
-    "test:python": "uv run --project studios/cad/forge python -m unittest discover -s studios/cad/forge/tests -v",
+    "test:python": "uv run --project studios/cad/engine python -m unittest discover -s studios/cad/engine/tests -v",
     "test:package": "bun scripts/package-smoke.ts",
     "test:browser": "bun scripts/browser-smoke.ts",
     "test:browser:install": "playwright install chromium",

@@ -31,6 +31,7 @@ import {
   agentNameFor,
   agentSourcePath,
   fileDigest,
+  ensureForgeRuntimeDir,
   forgeRuntimeDir,
   LEGACY_MANAGED_MCP_KEY,
   loadPackageMeta,
@@ -666,7 +667,7 @@ export async function configureStudios(
   plugins.push(mediaGoFile)
 
   let working = withPlugins(openCode, plugins)
-  // Drop legacy OpenCode-managed build123d MCP; tools are plugin-native via forge uv project.
+  // Drop legacy OpenCode-managed build123d MCP; tools are plugin-native via CAD engine.
   working = scrubLegacyBuild123dMcp(working)
   working = withManagedStudioPermissions(working)
   const nextText = working.text
@@ -683,6 +684,9 @@ export async function configureStudios(
       restartRequired: true,
     }
   }
+
+  // Seed CAD engine sources into XDG cache so status/repair do not report unseeded on greenfield.
+  await ensureForgeRuntimeDir(packageRoot)
 
   const installed: string[] = []
   const rollbacks: Array<() => Promise<void>> = []
@@ -1159,23 +1163,23 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       }
       if (!hasProject) {
         checks.push({
-          id: "cad-forge",
+          id: "cad-engine",
           status: "warn",
-          message: `Forge runtime not seeded at ${forgeDir}`,
-          repair: "Run cad_design_build once (syncs forge deps automatically)",
+          message: `CAD engine runtime not seeded at ${forgeDir}`,
+          repair: "Run opencode-studio repair (seeds engine) or cad_design_build once",
         })
       } else if (!hasVenv) {
         checks.push({
-          id: "cad-forge",
+          id: "cad-engine",
           status: "warn",
-          message: `Forge sources present but venv not synced (${forgeDir})`,
-          repair: "Run cad_design_build once (syncs forge deps automatically)",
+          message: `CAD engine sources present but venv not synced (${forgeDir})`,
+          repair: "Run cad_design_build once (syncs engine deps automatically)",
         })
       } else {
         checks.push({
-          id: "cad-forge",
+          id: "cad-engine",
           status: "pass",
-          message: `Forge venv ready (${forgeDir})`,
+          message: `CAD engine venv ready (${forgeDir})`,
         })
       }
     }

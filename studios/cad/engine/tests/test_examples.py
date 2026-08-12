@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from forge_cli import build_design
+from cad_build import build_design
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"

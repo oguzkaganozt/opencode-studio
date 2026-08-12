@@ -30,7 +30,7 @@ def studio_build(session, design_dir: str = "") -> str:
         sys.path.insert(0, root_str)
 
     try:
-        import forge_cli
+        import cad_build
     except ImportError as exc:
         return json.dumps(
             {
@@ -39,13 +39,13 @@ def studio_build(session, design_dir: str = "") -> str:
                 "designDir": design_dir,
                 "manifestPath": None,
                 "stdout": "",
-                "stderr": f"forge_cli import failed: {exc}",
+                "stderr": f"cad_build import failed: {exc}",
             },
             indent=2,
         )
 
     try:
-        manifest_path = forge_cli.build_design(design_dir)
+        manifest_path = cad_build.build_design(design_dir)
         return json.dumps(
             {
                 "ok": True,

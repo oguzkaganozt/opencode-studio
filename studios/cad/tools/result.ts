@@ -1,4 +1,4 @@
-import { formatToolJson } from "../../src/core/format-tool-json"
+import { formatToolJson } from "../../../src/core/format-tool-json"
 
 export type CadToolStatus = "pass" | "fail" | "unverified" | "error"
 

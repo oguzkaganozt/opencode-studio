@@ -574,7 +574,7 @@ export async function startHost(input: HostInput): Promise<HostHandle> {
   })
   const stop = () => {
     clearInterval(updateTimer)
-    void import("../studios/cad/watcher").then((m) => m.closeAllDesignWatchers()).catch(() => {})
+    void import("../studios/cad/host/watcher").then((m) => m.closeAllDesignWatchers()).catch(() => {})
     void import("../studios/pcb/watcher").then((m) => m.closeAllProjectWatchers()).catch(() => {})
     closeOpenCode()
     server.stop(true)

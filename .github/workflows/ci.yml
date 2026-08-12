@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
-      - run: uv sync --locked --project studios/cad/forge
+      - run: uv sync --locked --project studios/cad/engine
       - run: bun install --frozen-lockfile
       - run: bun run test:browser:install
       - run: bun run release:check

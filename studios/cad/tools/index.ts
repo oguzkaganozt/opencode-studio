@@ -1,19 +1,19 @@
 import path from "node:path"
 import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
-import manifest from "../../package.json" with { type: "json" }
-import { formatToolJson } from "../../src/core/format-tool-json"
-import { createBuild123dTools } from "./build123d-tools"
-import { buildDesign, createRuntimeForgeRunner, type ForgeRunner, scaffoldDesign } from "./forge"
-import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "./library"
-import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
-import { buildDesignQcReport, type QcAxisStatus } from "./qc-report"
+import manifest from "../../../package.json" with { type: "json" }
+import { formatToolJson } from "../../../src/core/format-tool-json"
+import { createCadSessionTools } from "./session-tools"
+import { buildDesign, createRuntimeForgeRunner, type ForgeRunner, scaffoldDesign } from "../host/build"
+import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
+import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "../host/manifest"
+import { buildDesignQcReport, type QcAxisStatus } from "../host/qc-report"
 import {
   designBuildFailureResult,
   designBuildSuccessResult,
   designCreateResult,
   formatCadToolResult,
-} from "./tool-result"
+} from "./result"
 
 const PACKAGE_NAME = `${manifest.name}@${manifest.version}`
 const MAX_TOOL_OUTPUT_BYTES = 60_000
@@ -52,7 +52,7 @@ function resolvePathOption(value: unknown, fallback: string, base: string, name:
 
 function options(input: PluginOptions | undefined, directory: string): Options {
   const studioRoot = resolvePathOption(input?.studioRoot, ".", directory, "studioRoot")
-  const forgeProjectDir = resolvePathOption(input?.forgeProjectDir, path.resolve(import.meta.dir, "forge"), directory, "forgeProjectDir")
+  const forgeProjectDir = resolvePathOption(input?.forgeProjectDir, path.resolve(import.meta.dir, "..", "engine"), directory, "forgeProjectDir")
   const companionUrl = typeof input?.companionUrl === "string" && input.companionUrl.length > 0 ? input.companionUrl : undefined
   return { studioRoot, forgeProjectDir, companionUrl }
 }
@@ -66,7 +66,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
     const config = options(rawOptions, context.directory)
     const layout = await initializeStudio(config.studioRoot)
     const forgeRunner = dependencies.forgeRunner ?? createRuntimeForgeRunner(context.directory)
-    const build123dTools = createBuild123dTools({
+    const build123dTools = createCadSessionTools({
       forgeProjectDir: config.forgeProjectDir,
       cwd: context.directory,
     })

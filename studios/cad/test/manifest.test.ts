@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { ID_PATTERN, validateArtifactManifest, validateDesignManifest } from "../manifest"
+import { ID_PATTERN, validateArtifactManifest, validateDesignManifest } from "../host/manifest"
 
 describe("manifest validation smoke", () => {
   test("accepts a valid design and artifact manifest", () => {

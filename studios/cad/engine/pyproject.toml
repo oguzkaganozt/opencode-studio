@@ -1,7 +1,7 @@
 [project]
 name = "forge-cad"
 version = "0.2.0"
-description = "OpenCode Studio CAD: deterministic forge build + owned build123d session runtime"
+description = "OpenCode Studio CAD engine: product build + session runtime on build123d"
 requires-python = ">=3.12"
 dependencies = [
   "build123d==0.11.1",
@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.scripts]
-forge = "forge_cli:main"
+studio-cad-build = "cad_build:main"
+forge = "cad_build:main"  # back-compat CLI alias
 studio-cad-runtime = "cad_runtime.cli:main"
 
 [build-system]
@@ -27,4 +28,4 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["cad_runtime"]
-include = ["forge_cli.py"]
+include = ["cad_build.py"]

@@ -5,7 +5,7 @@ import {
   designCreateResult,
   extractFirstJson,
   structureBuild123dResult,
-} from "../tool-result"
+} from "../tools/result"
 
 describe("extractFirstJson", () => {
   test("parses JSON after prose prefix", () => {

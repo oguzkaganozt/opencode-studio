@@ -57,20 +57,20 @@ export function agentSourcePath(packageRoot: string, studioId: StudioId) {
   return path.join(packageRoot, "studios", studioId, "agent", `${agentNameFor(studioId)}.md`)
 }
 
-const FORGE_RUNTIME_FILES = ["pyproject.toml", "uv.lock", "forge_cli.py", ".python-version"] as const
+const FORGE_RUNTIME_FILES = ["pyproject.toml", "uv.lock", "cad_build.py", ".python-version"] as const
 
-/** Owned CAD session package directory mirrored into the forge runtime cache. */
+/** Owned CAD session package directory mirrored into the engine runtime cache. */
 const FORGE_RUNTIME_DIRS = ["cad_runtime"] as const
 
-/** Packaged forge sources inside the npm package. */
+/** Packaged CAD engine sources inside the npm package (Python uv project). */
 export function forgeSourceDir(packageRoot: string) {
-  return path.join(packageRoot, "studios", "cad", "forge")
+  return path.join(packageRoot, "studios", "cad", "engine")
 }
 
-/** XDG cache directory used as the writable uv project for forge. */
+/** XDG cache directory used as the writable uv project for the CAD engine. */
 export function forgeRuntimeDir() {
   const paths = envPaths("opencode-studio", { suffix: "" })
-  return path.join(paths.cache, "forge")
+  return path.join(paths.cache, "cad-engine")
 }
 
 /** Cold `uv sync` budget (separate from design_build's 120s forge build timer). */

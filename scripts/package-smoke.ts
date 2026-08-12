@@ -40,16 +40,16 @@ try {
     const agentPath = path.join(pkg, "studios", studio, "agent", `studio-${studio}.md`)
     if (!(await Bun.file(agentPath).exists())) throw new Error(`missing packed agent: ${studio}`)
   }
-  if (!(await Bun.file(path.join(pkg, "studios/cad/forge/forge_cli.py")).exists())) {
-    throw new Error("missing packed forge_cli.py")
+  if (!(await Bun.file(path.join(pkg, "studios/cad/engine/cad_build.py")).exists())) {
+    throw new Error("missing packed cad_build.py")
   }
-  if (!(await Bun.file(path.join(pkg, "studios/cad/forge/.python-version")).exists())) {
+  if (!(await Bun.file(path.join(pkg, "studios/cad/engine/.python-version")).exists())) {
     throw new Error("missing packed forge .python-version")
   }
-  if (!(await Bun.file(path.join(pkg, "studios/cad/forge/uv.lock")).exists())) {
+  if (!(await Bun.file(path.join(pkg, "studios/cad/engine/uv.lock")).exists())) {
     throw new Error("missing packed forge uv.lock")
   }
-  if (!(await Bun.file(path.join(pkg, "studios/cad/forge/pyproject.toml")).exists())) {
+  if (!(await Bun.file(path.join(pkg, "studios/cad/engine/pyproject.toml")).exists())) {
     throw new Error("missing packed forge pyproject.toml")
   }
   if (!(await Bun.file(path.join(pkg, "dist/ui/index.html")).exists())) {
@@ -122,7 +122,7 @@ try {
     postStatus.exited,
   ])
   if (postCode !== 0) throw new Error(`cli status after repair failed: ${postErr || postOut}`)
-  if (!postOut.includes("cad-forge") || !postOut.includes("skill:pcb") || !postOut.includes("agent:media")) {
+  if (!postOut.includes("cad-engine") || !postOut.includes("skill:pcb") || !postOut.includes("agent:media")) {
     throw new Error(`cli status after repair missing expected checks:\n${postOut}`)
   }
 

@@ -24,7 +24,7 @@ jobs:
           node-version: "24"
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@latest
-      - run: uv sync --locked --project studios/cad/forge
+      - run: uv sync --locked --project studios/cad/engine
       - run: bun install --frozen-lockfile
       - run: bun run test:browser:install
       - run: |

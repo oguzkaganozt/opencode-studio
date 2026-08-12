@@ -1,7 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { createInterface, type Interface } from "node:readline"
-import { ensureUv } from "../../src/core/engines"
-import { syncForgeUvProject } from "../../src/core/package-meta"
+import { ensureUv } from "../../../src/core/engines"
+import { syncForgeUvProject } from "../../../src/core/package-meta"
 
 export const BUILD123D_SESSION_TIMEOUT_MS = 120_000
 /** @deprecated Public tools use cad_* names; session protocol is internal. */

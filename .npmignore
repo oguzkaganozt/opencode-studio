@@ -1,4 +1,5 @@
-**/__pycache__/
 **/*.pyc
 **/*.pyo
-studios/cad/forge/.venv/
+**/.venv/
+**/__pycache__/
+studios/cad/engine/.venv/

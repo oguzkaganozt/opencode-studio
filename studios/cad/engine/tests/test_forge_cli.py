@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import trimesh
 from build123d import Box
-from forge_cli import build_design, export_part
+from cad_build import build_design, export_part
 
 
 class BuildDesignTest(unittest.TestCase):
@@ -78,7 +78,7 @@ class BuildDesignTest(unittest.TestCase):
 
             invalid = MagicMock()
             invalid.is_valid = False
-            with patch("forge_cli.import_step", return_value=invalid):
+            with patch("cad_build.import_step", return_value=invalid):
                 with self.assertRaisesRegex(ValueError, "STEP round-trip produced invalid geometry"):
                     build_design(str(design))
             self.assertEqual(
@@ -106,7 +106,7 @@ class BuildDesignTest(unittest.TestCase):
                 (design / "params.py").write_text("SIZE = 20.0\n", encoding="utf-8")
                 return result
 
-            with patch("forge_cli.export_part", side_effect=export_then_mutate):
+            with patch("cad_build.export_part", side_effect=export_then_mutate):
                 with self.assertRaisesRegex(ValueError, "inputs changed during build"):
                     build_design(str(design))
 
@@ -163,7 +163,7 @@ class BuildDesignTest(unittest.TestCase):
             empty = MagicMock()
             empty.is_valid = True
             empty.volume = 0
-            with patch("forge_cli.import_step", return_value=empty):
+            with patch("cad_build.import_step", return_value=empty):
                 with self.assertRaisesRegex(ValueError, "STEP round-trip produced zero-volume geometry"):
                     build_design(str(design))
 
@@ -181,7 +181,7 @@ class BuildDesignTest(unittest.TestCase):
             )
             for imported, message in cases:
                 with self.subTest(message=message):
-                    with patch("forge_cli.import_step", return_value=imported):
+                    with patch("cad_build.import_step", return_value=imported):
                         with self.assertRaisesRegex(ValueError, message):
                             build_design(str(design))
 

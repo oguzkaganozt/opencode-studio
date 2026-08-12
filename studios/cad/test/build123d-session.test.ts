@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { Build123dSession } from "../build123d-session"
+import { Build123dSession } from "../tools/session"
 
-const FORGE_PROJECT_DIR = path.resolve(import.meta.dir, "..", "forge")
+const FORGE_PROJECT_DIR = path.resolve(import.meta.dir, "..", "engine")
 
 describe("build123d session recovery", () => {
   test("restarts after initialization abort and request timeout", async () => {

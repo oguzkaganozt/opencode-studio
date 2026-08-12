@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { lstat, opendir, readdir, readFile, realpath, stat } from "node:fs/promises"
 import path from "node:path"
-import { isInside } from "../../src/core/paths"
+import { isInside } from "../../../src/core/paths"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
 
 export type DesignEntry = {

@@ -1,12 +1,12 @@
 import { tool } from "@opencode-ai/plugin"
-import { cadSessionToolName } from "./cad-names"
-import { getBuild123dSession } from "./build123d-session"
-import catalog from "./build123d-tools.json" with { type: "json" }
+import { cadSessionToolName } from "./names"
+import { getBuild123dSession } from "./session"
+import catalog from "./catalog.json" with { type: "json" }
 import {
   BUILD123D_STRUCTURED_TOOLS,
   formatCadToolResult,
   structureBuild123dResult,
-} from "./tool-result"
+} from "./result"
 
 type JsonSchema = {
   type?: string | string[]
@@ -110,7 +110,7 @@ function jsonSchemaToShape(schema: JsonSchema): Record<string, Field> {
   return shape
 }
 
-export function createBuild123dTools(options: { forgeProjectDir: string; cwd: string }) {
+export function createCadSessionTools(options: { forgeProjectDir: string; cwd: string }) {
   const session = getBuild123dSession(options.forgeProjectDir, options.cwd)
   const tools: Record<string, ReturnType<typeof tool>> = {}
 

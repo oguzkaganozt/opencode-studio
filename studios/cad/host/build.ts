@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
 import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { isInside } from "../../src/core/paths"
-import { getBuild123dSession } from "./build123d-session"
+import { isInside } from "../../../src/core/paths"
+import { getBuild123dSession } from "../tools/session"
 import { resolveDesignDirectory, type StudioLayout } from "./library"
 import { readArtifactManifest, readDesignManifest, scaffoldDesignManifest } from "./manifest"
 
@@ -27,7 +27,7 @@ export type ForgeRunner = (input: {
 
 /**
  * Build through the same studio-cad-runtime session as cad_execute / measure / …
- * (single agent-facing runtime; forge_cli runs in-process inside that runtime).
+ * (single agent-facing runtime; cad_build runs in-process inside that runtime).
  */
 export function createRuntimeForgeRunner(cwd: string): ForgeRunner {
   return async ({ forgeProjectDir, designDir, signal }) => {

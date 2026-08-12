@@ -3,8 +3,8 @@ import { createHash } from "node:crypto"
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { createCadApi } from "../api"
-import { initializeStudio } from "../library"
+import { createCadApi } from "../host/api"
+import { initializeStudio } from "../host/library"
 import { createStudioPlugin } from "../tools"
 
 const fakeContext = {

@@ -38,7 +38,7 @@ const MANAGED_IDS = [
   "agent:cad",
   "agent:pcb",
   "agent:media",
-  "cad-forge",
+  "cad-engine",
 ] as const
 
 function toneOf(status: "pass" | "warn" | "fail" | undefined): "pass" | "warn" | "fail" | undefined {

@@ -47,7 +47,10 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
 
 export const apiLoaders: Record<StudioId, ApiLoader> = {
   cad: async (ctx) => {
-    const [{ createCadApi }, { initializeStudio }] = await Promise.all([import("../studios/cad/api"), import("../studios/cad/library")])
+    const [{ createCadApi }, { initializeStudio }] = await Promise.all([
+      import("../studios/cad/host/api"),
+      import("../studios/cad/host/library"),
+    ])
     const root = await ctx.resolveStudioRoot({ studioId: "cad", studioRoot: ctx.studioRoot, roots: ctx.roots })
     const layout = await initializeStudio(root)
     return createCadApi(layout)
