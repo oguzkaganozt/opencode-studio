@@ -46,9 +46,20 @@ export type ElementTypeCount = {
 }
 
 export type ManufacturingBlocker = {
-  type: "invalid_design" | "placeholder_component" | "supplier_footprint_mismatch" | "unconnected_pin" | "unverified_part"
+  type:
+    | "invalid_design"
+    | "placeholder_component"
+    | "supplier_footprint_mismatch"
+    | "unconnected_pin"
+    | "unverified_part"
+    | "missing_pcb_port"
   count: number
   messages: string[]
+}
+
+export type ManufacturingBlockerOptions = {
+  /** Component name → intentionally unconnected pin names (noConnect in source). */
+  noConnect?: ReadonlyMap<string, ReadonlySet<string>>
 }
 
 export const PCB_PLACEHOLDER_PREFIX = "PCB_STUDIO_PLACEHOLDER:"
@@ -192,9 +203,71 @@ export function inspectCircuitJson(value: unknown): CircuitInspection {
   }
 }
 
-export function manufacturingBlockers(value: unknown, inspection?: CircuitInspection): ManufacturingBlocker[] {
+/**
+ * Resolve whether a source port is intentionally unconnected:
+ * - explicit `do_not_connect` on the port element
+ * - declared via `noConnect` intent bridge (component name + pin name,
+ *   matching the port name or any of its aliases in port_hints)
+ */
+function resolveIntentionallyUnconnected(
+  elements: CircuitElement[],
+  byId: Map<string, CircuitElement>,
+  noConnect: ReadonlyMap<string, ReadonlySet<string>> | undefined,
+): Set<string> {
+  const result = new Set<string>()
+  for (const element of elements) {
+    if (element.type !== "source_port" || typeof element.source_port_id !== "string") continue
+    if (element.do_not_connect === true) {
+      result.add(element.source_port_id)
+      continue
+    }
+    if (!noConnect || noConnect.size === 0) continue
+    const componentId = element.source_component_id
+    const component = typeof componentId === "string" ? byId.get(componentId) : undefined
+    const componentName = component?.name
+    if (typeof componentName !== "string") continue
+    const pins = noConnect.get(componentName)
+    if (!pins || pins.size === 0) continue
+    const portName = element.name
+    const hints = new Set([...(stringArrayField(element, "port_hints") as string[]), ...(typeof portName === "string" ? [portName] : [])])
+    if ([...pins].some((pin) => hints.has(pin))) result.add(element.source_port_id)
+  }
+  return result
+}
+
+/** Ports proven connected by source traces in the same artifact. */
+function traceConnectedPortIds(elements: CircuitElement[]): Set<string> {
+  const connected = new Set<string>()
+  for (const element of elements) {
+    if (element.type !== "source_trace") continue
+    for (const portId of stringArrayField(element, "connected_source_port_ids")) connected.add(portId)
+  }
+  return connected
+}
+
+/**
+ * `source_pin_missing_trace_warning` entries whose port is connected by a
+ * source trace in the same artifact are stale (tscircuit emits them before
+ * trace connections register and never re-validates; upstream issue #4442).
+ * This never mutates the artifact — it only filters the in-memory view.
+ */
+function resolveMissingTraceWarnings(
+  elements: CircuitElement[],
+  connectedPortIds: Set<string>,
+  intentionallyUnconnected: Set<string>,
+): CircuitElement[] {
+  return elements.filter((element) => {
+    if (element.type !== "source_pin_missing_trace_warning") return false
+    const portId = element.source_port_id
+    if (typeof portId !== "string") return false
+    return !connectedPortIds.has(portId) && !intentionallyUnconnected.has(portId)
+  })
+}
+
+export function manufacturingBlockers(value: unknown, inspection?: CircuitInspection, options?: ManufacturingBlockerOptions): ManufacturingBlocker[] {
   const elements = parseCircuitJson(value)
   const resolved = inspection ?? inspectCircuitJson(elements)
+  const byId = elementByIdMap(elements)
   const blockers: ManufacturingBlocker[] = []
 
   if (!resolved.designValid) {
@@ -253,9 +326,48 @@ export function manufacturingBlockers(value: unknown, inspection?: CircuitInspec
     })
   }
 
-  const unconnectedPins = resolved.warnings.find((group) => group.type === "source_pin_missing_trace_warning")
-  if (unconnectedPins) {
-    blockers.push({ type: "unconnected_pin", count: unconnectedPins.count, messages: unconnectedPins.messages })
+  const intentionallyUnconnected = resolveIntentionallyUnconnected(elements, byId, options?.noConnect)
+  const connectedPortIds = traceConnectedPortIds(elements)
+  const missingTraceWarnings = resolveMissingTraceWarnings(elements, connectedPortIds, intentionallyUnconnected)
+  if (missingTraceWarnings.length > 0) {
+    blockers.push({
+      type: "unconnected_pin",
+      count: missingTraceWarnings.length,
+      messages: missingTraceWarnings
+        .map((element) => element.message)
+        .filter((message): message is string => typeof message === "string" && message.length > 0)
+        .slice(0, WARNING_SAMPLE_LIMIT),
+    })
+  }
+
+  // Declared pins that end up with no physical pad are fabrication defects
+  // (tscircuit footprint pad↔port mapping can be incomplete; upstream #4444).
+  // Internal helper ports never carry pads; DNC ports are exempt.
+  const missingPcbPorts = elements
+    .filter((element) => element.type === "source_port" && typeof element.source_port_id === "string")
+    .filter((element) => {
+      const name = element.name
+      if (typeof name !== "string") return true
+      if (name.includes("_internal_")) return false
+      if (intentionallyUnconnected.has(element.source_port_id as string)) return false
+      return !elements.some(
+        (pcbPort) => pcbPort.type === "pcb_port" && pcbPort.source_port_id === element.source_port_id,
+      )
+    })
+    .map((element) => {
+      const component = element.source_component_id
+        ? byId.get(element.source_component_id as string)
+        : undefined
+      const refdes = stringField(component, "name")
+      const name = stringField(element, "name")
+      return refdes ? `${refdes}.${name} has no PCB pad (footprint pad mapping may be incomplete)` : `${name} has no PCB pad`
+    })
+  if (missingPcbPorts.length > 0) {
+    blockers.push({
+      type: "missing_pcb_port",
+      count: missingPcbPorts.length,
+      messages: missingPcbPorts.slice(0, WARNING_SAMPLE_LIMIT),
+    })
   }
 
   return blockers

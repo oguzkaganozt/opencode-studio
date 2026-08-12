@@ -6,7 +6,7 @@ import { toCplCsv } from "./assembly"
 import { generateBom, toBomCsv } from "./bom"
 import { filterCatalogParts, getCatalogPart, loadCatalogParts, partDetail, partSummary, upsertCatalogPart } from "./catalog"
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
-import { circuitReadiness } from "./readiness"
+import { projectCircuitReadiness } from "./readiness"
 import { extractAnalogSimulationDiagnostics, extractAnalogSimulationExperiments, SIMULATION_ESTIMATE_CAVEAT } from "./tsci"
 import { ensureWatching, onProjectEvent } from "./watcher"
 import {
@@ -178,7 +178,7 @@ export function createPcbApi(workspaceRoot: string) {
   app.get("/projects/:id/assembly.csv", async (ctx) => {
     const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
     const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
-    const readiness = circuitReadiness(json)
+    const readiness = await projectCircuitReadiness(project.absolutePath, json)
     if (readiness.assemblyBlockers.length > 0) {
       return ctx.json(
         {

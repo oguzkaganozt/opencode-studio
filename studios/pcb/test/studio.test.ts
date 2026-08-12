@@ -17,7 +17,7 @@ import { decodeProjectId, discoverProjects, encodeProjectId } from "../workspace
 
 const temps: string[] = []
 async function stampProject(projectDir: string) {
-  await writeBuildInputStamp(projectDir, await buildInputDigest(projectDir))
+  await writeBuildInputStamp(projectDir, await buildInputDigest(projectDir), "x".repeat(64))
 }
 
 afterEach(async () => {

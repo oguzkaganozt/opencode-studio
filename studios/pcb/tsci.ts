@@ -1,8 +1,17 @@
-import { mkdir, rm } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { mkdir, readFile, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { engineCommand, resolveTsci } from "../../src/core/engines"
-import { artifactFreshness, buildInputDigest, clearBuildInputStamp, staleArtifactMessage, writeBuildInputStamp } from "./artifact-freshness"
+import {
+  artifactFreshness,
+  buildInputDigest,
+  circuitJsonUntampered,
+  clearBuildInputStamp,
+  staleArtifactMessage,
+  tamperedArtifactMessage,
+  writeBuildInputStamp,
+} from "./artifact-freshness"
 import {
   type CircuitInspection,
   inspectCircuitJson,
@@ -10,6 +19,7 @@ import {
   manufacturingBlockers,
   readCircuitJson,
 } from "./circuit-json"
+import { loadNoConnectIntents } from "./tsx-intent"
 
 export type TsciResult = {
   success: boolean
@@ -611,11 +621,13 @@ async function finalizeBuild(result: TsciResult, projectDir: string, inputDigest
 
   const circuitJsonPath = path.join(projectDir, "dist", "src", "circuit", "circuit.json")
   try {
-    const inspection = inspectCircuitJson(await readCircuitJson(projectDir, circuitJsonPath))
+    const circuitJson = await readCircuitJson(projectDir, circuitJsonPath)
+    const inspection = inspectCircuitJson(circuitJson)
     if ((await buildInputDigest(projectDir)) !== inputDigest) {
       throw new Error("Project inputs changed while the build was running. Run pcb_circuit_build again.")
     }
-    await writeBuildInputStamp(projectDir, inputDigest)
+    const circuitJsonSha256 = createHash("sha256").update(await readFile(circuitJsonPath)).digest("hex")
+    await writeBuildInputStamp(projectDir, inputDigest, circuitJsonSha256)
     return {
       ...result,
       success: inspection.designValid,
@@ -658,7 +670,24 @@ export async function exportCircuit(
   await assertFreshCircuitJson(projectDir, absoluteCircuitJsonPath)
   const circuitJson = await readCircuitJson(projectDir, absoluteCircuitJsonPath)
   const inspection = inspectCircuitJson(circuitJson)
-  const blockers = manufacturingBlockers(circuitJson)
+  if (!(await circuitJsonUntampered(projectDir, absoluteCircuitJsonPath))) {
+    return {
+      success: false,
+      stdout: "",
+      stderr: tamperedArtifactMessage(),
+      exitCode: 1,
+      processSuccess: true,
+      artifactGenerationSucceeded: false,
+      designValid: inspection.designValid,
+      debugOnly: false,
+      generatedFormats: [],
+      blockedFormats: formats.includes("gerber") ? ["gerber"] : [],
+      manufacturingBlockers: [{ type: "invalid_design", count: 1, messages: [tamperedArtifactMessage()] }],
+      artifacts: { circuitJsonPath: absoluteCircuitJsonPath, schematicSvgPath: null, pcbSvgPath: null, gerbersZipPath: null },
+      inspection,
+    }
+  }
+  const blockers = manufacturingBlockers(circuitJson, undefined, { noConnect: await loadNoConnectIntents(projectDir) })
   const artifacts: BuildArtifacts = {
     circuitJsonPath: absoluteCircuitJsonPath,
     schematicSvgPath: null,

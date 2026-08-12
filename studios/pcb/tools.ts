@@ -16,7 +16,7 @@ import {
   upsertCatalogPart,
 } from "./catalog"
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
-import { circuitReadiness } from "./readiness"
+import { projectCircuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
 import { exportCircuit, runProjectBuild, searchComponents, simulateAnalogCircuit, SIMULATION_ESTIMATE_CAVEAT } from "./tsci"
 import { discoverProjects, encodeProjectId, projectSummary, resolveProject } from "./workspace"
@@ -309,7 +309,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const result = await runProjectBuild(project.absolutePath, ctx.abort)
             const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
             const readiness = circuit
-              ? circuitReadiness(circuit, { inspection: result.inspection ?? undefined })
+              ? await projectCircuitReadiness(project.absolutePath, circuit, { inspection: result.inspection ?? undefined })
               : { fabricationReady: false, assemblyReady: false, manufacturingBlockers: [] as const, assemblyBlockers: [] as const }
             const fabricationReady = result.inspection !== null && readiness.fabricationReady
             return formatToolJson({
@@ -385,9 +385,9 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const formats = args.formats as Array<"schematic" | "pcb" | "gerber">
             const result = await exportCircuit(project.absolutePath, formats, ctx.abort)
             const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
-            const readiness = circuit ? circuitReadiness(circuit) : null
+            const readiness = await projectCircuitReadiness(project.absolutePath, circuit ?? [])
             const fabricationReady = result.manufacturingBlockers.length === 0
-            const assemblyReady = fabricationReady && readiness?.assemblyReady === true
+            const assemblyReady = fabricationReady && readiness.assemblyReady === true
             return formatToolJson({
               projectId: args.projectId,
               name: project.name,
@@ -402,7 +402,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
               generatedFormats: result.generatedFormats,
               blockedFormats: result.blockedFormats,
               manufacturingBlockers: result.manufacturingBlockers,
-              assemblyBlockers: readiness?.assemblyBlockers ?? [],
+              assemblyBlockers: readiness.assemblyBlockers,
               diagnostics: result.inspection,
               artifacts: result.artifacts,
               stdout: result.stdout.slice(0, 8000),
@@ -426,7 +426,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
             const catalogParts = await loadCatalogParts(workspaceRoot)
-            const readiness = circuitReadiness(json, { inspection, catalogParts })
+            const readiness = await projectCircuitReadiness(project.absolutePath, json, { inspection, catalogParts })
             return formatToolJson({
               projectId: args.projectId,
               name: project.name,
@@ -457,7 +457,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string }): Plu
             }
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
             const inspection = inspectCircuitJson(json)
-            const readiness = circuitReadiness(json, { inspection })
+            const readiness = await projectCircuitReadiness(project.absolutePath, json, { inspection })
             if (readiness.assemblyBlockers.length > 0) {
               return formatToolJson({
                 projectId: args.projectId,
