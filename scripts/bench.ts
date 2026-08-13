@@ -1,8 +1,8 @@
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { resolveOpenCodeConfigPath } from "../src/core/opencode-config"
-import { configureStudios } from "../src/lifecycle"
+import { pathToFileURL } from "node:url"
+import { STUDIO_IDS } from "../src/core/registry"
 
 export const BENCH_STUDIOS = ["cad", "pcb", "fw"] as const
 export type BenchStudio = (typeof BENCH_STUDIOS)[number]
@@ -228,7 +228,20 @@ async function runOpencode(input: {
   eventsPath: string
   stderrPath: string
 }) {
-  const args = ["opencode", "run", "--agent", input.agent, "-m", input.model, "--auto", "--format", "json", "--dir", input.dir]
+  const args = [
+    "opencode",
+    "run",
+    "--print-logs",
+    "--agent",
+    input.agent,
+    "-m",
+    input.model,
+    "--auto",
+    "--format",
+    "json",
+    "--dir",
+    input.dir,
+  ]
   for (const file of input.files) args.push("-f", file)
   args.push("--", input.prompt)
   const proc = Bun.spawn(args, {
@@ -260,18 +273,19 @@ async function runOpencode(input: {
 export async function prepareIsolate(root: string) {
   const isolate = await mkdtemp(path.join(tmpdir(), "osc-bench-"))
   const studioHome = path.join(isolate, "home")
-  const openCodeHome = path.join(isolate, "opencode")
-  const studioConfigHome = path.join(isolate, "studio-config")
-  await mkdir(studioHome, { recursive: true })
-  await configureStudios({
-    workspace: studioHome,
-    openCodeHome,
-    studioConfigHome,
-    packageRoot: root,
-    validateOpenCode: false,
-  })
-  const configPath = await resolveOpenCodeConfigPath({ openCodeHome })
-  return { isolate, studioHome, openCodeHome, studioConfigHome, configPath }
+  const oc = path.join(studioHome, ".opencode")
+  await mkdir(path.join(oc, "agents"), { recursive: true })
+  for (const id of STUDIO_IDS) {
+    await copyFile(path.join(root, "studios", id, "agent", `studio-${id}.md`), path.join(oc, "agents", `studio-${id}.md`))
+    const skillDir = path.join(oc, "skills", `studio-${id}`)
+    await mkdir(skillDir, { recursive: true })
+    await copyFile(path.join(root, "studios", id, "skill", "SKILL.md"), path.join(skillDir, "SKILL.md"))
+  }
+  await writeFile(
+    path.join(oc, "opencode.json"),
+    `${JSON.stringify({ $schema: "https://opencode.ai/config.json", plugin: [pathToFileURL(path.join(root, "dist", "plugin.js")).href] }, null, 2)}\n`,
+  )
+  return { isolate, studioHome }
 }
 
 async function main(argv: string[]) {
@@ -330,14 +344,8 @@ async function main(argv: string[]) {
 
   const env = {
     ...process.env,
-    OPENCODE_CONFIG: isolate.configPath,
-    OPENCODE_CONFIG_DIR: isolate.openCodeHome,
-    OPENCODE_CONFIG_HOME: isolate.openCodeHome,
-    OPENCODE_STUDIO_CONFIG_HOME: isolate.studioConfigHome,
     OPENCODE_STUDIO_WORKSPACE: isolate.studioHome,
     OPENCODE_STUDIO_AUTOSTART: "0",
-    OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-    OPENCODE_DISABLE_DEFAULT_PLUGINS: "1",
   }
   const eventsPath = path.join(runDir, "events.jsonl")
   const code = await runOpencode({
