@@ -9,7 +9,6 @@ export type PackageMeta = {
   version: string
   packageRoot: string
   pluginSpecifier: string
-  mediaProviderSpecifier: string
 }
 
 const packageMetaCache = new Map<string, PackageMeta>()
@@ -28,7 +27,6 @@ export async function loadPackageMeta(packageRoot: string): Promise<PackageMeta>
     // OpenCode resolves unversioned plugin entries to the current package.
     // Keep versions in status/markers only; pinning here makes `upgrade` stale.
     pluginSpecifier: raw.name,
-    mediaProviderSpecifier: `${raw.name}/media-provider`,
   }
   packageMetaCache.set(key, meta)
   return meta

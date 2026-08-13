@@ -4,7 +4,7 @@ description: >
   Load before any electronics/PCB work with pcb_* tools — schematics, PCB layout,
   tscircuit TSX, Circuit JSON diagnostics, DRC, Gerber, BOM, CPL/Pick & Place,
   part search/catalog, footprints, routing, or viewer diagnostics. Not for mechanical
-  FDM CAD (studio-cad), firmware (studio-fw), or workspace image/audio/video generation (studio-media).
+   FDM CAD (studio-cad) or firmware (studio-fw).
 license: proprietary
 compatibility: opencode
 ---
@@ -12,8 +12,7 @@ compatibility: opencode
 # PCB Studio
 
 Use PCB Studio for electronic schematics and PCB layouts. Load this skill before
-`pcb_*` product work. Do not load `studio-cad` (mechanical/FDM) or `studio-media`
-(workspace media generation).
+`pcb_*` product work. Do not load `studio-cad` (mechanical/FDM).
 
 Studio UI: `http://127.0.0.1:4173/studio` (not bare `/`, which is native OpenCode).
 PCB domain root defaults to `$STUDIO_HOME/studio/circuits` (projects as

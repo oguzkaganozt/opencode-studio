@@ -38,11 +38,7 @@ describe("Studio plugin roots", () => {
 
     const pcb = JSON.parse(await tools.pcb_workspace_list.execute({}, {}))
     expect(pcb.workspaceRoot).toBe(path.join(studioRoot, "studio", "circuits"))
-
-    const mediaProject = path.join(studioRoot, "studio", "media", "demo")
-    await mkdir(mediaProject)
-    expect(JSON.parse(await tools.media_list.execute({}, { directory: mediaProject }))).toEqual([])
-    await expect(tools.media_list.execute({}, { directory: project })).rejects.toThrow(/directly under/)
+    expect(tools.image_generate).toBeDefined()
   }, 60_000)
 
   test("migrates legacy project roots without making the project Studio Home", async () => {

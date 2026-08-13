@@ -50,19 +50,21 @@ describe("Studio agent isolation", () => {
     const base: OpenCodeConfig = { exists: false, text: "{}\n", value: {}, filePath: "opencode.json" }
     const globalPermission = withManagedStudioPermissions(base).value.permission
     const globalRules = rules(globalPermission)
-    const inventory = tools.tools as Record<string, { studio: StudioId }>
+    const inventory = tools.tools as Record<string, { studio: StudioId | "platform" }>
+    const studioTools = Object.fromEntries(Object.entries(inventory).filter(([, entry]) => entry.studio !== "platform"))
 
-    for (const toolName of Object.keys(inventory)) {
+    for (const toolName of Object.keys(studioTools)) {
       expect(actionFor({ permission: toolName, pattern: "*", rules: globalRules })).toBe("deny")
     }
+    expect(actionFor({ permission: "image_generate", pattern: "*", rules: globalRules })).toBeUndefined()
     expect(actionFor({ permission: "read", pattern: "*", rules: globalRules })).toBeUndefined()
 
     for (const studioId of STUDIO_IDS) {
       const combined = [...globalRules, ...rules(await agentPermission(studioId))]
-      const visible = Object.keys(inventory)
+      const visible = Object.keys(studioTools)
         .filter((toolName) => actionFor({ permission: toolName, pattern: "*", rules: combined }) !== "deny")
         .sort()
-      const expected = Object.entries(inventory)
+      const expected = Object.entries(studioTools)
         .filter(([, entry]) => entry.studio === studioId)
         .map(([toolName]) => toolName)
         .sort()

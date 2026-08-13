@@ -3,7 +3,7 @@ name: studio-fw
 description: >
   Load before ESP-IDF firmware work with fw_* tools — project create, idf.py build,
   QEMU or esp-emu UART simulation, expect/fail probes. Not for mechanical FDM CAD
-  (studio-cad), electronics/PCB (studio-pcb), or workspace media (studio-media).
+   (studio-cad) or electronics/PCB (studio-pcb).
 license: proprietary
 compatibility: opencode
 ---
@@ -13,7 +13,7 @@ compatibility: opencode
 Use Firmware Studio for ESP-IDF firmware under `$STUDIO_HOME/studio/firmware/<id>/`.
 Load this skill before any `fw_*` work.
 
-Do not load `studio-cad`, `studio-pcb`, or `studio-media` for firmware.
+Do not load `studio-cad` or `studio-pcb` for firmware.
 
 ## Supported chips (hard fail otherwise)
 

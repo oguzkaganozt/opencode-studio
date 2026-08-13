@@ -1,6 +1,6 @@
 # OpenCode Studio
 
-Isolated OpenCode Studios for CAD, PCB, Media, and Firmware, plus a general Files explorer.
+Isolated OpenCode Studios for CAD, PCB, and Firmware, plus a general Files explorer.
 
 **Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
@@ -38,7 +38,6 @@ Domain engines ship in the package:
 
 | Engine | Source |
 | --- | --- |
-| `ffmpeg` / `ffprobe` | `ffmpeg-static` / `ffprobe-static` (arm64: system **ffprobe** on PATH) |
 | `tsci` | bundled `tscircuit` CLI |
 | `uv` | downloaded once into XDG cache on first CAD/status use |
 | ESP-IDF / QEMU / `esp-emu` | reused from `~/.espressif` when present, otherwise downloaded once into XDG cache on first Firmware build/sim |
@@ -51,14 +50,13 @@ opencode-studio up
 # → attaches or spawns OpenCode API, starts Studio host
 ```
 
-Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent home, CAD / PCB / Media / Firmware / Files. One browser URL; OpenCode API is proxied (loopback child by default).
+Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent home, CAD / PCB / Firmware / Files. One browser URL; OpenCode API is proxied (loopback child by default).
 
 | URL | What |
 | --- | --- |
 | `http://127.0.0.1:4173/studio` | Studio shell (native Agent panel) |
 | `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
 | `http://127.0.0.1:4173/studio/studios/pcb` | PCB schematic, layout, Simulation, BOM, and 3D viewer |
-| `http://127.0.0.1:4173/studio/studios/media` | Media projects and asset browser |
 | `http://127.0.0.1:4173/studio/studios/fw` | Firmware projects, UART console, build/sim |
 | Status (drawer footer) | Compact health modal: repair / restart agent |
 | `http://127.0.0.1:4173/` or `/opencode` | Optional OpenCode web UI (same-origin proxy) |
@@ -93,7 +91,7 @@ Prefer SSH tunnel to loopback. If public: TLS at your reverse-proxy; enable WebS
 | --- | --- |
 | `~/.config/opencode-studio/studio.json` | Optional absolute `roots` only (domains always on) |
 | `~/.config/opencode/opencode.json` | Package-local plugins + managed Studio isolation permissions |
-| `~/.config/opencode/skills/studio-<id>/` | Managed skills (`studio-cad`, `studio-pcb`, `studio-media`, `studio-fw`) |
+| `~/.config/opencode/skills/studio-<id>/` | Managed skills (`studio-cad`, `studio-pcb`, `studio-fw`) |
 | `~/.config/opencode/agents/studio-<id>.md` | Managed hidden primary Studio agents |
 
 ```json
@@ -107,11 +105,12 @@ $STUDIO_HOME/studio/
   designs/<id>/              # CAD (design.json, parts/, …)
   circuits/<id>/             # PCB (src/circuit.tsx, …)
   circuits/catalog/parts/    # optional PCB catalog
-  media/<id>/media/           # Media project and default generated assets
   firmware/<id>/              # Firmware (project.json, main/main.c, sim/)
 ```
 
-`roots.<id>` are absolute domain-root overrides: CAD points at the designs folder, PCB at circuits, Media at the directory directly containing Media projects, and Firmware at the firmware projects folder. Keep **one** of `opencode.json` / `opencode.jsonc`.
+`roots.<id>` are absolute domain-root overrides: CAD points at the designs folder, PCB at circuits, and Firmware at the firmware projects folder. Keep **one** of `opencode.json` / `opencode.jsonc`.
+
+`image_generate` is a platform tool (not a Studio). It writes to `outputPath` or the workspace cwd. Fallback: ChatGPT OAuth → xAI Grok Imagine quality → fal Nano Banana 2. Set `FAL_KEY` only if you want the last fallback.
 
 **Upgrade from project-local config:** if global config is missing and the domain still has `.opencode/studio.json` with roots, roots are migrated on plugin load. Run `opencode-studio repair` once to finish.
 
@@ -147,10 +146,8 @@ opencode-studio repair
 | Export | Role |
 | --- | --- |
 | `@oguzkaganozt/opencode-studio` | Primary OpenCode plugin |
-| `@oguzkaganozt/opencode-studio/media-provider` | Native media AI SDK adapter |
-| `@oguzkaganozt/opencode-studio/media-go` | Auxiliary plugin for `opencode-go` provider hooks |
 
-`repair` registers the main plugin unversioned and media-go as `file://…/dist/media-go.js` (loadable from the package tree).
+`repair` registers the main plugin unversioned.
 
 ## Develop (this repo)
 

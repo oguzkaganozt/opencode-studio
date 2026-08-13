@@ -1,12 +1,14 @@
 import path from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { allStudioIds, maybeMigrateLegacyConfig, readStudioConfigFile, resolveStudioRoot } from "./config"
-import { ensureCadEngineDir, loadPackageMeta } from "./core/package-meta"
+import { ensureCadEngineDir } from "./core/package-meta"
 import { packageRootFrom } from "./core/paths"
 import { composeStudioPlugins, type StudioPluginContribution } from "./core/plugin-compose"
+import { PLATFORM_OWNER } from "./core/registry"
 import { assertNotRoot } from "./core/security"
 import { pickUserPaths, type UserPathOptions } from "./core/user-paths"
 import { autostartDisabled } from "./host-ensure"
+import { createImageGeneratePlugin } from "./platform/image/plugin"
 import { defaultStudioRoot, ensureStudioHostReady } from "./serve-bootstrap"
 import { pluginLoaders } from "./studio-loaders"
 
@@ -65,7 +67,6 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
   return async (context, rawOptions) => {
     assertNotRoot("initialize the OpenCode Studio plugin")
     const packageRoot = defaults.packageRoot ?? packageRootFrom(import.meta.dir)
-    const meta = await loadPackageMeta(packageRoot)
     const userPaths = pickUserPaths(defaults)
     const agentWorkspace = path.resolve(
       pickString(rawOptions?.workspace, defaults.workspace, context.directory) ?? process.env.HOME ?? process.cwd(),
@@ -106,13 +107,12 @@ export function createOpenCodeStudioPlugin(defaults: StudioPluginOptions = {}): 
       if (fromEnv) hostUrl = fromEnv
     }
 
-    const contributions: StudioPluginContribution[] = []
+    const contributions: StudioPluginContribution[] = [{ studioId: PLATFORM_OWNER, hooks: await createImageGeneratePlugin()(context, {}) }]
     const loadCtx = {
       studioRoot,
       roots,
       hostUrl,
       packageRoot,
-      mediaProviderPackage: meta.mediaProviderSpecifier,
       resolveStudioRoot,
       ensureCadEngineDir,
     }

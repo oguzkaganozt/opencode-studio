@@ -106,9 +106,7 @@ export function composeStudioPlugins(contributions: StudioPluginContribution[]):
           throw new Error(`Conflicting singleton hook "${key}" from "${owner}" and "${contribution.studioId}"`)
         }
         if (owner && owner === contribution.studioId && key === "provider") {
-          throw new Error(
-            `"${contribution.studioId}" contributed multiple provider hooks in one plugin; use the media-go auxiliary export for opencode-go`,
-          )
+          throw new Error(`"${contribution.studioId}" contributed multiple provider hooks in one plugin`)
         }
         singletons.set(key, contribution.studioId)
       }

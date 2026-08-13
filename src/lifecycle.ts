@@ -440,7 +440,7 @@ async function pushEngineCheck(
   },
 ) {
   try {
-    const resolved = engine === "uv" ? await ensureUv() : resolveEngine(engine as "ffmpeg" | "ffprobe" | "tsci" | "uv")
+    const resolved = engine === "uv" ? await ensureUv() : resolveEngine(engine as "tsci" | "uv")
     if (!resolved) {
       checks.push({
         id,
@@ -472,59 +472,27 @@ function isManagedMediaGoPluginEntry(entry: unknown) {
   return base === MANAGED_MEDIA_GO_PLUGIN_NAME || base?.endsWith("/media-go") === true || base?.endsWith("media-go.js") === true
 }
 
-/**
- * Register media-go from the package dist/ so node_modules resolve and packageRootFrom(dist) works.
- * Legacy plugins/media-go.js copies are removed (they broke load when packages were external).
- * Without dist/ (dev/test), write a stub under plugins/ so configure still succeeds; status fails the stub.
- */
-async function resolveMediaGoPluginEntry(packageRoot: string, userPaths: UserPathOptions, dryRun: boolean) {
-  const distPath = path.join(packageRoot, "dist", "media-go.js")
-  const pluginsHome = resolveOpenCodePluginsHome(userPaths)
-  const legacyTarget = path.join(pluginsHome, MANAGED_MEDIA_GO_PLUGIN_NAME)
-  if (!dryRun) {
-    await rm(legacyTarget, { force: true }).catch(() => {})
-  }
-  if (await Bun.file(distPath).exists()) {
-    return pathToFileURL(distPath).href
-  }
-  if (!dryRun) {
-    await mkdir(pluginsHome, { recursive: true, mode: 0o755 })
-    await writeFile(legacyTarget, "export default async function mediaGoStub() {\n  return {}\n}\n", "utf8")
-  }
-  return pathToFileURL(legacyTarget).href
-}
-
-function mediaGoEntryFilePath(entry: unknown): string | null {
-  const s = String(entry)
-  if (s.startsWith("file://")) {
-    try {
-      return path.normalize(fileURLToPath(s))
-    } catch {
-      return null
-    }
-  }
-  if (s.endsWith("media-go.js") || s.includes("/media-go")) return path.normalize(s)
-  return null
-}
-
-async function mediaGoLoadable(entry: unknown): Promise<{ ok: boolean; detail: string }> {
-  const filePath = mediaGoEntryFilePath(entry)
-  if (!filePath) return { ok: false, detail: "media-go entry is not a file:// path" }
-  if (!(await Bun.file(filePath).exists())) return { ok: false, detail: `media-go missing at ${filePath}` }
-  try {
-    const body = await readFile(filePath, "utf8")
-    if (body.includes("mediaGoStub")) {
-      return { ok: false, detail: "media-go is a stub (build package dist/ first)" }
-    }
-  } catch (error) {
-    return { ok: false, detail: error instanceof Error ? error.message : String(error) }
-  }
-  return { ok: true, detail: filePath }
-}
-
 async function removeManagedMediaGoPluginFile(userPaths: UserPathOptions) {
   const target = path.join(resolveOpenCodePluginsHome(userPaths), MANAGED_MEDIA_GO_PLUGIN_NAME)
   await rm(target, { force: true }).catch(() => {})
+}
+
+async function removeIfUnmodifiedManaged(filePath: string, markerFile: string, extraDirs: string[] = []) {
+  const digest = await currentFileDigest(filePath)
+  const marker = await readMarker(markerFile)
+  if (digest && marker && marker.digest !== digest) return
+  if (digest && !marker) return
+  await rm(filePath, { force: true }).catch(() => {})
+  await rm(markerFile, { force: true }).catch(() => {})
+  for (const dir of extraDirs) await rmdir(dir).catch(() => {})
+}
+
+async function removeRetiredMediaStudio(userPaths: UserPathOptions) {
+  const skillsHome = resolveOpenCodeSkillsHome(userPaths)
+  const skillDirectory = path.join(skillsHome, "studio-media")
+  await removeIfUnmodifiedManaged(path.join(skillDirectory, "SKILL.md"), path.join(skillDirectory, MANAGED_MARKER_NAME), [skillDirectory])
+  const agentFile = path.join(resolveOpenCodeAgentsHome(userPaths), "studio-media.md")
+  await removeIfUnmodifiedManaged(agentFile, `${agentFile}${MANAGED_MARKER_NAME}`)
 }
 
 async function resolveDomainRootOptional(explicit?: string) {
@@ -659,12 +627,9 @@ export async function configureStudios(
   const openCode = await readOpenCodeConfig(configPath)
   let plugins = [...pluginEntries(openCode)]
 
-  // OpenCode 1.18: npm subpath is not a server entry — file:// into package dist/media-go.js.
-  const mediaGoFile = await resolveMediaGoPluginEntry(packageRoot, userPaths, Boolean(input.dryRun))
   plugins = stripManagedPlugins(plugins, meta, packageRoot)
   const pluginFile = mainPluginEntry(packageRoot)
   plugins.push(pluginFile)
-  plugins.push(mediaGoFile)
 
   let working = withPlugins(openCode, plugins)
   // Drop legacy OpenCode-managed build123d MCP; tools are plugin-native via CAD engine.
@@ -728,6 +693,8 @@ export async function configureStudios(
         await restoreFile(configPath, openCode.exists ? Buffer.from(openCode.text) : null)
       })
     }
+    await removeManagedMediaGoPluginFile(userPaths)
+    await removeRetiredMediaStudio(userPaths)
 
     const written = await writeStudioConfigFile(
       {
@@ -828,6 +795,7 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
   const nextText = working.text
 
   await removeManagedMediaGoPluginFile(userPaths)
+  await removeRetiredMediaStudio(userPaths)
 
   const removed: string[] = []
   for (const target of skillTargets) {
@@ -1047,29 +1015,12 @@ export async function statusStudios(input: LifecyclePaths = {}) {
     const entries = pluginEntries(openCode)
     const expectedPlugin = mainPluginEntry(packageRoot)
     const registered = entries.some((entry) => String(entry) === expectedPlugin)
-    const mediaGoEntry = entries.find((entry) => isManagedMediaGoPluginEntry(entry))
     checks.push({
       id: "plugin-registration",
       status: registered ? "pass" : "fail",
       message: registered ? `Plugin loadable (${expectedPlugin})` : `Plugin not registered as ${expectedPlugin}`,
       repair: registered ? undefined : "Run opencode-studio repair",
     })
-    if (!mediaGoEntry) {
-      checks.push({
-        id: "plugin-media-go",
-        status: "fail",
-        message: "media-go not registered",
-        repair: "Run opencode-studio repair",
-      })
-    } else {
-      const loadable = await mediaGoLoadable(mediaGoEntry)
-      checks.push({
-        id: "plugin-media-go",
-        status: loadable.ok ? "pass" : "fail",
-        message: loadable.ok ? `media-go loadable (${loadable.detail})` : loadable.detail,
-        repair: loadable.ok ? undefined : "Run bun run build && opencode-studio repair (needs dist/media-go.js)",
-      })
-    }
     const legacyMcp = mcpEntries(openCode)[LEGACY_MANAGED_MCP_KEY]
     if (isLegacyBuild123dMcpEntry(legacyMcp)) {
       checks.push({
@@ -1092,12 +1043,6 @@ export async function statusStudios(input: LifecyclePaths = {}) {
       id: "plugin-registration",
       status: "fail",
       message,
-    })
-    checks.push({
-      id: "plugin-media-go",
-      status: "fail",
-      message: `Could not verify media-go: ${message}`,
-      repair: "Run opencode-studio repair",
     })
     checks.push({ id: "permission:studio", status: "fail", message: `Could not verify Studio permissions: ${message}` })
   }

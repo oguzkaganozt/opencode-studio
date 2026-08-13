@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import envPaths from "env-paths"
 
-export type EngineId = "ffmpeg" | "ffprobe" | "tsci" | "uv"
+export type EngineId = "tsci" | "uv"
 
 export type ResolvedEngine = {
   id: EngineId
@@ -21,31 +21,6 @@ export const BUNDLED_UV_VERSION = "0.9.26"
 
 function fileOk(candidate: string | null | undefined): candidate is string {
   return Boolean(candidate && existsSync(candidate))
-}
-
-export function resolveFfmpeg(): ResolvedEngine | null {
-  try {
-    const bundled = require("ffmpeg-static") as string | null
-    if (fileOk(bundled)) return { id: "ffmpeg", path: bundled, source: "bundled" }
-  } catch {
-    // optional at typecheck time
-  }
-  const onPath = Bun.which("ffmpeg")
-  if (onPath) return { id: "ffmpeg", path: onPath, source: "path" }
-  return null
-}
-
-export function resolveFfprobe(): ResolvedEngine | null {
-  try {
-    const mod = require("ffprobe-static") as { path?: string } | string
-    const bundled = typeof mod === "string" ? mod : mod?.path
-    if (fileOk(bundled)) return { id: "ffprobe", path: bundled, source: "bundled" }
-  } catch {
-    // optional at typecheck time
-  }
-  const onPath = Bun.which("ffprobe")
-  if (onPath) return { id: "ffprobe", path: onPath, source: "path" }
-  return null
 }
 
 /** tscircuit ships `cli.mjs` next to package root (exports block package.json resolve). */
@@ -149,10 +124,6 @@ export async function ensureUv(env: UvEnvironment = defaultUvEnv()): Promise<Res
 
 export function resolveEngine(id: EngineId): ResolvedEngine | null {
   switch (id) {
-    case "ffmpeg":
-      return resolveFfmpeg()
-    case "ffprobe":
-      return resolveFfprobe()
     case "tsci":
       return resolveTsci()
     case "uv":

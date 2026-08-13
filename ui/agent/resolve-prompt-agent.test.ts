@@ -6,7 +6,6 @@ describe("resolvePromptAgent", () => {
     expect(resolvePromptAgent()).toBe("build")
     expect(resolvePromptAgent("cad")).toBe("studio-cad")
     expect(resolvePromptAgent("pcb")).toBe("studio-pcb")
-    expect(resolvePromptAgent("media")).toBe("studio-media")
     expect(resolvePromptAgent("fw")).toBe("studio-fw")
   })
 })

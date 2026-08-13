@@ -34,7 +34,6 @@ async function httpSmoke(base: string) {
   const apiProbes: Array<[string, string]> = [
     ["cad", "/api/studios/cad/designs"],
     ["pcb", "/api/studios/pcb/projects"],
-    ["media", "/api/studios/media/projects"],
     ["fw", "/api/studios/fw/projects"],
     ["files", "/api/files/tree"],
   ]
@@ -245,12 +244,6 @@ async function browserSmoke(base: string) {
           await p.waitForSelector("text=Projects")
         },
       },
-      media: {
-        wait: "Media Studio",
-        extra: async (p) => {
-          await p.getByRole("heading", { name: "Projects", exact: true }).waitFor()
-        },
-      },
       fw: {
         wait: "Firmware Studio",
         extra: async (p) => {
@@ -282,7 +275,7 @@ async function browserSmoke(base: string) {
       assert(promptBodies.at(-1)?.agent === `studio-${id}`, `${id}: unexpected prompt agent ${String(promptBodies.at(-1)?.agent)}`)
       await page.getByRole("button", { name: "Close agent" }).click()
       await assertShellFillsViewport(page, id)
-      const expectedTitle = id === "media" ? "Media" : id.toUpperCase()
+      const expectedTitle = id.toUpperCase()
       assert((await page.title()) === `${expectedTitle} · OpenCode Studio`, `${id}: unexpected document title ${await page.title()}`)
       await assertNoHorizontalScroll(page, `1280 ${id}`)
       // Studio utilities still present after lazy CSS load
@@ -362,9 +355,9 @@ async function browserSmoke(base: string) {
     const pcbMainCount = await page.locator("main").count()
     assert(pcbMainCount === 1, `360 pcb: expected one main landmark, got ${pcbMainCount}`)
     await assertNoHorizontalScroll(page, "360 pcb")
-    await page.goto(`${base}/studio/studios/media`, { waitUntil: "domcontentloaded" })
+    await page.goto(`${base}/studio/studios/fw`, { waitUntil: "domcontentloaded" })
     await page.getByRole("heading", { name: "Projects", exact: true }).waitFor()
-    await assertNoHorizontalScroll(page, "360 media")
+    await assertNoHorizontalScroll(page, "360 fw")
     console.log("360 smoke ok")
 
     await page.setViewportSize({ width: 1280, height: 800 })
@@ -449,7 +442,7 @@ await import("node:fs/promises").then(async ({ mkdir, writeFile }) => {
     path.join(catalogDir, "TEST-1.yml"),
     "mpn: TEST-1\nmanufacturer: Studio QA\ndescription: Browser history fixture\ncategory: test\n",
   )
-  await mkdir(path.join(domain, "studio", "media"), { recursive: true })
+  await mkdir(path.join(domain, "studio", "firmware"), { recursive: true })
 })
 
 let exitCode = 0
@@ -485,11 +478,7 @@ try {
           ...STUDIO_IDS.map((id, index) => ({
             id: `session-${id}`,
             title: `${id.toUpperCase()} session`,
-            directory: path.join(
-              domain,
-              "studio",
-              id === "cad" ? "designs" : id === "pcb" ? "circuits" : id === "fw" ? "firmware" : "media",
-            ),
+            directory: path.join(domain, "studio", id === "cad" ? "designs" : id === "pcb" ? "circuits" : "firmware"),
             time: { created: 1_786_264_200_000 - index, updated: 1_786_264_200_000 - index },
           })),
         ])

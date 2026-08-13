@@ -8,10 +8,6 @@ permission:
   fw_*: deny
   design_*: deny
   build123d_*: deny
-  media_*: deny
-  fal_*: deny
-  chatgpt_image_generate: deny
-  read_media: deny
   task:
     "*": deny
   skill:

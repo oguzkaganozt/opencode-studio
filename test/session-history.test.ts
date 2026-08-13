@@ -33,16 +33,14 @@ async function roots() {
   temporary.push(home)
   const cad = path.join(home, "studio", "designs")
   const pcb = path.join(home, "studio", "circuits")
-  const media = path.join(home, "studio", "media")
   const fw = path.join(home, "studio", "firmware")
   await mkdir(path.join(cad, "box"), { recursive: true })
   await writeFile(path.join(cad, "box", "design.json"), "{}")
   await mkdir(path.join(pcb, "boards", "demo", "src"), { recursive: true })
   await writeFile(path.join(pcb, "boards", "demo", "src", "circuit.tsx"), "export {}")
-  await mkdir(path.join(media, "demo"), { recursive: true })
   await mkdir(path.join(fw, "blink"), { recursive: true })
   await writeFile(path.join(fw, "blink", "project.json"), '{"id":"blink","name":"blink","chip":"esp32c6"}')
-  return { home, cad, pcb, media, fw, studios: { cad, pcb, media, fw } }
+  return { home, cad, pcb, fw, studios: { cad, pcb, fw } }
 }
 
 describe("studioSessionHistory", () => {
@@ -129,18 +127,18 @@ describe("studioSessionHistory", () => {
     })
   })
 
-  test("classifies Media project sessions", async () => {
+  test("classifies Firmware project sessions", async () => {
     const studioRoots = await roots()
-    const directory = path.join(studioRoots.media, "demo")
-    const rows = [session({ id: "media", directory, updated: 100 })]
+    const directory = path.join(studioRoots.fw, "blink")
+    const rows = [session({ id: "fw", directory, updated: 100 })]
 
     const result = await studioSessionHistory({ source: async () => rows, roots: studioRoots, scope: "studio" })
 
     expect(result.sessions[0]?.context).toMatchObject({
-      kind: "media-project",
-      studioId: "media",
-      projectId: "demo",
-      relativePath: "demo",
+      kind: "fw-project",
+      studioId: "fw",
+      projectId: "blink",
+      relativePath: "blink",
       status: "available",
     })
   })

@@ -2,15 +2,13 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@oguzkaganozt/opencode-studio",
   "version": "1.0.15",
-  "description": "Isolated OpenCode Studios for CAD, PCB, Media, and Firmware workflows",
+  "description": "Isolated OpenCode Studios for CAD, PCB, and Firmware workflows",
   "type": "module",
   "license": "UNLICENSED",
   "main": "./dist/plugin.js",
   "exports": {
     ".": "./dist/plugin.js",
-    "./server": "./dist/plugin.js",
-    "./media-provider": "./dist/media-provider.js",
-    "./media-go": "./dist/media-go.js"
+    "./server": "./dist/plugin.js"
   },
   "bin": {
     "opencode-studio": "dist/cli.js"
@@ -30,7 +28,7 @@
   ],
   "scripts": {
     "postinstall": "node scripts/postinstall-completion.mjs",
-    "test": "bun test ./test/ ./ui/ ./studios/ ./src/platform/media/test/",
+    "test": "bun test ./test/ ./ui/ ./studios/ ./src/platform/",
     "test:python": "uv run --project studios/cad/engine python -m unittest discover -s studios/cad/engine/tests -v",
     "test:package": "bun scripts/package-smoke.ts",
     "test:browser": "bun scripts/browser-smoke.ts",
@@ -52,9 +50,6 @@
     "opencode": ">=1.18.16"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "3.0.82",
-    "@ai-sdk/openai-compatible": "2.0.41",
-    "@fal-ai/client": "1.9.3",
     "@fontsource/ibm-plex-mono": "5",
     "@fontsource/inter": "5",
     "@opencode-ai/plugin": "1.18.16",
@@ -67,17 +62,13 @@
     "clsx": "2.1.1",
     "env-paths": "4.0.0",
     "eventsource-parser": "3.0.8",
-    "ffmpeg-static": "5.2.0",
-    "ffprobe-static": "3.1.0",
     "file-type": "22.0.1",
     "hono": "4.12.30",
     "js-yaml": "4.1.0",
     "jsonc-parser": "3.3.1",
-    "konva": "^10.3.0",
     "manifold-3d": "3.2.1",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "react-konva": "^19.2.5",
     "react-markdown": "^10.1.0",
     "react-router": "8.2.0",
     "remark-gfm": "^4.0.1",
@@ -103,7 +94,6 @@
     "opencode",
     "opencode-plugin",
     "cad",
-    "media",
     "pcb",
     "firmware",
     "studio",

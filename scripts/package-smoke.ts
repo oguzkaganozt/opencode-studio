@@ -28,12 +28,6 @@ try {
   const plugin = await import(path.join(pkg, "dist/plugin.js"))
   if (typeof plugin.default !== "function") throw new Error("default export is not a plugin function")
 
-  const provider = await import(path.join(pkg, "dist/media-provider.js"))
-  if (typeof provider.createNativeMediaProvider !== "function") throw new Error("media-provider export missing")
-
-  const mediaGo = await import(path.join(pkg, "dist/media-go.js"))
-  if (typeof mediaGo.default !== "function") throw new Error("media-go export missing")
-
   for (const studio of STUDIO_IDS) {
     const skillPath = path.join(pkg, "studios", studio, "skill", "SKILL.md")
     if (!(await Bun.file(skillPath).exists())) throw new Error(`missing packed skill: ${studio}`)
@@ -104,8 +98,11 @@ try {
     }
   }
   const openCodeConfig = JSON.parse(await readFile(path.join(openCodeHome, "opencode.json"), "utf8"))
-  if (openCodeConfig.permission?.["media_*"] !== "deny" || openCodeConfig.permission?.skill?.["studio-media"] !== "deny") {
+  if (openCodeConfig.permission?.["cad_*"] !== "deny" || openCodeConfig.permission?.skill?.["studio-cad"] !== "deny") {
     throw new Error("packed configure did not install Studio isolation permissions")
+  }
+  if (openCodeConfig.permission?.image_generate !== undefined) {
+    throw new Error("image_generate must stay a platform tool without a managed deny")
   }
   if (await Bun.file(path.join(domain, "opencode.json")).exists()) {
     throw new Error("configure must not write opencode.json into the domain root")
@@ -122,7 +119,7 @@ try {
     postStatus.exited,
   ])
   if (postCode !== 0) throw new Error(`cli status after repair failed: ${postErr || postOut}`)
-  if (!postOut.includes("cad-engine") || !postOut.includes("skill:pcb") || !postOut.includes("agent:media")) {
+  if (!postOut.includes("cad-engine") || !postOut.includes("skill:pcb") || !postOut.includes("agent:fw")) {
     throw new Error(`cli status after repair missing expected checks:\n${postOut}`)
   }
 

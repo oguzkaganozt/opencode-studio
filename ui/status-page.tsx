@@ -30,15 +30,12 @@ type LifecycleStatusResponse = {
 
 const MANAGED_IDS = [
   "plugin-registration",
-  "plugin-media-go",
   "permission:studio",
   "skill:cad",
   "skill:pcb",
-  "skill:media",
   "skill:fw",
   "agent:cad",
   "agent:pcb",
-  "agent:media",
   "agent:fw",
   "cad-engine",
 ] as const

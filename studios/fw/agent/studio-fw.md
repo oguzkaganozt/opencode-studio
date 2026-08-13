@@ -6,10 +6,6 @@ permission:
   fw_*: allow
   cad_*: deny
   pcb_*: deny
-  media_*: deny
-  fal_*: deny
-  chatgpt_image_generate: deny
-  read_media: deny
   design_*: deny
   build123d_*: deny
   task:

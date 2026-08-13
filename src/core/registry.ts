@@ -1,10 +1,9 @@
-export const STUDIO_IDS = ["cad", "pcb", "media", "fw"] as const
+export const STUDIO_IDS = ["cad", "pcb", "fw"] as const
 export type StudioId = (typeof STUDIO_IDS)[number]
 
 export const STUDIO_TOOL_PERMISSIONS: Record<StudioId, readonly string[]> = {
   cad: ["cad_*"],
   pcb: ["pcb_*"],
-  media: ["media_*", "fal_*", "chatgpt_image_generate", "read_media"],
   fw: ["fw_*"],
 }
 
@@ -34,7 +33,6 @@ export type StudioDefinition = {
      * Path under Studio Home when `studio.json` has no `roots.<id>` override.
      * CAD: `studio/designs` → `$HOME/studio/designs/<id>`
      * PCB: `studio/circuits` → `$HOME/studio/circuits/<id>`
-     * Media: `studio/media` → `$HOME/studio/media/<id>`
      * FW: `studio/firmware` → `$HOME/studio/firmware/<id>`
      */
     relativePath?: string

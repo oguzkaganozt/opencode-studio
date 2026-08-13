@@ -86,69 +86,6 @@
     "pcb_pcb_svg": {
       "studio": "pcb"
     },
-    "read_media": {
-      "studio": "media"
-    },
-    "chatgpt_image_generate": {
-      "studio": "media"
-    },
-    "media_import": {
-      "studio": "media"
-    },
-    "media_list": {
-      "studio": "media"
-    },
-    "media_info": {
-      "studio": "media"
-    },
-    "media_probe": {
-      "studio": "media"
-    },
-    "media_convert": {
-      "studio": "media"
-    },
-    "media_trim": {
-      "studio": "media"
-    },
-    "media_extract_audio": {
-      "studio": "media"
-    },
-    "media_image_crop": {
-      "studio": "media"
-    },
-    "media_image_edit": {
-      "studio": "media"
-    },
-    "media_video_concat": {
-      "studio": "media"
-    },
-    "fal_upload": {
-      "studio": "media"
-    },
-    "fal_models": {
-      "studio": "media"
-    },
-    "fal_model_schema": {
-      "studio": "media"
-    },
-    "fal_pricing": {
-      "studio": "media"
-    },
-    "fal_submit": {
-      "studio": "media"
-    },
-    "fal_status": {
-      "studio": "media"
-    },
-    "fal_result": {
-      "studio": "media"
-    },
-    "fal_cancel": {
-      "studio": "media"
-    },
-    "media_download": {
-      "studio": "media"
-    },
     "cad_execute": {
       "studio": "cad",
       "args": {
@@ -483,7 +420,15 @@
         "extents": "unknown",
         "centroid": "unknown"
       }
+    },
+    "image_generate": {
+      "studio": "platform",
+      "args": {
+        "prompt": "string",
+        "outputPath": "string",
+        "images": "array"
+      }
     }
   },
-  "count": 90
+  "count": 70
 }

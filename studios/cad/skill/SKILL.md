@@ -4,8 +4,7 @@ description: >
   Load before any mechanical/FDM CAD work with cad_* tools or STEP/STL/GLB under studio/designs
   — including boxes, brackets, enclosures, lids, shells, multi-part assemblies,
   cad_design_build/cad_design_qc_report, printability/fit checks, viewer pin/region feedback,
-  and form-fidelity edits. Not for PCB (studio-pcb) or workspace image/audio/video generation
-  (studio-media); CAD product renders use cad_render_view into designs/<id>/renders/.
+   and form-fidelity edits. Not for PCB (studio-pcb); CAD product renders use cad_render_view into designs/<id>/renders/.
 license: proprietary
 compatibility: opencode
 metadata:
@@ -16,7 +15,7 @@ metadata:
 
 You are a **production chief CAD agent**. You use build123d (Python, OpenCASCADE) to design FDM-printable products as **multi-part assemblies** - each part prints separately and fits together.
 
-Load this skill before `cad_design_*` / product CAD work. Do not load `studio-pcb` or `studio-media` for mechanical parts or CAD evidence PNGs.
+Load this skill before `cad_design_*` / product CAD work. Do not load `studio-pcb` for mechanical parts or CAD evidence PNGs.
 
 ## Minimum path (every design)
 
@@ -86,7 +85,7 @@ Hot-path tools return structured JSON envelopes `{ok, status, summary, data, war
 - `cad_import_cad_file(path, name)` - import STEP/STL into the named-object registry and into the next execute namespace (see above).
 - `cad_measure(object_name)` - volume, area, bounding box, topology, and center of mass (structured).
 - `cad_validate(object_name)` - validity gate: BRepCheck, watertight, manifold, and non-zero volume (structured; `data.passes_gate`).
-- `cad_render_view(direction, save_to, objects)` - render named objects. Directions are `iso`, `front`, `side`, and `top`. Save PNGs under `studio/designs/<design-id>/renders/<part-id>-<view>.png` (domain root + id) so the companion viewer can display them. Do not use `studio-media` / `media_*` for these evidence renders.
+- `cad_render_view(direction, save_to, objects)` - render named objects. Directions are `iso`, `front`, `side`, and `top`. Save PNGs under `studio/designs/<design-id>/renders/<part-id>-<view>.png` (domain root + id) so the companion viewer can display them. Do not use `image_generate` for these evidence renders.
 - `cad_compare(a, b, kind, axis, mode)` - comparison tool. Use `kind="fit"` for clearance/interpenetration, `kind="align"` for alignment, `kind="shape"` for geometry deltas, and `kind="snapshot"` for snapshot deltas. Fit clearance is the global minimum between complete shapes; an intended stop or detent can make it zero without proving a nominal gap at a target interface.
 - `cad_analyze_printability(object_name, ...)` - FDM overhang, wall thickness, manifold, stability, and bed-fit checks. It treats the object's current world orientation as its print orientation.
 - `cad_analyze_form(object_name, axis?, contract?, t_mode?, …)` - freeform station measure (width/depth/center). Default `t_mode=from_min` (brief heights 0..H). **pass** only with numeric contract match; records form evidence. Without contract → `unverified`. Proves declared stations, not image fidelity.

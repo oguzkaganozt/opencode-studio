@@ -2,10 +2,8 @@ import { randomUUID } from "node:crypto"
 import { constants } from "node:fs"
 import { chmod, link, lstat, mkdir, open, realpath, rm } from "node:fs/promises"
 import path from "node:path"
-import { StudioError } from "../../src/core/errors"
-import { isInside, resolveUnderRoot } from "../../src/core/paths"
-
-export { isInside }
+import { StudioError } from "../../core/errors"
+import { isInside, resolveUnderRoot } from "../../core/paths"
 
 export type AskPermission = (input: {
   permission: string
@@ -14,16 +12,14 @@ export type AskPermission = (input: {
   metadata: Record<string, unknown>
 }) => Promise<void>
 
-export async function canonicalStudioRoot(directory: string) {
-  return realpath(directory)
-}
+const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp"])
 
-export function resolveStudioPath(root: string, input: string) {
+export function resolveWorkspacePath(root: string, input: string) {
   try {
     return resolveUnderRoot(root, input)
   } catch (error) {
     if (error instanceof StudioError && error.code === "path_escape") {
-      throw new Error(`Path must be inside the Studio root: ${input}`)
+      throw new Error(`Path must be inside the workspace: ${input}`)
     }
     throw error
   }
@@ -49,18 +45,20 @@ async function ensureSafeDirectory(root: string, directory: string) {
       if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(`Unsafe output directory: ${current}`)
     }
     const canonical = await realpath(current)
-    if (!isInside(root, canonical)) throw new Error(`Output directory resolves outside the Studio root: ${directory}`)
+    if (!isInside(root, canonical)) throw new Error(`Output directory resolves outside the workspace: ${directory}`)
     current = canonical
   }
   return current
 }
 
 export async function prepareNewOutput(input: { root: string; outputPath: string; ask: AskPermission }) {
-  const requested = resolveStudioPath(input.root, input.outputPath)
+  const requested = resolveWorkspacePath(input.root, input.outputPath)
   const relative = path.relative(input.root, requested)
   if (!relative || path.basename(requested) === "." || path.basename(requested) === "..") {
     throw new Error(`Output path must name a file: ${input.outputPath}`)
   }
+  const ext = path.extname(requested).toLowerCase()
+  if (!IMAGE_EXTS.has(ext)) throw new Error(`outputPath must end in .png, .jpg, .jpeg, or .webp: ${input.outputPath}`)
 
   await input.ask({ permission: "edit", patterns: [relative], always: [], metadata: {} })
   const parent = await ensureSafeDirectory(input.root, path.dirname(requested))
@@ -107,26 +105,14 @@ export async function verifyOutputParent(root: string, outputPath: string) {
   }
 }
 
-export async function verifyNewOutput(root: string, outputPath: string) {
-  await verifyOutputParent(root, outputPath)
-  try {
-    await lstat(outputPath)
-    throw new Error(`Output file already exists: ${outputPath}`)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-  }
-}
-
 export async function readSecureFile(input: { root: string; filePath: string; maxBytes: number; signal: AbortSignal; ask: AskPermission }) {
   const requested = path.isAbsolute(input.filePath) ? path.normalize(input.filePath) : path.resolve(input.root, input.filePath)
   const filePath = await realpath(requested)
+  if (!isInside(input.root, filePath)) throw new Error(`Path must be inside the workspace: ${input.filePath}`)
   const relative = path.relative(input.root, filePath)
-  if (!isInside(input.root, filePath)) {
-    await input.ask({ permission: "external_directory", patterns: [filePath], always: [], metadata: {} })
-  }
   await input.ask({
     permission: "read",
-    patterns: [isInside(input.root, filePath) ? relative || path.basename(filePath) : filePath],
+    patterns: [relative || path.basename(filePath)],
     always: ["*"],
     metadata: {},
   })
@@ -137,7 +123,6 @@ export async function readSecureFile(input: { root: string; filePath: string; ma
     if (!info.isFile()) throw new Error(`Not a file: ${filePath}`)
     if (info.size === 0) throw new Error(`File is empty: ${filePath}`)
     if (info.size > input.maxBytes) throw new Error(`File exceeds ${input.maxBytes} bytes: ${filePath}`)
-
     const bytes = Buffer.allocUnsafe(info.size)
     let offset = 0
     while (offset < bytes.length) {
