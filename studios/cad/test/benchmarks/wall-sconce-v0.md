@@ -16,7 +16,7 @@ Harder tier: visual reference + multi-part wall light (form fidelity matters).
 ```text
 I want a wall sconce like the attached photo.
 
-Tall frosted diffuser panel, stone-look base block at the bottom, thin brass edge trim and a small brass foot. Something around 300 mm tall, printable in a few separate parts that fit together. No real electronics — just the housing forms.
+Tall frosted panel, stone-look base, thin brass trim and a small brass foot. Around 300 mm tall. A few printable parts that fit together. Just the housing — no electronics.
 ```
 
 ## Why this is harder than project-box-v0
@@ -26,25 +26,13 @@ Tall frosted diffuser panel, stone-look base block at the bottom, thin brass edg
 - Fit between parts + wall-mountable back
 - Form axis is real (not `not applicable`)
 
-## Run (line-flushed logs + image)
+## Run
 
 ```bash
-./studios/cad/test/benchmarks/run-bench.sh \
-  --name wall-sconce-v0 \
-  --model xai/grok-4.5 \
-  --dir "$HOME" \
-  --file studios/cad/test/benchmarks/wall-sconce-frosted-glass.png \
-  "$(sed -n '/^```text$/,/^```$/p' studios/cad/test/benchmarks/wall-sconce-v0.md | sed '1d;$d')"
+bun run bench cad wall-sconce-v0
 ```
 
-## Score (after run)
-
-```bash
-python3 studios/cad/test/benchmarks/score-run.py \
-  studios/cad/test/benchmarks/runs/<run_dir>
-```
-
-Also judge manually / from renders:
+Also judge from `runs/<run>/studio/designs/` renders:
 
 - parts ≥ 2 (ideally diffuser + base + trim)
 - overall height ~250–350 mm class

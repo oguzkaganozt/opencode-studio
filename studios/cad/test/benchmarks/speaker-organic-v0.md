@@ -16,7 +16,7 @@ Hardest tier: visual reference + multi-part + **organic shell** (form fidelity r
 ```text
 I want a speaker like the attached photo.
 
-Organic curved stone-look shell, two gold driver cones on a dark face plate, thin brass foot rail. About 50 cm wide, 30 cm tall, 20 cm deep. Split into printable parts that fit together. Housing only — no real electronics or LEDs.
+Curved stone-look shell, two gold cones on a dark face, thin brass foot rail. About 50 by 30 by 20 cm. Printable parts that fit together. Just the housing — no electronics.
 ```
 
 ## Why this is hardest
@@ -27,25 +27,13 @@ Organic curved stone-look shell, two gold driver cones on a dark face plate, thi
 - Form axis is real — not prismatic `not applicable`
 - Reference image drives proportions and character
 
-## Run (line-flushed logs + image)
+## Run
 
 ```bash
-./studios/cad/test/benchmarks/run-bench.sh \
-  --name speaker-organic-v0 \
-  --model xai/grok-4.5 \
-  --dir "$HOME" \
-  --file studios/cad/test/benchmarks/speaker-gold-cones.png \
-  "$(sed -n '/^```text$/,/^```$/p' studios/cad/test/benchmarks/speaker-organic-v0.md | sed '1d;$d')"
+bun run bench cad speaker-organic-v0
 ```
 
-## Score (after run)
-
-```bash
-python3 studios/cad/test/benchmarks/score-run.py \
-  studios/cad/test/benchmarks/runs/<run_dir>
-```
-
-Also judge from renders / STL:
+Also judge from `runs/<run>/studio/designs/` renders / STL:
 
 - outer envelope is curved/organic, not a filleted box
 - dual driver layout readable on front

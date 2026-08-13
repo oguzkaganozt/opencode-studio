@@ -42,6 +42,7 @@
     "build": "bun run build:runtime && bun run build:ui",
     "prepack": "bun run build",
     "check": "bun run typecheck && bun run test && bun run lint && bun run build",
+    "bench": "bun scripts/bench.ts",
     "create-studio": "bun scripts/create-studio.ts",
     "release:check": "bun run check && bun run test:python && bun run test:package && bun run test:browser"
   },

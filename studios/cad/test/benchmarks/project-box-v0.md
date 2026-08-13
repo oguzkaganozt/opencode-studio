@@ -11,35 +11,17 @@
 ## User prompt
 
 ```text
-Small desk project box, outer ~100×70×30 mm, walls ~2 mm.
+I need a small 3D-printable desk box, about 100 by 70 by 30 mm, walls around 2 mm.
 
-Bottom: four M2.5 standoffs on ~80×50 mm, USB cutout (~12×8) on one short side, a few side vents.
-Lid: snug press-fit, no screws.
+The bottom should have four M2.5 standoffs, a USB cutout on one short side, and a few vents. The lid should press on with no screws.
 ```
 
-## Run (line-flushed logs)
+## Run
 
 ```bash
-./studios/cad/test/benchmarks/run-bench.sh \
-  --name project-box-v0 \
-  --model xai/grok-4.5 \
-  --dir "$HOME" \
-  "$(sed -n '/^```text$/,/^```$/p' studios/cad/test/benchmarks/project-box-v0.md | sed '1d;$d')"
+bun run bench cad project-box-v0
 ```
 
-## Score (after run)
-
-```bash
-python3 studios/cad/test/benchmarks/score-run.py \
-  studios/cad/test/benchmarks/runs/<run_dir>
-```
-
-Writes `score.json` in the run dir. Checks:
-
-- `cad_design_qc_report.complete`
-- build artifacts (STEP per part)
-- `cad_compare kind=fit` used; prefer `gap_verified` pass (seat-only `unverified` is weaker)
-- printability evidence
-- wall time / tool-call / token counts
+Writes `score.json` in the run dir. Pass requires QC `complete` and a STEP per part. Artifacts copy to `runs/<run>/studio/`.
 
 Keep prior run dirs; each run is a new timestamped folder.
