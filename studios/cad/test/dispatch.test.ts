@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { cadPartWorkerPrompt, partSourceIsStub, planCadDispatch, readPartSourceStatus } from "../host/dispatch"
+import { cadPartWorkerPrompt, parentModelFromMessages, partSourceIsStub, planCadDispatch, readPartSourceStatus } from "../host/dispatch"
 import { cadRuntimeKey, closeCadRuntimeSession, getCadRuntimeSession } from "../tools/session"
 
 describe("cad part dispatch plan", () => {
@@ -40,6 +40,19 @@ describe("cad part source status", () => {
         params: "BOX_L = 100",
       }),
     ).toContain("Desk box")
+  })
+})
+
+describe("parent model inheritance", () => {
+  test("takes the latest assistant model", () => {
+    expect(
+      parentModelFromMessages([
+        { info: { role: "user" } },
+        { info: { role: "assistant", providerID: "huggingface", modelID: "zai-org/GLM-5.2" } },
+        { info: { role: "assistant", providerID: "xai", modelID: "grok-4.5" } },
+      ]),
+    ).toEqual({ providerID: "xai", modelID: "grok-4.5" })
+    expect(parentModelFromMessages([{ info: { role: "user" } }])).toBeUndefined()
   })
 })
 

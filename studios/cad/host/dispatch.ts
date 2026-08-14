@@ -140,16 +140,35 @@ export async function spawnCadParts(input: {
   return { mode: "parallel", assigned: plan.assigned, remaining: plan.remaining, workers }
 }
 
+export type CadSessionModel = { providerID: string; modelID: string }
+
+export function parentModelFromMessages(
+  messages: Array<{ info?: { role?: string; providerID?: string; modelID?: string } }>,
+): CadSessionModel | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const info = messages[i]?.info
+    if (info?.role === "assistant" && info.providerID && info.modelID) return { providerID: info.providerID, modelID: info.modelID }
+  }
+}
+
 type SessionClient = {
   session: {
     create: (input: {
       query?: { directory?: string }
       body?: { parentID?: string; title?: string }
     }) => Promise<{ data?: { id: string } | null; error?: unknown }>
+    messages: (input: {
+      path: { id: string }
+      query?: { directory?: string; limit?: number }
+    }) => Promise<{ data?: Array<{ info?: { role?: string; providerID?: string; modelID?: string } }> | null; error?: unknown }>
     promptAsync: (input: {
       path: { id: string }
       query?: { directory?: string }
-      body?: { agent?: string; parts: Array<{ type: "text"; text: string }> }
+      body?: {
+        agent?: string
+        model?: CadSessionModel
+        parts: Array<{ type: "text"; text: string }>
+      }
     }) => Promise<{ error?: unknown }>
   }
 }
@@ -167,11 +186,17 @@ export function createClientDispatcher(client: SessionClient | undefined): CadPa
       })
       const sessionID = created.data?.id
       if (!sessionID) throw new Error("failed to create cad-part session")
+      const listed = await client.session.messages({
+        path: { id: input.parentSessionID },
+        query: { directory: input.directory },
+      })
+      const model = parentModelFromMessages(listed.data ?? [])
       const prompted = await client.session.promptAsync({
         path: { id: sessionID },
         query: { directory: input.directory },
         body: {
           agent: CAD_PART_AGENT,
+          model,
           parts: [{ type: "text", text: cadPartWorkerPrompt(input) }],
         },
       })
