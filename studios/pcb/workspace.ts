@@ -94,15 +94,24 @@ async function loadProject(descriptor: CircuitProjectDescriptor): Promise<Circui
   const canonicalDir = descriptor.absolutePath
 
   const circuitJsonPath = path.join(canonicalDir, "dist", "src", "circuit", "circuit.json")
-  const schematicSvgPath = path.join(canonicalDir, "dist", "schematic.svg")
-  const pcbSvgPath = path.join(canonicalDir, "dist", "pcb.svg")
-  const gerbersZipPath = path.join(canonicalDir, "dist", "circuit-gerbers.zip")
+  const schematicSvgPath = await firstExistingFile(
+    path.join(canonicalDir, "dist", "schematic.svg"),
+    path.join(canonicalDir, "dist", "src", "circuit", "schematic.svg"),
+  )
+  const pcbSvgPath = await firstExistingFile(
+    path.join(canonicalDir, "dist", "pcb.svg"),
+    path.join(canonicalDir, "dist", "src", "circuit", "pcb.svg"),
+  )
+  const gerbersZipPath = await firstExistingFile(
+    path.join(canonicalDir, "dist", "circuit-gerbers.zip"),
+    path.join(canonicalDir, "dist", "src", "circuit", "circuit-gerbers.zip"),
+  )
 
   const [rawCircuitJson, rawSchematicSvg, rawPcbSvg, rawGerbersZip] = await Promise.all([
     regularFileExists(circuitJsonPath),
-    regularFileExists(schematicSvgPath),
-    regularFileExists(pcbSvgPath),
-    regularFileExists(gerbersZipPath),
+    Promise.resolve(schematicSvgPath !== null),
+    Promise.resolve(pcbSvgPath !== null),
+    Promise.resolve(gerbersZipPath !== null),
   ])
   const hasArtifacts = rawCircuitJson || rawSchematicSvg || rawPcbSvg || rawGerbersZip
   const freshness = hasArtifacts ? await artifactFreshness(canonicalDir) : null
@@ -155,6 +164,13 @@ async function regularFileExists(filePath: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+async function firstExistingFile(...filePaths: string[]) {
+  for (const filePath of filePaths) {
+    if (await regularFileExists(filePath)) return filePath
+  }
+  return null
 }
 
 export function encodeProjectId(relativePath: string): string {

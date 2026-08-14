@@ -16,4 +16,4 @@ Project browser + UART console. Emerald accent on rails only. Host shell stays l
 ## Chrome rules
 - Accent `#059669` / dark `#34d399` via `--osc-accent-fw`
 - Empty/error: dashed EmptyState with short recovery copy
-- Agent → `studio-fw`
+- Agent → `firmware`

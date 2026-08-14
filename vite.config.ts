@@ -35,10 +35,12 @@ export default defineConfig({
   resolve: {
     // CAD assembly + @tscircuit/3d-viewer (and three-stdlib/troika) must share one Three.js.
     // Nested 0.165 under @tscircuit/3d-viewer + root 0.185 → Material.onBuild missing → freeze.
-    dedupe: ["three", "react", "react-dom"],
+    dedupe: ["three", "react", "react-dom", "zod"],
     alias: {
       // Exact bare specifier only — keep three/addons/* on package exports.
       three$: path.resolve(import.meta.dirname, "node_modules/three"),
+      // @opencode-ai/plugin hoists zod@4; @tscircuit/props still calls z.function().args() (zod 3).
+      zod: path.resolve(import.meta.dirname, "node_modules/zod/v3/index.js"),
       // Bare `@opencode-ai/sdk` re-exports server/spawn — pin browser to client entry only.
       "@opencode-ai/sdk/v2/client": path.resolve(import.meta.dirname, "node_modules/@opencode-ai/sdk/dist/v2/client.js"),
       "@opencode-ai/sdk/client": path.resolve(import.meta.dirname, "node_modules/@opencode-ai/sdk/dist/client.js"),

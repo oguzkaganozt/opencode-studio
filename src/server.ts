@@ -166,6 +166,7 @@ export async function createHostApp(input: HostInput) {
   assertNotRoot("start the studio host")
   const hostname = input.hostname ?? "127.0.0.1"
   const port = input.port ?? STUDIO_HOST_PORT
+  const bind = { port }
   const packageRoot = input.packageRoot ?? packageRootFrom(import.meta.dir)
   const meta = await loadPackageMeta(packageRoot)
   const packageVersion = input.packageVersion ?? meta.version
@@ -229,7 +230,7 @@ export async function createHostApp(input: HostInput) {
 
   app.use("*", async (ctx, next) => {
     const host = ctx.req.header("host")
-    if (!allowedHost(host, hostname, port)) {
+    if (!allowedHost(host, hostname, bind.port)) {
       return ctx.json(errorBody("invalid_host", "Host header rejected."), 400)
     }
     if (needBasic && new URL(ctx.req.url).pathname !== "/studio-api/health") {
@@ -491,6 +492,7 @@ export async function createHostApp(input: HostInput) {
     csrfToken,
     hostname,
     port,
+    bind,
     packageName: meta.name,
     packageVersion,
     config,
@@ -509,6 +511,7 @@ export async function startHost(input: HostInput): Promise<HostHandle> {
     app,
     hostname,
     port,
+    bind,
     packageName,
     packageVersion,
     closeOpenCode,
@@ -572,10 +575,12 @@ export async function startHost(input: HostInput): Promise<HostHandle> {
       },
     },
   })
+  if (typeof server.port === "number") bind.port = server.port
   const stop = () => {
     clearInterval(updateTimer)
     void import("../studios/cad/host/watcher").then((m) => m.closeAllDesignWatchers()).catch(() => {})
     void import("../studios/pcb/watcher").then((m) => m.closeAllProjectWatchers()).catch(() => {})
+    void import("../studios/concept/watcher").then((m) => m.closeAllConceptWatchers()).catch(() => {})
     closeOpenCode()
     server.stop(true)
   }

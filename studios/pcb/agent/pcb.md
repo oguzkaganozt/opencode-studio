@@ -1,17 +1,22 @@
 ---
-description: PCB Studio electronics design and simulation with pcb_* tools.
+description: PCB Studio electronics design with pcb_* tools.
 mode: primary
-hidden: true
 permission:
-  pcb_*: allow
+  "*": allow
   cad_*: deny
   fw_*: deny
+  concept_*: deny
   design_*: deny
   build123d_*: deny
   task:
     "*": deny
   skill:
-    "*": deny
+    "*": allow
+    studio-cad: deny
+    studio-fw: deny
+    studio-concept: deny
+    studio-concept-review: deny
+    studio-cad-part: deny
     studio-pcb: allow
 ---
 

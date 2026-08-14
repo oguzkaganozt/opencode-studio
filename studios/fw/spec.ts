@@ -18,9 +18,7 @@ export async function publishFwSpec(roots: SpecRoots, id: string, summary?: stri
     status,
     sourceHash,
     updatedAt: new Date().toISOString(),
-      summary:
-        summary?.trim() ||
-        `${project.name} (${run?.chip ?? "unknown chip"}): sim ${simCurrent ? "ok" : (run?.reason ?? "not run")}`,
+    summary: summary?.trim() || `${project.name} (${run?.chip ?? "unknown chip"}): sim ${simCurrent ? "ok" : (run?.reason ?? "not run")}`,
     facts: {
       chip: run?.chip,
       engine: run?.engine,

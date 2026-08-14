@@ -1,10 +1,11 @@
 {
+  "concept": ["tool"],
   "cad": ["tool"],
   "pcb": ["tool"],
   "fw": ["tool"],
   "platform": ["tool"],
   "composition": {
-    "order": ["cad", "pcb", "fw"],
+    "order": ["concept", "cad", "pcb", "fw"],
     "mutableTransforms": "sequential catalog order",
     "dispose": "reverse order",
     "duplicateTools": "reject",

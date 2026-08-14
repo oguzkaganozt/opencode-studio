@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { circuitJsonUntampered, writeBuildInputStamp } from "../artifact-freshness"
@@ -8,6 +8,10 @@ import { manufacturingBlockers } from "../circuit-json"
 import { parseNoConnectIntents } from "../tsx-intent"
 
 const temps: string[] = []
+
+afterEach(async () => {
+  for (const dir of temps.splice(0)) await rm(dir, { recursive: true, force: true })
+})
 
 function element(type: string, fields: Record<string, unknown>): Record<string, unknown> {
   return { type, ...fields }

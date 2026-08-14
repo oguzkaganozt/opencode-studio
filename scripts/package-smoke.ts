@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import { agentNameFor } from "../src/core/package-meta"
 import { STUDIO_IDS } from "../src/core/registry"
 import { configureStudios } from "../src/lifecycle"
 
@@ -31,7 +32,7 @@ try {
   for (const studio of STUDIO_IDS) {
     const skillPath = path.join(pkg, "studios", studio, "skill", "SKILL.md")
     if (!(await Bun.file(skillPath).exists())) throw new Error(`missing packed skill: ${studio}`)
-    const agentPath = path.join(pkg, "studios", studio, "agent", `studio-${studio}.md`)
+    const agentPath = path.join(pkg, "studios", studio, "agent", `${agentNameFor(studio)}.md`)
     if (!(await Bun.file(agentPath).exists())) throw new Error(`missing packed agent: ${studio}`)
   }
   if (!(await Bun.file(path.join(pkg, "studios/cad/engine/cad_build.py")).exists())) {
@@ -92,7 +93,7 @@ try {
     if (!(await Bun.file(path.join(openCodeHome, `skills/studio-${studio}/SKILL.md`)).exists())) {
       throw new Error(`packed configure did not install ${studio} skill`)
     }
-    const agent = path.join(openCodeHome, `agents/studio-${studio}.md`)
+    const agent = path.join(openCodeHome, `agents/${agentNameFor(studio)}.md`)
     if (!(await Bun.file(agent).exists()) || !(await Bun.file(`${agent}.opencode-studio-managed.json`).exists())) {
       throw new Error(`packed configure did not install ${studio} agent`)
     }

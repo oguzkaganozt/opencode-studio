@@ -103,6 +103,8 @@ describe("cad plugin smoke", () => {
       "cad_design_qc_report",
       "cad_design_read",
       "cad_design_view",
+      "cad_design_dispatch",
+      "cad_design_join",
     ]) {
       expect(names).toContain(name)
     }
@@ -122,6 +124,44 @@ describe("cad plugin smoke", () => {
     expect(createdBody.next?.length).toBeGreaterThan(0)
     const listed = JSON.parse(await (hooks.tool as any).cad_design_list.execute({}))
     expect(listed.designs[0].partCount).toBe(1)
+  })
+
+  test("dispatch stays serial for one part and joins stub sources", async () => {
+    const studio = await makeStudio()
+    const spawned: string[] = []
+    const plugin = createStudioPlugin({
+      buildRunner: fakeCadBuildRunner as any,
+      dispatcher: {
+        async spawn(input) {
+          spawned.push(input.partId)
+          return { sessionID: `ses-${input.partId}` }
+        },
+      },
+    })
+    const hooks = await plugin(fakeContext, { studioRoot: studio.designsRoot, engineProjectDir: studio.engineDir })
+    await (hooks.tool as any).cad_design_create.execute({ id: "one", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
+    const serial = JSON.parse(await (hooks.tool as any).cad_design_dispatch.execute({ id: "one" }, fakeContext))
+    expect(serial.mode).toBe("serial")
+    expect(spawned).toEqual([])
+
+    const created = await (hooks.tool as any).cad_design_create.execute(
+      {
+        id: "two",
+        parts: [{ id: "body" }, { id: "lid" }],
+        params: "BOX_L = 100\n",
+        brief: "Desk box with press-fit lid.",
+      },
+      { ...fakeContext, ask: async () => {} },
+    )
+    const createdBody = JSON.parse(created.output)
+    expect(createdBody.data.dispatch.mode).toBe("parallel")
+    expect(spawned).toEqual(["body", "lid"])
+    const again = JSON.parse(await (hooks.tool as any).cad_design_dispatch.execute({ id: "two" }, fakeContext))
+    expect(again.mode).toBe("parallel")
+    expect(spawned).toEqual(["body", "lid"])
+    const joined = JSON.parse(await (hooks.tool as any).cad_design_join.execute({ id: "two" }, fakeContext))
+    expect(joined.ok).toBe(false)
+    expect(joined.pending.sort()).toEqual(["body", "lid"])
   })
 
   test("build + qc report reflect artifact and axis honesty", async () => {

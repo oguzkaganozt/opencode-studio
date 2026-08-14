@@ -58,7 +58,7 @@ Out of scope (v1): thermal, full fatigue FEA.
 
 ## Wiring
 - `src/core/registry.ts` — add `cad_sim_*` to `STUDIO_TOOL_PERMISSIONS.cad`.
-- `studios/cad/agent/studio-cad.md` — add `cad_sim_*: allow`.
+- `studios/cad/agent/cad.md` — add `cad_sim_*: allow`.
 - Register tools in `studios/cad/tools/catalog.json` + `index.ts`.
 - (Later) `src/core/engines.ts` — resolvers for `ccx` / `gmsh`.
 

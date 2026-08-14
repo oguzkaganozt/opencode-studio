@@ -5,7 +5,7 @@ import { ErrorState } from "@ui/components/error-state"
 import { safeHref } from "@ui/lib/safe-href"
 import { api, type BomEntry, type CatalogPartDetail } from "./api"
 
-const PRIMARY_KEYS = ["mpn", "manufacturer", "description", "category", "datasheet", "spiceModel"] as const
+const PRIMARY_KEYS = ["mpn", "manufacturer", "description", "category", "datasheet"] as const
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—"
@@ -59,30 +59,7 @@ export function PartDetailView({ part }: { part: CatalogPartDetail }) {
             "—"
           )}
         </Field>
-        <Field label="SPICE model">
-          {part.spiceModel ? (
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span className="pcb-data-card__tag">{part.spiceModel.subcircuit}</span>
-              <a href={part.spiceModel.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--osc-accent)] hover:opacity-80">
-                Provenance ↗
-              </a>
-            </span>
-          ) : (
-            "—"
-          )}
-        </Field>
       </dl>
-
-      {part.spiceModel ? (
-        <div>
-          <p className="mb-2 text-[11px] font-medium tracking-[0.08em] text-[var(--osc-text-faint)] uppercase">Simulation mapping</p>
-          <dl className="space-y-3 rounded-lg border border-[var(--osc-border)] bg-[var(--osc-bg)] px-3 py-3">
-            <Field label="Pins"><FieldValue value={part.spiceModel.pins} /></Field>
-            <Field label="Mapping"><FieldValue value={part.spiceModel.pinMapping} /></Field>
-            <Field label="SHA-256"><FieldValue value={part.spiceModel.sha256} /></Field>
-          </dl>
-        </div>
-      ) : null}
 
       {extras.length > 0 && (
         <div>

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { hashSourceFiles, specFilePath, type StudioSpec, withFreshness, writeSpec } from "../src/core/spec"
+import { hashSourceFiles, type StudioSpec, specFilePath, withFreshness, writeSpec } from "../src/core/spec"
 
 function spec(overrides: Partial<StudioSpec> = {}): StudioSpec {
   return {

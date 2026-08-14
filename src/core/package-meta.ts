@@ -48,7 +48,7 @@ export function skillNameFor(studioId: StudioId) {
 }
 
 export function agentNameFor(studioId: StudioId) {
-  return `studio-${studioId}`
+  return studioId === "fw" ? "firmware" : studioId
 }
 
 export function agentSourcePath(packageRoot: string, studioId: StudioId) {

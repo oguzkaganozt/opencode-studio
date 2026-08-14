@@ -14,14 +14,22 @@ import {
   loadCatalogParts,
   partDetail,
   partSummary,
-  spiceModelSnippet,
   upsertCatalogPart,
 } from "./catalog"
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
 import { projectCircuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
 import { publishPcbSpec } from "./spec"
-import { exportCircuit, runProjectBuild, SIMULATION_ESTIMATE_CAVEAT, searchComponents, simulateAnalogCircuit } from "./tsci"
+import {
+  addComponentCandidate,
+  classifyBuildDiagnostics,
+  componentSearchEntryVerification,
+  exportCircuit,
+  partitionSearchEntries,
+  runProjectBuild,
+  searchComponents,
+} from "./tsci"
+import { TSX_SNIPPET_KINDS, tsxSnippet } from "./tsx-snippets"
 import { discoverProjects, encodeProjectId, projectSummary, resolveProject } from "./workspace"
 
 async function canonicalWorkspaceRoot(rawPath: string): Promise<string> {
@@ -145,6 +153,17 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
           },
         }),
 
+        pcb_tsx_snippet: tool({
+          description:
+            "Return a short tscircuit TSX stub and pin names for one built-in kind. Does not write files or search parts. Use this instead of reading tscircuit source or node_modules types.",
+          args: {
+            kind: tool.schema.enum(TSX_SNIPPET_KINDS).describe("Built-in element to stub"),
+          },
+          async execute(args) {
+            return formatToolJson(tsxSnippet(args.kind))
+          },
+        }),
+
         // ── Catalog ───────────────────────────────────────────────────────────
         pcb_catalog_list: tool({
           description:
@@ -220,88 +239,63 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
           },
         }),
 
-        pcb_spice_model_get: tool({
-          description:
-            "Get the verified SPICE model for an exact catalog MPN. Returns the self-contained model source, provenance, pin mapping, SHA-256, and a tscircuit <spicemodel> snippet. Does not modify circuit source.",
-          args: {
-            mpn: tool.schema.string().min(1).describe("Exact catalog MPN"),
-          },
-          async execute(args) {
-            const catalog = await inspectCatalog(workspaceRoot)
-            const part = findCatalogPart(catalog.parts, args.mpn)
-            if (!part) return formatToolJson({ success: false, reason: "part_not_found", mpn: args.mpn })
-            if (!part.spiceModel) return formatToolJson({ success: false, reason: "spice_model_missing", mpn: part.mpn })
-            return formatToolJson({
-              success: true,
-              mpn: part.mpn,
-              model: part.spiceModel,
-              tscircuitSnippet: spiceModelSnippet(part),
-            })
-          },
-        }),
-
-        pcb_spice_model_upsert: tool({
-          description:
-            "Attach or replace a verified, self-contained SPICE model on an exact catalog MPN. Sources may retain helper .SUBCKT blocks, but the top-level subcircuit must be selected explicitly when more than one exists. Requires a credential-free HTTPS provenance URL and a complete one-to-one selected-model-pin to tscircuit-pin mapping. Rejects .include/.lib/control/shell directives; never invent or auto-select a model.",
-          args: {
-            mpn: tool.schema.string().min(1).describe("Exact catalog MPN; the part must already exist in the workspace catalog"),
-            source: tool.schema.string().min(1).describe("Self-contained SPICE source containing valid .SUBCKT blocks with matching .ENDS"),
-            sourceUrl: tool.schema.string().url().describe("Official credential-free HTTPS URL where the model was obtained"),
-            subcircuit: tool.schema
-              .string()
-              .optional()
-              .describe("Top-level .SUBCKT name; required when source contains multiple subcircuits"),
-            pinMapping: tool.schema
-              .record(tool.schema.string(), tool.schema.string())
-              .describe("Complete map from every selected top-level .SUBCKT pin name/number to a tscircuit chip pin/alias"),
-          },
-          async execute(args) {
-            const catalog = await inspectCatalog(workspaceRoot)
-            const part = findCatalogPart(catalog.parts, args.mpn)
-            if (!part) return formatToolJson({ success: false, reason: "part_not_found", mpn: args.mpn })
-            const result = await upsertCatalogPart(workspaceRoot, {
-              mpn: part.mpn,
-              spiceModel: {
-                source: args.source,
-                sourceUrl: args.sourceUrl,
-                subcircuit: args.subcircuit,
-                pinMapping: args.pinMapping,
-              },
-            })
-            if (!result.ok) return formatToolJson({ success: false, error: result.error, code: result.code })
-            return formatToolJson({
-              success: true,
-              created: result.created,
-              path: result.path,
-              part: partDetail(result.part),
-              tscircuitSnippet: spiceModelSnippet(result.part),
-            })
-          },
-        }),
-
         pcb_component_search: tool({
           description:
-            "Search JLCPCB, the tscircuit registry, and KiCad through separate official tsci CLI searches before using a generic footprint for a named complex part. Exact matches are first. JLCPCB packageDescription is metadata, not a usable tscircuit footprint; only tscircuit usageInstructions or a KiCad footprint identify an implementation candidate. A zero-result descriptive query is retried once with its focused part token. Results are candidates, not workspace approval. If no exact MPN and footprint match exists, use a PCB_STUDIO_PLACEHOLDER instead of inventing a substitute.",
+            "Search once for a component class. `candidates` are pinned tscircuit packages; call pcb_component_add with a candidateId before importing one. Only smoke-tested packages appear in `usable`. Repeated equivalent queries are cached. KiCad and supplier results are not ready components.",
           args: {
+            projectId: tool.schema.string().describe("Project ID from pcb_workspace_list; create the project before searching"),
             query: tool.schema.string().min(1).describe("Exact MPN or focused component query, e.g. 'ESP32-S3-WROOM-1-N8R8' or 'BME280'"),
             source: tool.schema.enum(["all", "jlcpcb", "tscircuit", "kicad"]).optional().describe("Search source (default 'all')"),
           },
           async execute(args, ctx) {
+            const project = await resolveProject(workspaceRoot, args.projectId)
             const result = await searchComponents(args.query, args.source ?? "all", ctx.abort)
+            const { usable, candidates, rejected, footprintOnly, catalogOnly } = partitionSearchEntries(
+              result.results,
+              project.absolutePath,
+            )
+            const view = (entry: (typeof result.results)[number]) => ({
+              ...entry,
+              verification: componentSearchEntryVerification(entry, project.absolutePath),
+            })
             return formatToolJson({
+              projectId: args.projectId,
               query: result.query,
               resolvedQuery: result.resolvedQuery,
               attemptedQueries: result.attemptedQueries,
               fallbackUsed: result.fallbackUsed,
               source: result.scope,
+              cacheHit: result.cacheHit,
               success: result.success,
               processSuccess: result.processSuccess,
               exitCode: result.exitCode,
-              results: result.results,
-              total: result.results.length,
+              usable: usable.slice(0, 3).map(view),
+              candidates: candidates.slice(0, 3).map(view),
+              rejected: rejected.slice(0, 3).map(view),
+              footprintOnly: footprintOnly.slice(0, 3),
+              catalogOnly: catalogOnly.slice(0, 3),
+              total: usable.length,
+              candidateCount: candidates.length,
+              rejectedCount: rejected.length,
+              footprintOnlyCount: footprintOnly.length,
+              catalogOnlyCount: catalogOnly.length,
               stdout: result.success ? undefined : result.stdout.slice(0, 8000),
               stderr: result.stderr.slice(0, 4000),
             })
+          },
+        }),
+
+        pcb_component_add: tool({
+          description:
+            "Install one candidate returned by pcb_component_search at its pinned version. Runs a minimal tscircuit render smoke test. On failure restores package files and rejects the candidate; on success returns the exact import and JSX usage.",
+          args: {
+            projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
+            candidateId: tool.schema.string().min(1).describe("candidateId from pcb_component_search.candidates"),
+          },
+          async execute(args, ctx) {
+            const project = await resolveProject(workspaceRoot, args.projectId)
+            const result = await addComponentCandidate(project.absolutePath, args.candidateId, ctx.abort)
+            return formatToolJson({ projectId: args.projectId, name: project.name, ...result })
           },
         }),
 
@@ -320,6 +314,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
               ? await projectCircuitReadiness(project.absolutePath, circuit, { inspection: result.inspection ?? undefined })
               : { fabricationReady: false, assemblyReady: false, manufacturingBlockers: [] as const, assemblyBlockers: [] as const }
             const fabricationReady = result.inspection !== null && readiness.fabricationReady
+            const diagnosticSummary = classifyBuildDiagnostics(result, readiness.manufacturingBlockers)
             return formatToolJson({
               projectId: args.projectId,
               name: project.name,
@@ -332,48 +327,12 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
               debugOnly: result.inspection ? !result.inspection.designValid : false,
               manufacturingBlockers: readiness.manufacturingBlockers,
               assemblyBlockers: readiness.assemblyBlockers,
+              rootCause: diagnosticSummary.rootCause,
+              actionableDiagnostics: diagnosticSummary,
               diagnostics: result.inspection,
               artifacts: result.artifacts,
               stdout: result.stdout.slice(0, 8000),
               stderr: result.stderr.slice(0, 4000),
-            })
-          },
-        }),
-
-        // ── Simulation ───────────────────────────────────────────────────────
-        pcb_sim_run: tool({
-          description:
-            'Run the analog simulations declared by <analogsimulation> and probe elements in src/circuit.tsx. Returns named numeric series with full-series summaries for agent inspection: transient (voltage/current over time) and AC sweep (magnitude in V/A plus phase in deg over frequency in Hz). Simulation success is independent of designValid, fabricationReady, and assemblyReady. Missing models or invalid topology are returned as simulation diagnostics. Results are directional estimates, not engineering-grade. Declare <analogsimulation spiceEngine="ngspice" ... /> for the ngspice engine; the default spicey engine only emits voltage probes, so current probes require ngspice and may otherwise report empty series.',
-          args: {
-            projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
-            maxPoints: tool.schema
-              .number()
-              .int()
-              .min(2)
-              .max(2000)
-              .optional()
-              .describe(
-                "Requested maximum points per series (default 500; endpoints preserved; total output is also budgeted across probes)",
-              ),
-          },
-          async execute(args, ctx) {
-            const project = await resolveProject(workspaceRoot, args.projectId)
-            const result = await simulateAnalogCircuit(project.absolutePath, ctx.abort, args.maxPoints)
-            return formatToolJson({
-              projectId: args.projectId,
-              name: project.name,
-              success: result.success,
-              simulationSuccess: result.success,
-              processSuccess: result.processSuccess,
-              exitCode: result.exitCode,
-              experiments: result.experiments,
-              caveat: SIMULATION_ESTIMATE_CAVEAT,
-              diagnostics:
-                result.diagnostics.length > 0
-                  ? result.diagnostics
-                  : result.success
-                    ? undefined
-                    : result.stderr || result.stdout.slice(0, 8000),
             })
           },
         }),

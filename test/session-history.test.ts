@@ -31,16 +31,19 @@ function session(input: {
 async function roots() {
   const home = await mkdtemp(path.join(os.tmpdir(), "osc-history-"))
   temporary.push(home)
+  const concept = path.join(home, "studio", "concepts")
   const cad = path.join(home, "studio", "designs")
   const pcb = path.join(home, "studio", "circuits")
   const fw = path.join(home, "studio", "firmware")
+  await mkdir(path.join(concept, "radio"), { recursive: true })
+  await writeFile(path.join(concept, "radio", "concept.json"), "{}")
   await mkdir(path.join(cad, "box"), { recursive: true })
   await writeFile(path.join(cad, "box", "design.json"), "{}")
   await mkdir(path.join(pcb, "boards", "demo", "src"), { recursive: true })
   await writeFile(path.join(pcb, "boards", "demo", "src", "circuit.tsx"), "export {}")
   await mkdir(path.join(fw, "blink"), { recursive: true })
   await writeFile(path.join(fw, "blink", "project.json"), '{"id":"blink","name":"blink","chip":"esp32c6"}')
-  return { home, cad, pcb, fw, studios: { cad, pcb, fw } }
+  return { home, concept, cad, pcb, fw, studios: { concept, cad, pcb, fw } }
 }
 
 describe("studioSessionHistory", () => {

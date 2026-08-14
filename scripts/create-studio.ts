@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { STUDIO_IDS, STUDIO_TOOL_PERMISSIONS } from "../src/core/registry"
+import { STUDIO_IDS, STUDIO_SKILL_NAMES, STUDIO_TOOL_PERMISSIONS } from "../src/core/registry"
 
 const id = process.argv[2]
 if (!id || !/^[a-z][a-z0-9-]*$/.test(id)) {
@@ -40,19 +40,20 @@ export const ${id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}Studio: Studio
 const otherToolDenies = STUDIO_IDS.flatMap((studioId) => STUDIO_TOOL_PERMISSIONS[studioId])
   .map((permission) => `  ${permission}: deny`)
   .join("\n")
+const otherSkillDenies = STUDIO_SKILL_NAMES.map((name) => `    ${name}: deny`).join("\n")
 await writeFile(
-  path.join(dir, `agent/studio-${id}.md`),
+  path.join(dir, `agent/${id}.md`),
   `---
 description: ${id} Studio agent.
 mode: primary
-hidden: true
 permission:
-  TODO_*: allow
+  "*": allow
 ${otherToolDenies}
   task:
     "*": deny
   skill:
-    "*": deny
+    "*": allow
+${otherSkillDenies}
     studio-${id}: allow
 ---
 

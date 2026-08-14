@@ -4,7 +4,7 @@
 
 - **id:** `project-box-v0`
 - **model / flavor:** `xai/grok-4.5` (same every run)
-- **agent:** `studio-cad`
+- **agent:** `cad`
 - **user prompt:** exact block below (byte-identical)
 - **variable later:** tools / skill only
 

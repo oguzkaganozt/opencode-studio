@@ -134,12 +134,50 @@ function studioSkillTarget(studioId: StudioId, packageRoot: string): SkillTarget
   }
 }
 
+async function listStudioSkillTargets(studioId: StudioId, packageRoot: string): Promise<SkillTarget[]> {
+  const extrasDir = path.join(packageRoot, "studios", studioId, "skills")
+  const names = await readdir(extrasDir).catch(() => [] as string[])
+  const extras: SkillTarget[] = []
+  for (const name of names.sort()) {
+    const sourceSkillFile = path.join(extrasDir, name, "SKILL.md")
+    if (await Bun.file(sourceSkillFile).exists()) extras.push({ id: studioId, skillName: name, sourceSkillFile })
+  }
+  return [studioSkillTarget(studioId, packageRoot), ...extras]
+}
+
+function skillCheckId(target: SkillTarget) {
+  return target.skillName === `studio-${target.id}` ? `skill:${target.id}` : `skill:${target.skillName.replace(/^studio-/, "")}`
+}
+
 function studioAgentTarget(studioId: StudioId, packageRoot: string): AgentTarget {
   return {
     id: studioId,
     agentName: agentNameFor(studioId),
     sourceAgentFile: agentSourcePath(packageRoot, studioId),
   }
+}
+
+async function listStudioAgentTargets(studioId: StudioId, packageRoot: string): Promise<AgentTarget[]> {
+  const directory = path.join(packageRoot, "studios", studioId, "agent")
+  const names = await readdir(directory).catch(() => [] as string[])
+  const targets = names
+    .filter((name) => name.endsWith(".md"))
+    .sort()
+    .map((name) => ({
+      id: studioId,
+      agentName: name.replace(/\.md$/, ""),
+      sourceAgentFile: path.join(directory, name),
+    }))
+  return targets.length > 0 ? targets : [studioAgentTarget(studioId, packageRoot)]
+}
+
+async function allAgentTargets(packageRoot: string): Promise<AgentTarget[]> {
+  const groups = await Promise.all(STUDIO_IDS.map((id) => listStudioAgentTargets(id, packageRoot)))
+  return groups.flat()
+}
+
+function agentCheckId(target: AgentTarget) {
+  return target.agentName === agentNameFor(target.id) ? `agent:${target.id}` : `agent:${target.agentName}`
 }
 
 function agentPathsFor(target: AgentTarget, userPaths: UserPathOptions = {}) {
@@ -420,7 +458,7 @@ async function agentDoctorCheck(target: AgentTarget, userPaths: UserPathOptions)
   const existingDigest = await currentFileDigest(paths.agentFile)
   const marker = await readMarker(paths.markerFile)
   const sourceDigest = await fileDigest(paths.sourceAgentFile)
-  const id = `agent:${target.id}`
+  const id = agentCheckId(target)
   if (!existingDigest) return { id, status: "fail", message: `Missing agent ${paths.agentFile}`, repair: "Run opencode-studio repair" }
   if (!marker || marker.studioId !== target.id) return { id, status: "fail", message: `Unmanaged agent at ${paths.agentFile}` }
   if (marker.digest !== existingDigest) return { id, status: "fail", message: `User-modified agent at ${paths.agentFile}` }
@@ -495,6 +533,16 @@ async function removeRetiredMediaStudio(userPaths: UserPathOptions) {
   await removeIfUnmodifiedManaged(agentFile, `${agentFile}${MANAGED_MARKER_NAME}`)
 }
 
+async function removeRetiredPrefixedStudioAgents(userPaths: UserPathOptions) {
+  const agentsHome = resolveOpenCodeAgentsHome(userPaths)
+  for (const studioId of STUDIO_IDS) {
+    const legacyName = `studio-${studioId}`
+    if (legacyName === agentNameFor(studioId)) continue
+    const agentFile = path.join(agentsHome, `${legacyName}.md`)
+    await removeIfUnmodifiedManaged(agentFile, `${agentFile}${MANAGED_MARKER_NAME}`)
+  }
+}
+
 async function resolveDomainRootOptional(explicit?: string) {
   try {
     return await resolveWorkspace(explicit)
@@ -524,8 +572,8 @@ async function scrubProjectLocalManagedState(input: {
   validateOpenCode?: boolean
 }) {
   const cleaned: string[] = []
-  const projectTargets = STUDIO_IDS.map((studioId) => ({ skillName: skillNameFor(studioId), studioId }))
-  for (const { skillName, studioId } of projectTargets) {
+  const projectTargets = (await Promise.all(STUDIO_IDS.map((studioId) => listStudioSkillTargets(studioId, input.packageRoot)))).flat()
+  for (const { skillName, id: studioId } of projectTargets) {
     const skillDirectory = path.join(input.domainRoot, ".opencode", "skills", skillName)
     const skillFile = path.join(skillDirectory, "SKILL.md")
     const markerFile = path.join(skillDirectory, MANAGED_MARKER_NAME)
@@ -619,8 +667,8 @@ export async function configureStudios(
   }
 
   for (const studioId of STUDIO_IDS) {
-    await preflightSkill(studioSkillTarget(studioId, packageRoot), userPaths)
-    await preflightAgent(studioAgentTarget(studioId, packageRoot), userPaths)
+    for (const target of await listStudioSkillTargets(studioId, packageRoot)) await preflightSkill(target, userPaths)
+    for (const target of await listStudioAgentTargets(studioId, packageRoot)) await preflightAgent(target, userPaths)
   }
 
   const configPath = await resolveOpenCodeConfigPath(userPaths)
@@ -658,30 +706,35 @@ export async function configureStudios(
 
   try {
     for (const studioId of enabled) {
-      const result = await writeManagedSkill({
-        target: studioSkillTarget(studioId, packageRoot),
-        packageRoot,
-        packageVersion: meta.version,
-        userPaths,
-      })
-      installed.push(studioId)
-      if (result.changed) {
-        rollbacks.push(async () => {
-          await restoreFile(result.paths.skillFile, result.previousSkill)
-          await restoreFile(result.paths.markerFile, result.previousMarker)
+      const skillTargets = await listStudioSkillTargets(studioId, packageRoot)
+      for (const target of skillTargets) {
+        const result = await writeManagedSkill({
+          target,
+          packageRoot,
+          packageVersion: meta.version,
+          userPaths,
         })
+        if (result.changed) {
+          rollbacks.push(async () => {
+            await restoreFile(result.paths.skillFile, result.previousSkill)
+            await restoreFile(result.paths.markerFile, result.previousMarker)
+          })
+        }
       }
+      installed.push(studioId)
 
-      const agent = await writeManagedAgent({
-        target: studioAgentTarget(studioId, packageRoot),
-        packageVersion: meta.version,
-        userPaths,
-      })
-      if (agent.changed) {
-        rollbacks.push(async () => {
-          await restoreFile(agent.paths.agentFile, agent.previousAgent)
-          await restoreFile(agent.paths.markerFile, agent.previousMarker)
+      for (const target of await listStudioAgentTargets(studioId, packageRoot)) {
+        const agent = await writeManagedAgent({
+          target,
+          packageVersion: meta.version,
+          userPaths,
         })
+        if (agent.changed) {
+          rollbacks.push(async () => {
+            await restoreFile(agent.paths.agentFile, agent.previousAgent)
+            await restoreFile(agent.paths.markerFile, agent.previousMarker)
+          })
+        }
       }
     }
 
@@ -695,6 +748,7 @@ export async function configureStudios(
     }
     await removeManagedMediaGoPluginFile(userPaths)
     await removeRetiredMediaStudio(userPaths)
+    await removeRetiredPrefixedStudioAgents(userPaths)
 
     const written = await writeStudioConfigFile(
       {
@@ -774,8 +828,8 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
   const previous = await readStudioConfigFile(userPaths)
   const desiredRoots = previous.roots
 
-  const skillTargets = STUDIO_IDS.map((id) => studioSkillTarget(id, packageRoot))
-  const agentTargets = STUDIO_IDS.map((id) => studioAgentTarget(id, packageRoot))
+  const skillTargets = (await Promise.all(STUDIO_IDS.map((id) => listStudioSkillTargets(id, packageRoot)))).flat()
+  const agentTargets = await allAgentTargets(packageRoot)
 
   for (const target of skillTargets) {
     const paths = skillPathsFor(target, userPaths)
@@ -796,6 +850,7 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
 
   await removeManagedMediaGoPluginFile(userPaths)
   await removeRetiredMediaStudio(userPaths)
+  await removeRetiredPrefixedStudioAgents(userPaths)
 
   const removed: string[] = []
   for (const target of skillTargets) {
@@ -1050,16 +1105,19 @@ export async function statusStudios(input: LifecyclePaths = {}) {
   for (const studio of studios) {
     const studioId = studio.id as StudioId
     const def = getStudioDefinition(studioId)
-    const target = studioSkillTarget(studioId, packageRoot)
-    checks.push(
-      await skillDoctorCheck({
-        id: `skill:${studioId}`,
-        paths: skillPathsFor(target, userPaths),
-        passLabel: `${def.skill} installed`,
-        driftLabel: `Skill version drift for ${studioId}`,
-      }),
-    )
-    checks.push(await agentDoctorCheck(studioAgentTarget(studioId, packageRoot), userPaths))
+    for (const target of await listStudioSkillTargets(studioId, packageRoot)) {
+      checks.push(
+        await skillDoctorCheck({
+          id: skillCheckId(target),
+          paths: skillPathsFor(target, userPaths),
+          passLabel: `${target.skillName} installed`,
+          driftLabel: `Skill version drift for ${target.skillName}`,
+        }),
+      )
+    }
+    for (const target of await listStudioAgentTargets(studioId, packageRoot)) {
+      checks.push(await agentDoctorCheck(target, userPaths))
+    }
 
     if (studio.root && !studio.rootError) {
       checks.push({ id: `root:${studioId}`, status: "pass", message: studio.root })

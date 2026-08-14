@@ -1,17 +1,22 @@
 ---
 description: Firmware Studio ESP-IDF build and UART simulation with fw_* tools.
 mode: primary
-hidden: true
 permission:
-  fw_*: allow
+  "*": allow
   cad_*: deny
   pcb_*: deny
+  concept_*: deny
   design_*: deny
   build123d_*: deny
   task:
     "*": deny
   skill:
-    "*": deny
+    "*": allow
+    studio-cad: deny
+    studio-pcb: deny
+    studio-concept: deny
+    studio-concept-review: deny
+    studio-cad-part: deny
     studio-fw: allow
 ---
 

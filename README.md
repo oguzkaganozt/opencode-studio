@@ -1,10 +1,10 @@
 # OpenCode Studio
 
-Isolated OpenCode Studios for CAD, PCB, and Firmware, plus a general Files explorer.
+Isolated OpenCode Studios for Concept, CAD, PCB, and Firmware, plus a general Files explorer.
 
 **Package:** [`@oguzkaganozt/opencode-studio`](https://www.npmjs.com/package/@oguzkaganozt/opencode-studio) · **CLI:** `opencode-studio`
 
-**All Studios are always on.** Install wires OpenCode once with globally registered tools, one managed skill and hidden primary agent per Studio, and isolation permissions that keep Home/Files on stock `build` without Studio capabilities.
+**All Studios are always on.** Install wires OpenCode once with globally registered tools, one managed skill and primary agent per Studio, and isolation permissions that keep Home/Files on stock `build` without Studio capabilities.
 
 ## Prerequisites
 
@@ -50,13 +50,14 @@ opencode-studio up
 # → attaches or spawns OpenCode API, starts Studio host
 ```
 
-Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent home, CAD / PCB / Firmware / Files. One browser URL; OpenCode API is proxied (loopback child by default).
+Open **[http://127.0.0.1:4173/studio](http://127.0.0.1:4173/studio)** — Agent home, Concept / CAD / PCB / Firmware / Files. One browser URL; OpenCode API is proxied (loopback child by default).
 
 | URL | What |
 | --- | --- |
 | `http://127.0.0.1:4173/studio` | Studio shell (native Agent panel) |
+| `http://127.0.0.1:4173/studio/studios/concept` | Concept briefs and moodboards |
 | `http://127.0.0.1:4173/studio/studios/cad` | CAD viewer |
-| `http://127.0.0.1:4173/studio/studios/pcb` | PCB schematic, layout, Simulation, BOM, and 3D viewer |
+| `http://127.0.0.1:4173/studio/studios/pcb` | PCB schematic, layout, BOM, and 3D viewer |
 | `http://127.0.0.1:4173/studio/studios/fw` | Firmware projects, UART console, build/sim |
 | Status (drawer footer) | Compact health modal: repair / restart agent |
 | `http://127.0.0.1:4173/` or `/opencode` | Optional OpenCode web UI (same-origin proxy) |
@@ -91,8 +92,8 @@ Prefer SSH tunnel to loopback. If public: TLS at your reverse-proxy; enable WebS
 | --- | --- |
 | `~/.config/opencode-studio/studio.json` | Optional absolute `roots` only (domains always on) |
 | `~/.config/opencode/opencode.json` | Package-local plugins + managed Studio isolation permissions |
-| `~/.config/opencode/skills/studio-<id>/` | Managed skills (`studio-cad`, `studio-pcb`, `studio-fw`) |
-| `~/.config/opencode/agents/studio-<id>.md` | Managed hidden primary Studio agents |
+| `~/.config/opencode/skills/studio-<id>/` | Managed skills (`studio-concept`, `studio-cad`, `studio-pcb`, `studio-fw`) |
+| `~/.config/opencode/agents/<agent>.md` | Managed primary Studio agents (`concept`, `cad`, `pcb`, `firmware`) |
 
 ```json
 { "roots": { "cad": "/absolute/path" } }
@@ -102,13 +103,14 @@ Missing `studio.json` is fine. Default layout under Studio Home (`$HOME` or `OPE
 
 ```text
 $STUDIO_HOME/studio/
+  concepts/<id>/             # Concept (concept.json, moodboards/, BRIEF.md)
   designs/<id>/              # CAD (design.json, parts/, …)
   circuits/<id>/             # PCB (src/circuit.tsx, …)
   circuits/catalog/parts/    # optional PCB catalog
   firmware/<id>/              # Firmware (project.json, main/main.c, sim/)
 ```
 
-`roots.<id>` are absolute domain-root overrides: CAD points at the designs folder, PCB at circuits, and Firmware at the firmware projects folder. Keep **one** of `opencode.json` / `opencode.jsonc`.
+`roots.<id>` are absolute domain-root overrides: Concept points at the concepts folder, CAD at designs, PCB at circuits, and Firmware at the firmware projects folder. Keep **one** of `opencode.json` / `opencode.jsonc`.
 
 `image_generate` is a platform tool (not a Studio). It writes to `outputPath` or the workspace cwd. Fallback: ChatGPT OAuth → xAI Grok Imagine quality → fal Nano Banana 2. Set `FAL_KEY` only if you want the last fallback.
 

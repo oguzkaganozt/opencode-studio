@@ -193,7 +193,6 @@ export function inspectCircuitJson(value: unknown): CircuitInspection {
   const warnings = diagnosticGroups(elements, "_warning", byId)
   const errorCount = errors.reduce((total, group) => total + group.count, 0)
   const warningCount = warnings.reduce((total, group) => total + group.count, 0)
-
   return {
     designValid: errorCount === 0,
     errorCount,

@@ -1,7 +1,8 @@
+import { agentNameFor } from "../../src/core/package-meta"
 import type { StudioId } from "../../src/core/registry"
 
-export type PromptAgent = "build" | `studio-${StudioId}`
+export type PromptAgent = "build" | ReturnType<typeof agentNameFor>
 
 export function resolvePromptAgent(studioId?: StudioId): PromptAgent {
-  return studioId ? `studio-${studioId}` : "build"
+  return studioId ? agentNameFor(studioId) : "build"
 }

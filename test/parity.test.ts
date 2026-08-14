@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import { agentNameFor } from "../src/core/package-meta"
 import { listComposedToolNames } from "../src/core/plugin-compose"
 import { STUDIO_IDS } from "../src/core/registry"
 import { configureStudios } from "../src/lifecycle"
@@ -23,9 +24,10 @@ describe("parity fixtures", () => {
   })
 
   test("skill and agent digests match every Studio source", async () => {
-    const expected = STUDIO_IDS.map((id) => `studio-${id}`).sort()
-    expect(Object.keys(digests).sort()).toEqual(expected)
-    expect(Object.keys(agentDigests).sort()).toEqual(expected)
+    const expectedSkills = STUDIO_IDS.map((id) => `studio-${id}`).sort()
+    const expectedAgents = STUDIO_IDS.map(agentNameFor).sort()
+    expect(Object.keys(digests).sort()).toEqual([...expectedSkills, "studio-concept-review", "studio-cad-part"].sort())
+    expect(Object.keys(agentDigests).sort()).toEqual([...expectedAgents, "cad-part"].sort())
     const mismatches: string[] = []
     for (const fixture of [digests, agentDigests]) {
       for (const [_name, meta] of Object.entries(fixture as Record<string, { path: string; sha256: string }>)) {
@@ -40,7 +42,7 @@ describe("parity fixtures", () => {
   })
 
   test("hook composition policy is defined", () => {
-    expect(hooks.composition.order).toEqual(["cad", "pcb", "fw"])
+    expect(hooks.composition.order).toEqual(["concept", "cad", "pcb", "fw"])
     expect(hooks.platform).toContain("tool")
   })
 })

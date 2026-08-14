@@ -2,10 +2,7 @@ import { tool } from "@opencode-ai/plugin"
 import { formatToolJson } from "./format-tool-json"
 import type { SpecStudioId, StudioSpec } from "./spec"
 
-export function createSpecTools(input: {
-  owner: SpecStudioId
-  publish: (id: string, summary?: string) => Promise<StudioSpec>
-}) {
+export function createSpecTools(input: { owner: SpecStudioId; publish: (id: string, summary?: string) => Promise<StudioSpec> }) {
   const prefix = input.owner
   return {
     [`${prefix}_spec`]: tool({

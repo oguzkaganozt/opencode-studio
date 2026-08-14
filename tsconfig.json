@@ -29,5 +29,5 @@
     "scripts/**/*.ts",
     "vite.config.ts"
   ],
-  "exclude": ["dist", "node_modules", "opencode-*-studio", "studios/*/engine"]
+  "exclude": ["dist", "node_modules", "opencode-*-studio", "studios/*/engine", "studios/*/test/benchmarks/runs"]
 }

@@ -39,9 +39,9 @@ describe("create-studio", () => {
 
     expect(code).toBe(0)
     expect(await Bun.file(path.join(target, "skill", "SKILL.md")).text()).toContain(`name: studio-${id}`)
-    const agent = await Bun.file(path.join(target, "agent", `studio-${id}.md`)).text()
+    const agent = await Bun.file(path.join(target, "agent", `${id}.md`)).text()
     expect(agent).toContain("mode: primary")
-    expect(agent).toContain("hidden: true")
+    expect(agent).not.toContain("hidden:")
     expect(agent).toContain(`studio-${id}: allow`)
   })
 })

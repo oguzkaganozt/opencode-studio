@@ -67,7 +67,7 @@ describe("host server", () => {
     expect(body.nativeOpenCodeAvailable).toBe(true)
     expect(Array.isArray(body.studios)).toBe(true)
     expect(body.studios.length).toBeGreaterThan(0)
-    expect(body.studios[0].id).toBe("cad")
+    expect(body.studios[0].id).toBe("concept")
     expect(typeof body.packageVersion).toBe("string")
     expect(body.csrfRequired).toBe(true)
   })
@@ -78,7 +78,7 @@ describe("host server", () => {
     const response = await app.request("http://127.0.0.1:4173/api/status", { headers: { host: "127.0.0.1:4173" } })
     expect(response.status).toBe(200)
     const body = await response.json()
-    const expected = ["plugin-registration", "skill:cad", "skill:pcb", "skill:fw", "cad-engine"]
+    const expected = ["plugin-registration", "skill:concept", "skill:cad", "skill:pcb", "skill:fw", "cad-engine"]
     expect(
       body.checks
         .map((check: { id: string }) => check.id)

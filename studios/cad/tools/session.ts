@@ -326,8 +326,12 @@ function parseToolResult(raw: unknown): CadRuntimeCallResult {
 
 const sessions = new Map<string, CadRuntimeSession>()
 
-export function getCadRuntimeSession(engineProjectDir: string, cwd: string): CadRuntimeSession {
-  const key = `${engineProjectDir}::${cwd}`
+export function cadRuntimeKey(engineProjectDir: string, cwd: string, sessionID?: string) {
+  return sessionID ? `${engineProjectDir}::${cwd}::${sessionID}` : `${engineProjectDir}::${cwd}`
+}
+
+export function getCadRuntimeSession(engineProjectDir: string, cwd: string, sessionID?: string): CadRuntimeSession {
+  const key = cadRuntimeKey(engineProjectDir, cwd, sessionID)
   const existing = sessions.get(key)
   if (existing) return existing
   const session = new CadRuntimeSession(engineProjectDir, cwd)
@@ -335,9 +339,9 @@ export function getCadRuntimeSession(engineProjectDir: string, cwd: string): Cad
   return session
 }
 
-/** Close and evict the runtime session for one cwd (e.g. `session.deleted`). */
-export async function closeCadRuntimeSession(engineProjectDir: string, cwd: string): Promise<void> {
-  const key = `${engineProjectDir}::${cwd}`
+/** Close and evict the runtime for one OpenCode session (e.g. `session.deleted`). */
+export async function closeCadRuntimeSession(engineProjectDir: string, cwd: string, sessionID?: string): Promise<void> {
+  const key = cadRuntimeKey(engineProjectDir, cwd, sessionID)
   const session = sessions.get(key)
   if (!session) return
   sessions.delete(key)

@@ -68,6 +68,7 @@ function contextMarker(context: Omit<StudioSessionContext, "status">): { path: s
   if (context.kind === "cad-project") return { path: path.join(context.directory, "design.json"), kind: "file" }
   if (context.kind === "pcb-project") return { path: path.join(context.directory, "src", "circuit.tsx"), kind: "file" }
   if (context.kind === "fw-project") return { path: path.join(context.directory, "project.json"), kind: "file" }
+  if (context.kind === "concept-project") return { path: path.join(context.directory, "concept.json"), kind: "file" }
   return { path: context.directory, kind: "directory" }
 }
 

@@ -1,0 +1,82 @@
+@import "tailwindcss";
+@source ".";
+@import "@ui/tokens.css";
+
+[data-studio="concept"] {
+  background: var(--osc-bg);
+  color: var(--osc-text);
+  font-family: var(--osc-font-ui);
+}
+
+[data-studio="concept"] .font-mono,
+[data-studio="concept"] code {
+  font-family: var(--osc-font-mono);
+}
+
+.concept-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-lg);
+  background: var(--osc-bg-elevated);
+  padding: 1rem 1rem 1rem 1.15rem;
+  transition:
+    border-color var(--osc-motion-duration),
+    transform var(--osc-motion-duration);
+}
+
+.concept-card:hover,
+.concept-card:focus-visible {
+  border-color: var(--osc-border-strong);
+  transform: translateY(-1px);
+}
+
+.concept-card__rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--osc-accent-concept);
+}
+
+.concept-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--osc-radius-md);
+  background: var(--osc-surface);
+}
+
+.concept-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.75rem;
+}
+
+.concept-section {
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-lg);
+  background: var(--osc-bg-elevated);
+  padding: 1rem 1.1rem;
+}
+
+.concept-section h2 {
+  margin: 0 0 0.65rem;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--osc-text-muted);
+}
+
+.concept-brief {
+  overflow: auto;
+  border: 1px solid var(--osc-border);
+  border-radius: var(--osc-radius-lg);
+  background: var(--osc-canvas-bg);
+  color: var(--osc-text);
+  font-family: var(--osc-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 0.85rem 1rem;
+  white-space: pre-wrap;
+}

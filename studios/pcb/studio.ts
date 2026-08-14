@@ -3,7 +3,7 @@ import { STUDIO_TOOL_PERMISSIONS, type StudioDefinition } from "../../src/core/r
 export const pcbStudio: StudioDefinition = {
   id: "pcb",
   label: "PCB Studio",
-  description: "tscircuit schematic/PCB design, analog simulation, manufacturing checks, BOM, and CPL.",
+  description: "tscircuit schematic/PCB design, manufacturing checks, BOM, and CPL.",
   skill: "studio-pcb",
   toolPermissions: STUDIO_TOOL_PERMISSIONS.pcb,
   requiredEngines: ["tsci"],

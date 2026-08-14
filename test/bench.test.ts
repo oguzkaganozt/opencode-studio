@@ -2,7 +2,18 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { BENCH_STUDIOS, listBenchCases, loadBenchCase, loadEvents, parseBenchCase, scoreBench } from "../scripts/bench"
+import {
+  acquireBenchLock,
+  BENCH_STUDIOS,
+  benchEnvironment,
+  listBenchCases,
+  loadBenchCase,
+  loadEvents,
+  parseBenchCase,
+  prepareIsolate,
+  releaseBenchLock,
+  scoreBench,
+} from "../scripts/bench"
 
 const temps: string[] = []
 
@@ -13,19 +24,46 @@ afterEach(async () => {
 const root = path.resolve(import.meta.dir, "..")
 
 describe("bench cases", () => {
+  test("isolates OpenCode config while sharing only the explicit data home needed for rotating auth", async () => {
+    const sharedDataHome = await mkdtemp(path.join(tmpdir(), "osc-bench-data-"))
+    temps.push(sharedDataHome)
+    await mkdir(path.join(sharedDataHome, "opencode"))
+    await writeFile(path.join(sharedDataHome, "opencode", "auth.json"), '{"xai":{"type":"oauth"}}\n')
+    const isolate = await prepareIsolate(root, { xdgDataHome: sharedDataHome })
+    temps.push(isolate.isolate)
+    const env = benchEnvironment(isolate, {
+      HOME: "/real-home",
+      XDG_CONFIG_HOME: "/real-config",
+      OPENCODE_CONFIG_DIR: "/real-opencode",
+      OPENCODE_CONFIG_CONTENT: '{"plugin":["global"]}',
+      XAI_API_KEY: "preserved",
+    })
+
+    expect(env.HOME).toBe(isolate.userHome)
+    expect(env.XDG_CONFIG_HOME).toBe(isolate.xdgConfigHome)
+    expect(env.XDG_DATA_HOME).toBe(sharedDataHome)
+    expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+    expect(env.OPENCODE_CONFIG_CONTENT).toBeUndefined()
+    expect(env.XAI_API_KEY).toBe("preserved")
+    expect(await readFile(path.join(sharedDataHome, "opencode", "auth.json"), "utf8")).toContain("oauth")
+    expect(await readFile(path.join(isolate.studioHome, ".opencode", "skills", "studio-pcb", "SKILL.md"), "utf8")).toContain(
+      "pcb_component_add",
+    )
+  })
+
   test("lists isolated design cases for cad, pcb, and fw", async () => {
     const listed = Object.fromEntries(
       await Promise.all(BENCH_STUDIOS.map(async (studio) => [studio, (await listBenchCases(studio)).map((item) => item.id)])),
     )
     expect(listed.cad).toContain("project-box-v0")
-    expect(listed.pcb).toEqual(["led-blink-v0", "rc-lowpass-v0"])
+    expect(listed.pcb).toEqual(["esp32-sensor-v0", "led-blink-v0"])
     expect(listed.fw).toEqual(["uart-c6-v0", "uart-hello-v0"])
   })
 
   test("parses the CAD prompt and reference image from working-tree markdown", async () => {
     const source = path.join(root, "studios/cad/test/benchmarks/speaker-organic-v0.md")
     const bench = parseBenchCase("cad", source, await readFile(source, "utf8"), root)
-    expect(bench.agent).toBe("studio-cad")
+    expect(bench.agent).toBe("cad")
     expect(bench.prompt).toContain("Curved stone-look shell")
     expect(bench.files[0]?.endsWith("speaker-gold-cones.png")).toBe(true)
   })
@@ -69,30 +107,21 @@ describe("bench score", () => {
     ).toBe(false)
   })
 
-  test("pcb sim case requires named series", async () => {
-    const buildOnly = loadEvents(
+  test("pcb passes with create and a valid build", async () => {
+    const events = loadEvents(
       [
         JSON.stringify({ type: "tool_use", part: { type: "tool", tool: "pcb_project_create", state: { output: "{}" } } }),
         JSON.stringify({
           type: "tool_use",
-          part: { type: "tool", tool: "pcb_circuit_build", state: { output: JSON.stringify({ designValid: true }) } },
+          part: {
+            type: "tool",
+            tool: "pcb_circuit_build",
+            state: { output: JSON.stringify({ designValid: true }) },
+          },
         }),
       ].join("\n"),
     )
-    expect((await scoreBench({ studio: "pcb", events: buildOnly, studioHome: root })).ok).toBe(true)
-    expect((await scoreBench({ studio: "pcb", events: buildOnly, studioHome: root, requires: ["sim"] })).ok).toBe(false)
-    const withSim = [
-      ...buildOnly,
-      {
-        type: "tool_use",
-        part: {
-          type: "tool",
-          tool: "pcb_sim_run",
-          state: { output: JSON.stringify({ success: true, experiments: [{ name: "tran" }] }) },
-        },
-      },
-    ]
-    expect((await scoreBench({ studio: "pcb", events: withSim, studioHome: root, requires: ["sim"] })).ok).toBe(true)
+    expect((await scoreBench({ studio: "pcb", events, studioHome: root })).ok).toBe(true)
   })
 
   test("cad ok requires QC complete and STEP artifacts", async () => {
@@ -127,5 +156,18 @@ describe("bench score", () => {
         })
       ).ok,
     ).toBe(false)
+  })
+})
+
+describe("bench lock", () => {
+  test("refuses a second acquire while the first pid is alive", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "osc-bench-lock-"))
+    temps.push(home)
+    const lock = await acquireBenchLock(home, "cad project-box-v0")
+    await expect(acquireBenchLock(home, "pcb led-blink-v0")).rejects.toThrow(/already running/)
+    await releaseBenchLock(lock)
+    const next = await acquireBenchLock(home, "pcb led-blink-v0")
+    expect(next).toContain("osc-bench-")
+    await releaseBenchLock(next)
   })
 })

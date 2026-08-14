@@ -22,6 +22,7 @@ export type CadBuildRunner = (input: {
   engineProjectDir: string
   designDir: string
   cwd: string
+  sessionID?: string
   signal?: AbortSignal
 }) => Promise<CadBuildResult>
 
@@ -30,8 +31,8 @@ export type CadBuildRunner = (input: {
  * (single agent-facing runtime; cad_build runs in-process inside that runtime).
  */
 export function createCadBuildRunner(cwd: string): CadBuildRunner {
-  return async ({ engineProjectDir, designDir, signal }) => {
-    const session = getCadRuntimeSession(engineProjectDir, cwd)
+  return async ({ engineProjectDir, designDir, sessionID, signal }) => {
+    const session = getCadRuntimeSession(engineProjectDir, cwd, sessionID)
     try {
       const result = await session.callTool(
         "studio_build",
@@ -104,10 +105,11 @@ export async function buildDesign(
   runner: CadBuildRunner = defaultCadBuildRunner,
   signal?: AbortSignal,
   cwd: string = process.cwd(),
+  sessionID?: string,
 ): Promise<CadBuildResult & { manifestPath: string | null }> {
   const designDir = await resolveDesignDirectory(layout, id)
   await readDesignManifest(designDir, id)
-  const result = await runner({ engineProjectDir, designDir, cwd, signal })
+  const result = await runner({ engineProjectDir, designDir, cwd, sessionID, signal })
   if (!result.ok) return { ...result, manifestPath: null }
   const artifact = await readArtifactManifest(designDir, id)
   if (!artifact) {

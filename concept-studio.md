@@ -81,7 +81,7 @@ Five tools. No `read`/`list` — viewer + stock `read` cover that.
 | `concept_create` | `concept.json` scaffold | `id`, optional `from` (copy frozen/draft as new draft, `revision+1`) |
 | `concept_update` | `concept.json` | Only writer after create. Rejects unknown keys, untestable `must`, and any write when `status=frozen` |
 | `concept_moodboard` | `moodboards/*` + refs in json | Compiles prompt from `intent` + target direction (`direction_id` or `chosen_direction`). **No freeform prompt arg.** Reuses `generateImage` from `src/platform/image/generate.ts`. Records `prompt_hash` |
-| `concept_review` | `review.json` | Isolated reviewer pass (see below). Does not touch `concept.json` |
+| `concept_review` | `review.json` | Records findings from skill `studio-concept-review`. Does not touch `concept.json` |
 | `concept_freeze` | lock + `BRIEF.md` | Built-in linter, then lock |
 
 Shared envelope: `{ok, status, summary, data, warnings, next, error?}` like CAD lifecycle tools.
@@ -104,18 +104,9 @@ Refuse unless all hold:
 
 On success: `status=frozen`, `frozen_at`, `source_hash`, write `BRIEF.md` from json (template, no LLM). Further `update`/`moodboard` fail until `create({ from })`.
 
-### Review (not self-critique)
+### Review
 
-`studio-concept` must not review its own chat.
-
-`concept_review(id)`:
-
-1. Load `concept.json` + moodboard files.
-2. Run `ReviewRunner` (injectable). Production runner opens a **one-shot** OpenCode session with agent `studio-concept-review`, no author history, attachments = json + moodboards, fixed instruction: return JSON findings only.
-3. Parse/validate findings. Write `review.json`.
-4. Return findings to the author.
-
-Do **not** allow `task` on `studio-concept`. The tool owns the isolated pass.
+One agent. Load skill `studio-concept-review`, then `concept_review({ id, findings })`. The tool hashes `concept.json` and writes `review.json`. Empty findings is a clean pass.
 
 ```ts
 type Review = {
@@ -126,13 +117,11 @@ type Review = {
 }
 ```
 
-`studio-concept-review`: hidden agent, read-only. Deny all `concept_*`. No `Write`/`Edit` under `studio/concepts/`. One pass, no conversation. Skill: industrial-design review (form language, CMF coherence, cliché, weak/untestable musts, missing user/context). Never mention CAD/PCB/FW.
-
 ## Agents and skill
 
-- `studios/concept/agent/studio-concept.md` — primary, hidden. `concept_*: allow`. Deny `cad_*` / `pcb_*` / `fw_*` / `design_*` / `build123d_*` / `task`. Skill `studio-concept` only.
-- `studios/concept/agent/studio-concept-review.md` — extra managed agent (not a catalog StudioId).
-- `studios/concept/skill/SKILL.md` — phases: seed → frame → requirements → directions → moodboard → review → freeze. Infer hard; ask only blockers. Never write `concept.json` / `BRIEF.md` by hand. Never use `image_generate` for moodboards.
+- `studios/concept/agent/concept.md` — primary. `concept_*: allow`. Deny `cad_*` / `pcb_*` / `fw_*` / `design_*` / `build123d_*` / `task`. Skills `studio-concept` and `studio-concept-review`.
+- `studios/concept/skill/SKILL.md` — phases: seed → frame → requirements → directions → moodboard → review → freeze.
+- `studios/concept/skills/studio-concept-review/SKILL.md` — review checklist.
 
 Existing CAD/PCB/FW agents: add `concept_*: deny`.
 
@@ -149,7 +138,7 @@ Catalog (no engine, no SPEC):
 - `src/session-history.ts` — `concept-project` marker = `concept.json`
 - `src/core/spec.ts` — **unchanged** (`SPEC_STUDIOS` stays cad/pcb/fw)
 
-Lifecycle extra agent: install every `studios/<id>/agent/*.md`, not only `studio-<id>.md`. Parity: primary digests stay 1:1 with `STUDIO_IDS`; add `studio-concept-review` as an extra digest entry.
+Lifecycle extra skills: install `studios/<id>/skills/*/SKILL.md` in addition to the primary skill. Parity includes `studio-concept-review`.
 
 `test/parity/plugin-hooks.json` composition order becomes `["concept", "cad", "pcb", "fw"]`.
 
@@ -162,7 +151,7 @@ FW-shaped, not a CAD canvas.
 - Home: concept cards (id, one-liner, status, moodboard thumb)
 - Project: sections from `concept.json`, moodboard grid, last `review.json`, `BRIEF.md` when frozen
 - Empty/error via existing `EmptyState`
-- Agent → `studio-concept`
+- Agent → `concept`
 - No handoff chips to other studios
 
 API (`studios/concept/api.ts`): list concepts, get one (json + review + brief + moodboard urls). Watch `concept.json` like other domain roots.
@@ -171,22 +160,22 @@ API (`studios/concept/api.ts`): list concepts, get one (json + review + brief + 
 
 - Schema: accept/reject `update` sections; reject frozen writes; reject vague `must`
 - Freeze linter: each missing field; stale review hash; blocker without waive; happy path writes `BRIEF.md` + hash
-- Moodboard: prompt is a pure function of json (golden prompt hash); no `prompt` arg on the tool
-- Review: fake `ReviewRunner`; author session never appears in the runner input; `review.json` hash matches
-- Isolation: `studio-concept` sees only `concept_*`; review agent sees none; other studios deny `concept_*`; `task` still deny
+- Moodboard: prompt is a pure function of json (golden prompt hash); no `prompt` arg; name uses generated extension
+- Review: `concept_review({ findings })` writes `review.json` with current hash; empty findings is a clean pass
+- Create: bad `from` must not leave a leftover folder
+- Isolation: `concept` sees only `concept_*` plus skills `studio-concept` and `studio-concept-review`; other studios deny both; `task` still deny
 - Registry / loaders / parity / session-history marker / browser smoke
 
 ## Rollout
 
-1. Schema + workspace + five tools with fake image/review runners. Unit tests green.
-2. Register studio (registry → loaders → lifecycle extra agent → other agents deny). Isolation + parity.
+1. Schema + workspace + five tools with fake image generator. Unit tests green.
+2. Register studio (registry → loaders → extra skill → other agents deny). Isolation + parity.
 3. Viewer + API + tokens + smoke.
-4. Wire real `generateImage` + one-shot review session.
+4. Wire real `generateImage`.
 5. README + design-system page.
 
 ## Risks
 
-- Review session needs a healthy OpenCode API (same as the host). Tool must fail cleanly if the runner cannot start; do not fake a pass.
-- Same model family as the author: isolation is history-free input, not a different brain. Findings are advisory except `blocker`.
+- Review is the same agent with a skill, not a second pair of eyes. Findings are advisory except `blocker`.
 - Moodboard images are stochastic; determinism is the compiled prompt + recorded `prompt_hash`, not pixel equality.
 - Catalog insert touches many lockstep maps (`assertCatalogComplete`). Do not land a partial register.

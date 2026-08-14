@@ -1,11 +1,23 @@
 {
+  "studio-concept": {
+    "path": "studios/concept/skill/SKILL.md",
+    "sha256": "a2285e3d2a21e927215fbcfcfa713754242d3eff76e029f94df8dfca62aa9edd"
+  },
+  "studio-concept-review": {
+    "path": "studios/concept/skills/studio-concept-review/SKILL.md",
+    "sha256": "9a45599e4f49cdc43d61025d06366c4a9792e431ea935307751a1f8367a460d6"
+  },
   "studio-cad": {
     "path": "studios/cad/skill/SKILL.md",
-    "sha256": "39a54c1526d2659e0298fde84edf5b7cacb036b50f69a1645f756a93d9fade2b"
+    "sha256": "4f3e86070ac15d1e9b00a6a820df59246373ee35c2e7a83454afafe2d7d7991c"
+  },
+  "studio-cad-part": {
+    "path": "studios/cad/skills/studio-cad-part/SKILL.md",
+    "sha256": "c53a66236f9601a74cd14011a0e878d4b11c537490b2db2e0ffe7930ae206a2c"
   },
   "studio-pcb": {
     "path": "studios/pcb/skill/SKILL.md",
-    "sha256": "65be50932531980c22b9e688cd54df6e127d7ff1d1cdd696b9728c652a8b5645"
+    "sha256": "a71486b978a930b15e1a0b86687f0aec694fc9a6deead5709a9f46c54bcc8415"
   },
   "studio-fw": {
     "path": "studios/fw/skill/SKILL.md",

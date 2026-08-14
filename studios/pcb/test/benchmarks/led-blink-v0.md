@@ -4,7 +4,7 @@
 
 - **id:** `led-blink-v0`
 - **model:** `xai/grok-4.5`
-- **agent:** `studio-pcb`
+- **agent:** `pcb`
 - **user prompt:** exact block below (byte-identical)
 
 ## User prompt

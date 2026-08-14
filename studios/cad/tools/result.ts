@@ -346,23 +346,35 @@ export function designCreateResult(input: {
   id: string
   designDir: string
   parts: Array<{ id: string; source?: string }>
+  dispatch?: { mode: "serial" | "parallel"; workers: Array<{ partId: string; sessionID?: string; error?: string }>; remaining: string[] }
 }): CadToolEnvelope {
+  const dispatched = input.dispatch?.mode === "parallel" && (input.dispatch.workers?.some((worker) => worker.sessionID) ?? false)
   return {
     ok: true,
     tool: "cad_design_create",
-    summary: `Scaffolded design "${input.id}" with ${input.parts.length} part(s)`,
+    summary: dispatched
+      ? `Scaffolded design "${input.id}" and dispatched ${input.dispatch!.workers.filter((worker) => worker.sessionID).length} cad-part worker(s)`
+      : `Scaffolded design "${input.id}" with ${input.parts.length} part(s)`,
     status: "pass",
     data: {
       id: input.id,
       directory: input.designDir,
       parts: input.parts,
+      dispatch: input.dispatch,
     },
     warnings: [],
-    next: [
-      "Write shared dimensions into params.py",
-      "Model each part with cad_execute then save parts/*.py",
-      "cad_design_build when sources are ready",
-    ],
+    next: dispatched
+      ? [
+          "Do not model assigned worker parts",
+          "cad_design_join until pending is empty",
+          ...(input.dispatch!.remaining.length > 0 ? ["Model remaining parts here or cad_design_dispatch"] : []),
+          "cad_design_build",
+        ]
+      : [
+          "Write shared dimensions into params.py if you did not pass params",
+          "Model the part with cad_execute then save parts/*.py",
+          "cad_design_build when sources are ready",
+        ],
   }
 }
 

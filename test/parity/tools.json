@@ -1,5 +1,41 @@
 {
   "tools": {
+    "concept_create": {
+      "studio": "concept",
+      "args": {
+        "id": "string",
+        "from": "string"
+      }
+    },
+    "concept_update": {
+      "studio": "concept",
+      "args": {
+        "id": "string",
+        "section": "string",
+        "data": "object"
+      }
+    },
+    "concept_moodboard": {
+      "studio": "concept",
+      "args": {
+        "id": "string",
+        "direction_id": "string"
+      }
+    },
+    "concept_review": {
+      "studio": "concept",
+      "args": {
+        "id": "string",
+        "findings": "array"
+      }
+    },
+    "concept_freeze": {
+      "studio": "concept",
+      "args": {
+        "id": "string",
+        "waive": "array"
+      }
+    },
     "cad_design_list": {
       "studio": "cad",
       "args": {}
@@ -8,7 +44,9 @@
       "studio": "cad",
       "args": {
         "id": "string",
-        "parts": "array"
+        "parts": "array",
+        "params": "string",
+        "brief": "string"
       }
     },
     "cad_design_read": {
@@ -38,6 +76,18 @@
         "form": "object"
       }
     },
+    "cad_design_dispatch": {
+      "studio": "cad",
+      "args": {
+        "id": "string"
+      }
+    },
+    "cad_design_join": {
+      "studio": "cad",
+      "args": {
+        "id": "string"
+      }
+    },
     "pcb_workspace_list": {
       "studio": "pcb"
     },
@@ -53,19 +103,16 @@
     "pcb_catalog_upsert": {
       "studio": "pcb"
     },
-    "pcb_spice_model_get": {
-      "studio": "pcb"
-    },
-    "pcb_spice_model_upsert": {
+    "pcb_tsx_snippet": {
       "studio": "pcb"
     },
     "pcb_component_search": {
       "studio": "pcb"
     },
-    "pcb_circuit_build": {
+    "pcb_component_add": {
       "studio": "pcb"
     },
-    "pcb_sim_run": {
+    "pcb_circuit_build": {
       "studio": "pcb"
     },
     "pcb_circuit_export": {
@@ -430,5 +477,5 @@
       }
     }
   },
-  "count": 70
+  "count": 76
 }

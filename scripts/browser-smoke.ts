@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { chromium, type Page } from "playwright"
+import { agentNameFor } from "../src/core/package-meta"
 import { STUDIO_IDS } from "../src/core/registry"
 import { configureStudios } from "../src/lifecycle"
 import { startHost } from "../src/server"
@@ -32,6 +33,7 @@ async function httpSmoke(base: string) {
   const filesUi = await fetch(`${base}/studio/files`)
   assert(filesUi.ok, `/studio/files -> ${filesUi.status}`)
   const apiProbes: Array<[string, string]> = [
+    ["concept", "/api/studios/concept/concepts"],
     ["cad", "/api/studios/cad/designs"],
     ["pcb", "/api/studios/pcb/projects"],
     ["fw", "/api/studios/fw/projects"],
@@ -228,6 +230,12 @@ async function browserSmoke(base: string) {
     console.log("agent home ok")
 
     const studioChecks: Record<string, { wait: string; extra?: (p: Page) => Promise<void> }> = {
+      concept: {
+        wait: "Concept Studio",
+        extra: async (p) => {
+          await p.getByRole("heading", { name: "Concepts", exact: true }).waitFor()
+        },
+      },
       cad: {
         wait: "CAD Studio",
         extra: async (p) => {
@@ -272,7 +280,7 @@ async function browserSmoke(base: string) {
       await page.getByRole("button", { name: "Send" }).click()
       for (let attempt = 0; attempt < 50 && promptBodies.length === beforePrompt; attempt += 1) await Bun.sleep(20)
       assert(promptBodies.length === beforePrompt + 1, `${id}: prompt did not reach OpenCode`)
-      assert(promptBodies.at(-1)?.agent === `studio-${id}`, `${id}: unexpected prompt agent ${String(promptBodies.at(-1)?.agent)}`)
+      assert(promptBodies.at(-1)?.agent === agentNameFor(id), `${id}: unexpected prompt agent ${String(promptBodies.at(-1)?.agent)}`)
       await page.getByRole("button", { name: "Close agent" }).click()
       await assertShellFillsViewport(page, id)
       const expectedTitle = id.toUpperCase()
@@ -478,7 +486,11 @@ try {
           ...STUDIO_IDS.map((id, index) => ({
             id: `session-${id}`,
             title: `${id.toUpperCase()} session`,
-            directory: path.join(domain, "studio", id === "cad" ? "designs" : id === "pcb" ? "circuits" : "firmware"),
+            directory: path.join(
+              domain,
+              "studio",
+              id === "concept" ? "concepts" : id === "cad" ? "designs" : id === "pcb" ? "circuits" : "firmware",
+            ),
             time: { created: 1_786_264_200_000 - index, updated: 1_786_264_200_000 - index },
           })),
         ])

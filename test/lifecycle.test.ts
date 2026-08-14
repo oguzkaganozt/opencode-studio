@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { readStudioConfigFile } from "../src/config"
+import { agentNameFor } from "../src/core/package-meta"
 import { STUDIO_IDS } from "../src/core/registry"
 import { configureStudios, removeStudios, statusStudios } from "../src/lifecycle"
 
@@ -59,7 +60,7 @@ describe("configureStudios", () => {
     for (const id of STUDIO_IDS) {
       const skill = path.join(ctx.openCodeHome, `skills/studio-${id}/SKILL.md`)
       expect(await Bun.file(skill).exists()).toBe(true)
-      const agent = path.join(ctx.openCodeHome, `agents/studio-${id}.md`)
+      const agent = path.join(ctx.openCodeHome, `agents/${agentNameFor(id)}.md`)
       expect(await Bun.file(agent).exists()).toBe(true)
       expect(await Bun.file(`${agent}.opencode-studio-managed.json`).exists()).toBe(true)
     }
@@ -72,9 +73,11 @@ describe("configureStudios", () => {
     expect(openCode.plugin.some((p: string) => String(p).includes("media-go.js"))).toBe(false)
     expect(openCode.plugin.some((entry: string) => String(entry).startsWith(`${pkgName}@`))).toBe(false)
     expect(openCode.mcp?.build123d).toBeUndefined()
+    expect(openCode.permission["concept_*"]).toBe("deny")
     expect(openCode.permission["pcb_*"]).toBe("deny")
     expect(openCode.permission["cad_*"]).toBe("deny")
     expect(openCode.permission["fw_*"]).toBe("deny")
+    expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-concept-review/SKILL.md")).exists()).toBe(true)
     expect(openCode.permission.image_generate).toBeUndefined()
     expect(openCode.permission.skill["studio-fw"]).toBe("deny")
     expect(await Bun.file(path.join(ctx.workspace, "opencode.json")).exists()).toBe(false)
@@ -100,6 +103,19 @@ describe("configureStudios", () => {
     await configureStudios({ ...ctx, validateOpenCode: false })
     expect(await Bun.file(skillFile).exists()).toBe(false)
     expect(await Bun.file(agentFile).exists()).toBe(false)
+  })
+
+  test("configure removes leftover prefixed studio agents", async () => {
+    const ctx = await isolated()
+    const agentFile = path.join(ctx.openCodeHome, "agents/studio-fw.md")
+    await mkdir(path.join(ctx.openCodeHome, "agents"), { recursive: true })
+    const body = "# leftover prefixed fw agent\n"
+    const digest = createHash("sha256").update(body).digest("hex")
+    await writeFile(agentFile, body)
+    await writeFile(`${agentFile}.opencode-studio-managed.json`, JSON.stringify({ studioId: "fw", packageVersion: "1.0.0", digest }))
+    await configureStudios({ ...ctx, validateOpenCode: false })
+    expect(await Bun.file(agentFile).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "agents/firmware.md")).exists()).toBe(true)
   })
 
   test("configure keeps user-modified leftover Media files", async () => {
@@ -152,7 +168,7 @@ describe("configureStudios", () => {
   test("refuses user-modified managed agents", async () => {
     const ctx = await isolated()
     await configureStudios({ ...ctx, validateOpenCode: false })
-    const agent = path.join(ctx.openCodeHome, "agents/studio-fw.md")
+    const agent = path.join(ctx.openCodeHome, "agents/firmware.md")
     await writeFile(agent, `${await readFile(agent, "utf8")}\nUser edit\n`)
     await expect(configureStudios({ ...ctx, validateOpenCode: false })).rejects.toThrow(/agent was modified by the user/)
   })
@@ -237,7 +253,7 @@ describe("configureStudios", () => {
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-pcb/SKILL.md")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-cad/SKILL.md")).exists()).toBe(false)
     expect(await Bun.file(path.join(ctx.openCodeHome, "skills/studio-fw/SKILL.md")).exists()).toBe(false)
-    expect(await Bun.file(path.join(ctx.openCodeHome, "agents/studio-fw.md")).exists()).toBe(false)
+    expect(await Bun.file(path.join(ctx.openCodeHome, "agents/firmware.md")).exists()).toBe(false)
     const openCode = JSON.parse(await readFile(path.join(ctx.openCodeHome, "opencode.json"), "utf8"))
     expect((openCode.plugin ?? []).some((entry: string) => String(entry).includes("opencode-studio"))).toBe(false)
     expect(openCode.mcp?.build123d).toBeUndefined()
@@ -255,10 +271,15 @@ describe("configureStudios", () => {
     const managedIds = [
       "plugin-registration",
       "permission:studio",
+      "skill:concept",
       "skill:cad",
       "skill:pcb",
       "skill:fw",
+      "skill:concept-review",
+      "skill:cad-part",
+      "agent:concept",
       "agent:cad",
+      "agent:cad-part",
       "agent:pcb",
       "agent:fw",
       "cad-engine",

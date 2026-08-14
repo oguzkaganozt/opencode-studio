@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { load } from "js-yaml"
 import { type OpenCodeConfig, withManagedStudioPermissions } from "../src/core/opencode-config"
+import { agentNameFor } from "../src/core/package-meta"
 import { STUDIO_IDS, type StudioId } from "../src/core/registry"
 import tools from "./parity/tools.json"
 
@@ -36,12 +37,12 @@ function actionFor(input: { permission: string; pattern: string; rules: Rule[] }
 }
 
 async function agentPermission(studioId: StudioId) {
-  const source = await readFile(path.join(import.meta.dir, "..", "studios", studioId, "agent", `studio-${studioId}.md`), "utf8")
+  const source = await readFile(path.join(import.meta.dir, "..", "studios", studioId, "agent", `${agentNameFor(studioId)}.md`), "utf8")
   const match = /^---\n([\s\S]*?)\n---/.exec(source)
-  if (!match) throw new Error(`Missing frontmatter for studio-${studioId}`)
+  if (!match) throw new Error(`Missing frontmatter for ${agentNameFor(studioId)}`)
   const frontmatter = load(match[1]!) as { mode?: string; hidden?: boolean; permission?: unknown }
   expect(frontmatter.mode).toBe("primary")
-  expect(frontmatter.hidden).toBe(true)
+  expect(frontmatter.hidden).toBeUndefined()
   return frontmatter.permission
 }
 
@@ -75,7 +76,34 @@ describe("Studio agent isolation", () => {
           candidate === studioId ? "allow" : "deny",
         )
       }
+      expect(actionFor({ permission: "skill", pattern: "studio-concept-review", rules: combined })).toBe(
+        studioId === "concept" ? "allow" : "deny",
+      )
+      expect(actionFor({ permission: "skill", pattern: "studio-cad-part", rules: combined })).toBe("deny")
       expect(actionFor({ permission: "task", pattern: "general", rules: combined })).toBe("deny")
+      expect(actionFor({ permission: "external_directory", pattern: "*", rules: combined })).toBe("allow")
+      expect(actionFor({ permission: "bash", pattern: "*", rules: combined })).toBe("allow")
+      expect(actionFor({ permission: "doom_loop", pattern: "*", rules: combined })).toBe("allow")
     }
+  })
+
+  test("cad-part worker cannot build, fit, or load the parent CAD skill", async () => {
+    const base: OpenCodeConfig = { exists: false, text: "{}\n", value: {}, filePath: "opencode.json" }
+    const globalRules = rules(withManagedStudioPermissions(base).value.permission)
+    const source = await readFile(path.join(import.meta.dir, "..", "studios", "cad", "agent", "cad-part.md"), "utf8")
+    const match = /^---\n([\s\S]*?)\n---/.exec(source)
+    if (!match) throw new Error("Missing frontmatter for cad-part")
+    const frontmatter = load(match[1]!) as { mode?: string; hidden?: boolean; permission?: unknown }
+    expect(frontmatter.mode).toBe("subagent")
+    expect(frontmatter.hidden).toBe(true)
+    const combined = [...globalRules, ...rules(frontmatter.permission)]
+    expect(actionFor({ permission: "cad_execute", pattern: "*", rules: combined })).toBe("allow")
+    expect(actionFor({ permission: "cad_design_build", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "cad_design_dispatch", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "cad_compare", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "pcb_circuit_build", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "skill", pattern: "studio-cad-part", rules: combined })).toBe("allow")
+    expect(actionFor({ permission: "skill", pattern: "studio-cad", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "task", pattern: "general", rules: combined })).toBe("deny")
   })
 })

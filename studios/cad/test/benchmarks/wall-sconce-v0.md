@@ -6,7 +6,7 @@ Harder tier: visual reference + multi-part wall light (form fidelity matters).
 
 - **id:** `wall-sconce-v0`
 - **model / flavor:** `xai/grok-4.5` (same every run)
-- **agent:** `studio-cad`
+- **agent:** `cad`
 - **reference image:** `studios/cad/test/benchmarks/wall-sconce-frosted-glass.png` (attach with `--file`)
 - **user prompt:** exact block below (byte-identical)
 - **variable later:** tools / skill only

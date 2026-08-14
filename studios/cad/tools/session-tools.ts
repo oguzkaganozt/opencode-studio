@@ -108,7 +108,6 @@ function jsonSchemaToShape(schema: JsonSchema): Record<string, Field> {
 }
 
 export function createCadSessionTools(options: { engineProjectDir: string; cwd: string }) {
-  const session = getCadRuntimeSession(options.engineProjectDir, options.cwd)
   const tools: Record<string, ReturnType<typeof tool>> = {}
 
   for (const entry of catalog.tools as CatalogTool[]) {
@@ -126,7 +125,8 @@ export function createCadSessionTools(options: { engineProjectDir: string; cwd: 
           if (value === undefined) continue
           cleaned[key] = value
         }
-        const result = await session.callTool(entry.name, cleaned, { signal: context.abort })
+        const runtime = getCadRuntimeSession(options.engineProjectDir, options.cwd, context.sessionID)
+        const result = await runtime.callTool(entry.name, cleaned, { signal: context.abort })
         const attachments = result.images.map((image, index) => ({
           type: "file" as const,
           mime: image.mimeType,

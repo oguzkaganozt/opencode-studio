@@ -6,7 +6,7 @@ Hardest tier: visual reference + multi-part + **organic shell** (form fidelity r
 
 - **id:** `speaker-organic-v0`
 - **model / flavor:** `xai/grok-4.5` (same every run)
-- **agent:** `studio-cad`
+- **agent:** `cad`
 - **reference image:** `studios/cad/test/benchmarks/speaker-gold-cones.png` (attach with `--file`)
 - **user prompt:** exact block below (byte-identical)
 - **variable later:** tools / skill only

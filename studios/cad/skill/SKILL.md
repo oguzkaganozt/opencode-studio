@@ -138,9 +138,9 @@ Follow these phases in order. Phase 1.5 is optional when the active model cannot
 ## Phase 0 - Product Brief
 
 1. Read the user's product request. Infer the functional architecture: what shells, what openings, what mounting features, what clearances. Classify the dominant body with Shape Strategy; if Manufactured Freeform Mode applies, state its form contract before modeling.
-2. Call `cad_design_create(id, parts[])` with the complete part list.
-3. Write shared dimensions and tolerances into `params.py` (the file is created by `cad_design_create`).
-4. Share the part plan with the user before fabrication.
+2. Call `cad_design_create` with the complete part list, `params` (full `params.py` body), and a short `brief`. Two or more parts spawn `cad-part` workers immediately — do not model those parts yourself.
+3. One part: model it in this session after create.
+4. Share the part plan with the user.
 
 Every part source must import shared values from `params.py` and expose:
 
@@ -153,14 +153,16 @@ Do not duplicate shared parameters inside part modules.
 
 ## Phase 1 - Part Fabrication
 
-Build one part at a time in the interactive session:
+- **One part:** model it in this session (validate / measure / printability), then `cad_design_build`.
+- **Two or more parts:** create already spawned workers. Do not model assigned parts. `cad_design_join` until `pending` is empty. Model `remaining` or `cad_design_dispatch` again. Then `cad_design_build`.
 
-1. Model it in assembly coordinates with the required shells, openings, clearances, flat base, and viable overhangs. In Manufactured Freeform Mode, accept the measured master envelope before adding secondary engineering features.
-2. Before saving source, run `cad_validate`, `cad_measure`, `cad_analyze_printability`, and applicable `cad_compare` checks; render if image review is available.
-3. Resolve failed or ambiguous checks in-session, using snapshots for risky changes.
-4. Save the accepted implementation to `parts/<part-id>.py`.
+If dispatch falls back to serial, model parts one at a time in this session:
 
-After all parts pass these checks, call `cad_design_build(id)`. Do not use `cad_design_build` as a geometry scratchpad. A failed build preserves the previous generated output.
+1. Model in assembly coordinates with shells, openings, clearances, flat base, and viable overhangs. In Manufactured Freeform Mode, accept the measured master envelope before secondary features.
+2. Before saving: `cad_validate`, `cad_measure`, `cad_analyze_printability`; render if image review is available.
+3. Resolve failed checks in-session. Save to `parts/<part-id>.py`.
+
+Do not use `cad_design_build` as a geometry scratchpad. A failed build preserves the previous generated output.
 
 Before the first `cad_design_build`, execute the exact canonical source implementation in-session and complete its geometry and print-pose checks; do not rely on a similar prototype. After a failed build or QC pass, collect the related findings, apply one coherent source patch, and rerun the affected in-session checks before rebuilding. Do not spend repeated builds discovering Python API, syntax, or printability issues that the interactive session can expose first.
 

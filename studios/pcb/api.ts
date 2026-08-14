@@ -7,7 +7,6 @@ import { generateBom, toBomCsv } from "./bom"
 import { filterCatalogParts, getCatalogPart, loadCatalogParts, partDetail, partSummary, upsertCatalogPart } from "./catalog"
 import { manufacturingBlockers, readCircuitJson } from "./circuit-json"
 import { projectCircuitReadiness } from "./readiness"
-import { extractAnalogSimulationDiagnostics, extractAnalogSimulationExperiments, SIMULATION_ESTIMATE_CAVEAT } from "./tsci"
 import { ensureWatching, onProjectEvent } from "./watcher"
 import {
   type CircuitProject,
@@ -130,26 +129,6 @@ export function createPcbApi(workspaceRoot: string) {
   app.get("/projects/:id/circuit.json", async (ctx) => {
     const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
     return serveWorkspaceFile(workspaceRoot, project.circuitJsonPath, "application/json")
-  })
-
-  app.get("/projects/:id/simulation", async (ctx) => {
-    const project = await requireBuiltProject(workspaceRoot, ctx.req.param("id"))
-    const maxPoints = integerQuery(ctx.req.query("maxPoints"), 500, 2, 2000)
-    if (maxPoints === undefined) throw new ApiError(400, "maxPoints must be an integer between 2 and 2000")
-    const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
-    const experiments = extractAnalogSimulationExperiments(json, maxPoints)
-    const diagnostics = extractAnalogSimulationDiagnostics(json)
-    if (experiments.length === 0 && diagnostics.length === 0) {
-      return ctx.json({ error: "No simulation results. Add <analogsimulation> and named probes, then run pcb_sim_run." }, 404)
-    }
-    return ctx.json({
-      projectId: ctx.req.param("id"),
-      name: project.name,
-      simulationSuccess: experiments.length > 0 && diagnostics.length === 0,
-      experiments,
-      diagnostics,
-      caveat: SIMULATION_ESTIMATE_CAVEAT,
-    })
   })
 
   app.get("/projects/:id/bom", async (ctx) => {

@@ -24,6 +24,11 @@ export type PluginLoader = (ctx: PluginLoadContext) => Promise<Plugin>
 export type ApiLoader = (ctx: ApiLoadContext) => Promise<Hono>
 
 export const pluginLoaders: Record<StudioId, PluginLoader> = {
+  concept: async (ctx) => {
+    const { loadConceptPlugin } = await import("../studios/concept/plugin")
+    const root = await ctx.resolveStudioRoot({ studioId: "concept", studioRoot: ctx.studioRoot, roots: ctx.roots })
+    return loadConceptPlugin({ root })
+  },
   cad: async (ctx) => {
     const { loadCadPlugin } = await import("../studios/cad/plugin")
     const root = await ctx.resolveStudioRoot({ studioId: "cad", studioRoot: ctx.studioRoot, roots: ctx.roots })
@@ -47,6 +52,11 @@ export const pluginLoaders: Record<StudioId, PluginLoader> = {
 }
 
 export const apiLoaders: Record<StudioId, ApiLoader> = {
+  concept: async (ctx) => {
+    const { createConceptApi } = await import("../studios/concept/api")
+    const root = await ctx.resolveStudioRoot({ studioId: "concept", studioRoot: ctx.studioRoot, roots: ctx.roots })
+    return createConceptApi(root)
+  },
   cad: async (ctx) => {
     const [{ createCadApi }, { initializeStudio }] = await Promise.all([
       import("../studios/cad/host/api"),

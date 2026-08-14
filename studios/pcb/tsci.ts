@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto"
-import { mkdir, readFile, rm } from "node:fs/promises"
+import { createHash, randomUUID } from "node:crypto"
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { engineCommand, resolveTsci } from "../../src/core/engines"
@@ -28,68 +28,17 @@ export type TsciResult = {
   exitCode: number
 }
 
-export type AnalogSimulationSeries = {
-  name: string
-  kind: "voltage" | "current" | "phase"
-  unit: "V" | "A" | "deg"
-  values: number[]
-  summary: {
-    first: number
-    last: number
-    min: number
-    max: number
-    mean: number
-    peakToPeak: number
-  }
-}
-
-export type AnalogSimulationExperiment = {
-  id: string
-  name: string
-  analysis: "transient" | "ac"
-  pointsCount: number
-  returnedPoints: number
-  downsampled: boolean
-  axis: { name: "time" | "frequency"; unit: "ms" | "Hz"; values: number[] }
-  series: AnalogSimulationSeries[]
-}
-
-export type AnalogSimulationResult = TsciResult & {
-  processSuccess: boolean
-  experiments: AnalogSimulationExperiment[]
-  diagnostics: string[]
-}
-
-export const SIMULATION_ESTIMATE_CAVEAT =
-  "Directional estimate, not engineering-grade — SPICE convergence and ideal tscircuit parts limit accuracy."
-
-const SPICE_PROPERTY_RE = /spice(?:model|pinmapping)/i
-
-export function extractAnalogSimulationDiagnostics(circuitJson: unknown[]): string[] {
-  const messages: string[] = []
-  for (const element of circuitJson) {
-    if (!element || typeof element !== "object" || Array.isArray(element)) continue
-    const row = element as Record<string, unknown>
-    if (typeof row.type !== "string" || !row.type.endsWith("_error")) continue
-    const message = typeof row.message === "string" ? row.message.trim() : ""
-    if (!message) continue
-    if (
-      row.type === "simulation_unknown_experiment_error" ||
-      row.type.startsWith("simulation_") ||
-      (row.type === "source_invalid_component_property_error" && (row.property_name === "spiceModel" || SPICE_PROPERTY_RE.test(message)))
-    ) {
-      messages.push(message)
-    }
-  }
-  return [...new Set(messages)]
-}
-
 export type ComponentSearchScope = "all" | "jlcpcb" | "tscircuit" | "kicad"
 
 export type ComponentLoadability = {
   status: "loadable" | "unavailable" | "unknown"
   reason: string
   checkedUrl?: string
+}
+
+export type ComponentCandidateVerification = {
+  status: "unverified" | "verified" | "rejected"
+  reason: string
 }
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
@@ -119,6 +68,10 @@ export type ComponentSearchEntry =
       starCount: number | null
       hasPublicDist: boolean
       loadability: ComponentLoadability
+      candidateId: string | null
+      packageSpec: string | null
+      importStatement: string | null
+      exportName: string | null
     }
   | {
       source: "kicad"
@@ -136,6 +89,45 @@ export type ComponentSearchResult = TsciResult & {
   fallbackUsed: boolean
   scope: ComponentSearchScope
   results: ComponentSearchEntry[]
+  cacheHit: boolean
+}
+
+export function isUsableSearchEntry(entry: ComponentSearchEntry, projectDir?: string): boolean {
+  return entry.source === "tscircuit" && entry.candidateId !== null && candidateVerification(entry, projectDir).status === "verified"
+}
+
+export function isInstallableSearchEntry(entry: ComponentSearchEntry, projectDir?: string): boolean {
+  return entry.source === "tscircuit" && entry.candidateId !== null && candidateVerification(entry, projectDir).status === "unverified"
+}
+
+export function isFootprintOnlySearchEntry(entry: ComponentSearchEntry): boolean {
+  return entry.source === "kicad" && Boolean(entry.footprint)
+}
+
+export function partitionSearchEntries(
+  entries: ComponentSearchEntry[],
+  projectDir?: string,
+): {
+  usable: ComponentSearchEntry[]
+  candidates: ComponentSearchEntry[]
+  rejected: ComponentSearchEntry[]
+  footprintOnly: ComponentSearchEntry[]
+  catalogOnly: ComponentSearchEntry[]
+} {
+  const usable: ComponentSearchEntry[] = []
+  const candidates: ComponentSearchEntry[] = []
+  const rejected: ComponentSearchEntry[] = []
+  const footprintOnly: ComponentSearchEntry[] = []
+  const catalogOnly: ComponentSearchEntry[] = []
+  for (const entry of entries) {
+    if (isUsableSearchEntry(entry, projectDir)) usable.push(entry)
+    else if (isInstallableSearchEntry(entry, projectDir)) candidates.push(entry)
+    else if (entry.source === "tscircuit" && entry.candidateId && candidateVerification(entry, projectDir).status === "rejected")
+      rejected.push(entry)
+    else if (isFootprintOnlySearchEntry(entry)) footprintOnly.push(entry)
+    else catalogOnly.push(entry)
+  }
+  return { usable, candidates, rejected, footprintOnly, catalogOnly }
 }
 
 export type BuildArtifacts = {
@@ -149,6 +141,44 @@ export type CircuitBuildResult = TsciResult & {
   processSuccess: boolean
   artifacts: BuildArtifacts
   inspection: CircuitInspection | null
+}
+
+export type BuildDiagnosticSummary = {
+  rootCause: "package" | "footprint" | "circuit" | null
+  package: string[]
+  footprint: string[]
+  circuit: string[]
+}
+
+export function classifyBuildDiagnostics(
+  result: Pick<CircuitBuildResult, "stderr" | "inspection">,
+  blockers: readonly ManufacturingBlocker[] = [],
+): BuildDiagnosticSummary {
+  const summary: BuildDiagnosticSummary = { rootCause: null, package: [], footprint: [], circuit: [] }
+  const packagePattern =
+    /cannot find (?:package|module)|module_not_found|could not resolve|failed to resolve import|does not provide an export/i
+  const footprintPattern = /footprint|pcb[_ ]port|\bpad\b|copper iou/i
+  if (result.stderr.trim()) {
+    if (packagePattern.test(result.stderr)) summary.package.push(result.stderr.trim().slice(0, 2000))
+    else if (footprintPattern.test(result.stderr)) summary.footprint.push(result.stderr.trim().slice(0, 2000))
+    else summary.circuit.push(result.stderr.trim().slice(0, 2000))
+  }
+  for (const group of result.inspection?.errors ?? []) {
+    const messages = group.messages.length > 0 ? group.messages : [group.type]
+    const destination = packagePattern.test(`${group.type} ${messages.join(" ")}`)
+      ? summary.package
+      : footprintPattern.test(`${group.type} ${messages.join(" ")}`)
+        ? summary.footprint
+        : summary.circuit
+    destination.push(...messages)
+  }
+  for (const blocker of blockers) {
+    const destination = footprintPattern.test(`${blocker.type} ${blocker.messages.join(" ")}`) ? summary.footprint : summary.circuit
+    destination.push(...blocker.messages)
+  }
+  summary.rootCause =
+    summary.package.length > 0 ? "package" : summary.footprint.length > 0 ? "footprint" : summary.circuit.length > 0 ? "circuit" : null
+  return summary
 }
 
 export type CircuitExportResult = TsciResult & {
@@ -205,217 +235,6 @@ async function run(args: string[], cwd: string, signal?: AbortSignal): Promise<T
   return runCommand(["npx", "--yes", "tsci", ...args], cwd, signal)
 }
 
-function sampleIndexes(length: number, maxPoints: number): number[] {
-  if (length <= maxPoints) return Array.from({ length }, (_, index) => index)
-  return Array.from({ length: maxPoints }, (_, index) => Math.round((index * (length - 1)) / (maxPoints - 1)))
-}
-
-function numericArray(value: unknown): number[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isFinite(item)) ? value : []
-}
-
-function summarizeValues(values: number[]): AnalogSimulationSeries["summary"] {
-  let min = Infinity
-  let max = -Infinity
-  let total = 0
-  for (const value of values) {
-    if (value < min) min = value
-    if (value > max) max = value
-    total += value
-  }
-  return {
-    first: values[0]!,
-    last: values[values.length - 1]!,
-    min,
-    max,
-    mean: total / values.length,
-    peakToPeak: max - min,
-  }
-}
-
-const TRANSIENT_VOLTAGE_GRAPH = "simulation_transient_voltage_graph"
-const TRANSIENT_CURRENT_GRAPH = "simulation_transient_current_graph"
-const AC_VOLTAGE_GRAPH = "simulation_ac_sweep_voltage_graph"
-const AC_CURRENT_GRAPH = "simulation_ac_sweep_current_graph"
-
-function isAcGraph(type: string): boolean {
-  return type === AC_VOLTAGE_GRAPH || type === AC_CURRENT_GRAPH
-}
-
-function graphType(graph: Record<string, unknown>): string {
-  return typeof graph.type === "string" ? graph.type : ""
-}
-
-function graphName(graph: Record<string, unknown>): string {
-  return typeof graph.name === "string" ? graph.name : typeof graph.source_probe_name === "string" ? graph.source_probe_name : "probe"
-}
-
-function graphAxisValues(graph: Record<string, unknown>): number[] {
-  const value = isAcGraph(graphType(graph)) ? graph.frequencies_hz : graph.timestamps_ms
-  return numericArray(value)
-}
-
-function complexSamples(value: unknown): Array<{ re: number; im: number }> {
-  if (!Array.isArray(value)) return []
-  const samples: Array<{ re: number; im: number }> = []
-  for (const item of value) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return []
-    const { re, im } = item as Record<string, unknown>
-    if (typeof re !== "number" || !Number.isFinite(re) || typeof im !== "number" || !Number.isFinite(im)) return []
-    samples.push({ re, im })
-  }
-  return samples
-}
-
-function unwrapDegrees(degrees: number[]): number[] {
-  const unwrapped = [...degrees]
-  for (let index = 1; index < unwrapped.length; index++) {
-    let delta = unwrapped[index]! - unwrapped[index - 1]!
-    while (delta > 180) {
-      unwrapped[index] = unwrapped[index]! - 360
-      delta -= 360
-    }
-    while (delta < -180) {
-      unwrapped[index] = unwrapped[index]! + 360
-      delta += 360
-    }
-  }
-  return unwrapped
-}
-
-function seriesForGraph(graph: Record<string, unknown>, axis: number[], indexes: number[]): AnalogSimulationSeries[] {
-  const name = graphName(graph)
-  const type = graphType(graph)
-  switch (type) {
-    case TRANSIENT_VOLTAGE_GRAPH:
-    case TRANSIENT_CURRENT_GRAPH: {
-      const voltage = type === TRANSIENT_VOLTAGE_GRAPH
-      const values = numericArray(voltage ? graph.voltage_levels : graph.current_levels)
-      if (values.length !== axis.length) return []
-      const sampled = indexes.map((index) => values[index]!)
-      return [
-        {
-          name,
-          kind: voltage ? "voltage" : "current",
-          unit: voltage ? "V" : "A",
-          values: sampled,
-          summary: summarizeValues(values),
-        },
-      ]
-    }
-    case AC_VOLTAGE_GRAPH:
-    case AC_CURRENT_GRAPH: {
-      const voltage = type === AC_VOLTAGE_GRAPH
-      const samples = complexSamples(voltage ? graph.complex_voltages : graph.complex_currents)
-      if (samples.length !== axis.length) return []
-      const magnitudes = samples.map((sample) => Math.hypot(sample.re, sample.im))
-      const phases = samples.map((sample) => (Math.atan2(sample.im, sample.re) * 180) / Math.PI)
-      return [
-        {
-          name,
-          kind: voltage ? "voltage" : "current",
-          unit: voltage ? "V" : "A",
-          values: indexes.map((index) => magnitudes[index]!),
-          summary: summarizeValues(magnitudes),
-        },
-        {
-          name,
-          kind: "phase",
-          unit: "deg",
-          values: indexes.map((index) => phases[index]!),
-          summary: summarizeValues(unwrapDegrees(phases)),
-        },
-      ]
-    }
-    default:
-      return []
-  }
-}
-
-export function extractAnalogSimulationExperiments(circuitJson: unknown[], maxPoints = 500): AnalogSimulationExperiment[] {
-  const experiments = new Map<string, { id: string; name: string; graphs: Array<Record<string, unknown>> }>()
-  for (const element of circuitJson) {
-    if (!element || typeof element !== "object" || Array.isArray(element)) continue
-    const row = element as Record<string, unknown>
-    if (row.type === "simulation_experiment" && typeof row.simulation_experiment_id === "string") {
-      experiments.set(row.simulation_experiment_id, {
-        id: row.simulation_experiment_id,
-        name: typeof row.name === "string" ? row.name : row.simulation_experiment_id,
-        graphs: [],
-      })
-    }
-  }
-
-  for (const element of circuitJson) {
-    if (!element || typeof element !== "object" || Array.isArray(element)) continue
-    const row = element as Record<string, unknown>
-    const type = row.type
-    if (type !== TRANSIENT_VOLTAGE_GRAPH && type !== TRANSIENT_CURRENT_GRAPH && type !== AC_VOLTAGE_GRAPH && type !== AC_CURRENT_GRAPH) {
-      continue
-    }
-    if (typeof row.simulation_experiment_id !== "string") continue
-    const experiment = experiments.get(row.simulation_experiment_id) ?? {
-      id: row.simulation_experiment_id,
-      name: row.simulation_experiment_id,
-      graphs: [],
-    }
-    experiment.graphs.push(row)
-    experiments.set(experiment.id, experiment)
-  }
-
-  const requestedPoints = Math.max(2, Math.min(maxPoints, 2000))
-  return [...experiments.values()].flatMap((experiment) => {
-    const firstGraph = experiment.graphs.find((graph) => graphAxisValues(graph).length > 0)
-    if (!firstGraph) return []
-    const ac = isAcGraph(graphType(firstGraph))
-    const axisValues = graphAxisValues(firstGraph)
-    const seriesWeight = experiment.graphs.reduce((total, graph) => total + (isAcGraph(graphType(graph)) ? 2 : 1), 0)
-    const pointBudget = Math.max(2, Math.min(requestedPoints, Math.floor(5000 / (seriesWeight + 1))))
-    const indexes = sampleIndexes(axisValues.length, pointBudget)
-    const series = experiment.graphs.flatMap((graph) => {
-      if (isAcGraph(graphType(graph)) !== ac) return []
-      return seriesForGraph(graph, axisValues, indexes)
-    })
-    if (series.length === 0) return []
-    return [
-      {
-        id: experiment.id,
-        name: experiment.name,
-        analysis: ac ? ("ac" as const) : ("transient" as const),
-        pointsCount: axisValues.length,
-        returnedPoints: indexes.length,
-        downsampled: indexes.length < axisValues.length,
-        axis: ac
-          ? { name: "frequency" as const, unit: "Hz" as const, values: indexes.map((index) => axisValues[index]!) }
-          : { name: "time" as const, unit: "ms" as const, values: indexes.map((index) => axisValues[index]!) },
-        series,
-      },
-    ]
-  })
-}
-
-export async function simulateAnalogCircuit(projectDir: string, signal?: AbortSignal, maxPoints = 500): Promise<AnalogSimulationResult> {
-  const build = await runProjectBuild(projectDir, signal)
-  const circuitJson = build.artifacts.circuitJsonPath ? await readCircuitJson(projectDir, build.artifacts.circuitJsonPath) : []
-  const experiments = extractAnalogSimulationExperiments(circuitJson, maxPoints)
-  const simDiagnostics = extractAnalogSimulationDiagnostics(circuitJson)
-  const missingResults =
-    build.processSuccess && experiments.length === 0 && simDiagnostics.length === 0
-      ? "No analog simulation results found. Add <analogsimulation> and named probes."
-      : ""
-  const diagnostics = [...simDiagnostics, ...(missingResults ? [missingResults] : [])]
-  const success = build.processSuccess && experiments.length > 0 && simDiagnostics.length === 0
-  return {
-    success,
-    processSuccess: build.processSuccess,
-    experiments,
-    diagnostics,
-    stdout: build.stdout,
-    stderr: [build.stderr, ...diagnostics].filter(Boolean).join("\n"),
-    exitCode: build.exitCode,
-  }
-}
-
 function optionalString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null
 }
@@ -426,6 +245,73 @@ function optionalNumber(value: unknown): number | null {
 
 function optionalBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null
+}
+
+type ComponentCandidate = {
+  id: string
+  packageName: string
+  version: string
+  packageSpec: string
+  importStatement: string
+  exportName: string
+  usageInstructions: string
+}
+
+const componentCandidates = new Map<string, ComponentCandidate>()
+const componentCandidateVerifications = new Map<string, ComponentCandidateVerification>()
+
+function candidateVerificationKey(candidateId: string, projectDir?: string): string {
+  return `${projectDir ? path.resolve(projectDir) : "unscoped"}\0${candidateId}`
+}
+
+function candidateVerification(entry: ComponentSearchEntry, projectDir?: string): ComponentCandidateVerification {
+  if (entry.source !== "tscircuit" || !entry.candidateId) return { status: "rejected", reason: "not_installable" }
+  return (
+    componentCandidateVerifications.get(candidateVerificationKey(entry.candidateId, projectDir)) ?? {
+      status: "unverified",
+      reason: "requires_component_add",
+    }
+  )
+}
+
+export function componentSearchEntryVerification(entry: ComponentSearchEntry, projectDir?: string): ComponentCandidateVerification {
+  return candidateVerification(entry, projectDir)
+}
+
+function parseUsageImport(usageInstructions: string | null): {
+  packageSpec: string
+  importStatement: string
+  exportName: string
+} | null {
+  if (!usageInstructions) return null
+  const match = usageInstructions.match(
+    /import\s+(\{\s*([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*\}|([A-Za-z_$][\w$]*))\s+from\s+["'](@tsci\/[A-Za-z0-9._/-]+)["']/,
+  )
+  if (!match) return null
+  const exportName = match[3] ?? match[2] ?? match[4]
+  if (!exportName) return null
+  return { packageSpec: match[5]!, importStatement: match[0], exportName }
+}
+
+function registerComponentCandidate(input: {
+  packageName: string
+  version: string | null
+  usageInstructions: string | null
+}): Pick<ComponentCandidate, "id" | "packageSpec" | "importStatement" | "exportName"> | null {
+  if (!input.version || !/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(input.version)) return null
+  const parsed = parseUsageImport(input.usageInstructions)
+  if (!parsed) return null
+  const expectedPackageSpec = `@tsci/${input.packageName.replace("/", ".")}`
+  if (parsed.packageSpec.toLowerCase() !== expectedPackageSpec.toLowerCase()) return null
+  const id = createHash("sha256").update(`${parsed.packageSpec}\0${input.version}`).digest("hex").slice(0, 20)
+  componentCandidates.set(id, {
+    id,
+    packageName: input.packageName,
+    version: input.version,
+    usageInstructions: input.usageInstructions!,
+    ...parsed,
+  })
+  return { id, ...parsed }
 }
 
 export function kicadFootprint(pathValue: string): string | null {
@@ -530,16 +416,23 @@ export function parseComponentSearchOutput(stdout: string): { query: string; res
 
     if (result.source === "tscircuit") {
       if (typeof result.name !== "string") throw new Error(`tscircuit search result ${index} is missing a package name`)
+      const version = optionalString(result.latest_version)
+      const usageInstructions = optionalString(result.ai_usage_instructions)
+      const candidate = registerComponentCandidate({ packageName: result.name, version, usageInstructions })
       return {
         source: "tscircuit",
         exactMatch: normalizedPartId(result.name.split("/").at(-1) ?? result.name) === normalizedPartId(parsedQuery),
         packageName: result.name,
-        version: optionalString(result.latest_version),
+        version,
         description: optionalString(result.ai_description) ?? optionalString(result.description),
-        usageInstructions: optionalString(result.ai_usage_instructions),
+        usageInstructions,
         starCount: optionalNumber(result.star_count),
         hasPublicDist: (optionalBoolean(result.public_dist_enabled) ?? optionalBoolean(result.has_public_dist)) === true,
         loadability: classifyRegistryLoadability(result),
+        candidateId: candidate?.id ?? null,
+        packageSpec: candidate?.packageSpec ?? null,
+        importStatement: candidate?.importStatement ?? null,
+        exportName: candidate?.exportName ?? null,
       }
     }
 
@@ -604,6 +497,7 @@ async function searchComponentsOnce(
       fallbackUsed: false,
       scope,
       results: [],
+      cacheHit: false,
     }
   }
 
@@ -619,6 +513,7 @@ async function searchComponentsOnce(
       fallbackUsed: false,
       scope,
       results,
+      cacheHit: false,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -632,6 +527,7 @@ async function searchComponentsOnce(
       fallbackUsed: false,
       scope,
       results: [],
+      cacheHit: false,
       stderr: [result.stderr, `Unable to parse tsci search JSON: ${message}`].filter(Boolean).join("\n"),
     }
   }
@@ -650,6 +546,7 @@ export function combineComponentSearchResults(query: string, results: ComponentS
     fallbackUsed: false,
     scope: "all",
     results: entries,
+    cacheHit: false,
     stdout: results
       .map((result) => result.stdout)
       .filter(Boolean)
@@ -675,7 +572,28 @@ async function searchComponentsForScope(
   return combineComponentSearchResults(query, results)
 }
 
-export async function searchComponents(
+const componentSearchCache = new Map<string, Promise<ComponentSearchResult>>()
+
+export function normalizeComponentSearchQuery(query: string): string {
+  return query
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\b(?:usb[\s_-]*type[\s_-]*c|type[\s_-]*c|usb[\s_-]*c)\b/g, "usbc")
+    .replace(/[_/+-]+/g, " ")
+    .replace(/\b(?:smd|connector|receptacle|module|breakout)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ")
+}
+
+export function clearComponentSearchCache(): void {
+  componentSearchCache.clear()
+}
+
+async function searchComponentsUncached(
   query: string,
   scope: ComponentSearchScope = "all",
   signal?: AbortSignal,
@@ -699,6 +617,265 @@ export async function searchComponents(
     }
   }
   return { ...fallback, query: normalizedQuery, attemptedQueries, fallbackUsed: true }
+}
+
+export async function searchComponents(
+  query: string,
+  scope: ComponentSearchScope = "all",
+  signal?: AbortSignal,
+): Promise<ComponentSearchResult> {
+  const normalizedQuery = query.trim()
+  if (!normalizedQuery) throw new Error("Component search query must not be empty")
+  const key = `${scope}:${normalizeComponentSearchQuery(normalizedQuery)}`
+  const cached = componentSearchCache.get(key)
+  if (cached) return { ...(await cached), query: normalizedQuery, cacheHit: true }
+  const pending = searchComponentsUncached(normalizedQuery, scope, signal)
+  componentSearchCache.set(key, pending)
+  try {
+    return await pending
+  } catch (error) {
+    componentSearchCache.delete(key)
+    throw error
+  }
+}
+
+export type ComponentAddResult = {
+  success: boolean
+  candidateId: string
+  packageName: string | null
+  packageSpec: string | null
+  version: string | null
+  verified: boolean
+  rolledBack: boolean
+  importStatement: string | null
+  exampleUsage: string | null
+  reason: string
+  stdout: string
+  stderr: string
+}
+
+type ComponentAddOperations = {
+  install?: (command: string[], cwd: string, signal?: AbortSignal) => Promise<TsciResult>
+  smoke?: (projectDir: string, candidate: ComponentCandidate, signal?: AbortSignal) => Promise<ComponentSmokeResult>
+}
+
+type ComponentSmokeResult = TsciResult
+
+function tsciCliCommand(args: string[]): string[] {
+  const engine = resolveTsci()
+  return engine ? [...engineCommand(engine), ...args] : ["npx", "--yes", "tsci", ...args]
+}
+
+function dependencyIncludesVersion(value: string | undefined, version: string): boolean {
+  return value === version || value === `^${version}` || value === `~${version}`
+}
+
+async function readOptionalFile(filePath: string): Promise<Buffer | null> {
+  try {
+    return await readFile(filePath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
+    throw error
+  }
+}
+
+async function restoreOptionalFile(filePath: string, content: Buffer | null): Promise<void> {
+  if (content === null) await rm(filePath, { force: true })
+  else await writeFile(filePath, content)
+}
+
+async function pinInstalledCandidate(projectDir: string, candidate: ComponentCandidate): Promise<void> {
+  const installedManifestPath = path.join(projectDir, "node_modules", ...candidate.packageSpec.split("/"), "package.json")
+  const installedManifest = JSON.parse(await readFile(installedManifestPath, "utf8")) as { version?: string }
+  if (installedManifest.version !== candidate.version) {
+    throw new Error(`Registry installed ${candidate.packageSpec}@${String(installedManifest.version)}; expected ${candidate.version}`)
+  }
+
+  const manifestPath = path.join(projectDir, "package.json")
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { dependencies?: Record<string, string> }
+  manifest.dependencies ??= {}
+  manifest.dependencies[candidate.packageSpec] = candidate.version
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+  const packageLockPath = path.join(projectDir, "package-lock.json")
+  const packageLockContent = await readOptionalFile(packageLockPath)
+  if (packageLockContent) {
+    const packageLock = JSON.parse(packageLockContent.toString("utf8")) as {
+      packages?: Record<string, { dependencies?: Record<string, string> }>
+    }
+    const root = packageLock.packages?.[""]
+    if (root?.dependencies?.[candidate.packageSpec]) root.dependencies[candidate.packageSpec] = candidate.version
+    await writeFile(packageLockPath, `${JSON.stringify(packageLock, null, 2)}\n`)
+  }
+
+  const bunLockPath = path.join(projectDir, "bun.lock")
+  const bunLockContent = await readOptionalFile(bunLockPath)
+  if (bunLockContent) {
+    const source = bunLockContent.toString("utf8")
+    const range = JSON.stringify(`^${candidate.version}`)
+    await writeFile(
+      bunLockPath,
+      source.replace(
+        `${JSON.stringify(candidate.packageSpec)}: ${range}`,
+        `${JSON.stringify(candidate.packageSpec)}: ${JSON.stringify(candidate.version)}`,
+      ),
+    )
+  }
+}
+
+async function smokeTestComponent(projectDir: string, candidate: ComponentCandidate, signal?: AbortSignal): Promise<ComponentSmokeResult> {
+  const id = `pcb-component-smoke-${randomUUID()}`
+  const sourcePath = path.join(projectDir, "src", `${id}.tsx`)
+  const outputDir = path.join(projectDir, "dist", "src", id)
+  const source = `import React from "react"\nimport "tscircuit"\n${candidate.importStatement}\n\nexport default () => (\n  <board width="100mm" height="100mm">\n    <${candidate.exportName} name="U_TEST" />\n  </board>\n)\n`
+  try {
+    await writeFile(sourcePath, source)
+    const result = await run(["build", `src/${id}.tsx`], projectDir, signal)
+    if (!result.success) return result
+    try {
+      const json = await readCircuitJson(projectDir, path.join(outputDir, "circuit.json"))
+      const inspection = inspectCircuitJson(json)
+      return inspection.designValid
+        ? result
+        : {
+            ...result,
+            success: false,
+            exitCode: 1,
+            stderr: [result.stderr, ...inspection.errors.flatMap((group) => group.messages)].filter(Boolean).join("\n"),
+          }
+    } catch (error) {
+      return {
+        ...result,
+        success: false,
+        exitCode: 1,
+        stderr: [result.stderr, `Smoke build produced no readable Circuit JSON: ${error instanceof Error ? error.message : String(error)}`]
+          .filter(Boolean)
+          .join("\n"),
+      }
+    }
+  } finally {
+    await Promise.all([rm(sourcePath, { force: true }), rm(outputDir, { recursive: true, force: true })])
+  }
+}
+
+export async function addComponentCandidate(
+  projectDir: string,
+  candidateId: string,
+  signal?: AbortSignal,
+  operations: ComponentAddOperations = {},
+): Promise<ComponentAddResult> {
+  const candidate = componentCandidates.get(candidateId)
+  if (!candidate) {
+    return {
+      success: false,
+      candidateId,
+      packageName: null,
+      packageSpec: null,
+      version: null,
+      verified: false,
+      rolledBack: false,
+      importStatement: null,
+      exampleUsage: null,
+      reason: "unknown_candidate",
+      stdout: "",
+      stderr: "Run pcb_component_search and use a candidateId from that response.",
+    }
+  }
+
+  const verificationKey = candidateVerificationKey(candidateId, projectDir)
+  const manifestPath = path.join(projectDir, "package.json")
+  const lockPath = path.join(projectDir, "package-lock.json")
+  const bunLockPath = path.join(projectDir, "bun.lock")
+  const [manifest, lock, bunLock] = await Promise.all([
+    readOptionalFile(manifestPath),
+    readOptionalFile(lockPath),
+    readOptionalFile(bunLockPath),
+  ])
+  if (!manifest) throw new Error(`PCB project has no package.json: ${projectDir}`)
+  const manifestJson = JSON.parse(manifest.toString("utf8")) as { dependencies?: Record<string, string> }
+  const verification = componentCandidateVerifications.get(verificationKey)
+  if (
+    verification?.status === "verified" &&
+    dependencyIncludesVersion(manifestJson.dependencies?.[candidate.packageSpec], candidate.version)
+  ) {
+    return {
+      success: true,
+      candidateId,
+      packageName: candidate.packageName,
+      packageSpec: candidate.packageSpec,
+      version: candidate.version,
+      verified: true,
+      rolledBack: false,
+      importStatement: candidate.importStatement,
+      exampleUsage: `<${candidate.exportName} name="U1" />`,
+      reason: "already_verified",
+      stdout: "",
+      stderr: "",
+    }
+  }
+
+  const install = operations.install ?? runCommand
+  const installCommand = tsciCliCommand(["add", candidate.packageName])
+  const installed = await serializeNpmExec(() => install(installCommand, projectDir, signal))
+  let pinFailure: TsciResult | null = null
+  if (installed.success) {
+    try {
+      await pinInstalledCandidate(projectDir, candidate)
+    } catch (error) {
+      pinFailure = {
+        success: false,
+        stdout: installed.stdout,
+        stderr: error instanceof Error ? error.message : String(error),
+        exitCode: 1,
+      }
+    }
+  }
+  let smokeResult: ComponentSmokeResult | null = null
+  if (installed.success && !pinFailure) smokeResult = await (operations.smoke ?? smokeTestComponent)(projectDir, candidate, signal)
+  const failure = !installed.success ? installed : pinFailure ? pinFailure : smokeResult?.success ? null : smokeResult
+
+  if (failure) {
+    await Promise.all([
+      restoreOptionalFile(manifestPath, manifest),
+      restoreOptionalFile(lockPath, lock),
+      restoreOptionalFile(bunLockPath, bunLock),
+    ])
+    await serializeNpmExec(() => install(["npm", "install", "--no-audit", "--no-fund", "--loglevel=error"], projectDir, signal)).catch(
+      () => {},
+    )
+    const reason = !installed.success ? "install_failed" : pinFailure ? "version_verification_failed" : "smoke_test_failed"
+    componentCandidateVerifications.set(verificationKey, { status: "rejected", reason })
+    return {
+      success: false,
+      candidateId,
+      packageName: candidate.packageName,
+      packageSpec: candidate.packageSpec,
+      version: candidate.version,
+      verified: false,
+      rolledBack: true,
+      importStatement: candidate.importStatement,
+      exampleUsage: null,
+      reason,
+      stdout: failure.stdout.slice(0, 8000),
+      stderr: failure.stderr.slice(0, 4000),
+    }
+  }
+
+  componentCandidateVerifications.set(verificationKey, { status: "verified", reason: "project_smoke_test_passed" })
+  return {
+    success: true,
+    candidateId,
+    packageName: candidate.packageName,
+    packageSpec: candidate.packageSpec,
+    version: candidate.version,
+    verified: true,
+    rolledBack: false,
+    importStatement: candidate.importStatement,
+    exampleUsage: `<${candidate.exportName} name="U1" />`,
+    reason: "installed_and_verified",
+    stdout: installed.stdout.slice(0, 8000),
+    stderr: installed.stderr.slice(0, 4000),
+  }
 }
 
 /**
@@ -780,7 +957,12 @@ export async function exportCircuit(
       generatedFormats: [],
       blockedFormats: formats.includes("gerber") ? ["gerber"] : [],
       manufacturingBlockers: [{ type: "invalid_design", count: 1, messages: [tamperedArtifactMessage()] }],
-      artifacts: { circuitJsonPath: absoluteCircuitJsonPath, schematicSvgPath: null, pcbSvgPath: null, gerbersZipPath: null },
+      artifacts: {
+        circuitJsonPath: absoluteCircuitJsonPath,
+        schematicSvgPath: null,
+        pcbSvgPath: null,
+        gerbersZipPath: null,
+      },
       inspection,
     }
   }

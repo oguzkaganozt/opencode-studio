@@ -39,6 +39,7 @@ type StudiosResponse = {
 }
 
 const STUDIO_META: Record<string, { short: string; blurb: string }> = {
+  concept: { short: "CONCEPT", blurb: "Briefs, moodboards" },
   cad: { short: "CAD", blurb: "Parts, assemblies, renders" },
   pcb: { short: "PCB", blurb: "Schematic, layout, BOM" },
   fw: { short: "FW", blurb: "Build, sim, UART" },
@@ -412,6 +413,11 @@ function OpenCodeFrame() {
 }
 
 const viewerLoaders: Record<StudioId, React.LazyExoticComponent<() => React.ReactNode>> = {
+  concept: lazy(async () => {
+    await import("@studios/concept/viewer/src/styles.css")
+    const mod = await import("@studios/concept/viewer/src/app")
+    return { default: mod.App }
+  }),
   cad: lazy(async () => {
     await import("@studios/cad/viewer/src/styles.css")
     const mod = await import("@studios/cad/viewer/src/app")

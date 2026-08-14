@@ -4,7 +4,7 @@
 
 - **id:** `uart-c6-v0`
 - **model:** `xai/grok-4.5`
-- **agent:** `studio-fw`
+- **agent:** `firmware`
 - **expect:** `BENCH_C6_OK`
 - **user prompt:** exact block below (byte-identical)
 

@@ -24,16 +24,7 @@ describe("fw plugin", () => {
   test("registers Firmware Studio tools", async () => {
     const value = await hooks()
     expect(Object.keys(value.tool ?? {}).sort()).toEqual(
-      [
-        "fw_build",
-        "fw_caps",
-        "fw_project_create",
-        "fw_project_read",
-        "fw_sim_log",
-        "fw_sim_run",
-        "fw_spec",
-        "fw_workspace_list",
-      ].sort(),
+      ["fw_build", "fw_caps", "fw_project_create", "fw_project_read", "fw_sim_log", "fw_sim_run", "fw_spec", "fw_workspace_list"].sort(),
     )
   })
 

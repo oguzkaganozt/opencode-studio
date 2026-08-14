@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@oguzkaganozt/opencode-studio",
   "version": "1.0.15",
-  "description": "Isolated OpenCode Studios for CAD, PCB, and Firmware workflows",
+  "description": "Isolated OpenCode Studios for Concept, CAD, PCB, and Firmware workflows",
   "type": "module",
   "license": "UNLICENSED",
   "main": "./dist/plugin.js",
@@ -16,6 +16,7 @@
   "files": [
     "dist",
     "scripts/postinstall-completion.mjs",
+    "scripts/ensure-tsci-zod3.mjs",
     "studios/cad/engine/cad_build.py",
     "studios/cad/engine/cad_runtime/**",
     "studios/cad/engine/pyproject.toml",
@@ -23,11 +24,12 @@
     "studios/cad/engine/.python-version",
     "studios/cad/tools/catalog.json",
     "studios/*/skill/SKILL.md",
+    "studios/*/skills/*/SKILL.md",
     "studios/*/agent/*.md",
     "README.md"
   ],
   "scripts": {
-    "postinstall": "node scripts/postinstall-completion.mjs",
+    "postinstall": "node scripts/postinstall-completion.mjs && node scripts/ensure-tsci-zod3.mjs",
     "test": "bun test ./test/ ./ui/ ./studios/ ./src/platform/",
     "test:python": "uv run --project studios/cad/engine python -m unittest discover -s studios/cad/engine/tests -v",
     "test:package": "bun scripts/package-smoke.ts",
@@ -74,7 +76,8 @@
     "react-router": "8.2.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "3.6.0",
-    "tscircuit": "0.0.2306"
+    "tscircuit": "0.0.2306",
+    "zod": "4.1.8"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.4",

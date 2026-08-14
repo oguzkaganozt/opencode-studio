@@ -1,13 +1,15 @@
-export const STUDIO_IDS = ["cad", "pcb", "fw"] as const
+export const STUDIO_IDS = ["concept", "cad", "pcb", "fw"] as const
 export type StudioId = (typeof STUDIO_IDS)[number]
 
 export const STUDIO_TOOL_PERMISSIONS: Record<StudioId, readonly string[]> = {
+  concept: ["concept_*"],
   cad: ["cad_*"],
   pcb: ["pcb_*"],
   fw: ["fw_*"],
 }
 
-export const STUDIO_SKILL_NAMES = STUDIO_IDS.map((id) => `studio-${id}` as const)
+export const EXTRA_STUDIO_SKILLS = ["studio-concept-review", "studio-cad-part"] as const
+export const STUDIO_SKILL_NAMES = [...STUDIO_IDS.map((id) => `studio-${id}`), ...EXTRA_STUDIO_SKILLS]
 
 export type StudioRootDefault = "studio_home"
 
@@ -31,6 +33,7 @@ export type StudioDefinition = {
     default: StudioRootDefault
     /**
      * Path under Studio Home when `studio.json` has no `roots.<id>` override.
+     * Concept: `studio/concepts` → `$HOME/studio/concepts/<id>`
      * CAD: `studio/designs` → `$HOME/studio/designs/<id>`
      * PCB: `studio/circuits` → `$HOME/studio/circuits/<id>`
      * FW: `studio/firmware` → `$HOME/studio/firmware/<id>`

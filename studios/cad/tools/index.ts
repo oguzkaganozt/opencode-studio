@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
@@ -6,6 +7,7 @@ import { formatToolJson } from "../../../src/core/format-tool-json"
 import type { SpecRoots } from "../../../src/core/spec"
 import { createSpecTools } from "../../../src/core/spec-tools"
 import { buildDesign, type CadBuildRunner, createCadBuildRunner, scaffoldDesign } from "../host/build"
+import { type CadPartDispatcher, createClientDispatcher, readPartSourceStatus, spawnCadParts } from "../host/dispatch"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "../host/manifest"
 import { clearQcEvidenceForDesign, clearQcSession, qcEvidenceKey, qcSessionKey, setActiveQcDesign } from "../host/qc-evidence"
@@ -36,9 +38,9 @@ function truncate(value: string, max = MAX_TOOL_OUTPUT_BYTES) {
 }
 
 /** Bind design_dir into the CAD execute session so params.py is available (best-effort). */
-async function bindActiveDesign(engineProjectDir: string, cwd: string, designDir: string, signal?: AbortSignal) {
+async function bindActiveDesign(engineProjectDir: string, cwd: string, designDir: string, signal?: AbortSignal, sessionID?: string) {
   try {
-    await getCadRuntimeSession(engineProjectDir, cwd).callTool(
+    await getCadRuntimeSession(engineProjectDir, cwd, sessionID).callTool(
       "bind_design",
       { design_dir: designDir },
       { signal, resetSessionOnFailure: false },
@@ -79,6 +81,7 @@ function options(input: PluginOptions | undefined, directory: string): Options {
 
 export type StudioPluginDependencies = {
   buildRunner?: CadBuildRunner
+  dispatcher?: CadPartDispatcher
 }
 
 export function createStudioPlugin(dependencies: StudioPluginDependencies = {}): Plugin {
@@ -86,6 +89,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
     const config = options(rawOptions, context.directory)
     const layout = await initializeStudio(config.studioRoot)
     const buildRunner = dependencies.buildRunner ?? createCadBuildRunner(context.directory)
+    const dispatcher = dependencies.dispatcher ?? createClientDispatcher(context.client)
     const build123dTools = createCadSessionTools({
       engineProjectDir: config.engineProjectDir,
       cwd: context.directory,
@@ -93,13 +97,11 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
     return {
       event: async ({ event }) => {
         if (event.type !== "session.deleted") return
-        const directory = event.properties.info.directory
+        const info = event.properties.info
+        const directory = info.directory
         if (!directory) return
-        // Each session owns a persistent Python runtime process; tear it down
-        // with the session instead of leaking it until host exit.
-        const sessionKey = qcSessionKey(config.engineProjectDir, directory)
-        await closeCadRuntimeSession(config.engineProjectDir, directory)
-        clearQcSession(sessionKey)
+        await closeCadRuntimeSession(config.engineProjectDir, directory, info.id)
+        if (!info.parentID) clearQcSession(qcSessionKey(config.engineProjectDir, directory))
       },
 
       dispose: async () => {
@@ -135,7 +137,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_create: tool({
           description:
-            "Scaffold a new CAD design directory with design.json (schema 1), params.py, and parts/. Returns structured JSON {ok, status, summary, data, next}. Use in Phase 0 after deciding the part decomposition. Source files for individual parts are written separately during Phase 1.",
+            "Scaffold a CAD design (design.json, params.py, parts/). Two or more parts automatically spawn cad-part workers — pass params and a short brief so they are not blind. One part stays on this agent. Then cad_design_join and cad_design_build.",
           args: {
             id: tool.schema.string().min(1).describe("Lowercase design id matching ^[a-z0-9][a-z0-9_-]*$"),
             parts: tool.schema
@@ -149,7 +151,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 }),
               )
               .min(1)
-              .describe("Initial part list; each part gets a placeholder source that must be modeled before cad_design_build."),
+              .describe("Locked part list. Two or more parts spawn cad-part workers."),
+            params: tool.schema.string().optional().describe("Full params.py body (shared dimensions). Required for useful workers."),
+            brief: tool.schema.string().optional().describe("One or two sentences of product intent forwarded to workers."),
           },
           async execute(args, context) {
             if (!ID_PATTERN.test(args.id)) throw new Error(`Invalid design id: ${args.id}`)
@@ -172,11 +176,24 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               args.id,
               args.parts.map((part) => ({ id: part.id, source: part.source })),
             )
-            await bindActiveDesign(config.engineProjectDir, context.directory || "", designDir, context.abort)
+            if (args.params?.trim())
+              await writeFile(path.join(designDir, "params.py"), args.params.endsWith("\n") ? args.params : `${args.params}\n`, "utf8")
+            await bindActiveDesign(config.engineProjectDir, context.directory || "", designDir, context.abort, context.sessionID)
+            const dispatch = await spawnCadParts({
+              designId: args.id,
+              designDir,
+              parts: manifest.parts,
+              dispatcher,
+              directory: context.directory || context.worktree,
+              parentSessionID: context.sessionID,
+              brief: args.brief,
+              params: args.params,
+            })
             const envelope = designCreateResult({
               id: args.id,
               designDir,
               parts: manifest.parts,
+              dispatch,
             })
             return {
               title: designDir,
@@ -185,6 +202,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 ok: true,
                 designDir,
                 parts: manifest.parts,
+                dispatch,
               },
             }
           },
@@ -200,7 +218,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
-            await bindActiveDesign(config.engineProjectDir, context.directory || "", entry.directory, context.abort)
+            await bindActiveDesign(config.engineProjectDir, context.directory || "", entry.directory, context.abort, context.sessionID)
             const design = await readDesignManifest(entry.directory, args.id)
             const artifact = await readArtifactManifest(entry.directory, args.id)
             const manifestPath = path.join(entry.directory, "manifest.json")
@@ -251,7 +269,15 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               always: [],
               metadata: {},
             })
-            const result = await buildDesign(layout, args.id, config.engineProjectDir, buildRunner, context.abort, context.directory)
+            const result = await buildDesign(
+              layout,
+              args.id,
+              config.engineProjectDir,
+              buildRunner,
+              context.abort,
+              context.directory,
+              context.sessionID,
+            )
             const sessionKey = qcSessionKey(config.engineProjectDir, context.directory || "")
             setActiveQcDesign(sessionKey, args.id)
             if (!result.ok) {
@@ -322,6 +348,70 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               output: asJson(result),
               metadata: result,
             }
+          },
+        }),
+
+        cad_design_dispatch: tool({
+          description:
+            "After Phase 0, fan out cad-part workers for a multi-part design. One part stays serial on this agent. Two or more parts spawn up to 3 isolated cad-part sessions. Do not model assigned parts yourself. Then cad_design_join, then cad_design_build.",
+          args: {
+            id: tool.schema.string().min(1).describe("Design id whose parts should be dispatched."),
+          },
+          async execute(args, context) {
+            const entry = await findDesign(layout, args.id)
+            if (!entry) throw new Error(`Design not found: ${args.id}`)
+            const design = await readDesignManifest(entry.directory, args.id)
+            const params = await readFile(path.join(entry.directory, "params.py"), "utf8").catch(() => undefined)
+            const result = await spawnCadParts({
+              designId: args.id,
+              designDir: entry.directory,
+              parts: design.parts,
+              dispatcher,
+              directory: context.directory || context.worktree,
+              parentSessionID: context.sessionID,
+              params,
+            })
+            return asJson({
+              ok: result.mode === "serial" || result.workers.some((worker) => worker.sessionID),
+              id: args.id,
+              ...result,
+              next:
+                result.mode === "serial"
+                  ? ["Model the part in this session", "cad_design_build"]
+                  : [
+                      "cad_design_join",
+                      ...(result.remaining.length > 0 ? ["Model remaining parts here or cad_design_dispatch"] : []),
+                      "cad_design_build",
+                    ],
+            })
+          },
+        }),
+
+        cad_design_join: tool({
+          description:
+            "Check whether dispatched cad-part sources are no longer stubs. Call after cad_design_dispatch before cad_design_build. Does not build or fit.",
+          args: {
+            id: tool.schema.string().min(1).describe("Design id to join."),
+          },
+          async execute(args) {
+            const entry = await findDesign(layout, args.id)
+            if (!entry) throw new Error(`Design not found: ${args.id}`)
+            const design = await readDesignManifest(entry.directory, args.id)
+            const parts = await Promise.all(
+              design.parts.map(async (part) => ({
+                partId: part.id,
+                ...(await readPartSourceStatus(entry.directory, part.source)),
+              })),
+            )
+            const ready = parts.filter((part) => part.ready).map((part) => part.partId)
+            const pending = parts.filter((part) => !part.ready).map((part) => part.partId)
+            return asJson({
+              ok: pending.length === 0,
+              id: args.id,
+              ready,
+              pending,
+              next: pending.length === 0 ? ["cad_design_build"] : ["Wait for workers or model pending parts", "cad_design_join"],
+            })
           },
         }),
 

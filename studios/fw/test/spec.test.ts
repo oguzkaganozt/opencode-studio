@@ -72,4 +72,3 @@ describe("fw spec", () => {
     expect(FW_SPEC_SOURCES).toContain("sdkconfig.defaults")
   })
 })
-
