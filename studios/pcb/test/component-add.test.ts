@@ -48,9 +48,9 @@ async function project() {
 function installMock(version: string): (command: string[], cwd: string) => Promise<TsciResult> {
   return async (command, cwd) => {
     const spec = command.at(-1)
-    if (spec?.includes("/")) {
-      const packageName = spec
-      const packageSpec = `@tsci/${packageName.replace("/", ".")}`
+    const match = spec?.match(/^(@tsci\/[A-Za-z0-9._-]+)@(\d+\.\d+\.\d+)$/)
+    if (match) {
+      const packageSpec = match[1]!
       const manifest = JSON.parse(await readFile(path.join(cwd, "package.json"), "utf8"))
       manifest.dependencies[packageSpec] = `^${version}`
       await writeFile(path.join(cwd, "package.json"), `${JSON.stringify(manifest)}\n`)
@@ -73,12 +73,36 @@ describe("component candidate flow", () => {
     expect(normalizeComponentSearchQuery("USB-C connector")).toBe(normalizeComponentSearchQuery("SMD USB Type-C receptacle"))
   })
 
+  test("does not offer registry packages without public distribution as install candidates", () => {
+    const entry = parseComponentSearchOutput(
+      JSON.stringify({
+        query: "Sensor",
+        results: [
+          {
+            source: "tscircuit",
+            name: "vendor/Sensor",
+            latest_version: "1.0.0",
+            ai_usage_instructions: 'import { Sensor } from "@tsci/vendor.Sensor"',
+            public_dist_enabled: false,
+          },
+        ],
+      }),
+    ).results[0]!
+    expect(entry).toMatchObject({ source: "tscircuit", hasPublicDist: false, candidateId: null })
+    expect(partitionSearchEntries([entry]).catalogOnly).toEqual([entry])
+  })
+
   test("moves a candidate to usable only after a successful project smoke test", async () => {
     const entry = registryResult("vendor/GoodPart", "1.0.1", "GoodPart")
     const dir = await project()
     expect(partitionSearchEntries([entry], dir).candidates).toEqual([entry])
+    const commands: string[][] = []
+    const install = installMock("1.0.1")
     const result = await addComponentCandidate(dir, entry.source === "tscircuit" ? entry.candidateId! : "", undefined, {
-      install: installMock("1.0.1"),
+      install: async (command, cwd) => {
+        commands.push(command)
+        return install(command, cwd)
+      },
       smoke: async () => ({
         success: true,
         stdout: "rendered",
@@ -92,6 +116,7 @@ describe("component candidate flow", () => {
       rolledBack: false,
     })
     expect(partitionSearchEntries([entry], dir).usable).toEqual([entry])
+    expect(commands[0]?.at(-1)).toBe("@tsci/vendor.GoodPart@1.0.1")
     expect(JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")).dependencies).toMatchObject({
       "@tsci/vendor.GoodPart": "1.0.1",
     })

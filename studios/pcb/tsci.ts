@@ -457,7 +457,8 @@ export function parseComponentSearchOutput(stdout: string): { query: string; res
       if (typeof result.name !== "string") throw new Error(`tscircuit search result ${index} is missing a package name`)
       const version = optionalString(result.latest_version)
       const usageInstructions = optionalString(result.ai_usage_instructions)
-      const candidate = registerComponentCandidate({ packageName: result.name, version, usageInstructions })
+      const hasPublicDist = (optionalBoolean(result.public_dist_enabled) ?? optionalBoolean(result.has_public_dist)) === true
+      const candidate = hasPublicDist ? registerComponentCandidate({ packageName: result.name, version, usageInstructions }) : null
       return {
         source: "tscircuit",
         exactMatch: normalizedPartId(result.name.split("/").at(-1) ?? result.name) === normalizedPartId(parsedQuery),
@@ -466,7 +467,7 @@ export function parseComponentSearchOutput(stdout: string): { query: string; res
         description: optionalString(result.ai_description) ?? optionalString(result.description),
         usageInstructions,
         starCount: optionalNumber(result.star_count),
-        hasPublicDist: (optionalBoolean(result.public_dist_enabled) ?? optionalBoolean(result.has_public_dist)) === true,
+        hasPublicDist,
         loadability: classifyRegistryLoadability(result),
         candidateId: candidate?.id ?? null,
         packageSpec: candidate?.packageSpec ?? null,
@@ -928,7 +929,7 @@ export async function addComponentCandidate(
   }
 
   const install = operations.install ?? runCommand
-  const installCommand = tsciCliCommand(["add", candidate.packageName])
+  const installCommand = tsciCliCommand(["add", `${candidate.packageSpec}@${candidate.version}`])
   const installed = await serializeNpmExec(() => install(installCommand, projectDir, signal))
   let pinFailure: TsciResult | null = null
   if (installed.success) {
