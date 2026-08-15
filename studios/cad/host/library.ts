@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { lstat, opendir, readdir, readFile, realpath, stat } from "node:fs/promises"
 import path from "node:path"
 import { isInside } from "../../../src/core/paths"
+import { ensurePublicArtifactLinks } from "./artifacts"
 import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
 
 export type DesignEntry = {
@@ -91,6 +92,7 @@ export async function inspectDesign(id: string, directory: string): Promise<Desi
   let partCount = 0
   let buildStatus: DesignEntry["buildStatus"] = "unbuilt"
   let revision: string | null = null
+  await ensurePublicArtifactLinks(directory)
   const artifact = await readArtifactManifest(directory, id)
   if (artifact) {
     partCount = artifact.parts.length

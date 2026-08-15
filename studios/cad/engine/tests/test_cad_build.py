@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,8 +61,12 @@ class BuildDesignTest(unittest.TestCase):
             self.assertGreaterEqual(len(face_named), 6, f"GLB must expose face_* meshes, got {geom_names}")
             self.assertTrue(manifest_path.is_file())
             for rel in ("step", "stl", "glb", "topo", "manifest.json"):
-                self.assertTrue((design / rel).is_symlink())
-            self.assertTrue((design / ".artifacts" / "current").is_symlink())
+                link = design / rel
+                self.assertTrue(link.is_symlink())
+                self.assertFalse(os.readlink(link).startswith("/"), os.readlink(link))
+            current = design / ".artifacts" / "current"
+            self.assertTrue(current.is_symlink())
+            self.assertFalse(os.readlink(current).startswith("/"), os.readlink(current))
 
     def test_failed_build_preserves_previous_output(self):
         with tempfile.TemporaryDirectory() as tmp:

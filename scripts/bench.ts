@@ -6,6 +6,7 @@ import envPaths from "env-paths"
 import { agentNameFor } from "../src/core/package-meta"
 import { STUDIO_IDS } from "../src/core/registry"
 import { startHost } from "../src/server"
+import { ensurePublicArtifactLinks } from "../studios/cad/host/artifacts"
 
 export const BENCH_STUDIOS = ["cad", "pcb", "fw"] as const
 export type BenchStudio = (typeof BENCH_STUDIOS)[number]
@@ -529,6 +530,10 @@ async function main(argv: string[]) {
       })
       const artifactDir = path.join(runDir, "studio")
       await cp(path.join(isolate.studioHome, "studio"), artifactDir, { recursive: true }).catch(() => {})
+      const designsDir = path.join(artifactDir, "designs")
+      for (const name of await readdir(designsDir).catch(() => [] as string[])) {
+        await ensurePublicArtifactLinks(path.join(designsDir, name)).catch(() => {})
+      }
       const report = { ...scored, exitCode: code, runDir, isolate: isolate.isolate, viewer: viewer?.studioUrl ?? null }
       await writeFile(path.join(runDir, "score.json"), `${JSON.stringify(report, null, 2)}\n`)
       console.log(

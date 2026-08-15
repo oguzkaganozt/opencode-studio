@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+import { resolveArtifactGeneration } from "./artifacts"
 
 export const DESIGN_SCHEMA = 1
 /** On-disk artifact engine id (must match engine/cad_build.py). Keep stable. */
@@ -146,8 +147,16 @@ export async function readArtifactManifest(designDir: string, expectedId?: strin
   try {
     text = await readFile(manifestPath, "utf8")
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
-    throw new ManifestError(`Could not read manifest.json: ${error instanceof Error ? error.message : String(error)}`)
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new ManifestError(`Could not read manifest.json: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    const generation = await resolveArtifactGeneration(designDir)
+    if (!generation) return null
+    try {
+      text = await readFile(path.join(designDir, ".artifacts", generation, "manifest.json"), "utf8")
+    } catch {
+      return null
+    }
   }
   let parsed: unknown
   try {
