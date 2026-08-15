@@ -3,6 +3,7 @@ description: PCB Studio electronics design with pcb_* tools.
 mode: primary
 permission:
   "*": allow
+  bash: deny
   cad_*: deny
   fw_*: deny
   concept_*: deny

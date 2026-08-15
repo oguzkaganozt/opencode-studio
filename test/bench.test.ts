@@ -60,6 +60,16 @@ describe("bench cases", () => {
     expect(listed.fw).toEqual(["uart-c6-v0", "uart-hello-v0"])
   })
 
+  test("can deny Bash in an isolated benchmark without changing the default", async () => {
+    const isolated = await prepareIsolate(root, { denyBash: true })
+    temps.push(isolated.isolate)
+    const config = JSON.parse(await readFile(path.join(isolated.studioHome, ".opencode", "opencode.json"), "utf8"))
+    expect(config.permission).toEqual({ bash: "deny" })
+    for (const agent of ["cad.md", "pcb.md", "firmware.md"]) {
+      expect(await readFile(path.join(isolated.studioHome, ".opencode", "agents", agent), "utf8")).toMatch(/^ {2}bash: deny$/m)
+    }
+  })
+
   test("parses the CAD prompt and reference image from working-tree markdown", async () => {
     const source = path.join(root, "studios/cad/test/benchmarks/speaker-organic-v0.md")
     const bench = parseBenchCase("cad", source, await readFile(source, "utf8"), root)
@@ -107,7 +117,7 @@ describe("bench score", () => {
     ).toBe(false)
   })
 
-  test("pcb passes with create and a valid build", async () => {
+  test("pcb passes only with a fabrication-ready build and PCB export", async () => {
     const events = loadEvents(
       [
         JSON.stringify({ type: "tool_use", part: { type: "tool", tool: "pcb_project_create", state: { output: "{}" } } }),
@@ -116,12 +126,52 @@ describe("bench score", () => {
           part: {
             type: "tool",
             tool: "pcb_circuit_build",
-            state: { output: JSON.stringify({ designValid: true }) },
+            state: {
+              output: JSON.stringify({ success: true, designValid: true, fabricationReady: true, manufacturingBlockers: [] }),
+            },
+          },
+        }),
+        JSON.stringify({
+          type: "tool_use",
+          part: {
+            type: "tool",
+            tool: "pcb_circuit_export",
+            state: { output: JSON.stringify({ success: true, generatedFormats: ["schematic", "pcb"] }) },
+          },
+        }),
+        JSON.stringify({
+          type: "tool_use",
+          part: {
+            type: "tool",
+            tool: "pcb_circuit_export",
+            state: { output: JSON.stringify({ success: true, generatedFormats: ["gerber"] }) },
           },
         }),
       ].join("\n"),
     )
     expect((await scoreBench({ studio: "pcb", events, studioHome: root })).ok).toBe(true)
+
+    const blocked = events.map((event) => {
+      if (event.type !== "tool_use" || event.part?.tool !== "pcb_circuit_build") return event
+      return {
+        ...event,
+        part: {
+          ...event.part,
+          state: {
+            ...event.part.state,
+            output: JSON.stringify({ success: true, designValid: true, fabricationReady: false, manufacturingBlockers: [] }),
+          },
+        },
+      }
+    })
+    expect((await scoreBench({ studio: "pcb", events: blocked, studioHome: root })).ok).toBe(false)
+
+    const withBash = [
+      ...events,
+      ...loadEvents(JSON.stringify({ type: "tool_use", part: { type: "tool", tool: "bash", state: { output: "" } } })),
+    ]
+    expect((await scoreBench({ studio: "pcb", events: withBash, studioHome: root })).ok).toBe(true)
+    expect((await scoreBench({ studio: "pcb", events: withBash, studioHome: root, requireNoBash: true })).ok).toBe(false)
   })
 
   test("cad ok requires QC complete and STEP artifacts", async () => {

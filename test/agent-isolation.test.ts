@@ -82,7 +82,7 @@ describe("Studio agent isolation", () => {
       expect(actionFor({ permission: "skill", pattern: "studio-cad-part", rules: combined })).toBe("deny")
       expect(actionFor({ permission: "task", pattern: "general", rules: combined })).toBe("deny")
       expect(actionFor({ permission: "external_directory", pattern: "*", rules: combined })).toBe("allow")
-      expect(actionFor({ permission: "bash", pattern: "*", rules: combined })).toBe("allow")
+      expect(actionFor({ permission: "bash", pattern: "*", rules: combined })).toBe(studioId === "pcb" ? "deny" : "allow")
       expect(actionFor({ permission: "doom_loop", pattern: "*", rules: combined })).toBe("allow")
     }
   })

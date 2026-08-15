@@ -16,10 +16,13 @@ import {
   partSummary,
   upsertCatalogPart,
 } from "./catalog"
+import { CIRCUIT_CHECKS, checkCircuit } from "./circuit-check"
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
+import { importExactLcscComponent } from "./component-import"
 import { projectCircuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
 import { publishPcbSpec } from "./spec"
+import { renderSvgPreview, type SvgPreview } from "./svg-preview"
 import {
   addComponentCandidate,
   classifyBuildDiagnostics,
@@ -28,9 +31,19 @@ import {
   partitionSearchEntries,
   runProjectBuild,
   searchComponents,
+  smokeTestImportedComponent,
 } from "./tsci"
+import { lookupTscircuitReference } from "./tscircuit-reference"
 import { TSX_SNIPPET_KINDS, tsxSnippet } from "./tsx-snippets"
 import { discoverProjects, encodeProjectId, projectSummary, resolveProject } from "./workspace"
+
+function compactInspection<T extends { errors: Array<{ targets?: unknown[] }>; warnings: Array<{ targets?: unknown[] }> }>(
+  inspection: T,
+): T {
+  const compact = (groups: Array<{ targets?: unknown[] }>) =>
+    groups.map(({ targets, ...group }) => ({ ...group, ...(targets?.length ? { targetCount: targets.length } : {}) }))
+  return { ...inspection, errors: compact(inspection.errors), warnings: compact(inspection.warnings) } as T
+}
 
 async function canonicalWorkspaceRoot(rawPath: string): Promise<string> {
   if (!path.isAbsolute(rawPath)) throw new Error(`workspaceRoot must be an absolute path: ${rawPath}`)
@@ -51,7 +64,16 @@ async function readProjectSvg(
 ): Promise<{
   title: string
   output: string
-  metadata: { projectId: string; name: string; path: string; bytes: number }
+  metadata: {
+    projectId: string
+    name: string
+    path: string
+    sourceBytes: number
+    previewBytes: number
+    previewWidth: number
+    previewHeight: number
+    previewMaxEdge: number
+  }
   attachments: Array<{ type: "file"; mime: string; filename: string; url: string }>
 }> {
   const project = await resolveProject(workspaceRoot, projectId)
@@ -63,17 +85,32 @@ async function readProjectSvg(
       : `PCB SVG not found for project '${project.name}'. Run pcb_circuit_export with format 'pcb'.`
   if (project.artifactError) throw new Error(project.artifactError)
   if (!svgPath) throw new Error(missing)
-  const svg = await readFile(svgPath, "utf8")
+  const svg = await readFile(svgPath)
+  let preview: SvgPreview
+  try {
+    preview = renderSvgPreview(svg)
+  } catch (error) {
+    throw new Error(`Unable to render ${label} preview for '${project.name}': ${error instanceof Error ? error.message : String(error)}`)
+  }
   return {
     title: `${project.name} — ${label}`,
-    output: `${kind === "schematic" ? "Schematic" : "PCB layout"} SVG for ${project.name} (${svgPath})`,
-    metadata: { projectId, name: project.name, path: svgPath, bytes: svg.length },
+    output: `${kind === "schematic" ? "Schematic" : "PCB layout"} PNG preview for ${project.name}; original SVG: ${svgPath}`,
+    metadata: {
+      projectId,
+      name: project.name,
+      path: svgPath,
+      sourceBytes: svg.byteLength,
+      previewBytes: preview.png.byteLength,
+      previewWidth: preview.width,
+      previewHeight: preview.height,
+      previewMaxEdge: preview.maxEdge,
+    },
     attachments: [
       {
         type: "file" as const,
-        mime: "image/svg+xml",
-        filename: `${label}.svg`,
-        url: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
+        mime: "image/png",
+        filename: `${label}-preview.png`,
+        url: `data:image/png;base64,${preview.png.toString("base64")}`,
       },
     ],
   }
@@ -161,6 +198,21 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
           },
           async execute(args) {
             return formatToolJson(tsxSnippet(args.kind))
+          },
+        }),
+
+        pcb_tscircuit_reference: tool({
+          description:
+            "Look up one topic in the pinned official tscircuit reference corpus. Reference-only: runtime compatibility overrides and Studio fabrication gates remain authoritative.",
+          args: {
+            query: tool.schema
+              .string()
+              .min(1)
+              .max(100)
+              .describe("Element or syntax topic, e.g. 'chip', 'USB-C', 'keepout', or 'footprints'"),
+          },
+          async execute(args) {
+            return formatToolJson(lookupTscircuitReference(args.query))
           },
         }),
 
@@ -299,10 +351,43 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
           },
         }),
 
+        pcb_component_import: tool({
+          description:
+            "Import one exact JLCPCB/LCSC component by canonical C-number using isolated staging. Keeps the exact footprint, refuses overwrite, smoke-builds it, and rolls back on failure.",
+          args: {
+            projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
+            lcscPartNumber: tool.schema
+              .string()
+              .regex(/^C[1-9]\d*$/)
+              .describe("Exact canonical LCSC number, e.g. C2049745"),
+            expectedSha256: tool.schema
+              .string()
+              .regex(/^[a-fA-F\d]{64}$/)
+              .optional()
+              .describe("Optional generated TSX SHA-256 for byte-reproducible import"),
+          },
+          async execute(args, ctx) {
+            const project = await resolveProject(workspaceRoot, args.projectId)
+            const result = await importExactLcscComponent(
+              { projectDir: project.absolutePath, lcscPartNumber: args.lcscPartNumber, expectedSha256: args.expectedSha256 },
+              { smoke: (input) => smokeTestImportedComponent(input, ctx.abort) },
+            )
+            return formatToolJson({
+              projectId: args.projectId,
+              name: project.name,
+              ...result,
+              importStatement: result.success
+                ? `import { ${result.exportName} } from "../${result.relativePath.replace(/\.tsx$/i, "")}"`
+                : null,
+              exampleUsage: result.success ? `<${result.exportName} name="U1" />` : null,
+            })
+          },
+        }),
+
         // ── Build & export ────────────────────────────────────────────────────
         pcb_circuit_build: tool({
           description:
-            "Build and validate a tscircuit project. success requires both a successful process and designValid=true. Returns separate fabricationReady and assemblyReady states plus compact blockers.",
+            "Build and validate a tscircuit project. Returns reconciled diagnostics with stale trace warnings removed, categorized actionableDiagnostics, and structured fabrication/assembly blockers with refdes and pin targets.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
           },
@@ -312,7 +397,19 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
             const circuit = result.artifacts.circuitJsonPath ? await readCircuitJson(workspaceRoot, result.artifacts.circuitJsonPath) : null
             const readiness = circuit
               ? await projectCircuitReadiness(project.absolutePath, circuit, { inspection: result.inspection ?? undefined })
-              : { fabricationReady: false, assemblyReady: false, manufacturingBlockers: [] as const, assemblyBlockers: [] as const }
+              : {
+                  inspection: result.inspection ?? {
+                    designValid: false,
+                    errorCount: 0,
+                    warningCount: 0,
+                    errors: [],
+                    warnings: [],
+                  },
+                  fabricationReady: false,
+                  assemblyReady: false,
+                  manufacturingBlockers: [] as const,
+                  assemblyBlockers: [] as const,
+                }
             const fabricationReady = result.inspection !== null && readiness.fabricationReady
             const diagnosticSummary = classifyBuildDiagnostics(result, readiness.manufacturingBlockers)
             return formatToolJson({
@@ -329,7 +426,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
               assemblyBlockers: readiness.assemblyBlockers,
               rootCause: diagnosticSummary.rootCause,
               actionableDiagnostics: diagnosticSummary,
-              diagnostics: result.inspection,
+              diagnostics: compactInspection(readiness.inspection),
               artifacts: result.artifacts,
               stdout: result.stdout.slice(0, 8000),
               stderr: result.stderr.slice(0, 4000),
@@ -337,9 +434,35 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
           },
         }),
 
+        pcb_circuit_check: tool({
+          description:
+            "Run bounded deterministic checks against a freshly built Circuit JSON. Netlist and placement run in-process; shorts uses the pinned bundled implementation without a CDN or shell.",
+          args: {
+            projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
+            checks: tool.schema.array(tool.schema.enum(CIRCUIT_CHECKS)).min(1).describe("Checks to run"),
+            placementRefdes: tool.schema
+              .string()
+              .regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/)
+              .optional()
+              .describe("Optional component refdes; requires placement"),
+          },
+          async execute(args) {
+            const project = await resolveProject(workspaceRoot, args.projectId)
+            if (!project.circuitJsonPath) {
+              throw new Error(project.artifactError ?? `Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
+            }
+            const result = await checkCircuit({
+              projectDir: project.absolutePath,
+              circuitJsonPath: project.circuitJsonPath,
+              options: { checks: args.checks, placementRefdes: args.placementRefdes },
+            })
+            return formatToolJson({ projectId: args.projectId, name: project.name, ...result })
+          },
+        }),
+
         pcb_circuit_export: tool({
           description:
-            "Export a freshly built tscircuit project. Schematic and PCB SVGs remain available for debugging. Gerber export is blocked by Circuit errors, PCB_STUDIO_PLACEHOLDER notes, unverified part identities, supplier footprint mismatches, or pins that are neither connected nor explicitly noConnect.",
+            "Export a freshly built tscircuit project. Gerber is blocked by Circuit errors, placeholders, unverified identities, supplier footprint mismatches, unconnected pins, or any declared package pin without a physical PCB pad. noConnect exempts routing only, never the package land.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
             formats: tool.schema
@@ -370,7 +493,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
               blockedFormats: result.blockedFormats,
               manufacturingBlockers: result.manufacturingBlockers,
               assemblyBlockers: readiness.assemblyBlockers,
-              diagnostics: result.inspection,
+              diagnostics: compactInspection(readiness.inspection),
               artifacts: result.artifacts,
               stdout: result.stdout.slice(0, 8000),
               stderr: result.stderr.slice(0, 4000),
@@ -439,7 +562,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
                 reason: readiness.assemblyBlockers[0].type,
                 manufacturingBlockers: readiness.manufacturingBlockers,
                 assemblyBlockers: readiness.assemblyBlockers,
-                diagnostics: inspection,
+                diagnostics: compactInspection(readiness.inspection),
               })
             }
             const result = readiness.placement
@@ -478,18 +601,23 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
               throw new Error(project.artifactError ?? `Circuit JSON not found for project '${project.name}'. Run pcb_circuit_build first.`)
             }
             const json = await readCircuitJson(workspaceRoot, project.circuitJsonPath)
+            const result = queryCircuitJson(json, args)
+            const readiness = await projectCircuitReadiness(project.absolutePath, json)
             return formatToolJson({
               projectId: args.projectId,
               name: project.name,
               circuitJsonPath: project.circuitJsonPath,
-              ...queryCircuitJson(json, args),
+              ...result,
+              diagnostics: compactInspection(readiness.inspection),
+              diagnosticNote:
+                "Summary diagnostics reconcile stale source_pin_missing_trace_warning records; explicit type selections remain raw evidence.",
             })
           },
         }),
 
         pcb_schematic_svg: tool({
           description:
-            "Read the schematic SVG export of a built project as a text attachment so the model can inspect the visual design. The schematic must be exported first with pcb_circuit_export.",
+            "Render the exported schematic as a bounded PNG attachment for visual inspection. The schematic must be exported first with pcb_circuit_export.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
           },
@@ -499,7 +627,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
         }),
         pcb_pcb_svg: tool({
           description:
-            "Read the PCB layout SVG export of a built project as a text attachment so the model can inspect the visual design. The PCB SVG must be exported first with pcb_circuit_export.",
+            "Render the exported PCB layout as a bounded PNG attachment for visual inspection. The PCB must be exported first with pcb_circuit_export.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
           },

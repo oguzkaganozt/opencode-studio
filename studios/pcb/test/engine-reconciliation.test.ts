@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { circuitJsonUntampered, writeBuildInputStamp } from "../artifact-freshness"
-import { manufacturingBlockers } from "../circuit-json"
+import { inspectCircuitJson, inspectEffectiveCircuitJson, manufacturingBlockers } from "../circuit-json"
 import { parseNoConnectIntents } from "../tsx-intent"
 
 const temps: string[] = []
@@ -33,6 +33,16 @@ describe("engine reconciliation (#4442 stale missing-trace warnings)", () => {
     const blockers = manufacturingBlockers(elements)
     const unconnected = blockers.find((blocker) => blocker.type === "unconnected_pin")
     expect(unconnected?.count).toBe(1)
+    expect(unconnected?.issues[0]).toEqual(expect.objectContaining({ refdes: "SW1", pin: "pin3", sourcePortId: "sp2" }))
+  })
+
+  test("effective diagnostics remove stale warnings and retain actionable targets", () => {
+    expect(inspectCircuitJson(elements).warningCount).toBe(3)
+    const effective = inspectEffectiveCircuitJson(elements)
+    expect(effective.warningCount).toBe(1)
+    expect(effective.warnings[0]?.targets[0]).toEqual(
+      expect.objectContaining({ kind: "port", refdes: "SW1", portName: "pin3", sourcePortId: "sp2" }),
+    )
   })
 
   test("noConnect intent clears the remaining warning without touching the artifact", () => {
@@ -88,11 +98,13 @@ describe("missing_pcb_port gate (#4444)", () => {
     expect(missing?.messages[0]).toContain("BT1.POS")
   })
 
-  test("noConnect intent exempts the padless port", () => {
+  test("noConnect intent does not hide a missing physical pad", () => {
     const blockers = manufacturingBlockers(keystone, undefined, {
       noConnect: new Map([["BT1", new Set(["pin1"])]]),
     })
-    expect(blockers.find((blocker) => blocker.type === "missing_pcb_port")).toBeUndefined()
+    const missing = blockers.find((blocker) => blocker.type === "missing_pcb_port")
+    expect(missing?.count).toBe(1)
+    expect(missing?.issues[0]).toEqual(expect.objectContaining({ refdes: "BT1", pin: "POS", sourcePortId: "sp0" }))
   })
 })
 

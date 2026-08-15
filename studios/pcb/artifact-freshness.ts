@@ -20,7 +20,12 @@ export type BuildStamp = {
 function isBuildInput(relativePath: string): boolean {
   const normalized = relativePath.split(path.sep).join("/")
   const extension = path.extname(normalized).toLowerCase()
-  return normalized.startsWith("src/") || SOURCE_EXTENSIONS.has(extension) || (!normalized.includes("/") && ROOT_CONFIG_RE.test(normalized))
+  return (
+    normalized.startsWith("src/") ||
+    normalized === ".opencode-studio/component-evidence.json" ||
+    SOURCE_EXTENSIONS.has(extension) ||
+    (!normalized.includes("/") && ROOT_CONFIG_RE.test(normalized))
+  )
 }
 
 async function collectBuildInputs(projectDir: string, dir: string, files: string[]): Promise<void> {

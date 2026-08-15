@@ -5,6 +5,7 @@ import path from "node:path"
 import {
   addComponentCandidate,
   classifyBuildDiagnostics,
+  componentSearchFallbackQuery,
   normalizeComponentSearchQuery,
   parseComponentSearchOutput,
   partitionSearchEntries,
@@ -63,6 +64,11 @@ function installMock(version: string): (command: string[], cwd: string) => Promi
 }
 
 describe("component candidate flow", () => {
+  test("broadens exact package variants for registry fallback", () => {
+    expect(componentSearchFallbackQuery("ESP32-S3-WROOM-1-N8R8")).toBe("ESP32-S3-WROOM-1")
+    expect(componentSearchFallbackQuery("SHT40 temperature sensor")).toBe("SHT40")
+  })
+
   test("normalizes equivalent connector searches", () => {
     expect(normalizeComponentSearchQuery("USB-C connector")).toBe(normalizeComponentSearchQuery("SMD USB Type-C receptacle"))
   })
@@ -112,9 +118,24 @@ describe("build diagnostic classification", () => {
     expect(classifyBuildDiagnostics({ stderr: "Cannot find package '@tsci/bad'", inspection: null }).rootCause).toBe("package")
     expect(
       classifyBuildDiagnostics({ stderr: "", inspection: null }, [
-        { type: "supplier_footprint_mismatch", count: 1, messages: ["footprint copper IoU mismatch"] },
+        {
+          type: "supplier_footprint_mismatch",
+          count: 1,
+          messages: ["footprint copper IoU mismatch"],
+          issues: [{ message: "footprint copper IoU mismatch" }],
+        },
       ]).rootCause,
     ).toBe("footprint")
+    expect(
+      classifyBuildDiagnostics({ stderr: "", inspection: null }, [
+        { type: "unverified_part", count: 1, messages: ["U1 is unverified"], issues: [{ message: "U1 is unverified" }] },
+      ]).rootCause,
+    ).toBe("component_identity")
+    expect(
+      classifyBuildDiagnostics({ stderr: "", inspection: null }, [
+        { type: "unconnected_pin", count: 1, messages: ["U1.IO8"], issues: [{ message: "U1.IO8", refdes: "U1", pin: "IO8" }] },
+      ]).rootCause,
+    ).toBe("connectivity")
     expect(classifyBuildDiagnostics({ stderr: "Trace selector is invalid", inspection: null }).rootCause).toBe("circuit")
   })
 })

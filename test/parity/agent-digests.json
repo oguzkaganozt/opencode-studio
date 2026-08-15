@@ -13,7 +13,7 @@
   },
   "pcb": {
     "path": "studios/pcb/agent/pcb.md",
-    "sha256": "efcd72c5eac55e98e878509857554b721028924e316c4605972fa8dbb57849e4"
+    "sha256": "88ac7564fa2015fd1a6639ec6923d4e27416520565cf9b7acb2243f9c6cc16d4"
   },
   "firmware": {
     "path": "studios/fw/agent/firmware.md",

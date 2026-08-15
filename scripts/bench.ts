@@ -145,6 +145,7 @@ export async function scoreBench(input: {
   studioHome: string
   expect?: string
   requires?: string[]
+  requireNoBash?: boolean
 }): Promise<{ ok: boolean; checks: Record<string, boolean>; summary: ReturnType<typeof summarizeEvents> }> {
   const summary = summarizeEvents(input.events)
   const lastByTool = (name: string) => {
@@ -179,10 +180,29 @@ export async function scoreBench(input: {
     checks.ok = checks.has_build && checks.artifacts && checks.complete
   } else if (input.studio === "pcb") {
     const build = toolOutput(lastByTool("pcb_circuit_build"))
+    const exports = input.events.filter((event) => toolName(event) === "pcb_circuit_export").map((event) => toolOutput(event))
+    const blockers = Array.isArray(build.manufacturingBlockers) ? build.manufacturingBlockers : null
     checks.has_create = (summary.tools.pcb_project_create ?? 0) > 0
     checks.has_build = (summary.tools.pcb_circuit_build ?? 0) > 0
-    checks.design_valid = build.designValid === true || build.success === true
-    checks.ok = checks.has_create && checks.has_build && checks.design_valid
+    checks.has_export = (summary.tools.pcb_circuit_export ?? 0) > 0
+    checks.build_success = build.success === true
+    checks.design_valid = build.designValid === true
+    checks.fabrication_ready = build.fabricationReady === true
+    checks.no_manufacturing_blockers = blockers !== null && blockers.length === 0
+    checks.pcb_generated = exports.some(
+      (result) => result.success === true && Array.isArray(result.generatedFormats) && result.generatedFormats.includes("pcb"),
+    )
+    if (input.requireNoBash) checks.no_bash = (summary.tools.bash ?? 0) === 0
+    checks.ok =
+      checks.has_create &&
+      checks.has_build &&
+      checks.has_export &&
+      checks.build_success &&
+      checks.design_valid &&
+      checks.fabrication_ready &&
+      checks.no_manufacturing_blockers &&
+      checks.pcb_generated &&
+      (!input.requireNoBash || checks.no_bash)
   } else {
     const build = toolOutput(lastByTool("fw_build"))
     const simEvent = lastByTool("fw_sim_run")
@@ -199,7 +219,7 @@ export async function scoreBench(input: {
 }
 
 function usage() {
-  return `Usage: bun run bench <cad|pcb|fw> <case> [--model provider/model] [--variant name] [--keep] [--headless]
+  return `Usage: bun run bench <cad|pcb|fw> <case> [--model provider/model] [--variant name] [--deny-bash] [--keep] [--headless]
 
 Starts an isolated Studio viewer by default (does not use port 4173).
 The viewer stays up after the run until Ctrl+C. Pass --headless to skip it.
@@ -355,7 +375,7 @@ export function benchEnvironment(isolate: BenchIsolate, base: NodeJS.ProcessEnv 
   return env
 }
 
-export async function prepareIsolate(root: string, options?: { xdgDataHome?: string }): Promise<BenchIsolate> {
+export async function prepareIsolate(root: string, options?: { xdgDataHome?: string; denyBash?: boolean }): Promise<BenchIsolate> {
   const isolate = await mkdtemp(path.join(tmpdir(), "osc-bench-"))
   const studioHome = path.join(isolate, "home")
   const userHome = path.join(isolate, "user-home")
@@ -370,7 +390,18 @@ export async function prepareIsolate(root: string, options?: { xdgDataHome?: str
   for (const id of STUDIO_IDS) {
     const agentDir = path.join(root, "studios", id, "agent")
     for (const name of (await readdir(agentDir)).filter((file) => file.endsWith(".md"))) {
-      await copyFile(path.join(agentDir, name), path.join(oc, "agents", name))
+      const sourcePath = path.join(agentDir, name)
+      const destinationPath = path.join(oc, "agents", name)
+      if (!options?.denyBash) {
+        await copyFile(sourcePath, destinationPath)
+        continue
+      }
+      const source = await readFile(sourcePath, "utf8")
+      const denied = /^ {2}bash: deny$/m.test(source)
+        ? source
+        : source.replace(/(permission:\n {2}["']?\*["']?: allow\n)/, "$1  bash: deny\n")
+      if (!/^ {2}bash: deny$/m.test(denied)) throw new Error(`Could not deny Bash in benchmark agent ${name}`)
+      await writeFile(destinationPath, denied)
     }
     const skillDir = path.join(oc, "skills", `studio-${id}`)
     await mkdir(skillDir, { recursive: true })
@@ -386,7 +417,15 @@ export async function prepareIsolate(root: string, options?: { xdgDataHome?: str
   }
   await writeFile(
     path.join(oc, "opencode.json"),
-    `${JSON.stringify({ $schema: "https://opencode.ai/config.json", plugin: [pathToFileURL(path.join(root, "dist", "plugin.js")).href] }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        $schema: "https://opencode.ai/config.json",
+        plugin: [pathToFileURL(path.join(root, "dist", "plugin.js")).href],
+        ...(options?.denyBash ? { permission: { bash: "deny" } } : {}),
+      },
+      null,
+      2,
+    )}\n`,
   )
   return { isolate, studioHome, userHome, xdgConfigHome, xdgDataHome, xdgCacheHome, xdgStateHome }
 }
@@ -420,10 +459,12 @@ async function main(argv: string[]) {
   let variant: string | undefined
   let keep = false
   let headless = false
+  let denyBash = false
   while (args.length) {
     const flag = args.shift()
     if (flag === "--keep") keep = true
     else if (flag === "--headless") headless = true
+    else if (flag === "--deny-bash") denyBash = true
     else if (flag === "--model") model = args.shift()
     else if (flag === "--variant") variant = args.shift()
     else {
@@ -438,7 +479,7 @@ async function main(argv: string[]) {
   const lockPath = await acquireBenchLock(root, `${studioArg} ${bench.id}`)
   try {
     await ensureRuntime(root)
-    const isolate = await prepareIsolate(root)
+    const isolate = await prepareIsolate(root, { denyBash })
     const stamp = new Date()
       .toISOString()
       .replace(/[-:]/g, "")
@@ -484,6 +525,7 @@ async function main(argv: string[]) {
         studioHome: isolate.studioHome,
         expect: bench.expect,
         requires: bench.requires,
+        requireNoBash: denyBash,
       })
       const artifactDir = path.join(runDir, "studio")
       await cp(path.join(isolate.studioHome, "studio"), artifactDir, { recursive: true }).catch(() => {})

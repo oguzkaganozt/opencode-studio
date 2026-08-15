@@ -106,13 +106,22 @@
     "pcb_tsx_snippet": {
       "studio": "pcb"
     },
+    "pcb_tscircuit_reference": {
+      "studio": "pcb"
+    },
     "pcb_component_search": {
       "studio": "pcb"
     },
     "pcb_component_add": {
       "studio": "pcb"
     },
+    "pcb_component_import": {
+      "studio": "pcb"
+    },
     "pcb_circuit_build": {
+      "studio": "pcb"
+    },
+    "pcb_circuit_check": {
       "studio": "pcb"
     },
     "pcb_circuit_export": {
@@ -477,5 +486,5 @@
       }
     }
   },
-  "count": 76
+  "count": 79
 }

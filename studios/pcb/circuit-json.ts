@@ -55,6 +55,17 @@ export type ManufacturingBlocker = {
     | "missing_pcb_port"
   count: number
   messages: string[]
+  issues: ManufacturingIssue[]
+}
+
+export type ManufacturingIssue = {
+  message: string
+  refdes?: string
+  pin?: string
+  sourceComponentId?: string
+  sourcePortId?: string
+  pcbComponentId?: string
+  pcbPortIds?: string[]
 }
 
 export type ManufacturingBlockerOptions = {
@@ -107,11 +118,27 @@ function centerTuple(element: CircuitElement | undefined): [number, number] | un
 
 function diagnosticTargets(byId: Map<string, CircuitElement>, diagnostic: CircuitElement): DiagnosticTarget[] {
   const targets: DiagnosticTarget[] = []
-  const componentIds = new Set([
+  const pcbComponentIds = new Set([
     ...stringArrayField(diagnostic, "pcb_component_ids"),
     ...([stringField(diagnostic, "pcb_component_id")].filter(Boolean) as string[]),
   ])
-  for (const pcbComponentId of componentIds) {
+  const sourceComponentIds = new Set([
+    ...stringArrayField(diagnostic, "source_component_ids"),
+    ...([stringField(diagnostic, "source_component_id")].filter(Boolean) as string[]),
+  ])
+  for (const sourceComponentId of sourceComponentIds) {
+    for (const element of byId.values()) {
+      if (element.type === "pcb_component" && element.source_component_id === sourceComponentId) {
+        const id = stringField(element, "pcb_component_id")
+        if (id) pcbComponentIds.add(id)
+      }
+    }
+    if (![...byId.values()].some((element) => element.type === "pcb_component" && element.source_component_id === sourceComponentId)) {
+      const sourceComponent = byId.get(sourceComponentId)
+      targets.push({ kind: "component", refdes: stringField(sourceComponent, "name"), sourceComponentId })
+    }
+  }
+  for (const pcbComponentId of pcbComponentIds) {
     const component = byId.get(pcbComponentId)
     const sourceComponentId = stringField(component, "source_component_id")
     const sourceComponent = sourceComponentId ? byId.get(sourceComponentId) : undefined
@@ -128,7 +155,35 @@ function diagnosticTargets(byId: Map<string, CircuitElement>, diagnostic: Circui
     })
   }
 
-  for (const pcbPortId of stringArrayField(diagnostic, "pcb_port_ids")) {
+  const pcbPortIds = new Set([
+    ...stringArrayField(diagnostic, "pcb_port_ids"),
+    ...([stringField(diagnostic, "pcb_port_id")].filter(Boolean) as string[]),
+  ])
+  const sourcePortIds = new Set([
+    ...stringArrayField(diagnostic, "source_port_ids"),
+    ...([stringField(diagnostic, "source_port_id")].filter(Boolean) as string[]),
+  ])
+  for (const sourcePortId of sourcePortIds) {
+    for (const element of byId.values()) {
+      if (element.type === "pcb_port" && element.source_port_id === sourcePortId) {
+        const id = stringField(element, "pcb_port_id")
+        if (id) pcbPortIds.add(id)
+      }
+    }
+    if (![...byId.values()].some((element) => element.type === "pcb_port" && element.source_port_id === sourcePortId)) {
+      const sourcePort = byId.get(sourcePortId)
+      const sourceComponentId = stringField(sourcePort, "source_component_id")
+      const sourceComponent = sourceComponentId ? byId.get(sourceComponentId) : undefined
+      targets.push({
+        kind: "port",
+        refdes: stringField(sourceComponent, "name"),
+        portName: stringField(sourcePort, "name"),
+        sourceComponentId,
+        sourcePortId,
+      })
+    }
+  }
+  for (const pcbPortId of pcbPortIds) {
     const port = byId.get(pcbPortId)
     const sourcePortId = stringField(port, "source_port_id")
     const sourcePort = sourcePortId ? byId.get(sourcePortId) : undefined
@@ -153,7 +208,12 @@ function diagnosticTargets(byId: Map<string, CircuitElement>, diagnostic: Circui
     targets.push({ kind: "trace", center: centerTuple(diagnostic), sourceTraceId, pcbTraceId })
   }
 
-  return targets
+  const unique = new Map<string, DiagnosticTarget>()
+  for (const target of targets) {
+    const key = [target.kind, target.sourceComponentId, target.pcbComponentId, target.sourcePortId, target.pcbPortId].join(":")
+    if (!unique.has(key)) unique.set(key, target)
+  }
+  return [...unique.values()]
 }
 
 function elementByIdMap(elements: CircuitElement[]) {
@@ -263,6 +323,32 @@ function resolveMissingTraceWarnings(
   })
 }
 
+export function inspectEffectiveCircuitJson(value: unknown, noConnect?: ReadonlyMap<string, ReadonlySet<string>>): CircuitInspection {
+  const elements = parseCircuitJson(value)
+  const byId = elementByIdMap(elements)
+  const intentionallyUnconnected = resolveIntentionallyUnconnected(elements, byId, noConnect)
+  const unresolved = new Set(resolveMissingTraceWarnings(elements, traceConnectedPortIds(elements), intentionallyUnconnected))
+  return inspectCircuitJson(elements.filter((element) => element.type !== "source_pin_missing_trace_warning" || unresolved.has(element)))
+}
+
+function issueForSourcePort(byId: Map<string, CircuitElement>, port: CircuitElement, message: string): ManufacturingIssue {
+  const sourceComponentId = stringField(port, "source_component_id")
+  const sourceComponent = sourceComponentId ? byId.get(sourceComponentId) : undefined
+  const sourcePortId = stringField(port, "source_port_id")
+  const pcbPorts = sourcePortId
+    ? [...byId.values()].filter((element) => element.type === "pcb_port" && element.source_port_id === sourcePortId)
+    : []
+  return {
+    message,
+    refdes: stringField(sourceComponent, "name"),
+    pin: stringField(port, "name"),
+    sourceComponentId,
+    sourcePortId,
+    pcbComponentId: stringField(pcbPorts[0], "pcb_component_id"),
+    pcbPortIds: pcbPorts.map((element) => stringField(element, "pcb_port_id")).filter((id): id is string => Boolean(id)),
+  }
+}
+
 export function manufacturingBlockers(
   value: unknown,
   inspection?: CircuitInspection,
@@ -278,6 +364,10 @@ export function manufacturingBlockers(
       type: "invalid_design",
       count: resolved.errorCount,
       messages: resolved.errors.flatMap((group) => group.messages).slice(0, WARNING_SAMPLE_LIMIT),
+      issues: resolved.errors
+        .flatMap((group) => group.messages)
+        .slice(0, WARNING_SAMPLE_LIMIT)
+        .map((message) => ({ message })),
     })
   }
 
@@ -286,7 +376,12 @@ export function manufacturingBlockers(
     .map((element) => (typeof element.text === "string" ? element.text : ""))
     .filter((text) => text.startsWith(PCB_PLACEHOLDER_PREFIX))
   if (placeholders.length > 0) {
-    blockers.push({ type: "placeholder_component", count: placeholders.length, messages: placeholders })
+    blockers.push({
+      type: "placeholder_component",
+      count: placeholders.length,
+      messages: placeholders,
+      issues: placeholders.map((message) => ({ message })),
+    })
   }
 
   const footprintMismatches = resolved.warnings.find((group) => group.type === "supplier_footprint_mismatch_warning")
@@ -295,6 +390,7 @@ export function manufacturingBlockers(
       type: "supplier_footprint_mismatch",
       count: footprintMismatches.count,
       messages: footprintMismatches.messages,
+      issues: footprintMismatches.messages.map((message) => ({ message })),
     })
   }
 
@@ -312,20 +408,27 @@ export function manufacturingBlockers(
             Array.isArray(partNumbers) &&
             partNumbers.some((partNumber) => typeof partNumber === "string" && partNumber.trim().length > 0),
         )
-      return !hasSupplierIdentity
+      const mpn = typeof element.manufacturer_part_number === "string" ? element.manufacturer_part_number.trim() : ""
+      return !mpn || !hasSupplierIdentity
     })
     .map((element) => {
       const name = typeof element.name === "string" && element.name.trim() ? element.name.trim() : "Unnamed chip"
       const mpn = typeof element.manufacturer_part_number === "string" ? element.manufacturer_part_number.trim() : ""
-      return mpn
+      const message = mpn
         ? `${name} (${mpn}) has no verifiable supplier part number`
-        : `${name} has no manufacturer part number or verifiable supplier part number`
+        : `${name} has no manufacturer part number; supplier identity alone is insufficient`
+      return {
+        message,
+        refdes: name,
+        sourceComponentId: stringField(element, "source_component_id"),
+      }
     })
   if (unverifiedIdentities.length > 0) {
     blockers.push({
       type: "unverified_part",
       count: unverifiedIdentities.length,
-      messages: unverifiedIdentities.slice(0, WARNING_SAMPLE_LIMIT),
+      messages: unverifiedIdentities.slice(0, WARNING_SAMPLE_LIMIT).map((issue) => issue.message),
+      issues: unverifiedIdentities.slice(0, WARNING_SAMPLE_LIMIT),
     })
   }
 
@@ -333,39 +436,44 @@ export function manufacturingBlockers(
   const connectedPortIds = traceConnectedPortIds(elements)
   const missingTraceWarnings = resolveMissingTraceWarnings(elements, connectedPortIds, intentionallyUnconnected)
   if (missingTraceWarnings.length > 0) {
+    const issues = missingTraceWarnings.map((element) => {
+      const sourcePortId = stringField(element, "source_port_id")
+      const port = sourcePortId ? byId.get(sourcePortId) : undefined
+      const message = stringField(element, "message") ?? `${stringField(port, "name") ?? "Unknown pin"} is missing a trace`
+      return port ? issueForSourcePort(byId, port, message) : { message, sourcePortId }
+    })
     blockers.push({
       type: "unconnected_pin",
       count: missingTraceWarnings.length,
-      messages: missingTraceWarnings
-        .map((element) => element.message)
-        .filter((message): message is string => typeof message === "string" && message.length > 0)
-        .slice(0, WARNING_SAMPLE_LIMIT),
+      messages: issues.slice(0, WARNING_SAMPLE_LIMIT).map((issue) => issue.message),
+      issues: issues.slice(0, WARNING_SAMPLE_LIMIT),
     })
   }
 
   // Declared pins that end up with no physical pad are fabrication defects
   // (tscircuit footprint pad↔port mapping can be incomplete; upstream #4444).
-  // Internal helper ports never carry pads; DNC ports are exempt.
+  // Internal helper ports never carry pads. noConnect exempts routing, not the physical package land.
   const missingPcbPorts = elements
     .filter((element) => element.type === "source_port" && typeof element.source_port_id === "string")
     .filter((element) => {
       const name = element.name
       if (typeof name !== "string") return true
       if (name.includes("_internal_")) return false
-      if (intentionallyUnconnected.has(element.source_port_id as string)) return false
       return !elements.some((pcbPort) => pcbPort.type === "pcb_port" && pcbPort.source_port_id === element.source_port_id)
     })
     .map((element) => {
       const component = element.source_component_id ? byId.get(element.source_component_id as string) : undefined
       const refdes = stringField(component, "name")
       const name = stringField(element, "name")
-      return refdes ? `${refdes}.${name} has no PCB pad (footprint pad mapping may be incomplete)` : `${name} has no PCB pad`
+      const message = refdes ? `${refdes}.${name} has no PCB pad (footprint pad mapping may be incomplete)` : `${name} has no PCB pad`
+      return issueForSourcePort(byId, element, message)
     })
   if (missingPcbPorts.length > 0) {
     blockers.push({
       type: "missing_pcb_port",
       count: missingPcbPorts.length,
-      messages: missingPcbPorts.slice(0, WARNING_SAMPLE_LIMIT),
+      messages: missingPcbPorts.slice(0, WARNING_SAMPLE_LIMIT).map((issue) => issue.message),
+      issues: missingPcbPorts.slice(0, WARNING_SAMPLE_LIMIT),
     })
   }
 

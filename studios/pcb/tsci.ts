@@ -19,6 +19,14 @@ import {
   manufacturingBlockers,
   readCircuitJson,
 } from "./circuit-json"
+import {
+  COMPONENT_EVIDENCE_SCHEMA,
+  type ComponentEvidenceRecord,
+  createComponentEvidence,
+  type PackageProvenance,
+  readComponentEvidence,
+  writeComponentEvidence,
+} from "./component-evidence"
 import { loadNoConnectIntents } from "./tsx-intent"
 
 export type TsciResult = {
@@ -144,9 +152,11 @@ export type CircuitBuildResult = TsciResult & {
 }
 
 export type BuildDiagnosticSummary = {
-  rootCause: "package" | "footprint" | "circuit" | null
+  rootCause: "package" | "component_identity" | "footprint" | "connectivity" | "circuit" | null
   package: string[]
+  componentIdentity: string[]
   footprint: string[]
+  connectivity: string[]
   circuit: string[]
 }
 
@@ -154,7 +164,14 @@ export function classifyBuildDiagnostics(
   result: Pick<CircuitBuildResult, "stderr" | "inspection">,
   blockers: readonly ManufacturingBlocker[] = [],
 ): BuildDiagnosticSummary {
-  const summary: BuildDiagnosticSummary = { rootCause: null, package: [], footprint: [], circuit: [] }
+  const summary: BuildDiagnosticSummary = {
+    rootCause: null,
+    package: [],
+    componentIdentity: [],
+    footprint: [],
+    connectivity: [],
+    circuit: [],
+  }
   const packagePattern =
     /cannot find (?:package|module)|module_not_found|could not resolve|failed to resolve import|does not provide an export/i
   const footprintPattern = /footprint|pcb[_ ]port|\bpad\b|copper iou/i
@@ -173,11 +190,31 @@ export function classifyBuildDiagnostics(
     destination.push(...messages)
   }
   for (const blocker of blockers) {
-    const destination = footprintPattern.test(`${blocker.type} ${blocker.messages.join(" ")}`) ? summary.footprint : summary.circuit
+    const destination =
+      blocker.type === "unverified_part" || blocker.type === "placeholder_component"
+        ? summary.componentIdentity
+        : blocker.type === "unconnected_pin"
+          ? summary.connectivity
+          : blocker.type === "missing_pcb_port" || blocker.type === "supplier_footprint_mismatch"
+            ? summary.footprint
+            : summary.circuit
     destination.push(...blocker.messages)
   }
+  for (const key of ["package", "componentIdentity", "footprint", "connectivity", "circuit"] as const) {
+    summary[key] = [...new Set(summary[key])]
+  }
   summary.rootCause =
-    summary.package.length > 0 ? "package" : summary.footprint.length > 0 ? "footprint" : summary.circuit.length > 0 ? "circuit" : null
+    summary.package.length > 0
+      ? "package"
+      : summary.componentIdentity.length > 0
+        ? "component_identity"
+        : summary.footprint.length > 0
+          ? "footprint"
+          : summary.connectivity.length > 0
+            ? "connectivity"
+            : summary.circuit.length > 0
+              ? "circuit"
+              : null
   return summary
 }
 
@@ -303,7 +340,7 @@ function registerComponentCandidate(input: {
   if (!parsed) return null
   const expectedPackageSpec = `@tsci/${input.packageName.replace("/", ".")}`
   if (parsed.packageSpec.toLowerCase() !== expectedPackageSpec.toLowerCase()) return null
-  const id = createHash("sha256").update(`${parsed.packageSpec}\0${input.version}`).digest("hex").slice(0, 20)
+  const id = createHash("sha256").update(`${parsed.packageSpec}\0${input.version}\0${parsed.exportName}`).digest("hex").slice(0, 20)
   componentCandidates.set(id, {
     id,
     packageName: input.packageName,
@@ -371,6 +408,8 @@ function normalizedPartId(value: string): string {
 
 export function componentSearchFallbackQuery(query: string): string | null {
   const normalizedQuery = query.trim()
+  const family = normalizedQuery.replace(/[-_](?:N\d+(?:R\d+)?|R\d+)$/i, "")
+  if (family !== normalizedQuery && family.length >= 5) return family
   const candidates = normalizedQuery.match(/[A-Za-z][A-Za-z0-9._+-]*/g) ?? []
   return (
     candidates.find((candidate) => {
@@ -604,10 +643,13 @@ async function searchComponentsUncached(
   await mkdir(searchCwd, { recursive: true })
 
   const initial = await searchComponentsForScope(normalizedQuery, scope, searchCwd, signal)
-  const fallbackQuery = initial.success && initial.results.length === 0 ? componentSearchFallbackQuery(normalizedQuery) : null
+  const hasRegistryResult = initial.results.some((entry) => entry.source === "tscircuit")
+  const shouldRetryRegistry = (scope === "all" || scope === "tscircuit") && !hasRegistryResult
+  const fallbackQuery =
+    initial.success && (initial.results.length === 0 || shouldRetryRegistry) ? componentSearchFallbackQuery(normalizedQuery) : null
   if (!fallbackQuery) return initial
 
-  const fallback = await searchComponentsForScope(fallbackQuery, scope, searchCwd, signal)
+  const fallback = await searchComponentsForScope(fallbackQuery, scope === "all" ? "tscircuit" : scope, searchCwd, signal)
   const attemptedQueries = [normalizedQuery, fallbackQuery]
   if (!fallback.success) {
     return {
@@ -616,7 +658,8 @@ async function searchComponentsUncached(
       stderr: [initial.stderr, `Fallback search '${fallbackQuery}' failed: ${fallback.stderr}`].filter(Boolean).join("\n"),
     }
   }
-  return { ...fallback, query: normalizedQuery, attemptedQueries, fallbackUsed: true }
+  const combined = combineComponentSearchResults(normalizedQuery, [initial, fallback])
+  return { ...combined, query: normalizedQuery, resolvedQuery: fallbackQuery, attemptedQueries, fallbackUsed: true }
 }
 
 export async function searchComponents(
@@ -660,6 +703,28 @@ type ComponentAddOperations = {
 }
 
 type ComponentSmokeResult = TsciResult
+
+async function persistComponentEvidence(
+  projectDir: string,
+  circuitJson: unknown,
+  refdes: string,
+  provenance: PackageProvenance,
+): Promise<void> {
+  let records: ComponentEvidenceRecord[] = []
+  try {
+    records = (await readComponentEvidence(projectDir)).records
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+  }
+  const record = createComponentEvidence(circuitJson, refdes, provenance)
+  const retained = records.filter(
+    (existing) =>
+      existing.package.spec !== provenance.spec ||
+      existing.package.version !== provenance.version ||
+      existing.package.export !== provenance.export,
+  )
+  await writeComponentEvidence(projectDir, { schema: COMPONENT_EVIDENCE_SCHEMA, records: [...retained, record] })
+}
 
 function tsciCliCommand(args: string[]): string[] {
   const engine = resolveTsci()
@@ -735,14 +800,20 @@ async function smokeTestComponent(projectDir: string, candidate: ComponentCandid
     try {
       const json = await readCircuitJson(projectDir, path.join(outputDir, "circuit.json"))
       const inspection = inspectCircuitJson(json)
-      return inspection.designValid
-        ? result
-        : {
-            ...result,
-            success: false,
-            exitCode: 1,
-            stderr: [result.stderr, ...inspection.errors.flatMap((group) => group.messages)].filter(Boolean).join("\n"),
-          }
+      if (inspection.designValid) {
+        await persistComponentEvidence(projectDir, json, "U_TEST", {
+          spec: candidate.packageSpec,
+          version: candidate.version,
+          export: candidate.exportName,
+        })
+        return result
+      }
+      return {
+        ...result,
+        success: false,
+        exitCode: 1,
+        stderr: [result.stderr, ...inspection.errors.flatMap((group) => group.messages)].filter(Boolean).join("\n"),
+      }
     } catch (error) {
       return {
         ...result,
@@ -753,6 +824,48 @@ async function smokeTestComponent(projectDir: string, candidate: ComponentCandid
           .join("\n"),
       }
     }
+  } finally {
+    await Promise.all([rm(sourcePath, { force: true }), rm(outputDir, { recursive: true, force: true })])
+  }
+}
+
+export async function smokeTestImportedComponent(
+  input: {
+    projectDir: string
+    relativePath: string
+    lcscPartNumber: string
+    exportName: string
+    sha256: string
+  },
+  signal?: AbortSignal,
+): Promise<TsciResult> {
+  const id = `pcb-component-smoke-${randomUUID()}`
+  const sourcePath = path.join(input.projectDir, "src", `${id}.tsx`)
+  const outputDir = path.join(input.projectDir, "dist", "src", id)
+  const modulePath = `../${input.relativePath.replace(/\.tsx$/i, "")}`
+  const source = `import React from "react"\nimport "tscircuit"\nimport { ${input.exportName} } from ${JSON.stringify(modulePath)}\n\nexport default () => (\n  <board width="100mm" height="100mm">\n    <${input.exportName} name="U_TEST" />\n  </board>\n)\n`
+  try {
+    await writeFile(sourcePath, source)
+    const result = await run(["build", `src/${id}.tsx`], input.projectDir, signal)
+    if (!result.success) return result
+    const json = await readCircuitJson(input.projectDir, path.join(outputDir, "circuit.json"))
+    const inspection = inspectCircuitJson(json)
+    if (!inspection.designValid) {
+      return {
+        ...result,
+        success: false,
+        exitCode: 1,
+        stderr: [result.stderr, ...inspection.errors.flatMap((group) => group.messages)].filter(Boolean).join("\n"),
+      }
+    }
+    await persistComponentEvidence(input.projectDir, json, "U_TEST", {
+      spec: `lcsc:${input.lcscPartNumber}`,
+      version: input.sha256,
+      export: input.exportName,
+    })
+    return result
+  } catch (error) {
+    return { success: false, stdout: "", stderr: error instanceof Error ? error.message : String(error), exitCode: 1 }
   } finally {
     await Promise.all([rm(sourcePath, { force: true }), rm(outputDir, { recursive: true, force: true })])
   }
@@ -956,7 +1069,14 @@ export async function exportCircuit(
       debugOnly: false,
       generatedFormats: [],
       blockedFormats: formats.includes("gerber") ? ["gerber"] : [],
-      manufacturingBlockers: [{ type: "invalid_design", count: 1, messages: [tamperedArtifactMessage()] }],
+      manufacturingBlockers: [
+        {
+          type: "invalid_design",
+          count: 1,
+          messages: [tamperedArtifactMessage()],
+          issues: [{ message: tamperedArtifactMessage() }],
+        },
+      ],
       artifacts: {
         circuitJsonPath: absoluteCircuitJsonPath,
         schematicSvgPath: null,

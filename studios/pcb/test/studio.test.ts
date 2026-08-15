@@ -42,12 +42,39 @@ describe("pcb studio smoke", () => {
     expect(names).toContain("pcb_catalog_list")
     expect(names).toContain("pcb_catalog_upsert")
     expect(names).toContain("pcb_tsx_snippet")
+    expect(names).toContain("pcb_tscircuit_reference")
     expect(names).toContain("pcb_component_add")
+    expect(names).toContain("pcb_component_import")
+    expect(names).toContain("pcb_circuit_check")
     expect(names).not.toContain("pcb_sim_run")
     expect(names).not.toContain("pcb_spice_model_get")
     expect(names).not.toContain("pcb_spice_model_upsert")
     const listed = JSON.parse((await hooks.tool?.pcb_workspace_list.execute({}, {} as any)) as string)
     expect(listed.workspaceRoot).toBe(workspaceRoot)
+  })
+
+  test("returns a bounded PNG attachment for PCB visual inspection", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "pcb-preview-"))
+    temps.push(workspaceRoot)
+    const projectDir = path.join(workspaceRoot, "preview-board")
+    const outputDir = path.join(projectDir, "dist", "src", "circuit")
+    await mkdir(path.join(projectDir, "src"), { recursive: true })
+    await mkdir(outputDir, { recursive: true })
+    await writeFile(path.join(projectDir, "src", "circuit.tsx"), "export default () => null\n")
+    await writeFile(path.join(outputDir, "circuit.json"), "[]")
+    await writeFile(
+      path.join(projectDir, "dist", "pcb.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="black"/></svg>',
+    )
+    await stampProject(projectDir)
+
+    const hooks = await createPcbStudioPlugin({ workspaceRoot })({ directory: workspaceRoot } as any)
+    const result = (await hooks.tool?.pcb_pcb_svg.execute({ projectId: encodeProjectId("preview-board") }, {} as any)) as any
+    expect(result.attachments).toHaveLength(1)
+    expect(result.attachments[0]).toEqual(
+      expect.objectContaining({ mime: "image/png", filename: "pcb-preview.png", url: expect.stringMatching(/^data:image\/png;base64,/) }),
+    )
+    expect(result.metadata).toEqual(expect.objectContaining({ previewWidth: 1200, previewHeight: 900, previewMaxEdge: 1200 }))
   })
 
   test("project ids roundtrip and path jail holds", () => {
@@ -125,8 +152,8 @@ describe("pcb studio smoke", () => {
     ])
     expect(blockers.find((blocker) => blocker.type === "unverified_part")).toEqual(
       expect.objectContaining({
-        count: 2,
-        messages: expect.arrayContaining([expect.stringContaining("U1"), expect.stringContaining("U2")]),
+        count: 3,
+        messages: expect.arrayContaining([expect.stringContaining("U1"), expect.stringContaining("U2"), expect.stringContaining("U3")]),
       }),
     )
   })

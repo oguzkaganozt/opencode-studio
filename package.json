@@ -57,6 +57,7 @@
     "@fontsource/inter": "5",
     "@opencode-ai/plugin": "1.18.16",
     "@opencode-ai/sdk": "1.18.16",
+    "@resvg/resvg-js": "2.6.2",
     "@tanstack/react-query": "5.101.2",
     "@tscircuit/3d-viewer": "0.0.577",
     "@tscircuit/pcb-viewer": "1.11.375",
