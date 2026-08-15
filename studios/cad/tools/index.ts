@@ -143,7 +143,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             parts: tool.schema
               .array(
                 tool.schema.object({
-                  id: tool.schema.string().min(1).describe("Part id; must match ^[a-z0-9][a-z0-9_-]*$"),
+                  id: tool.schema.string().min(1).describe("One printed body. Left/right pairs are two ids (side_trim_left, side_trim_right)."),
                   source: tool.schema
                     .string()
                     .optional()
@@ -151,7 +151,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 }),
               )
               .min(1)
-              .describe("Locked part list. Two or more parts spawn cad-part workers."),
+              .describe("Every printed body, not roles. Two or more spawn cad-part workers."),
             params: tool.schema.string().optional().describe("Full params.py body (shared dimensions). Required for useful workers."),
             brief: tool.schema.string().optional().describe("One or two sentences of product intent forwarded to workers."),
           },

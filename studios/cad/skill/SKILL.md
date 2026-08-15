@@ -138,9 +138,10 @@ Follow these phases in order. Phase 1.5 is optional when the active model cannot
 ## Phase 0 - Product Brief
 
 1. Read the user's product request. Infer the functional architecture: what shells, what openings, what mounting features, what clearances. Classify the dominant body with Shape Strategy; if Manufactured Freeform Mode applies, state its form contract before modeling.
-2. Call `cad_design_create` with the complete part list, `params` (full `params.py` body), and a short `brief`. Two or more parts spawn `cad-part` workers immediately — do not model those parts yourself.
-3. One part: model it in this session after create.
-4. Share the part plan with the user.
+2. Count **printed bodies**, not roles. Each `parts/<id>.py` is one `build()` solid. Left/right pairs, two feet, two rails → two ids (`side_trim_left` + `side_trim_right`). Do not collapse a pair into one "trim"/"rail" part — create spawns one worker per id and the missing mate is never made.
+3. Call `cad_design_create` with that complete part list, `params` (full `params.py` body), and a short `brief`. Two or more parts spawn `cad-part` workers immediately — do not model those parts yourself.
+4. One part: model it in this session after create.
+5. Share the part plan with the user.
 
 Every part source must import shared values from `params.py` and expose:
 

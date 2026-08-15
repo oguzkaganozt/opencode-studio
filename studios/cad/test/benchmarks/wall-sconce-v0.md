@@ -22,7 +22,7 @@ Tall frosted panel, stone-look base, thin brass trim and a small brass foot. Aro
 ## Why this is harder than project-box-v0
 
 - Reference form (front/side silhouette, proportions) — not pure prismatic box
-- Multi-material look → multi-part split (diffuser / base / trim)
+- Multi-material look → multi-part split (diffuser / base / left trim / right trim / foot)
 - Fit between parts + wall-mountable back
 - Form axis is real (not `not applicable`)
 
