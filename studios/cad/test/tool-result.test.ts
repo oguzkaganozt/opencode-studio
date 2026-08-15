@@ -41,7 +41,7 @@ describe("structureCadSessionResult", () => {
     })
     expect(fail.ok).toBe(false)
     expect(fail.status).toBe("fail")
-    expect(fail.next?.[0]).toContain("locate_gate")
+    expect(fail.next?.[0]).toContain("cad_execute")
   })
 
   test("normalize measure", () => {

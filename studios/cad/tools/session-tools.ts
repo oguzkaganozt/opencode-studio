@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin"
 import { axisForSessionTool, qcSessionKey, recordQcEvidence, subjectsFromArgs } from "../host/qc-evidence"
 import catalog from "./catalog.json" with { type: "json" }
-import { cadSessionToolName } from "./names"
+import { CAD_SESSION_ALLOWLIST, cadSessionToolName } from "./names"
 import { CAD_SESSION_STRUCTURED_TOOLS, formatCadToolResult, structureCadSessionResult } from "./result"
 import { getCadRuntimeSession } from "./session"
 
@@ -37,7 +37,7 @@ const CAD_SESSION_TOOL_GUIDANCE: Record<string, string> = {
   cad_analyze_printability:
     "Returns structured JSON {ok, status, summary, data, next}. status is fail when any error-severity finding exists. The current world orientation is treated as the print orientation. Reorient the final source-built shape into its actual bed pose before analysis, and rerun this check after every geometry change.",
   cad_analyze_form:
-    "Returns structured JSON {ok, status, summary, data, next}. Slices the solid into stations (width/depth/center). status=pass only with a numeric contract within tol. Records form QC evidence. Prismatic designs should skip this and claim form pass with finding 'not applicable'. Optional cad_form_review is visual feedback only and does not unlock form pass.",
+    "Returns structured JSON {ok, status, summary, data, next}. Slices the solid into stations (width/depth/center). status=pass only with a numeric contract within tol. Records form QC evidence. Prismatic designs should skip this and claim form pass with finding 'not applicable'.",
 }
 
 function schemaToZod(schema: JsonSchema | undefined): Field {
@@ -111,6 +111,7 @@ export function createCadSessionTools(options: { engineProjectDir: string; cwd: 
   const tools: Record<string, ReturnType<typeof tool>> = {}
 
   for (const entry of catalog.tools as CatalogTool[]) {
+    if (!(CAD_SESSION_ALLOWLIST as readonly string[]).includes(entry.name)) continue
     const toolName = cadSessionToolName(entry.name)
     const guidance = CAD_SESSION_TOOL_GUIDANCE[toolName]
     const description = guidance ? `${entry.description} ${guidance}` : entry.description

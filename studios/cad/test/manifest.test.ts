@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { ID_PATTERN, validateArtifactManifest, validateDesignManifest } from "../host/manifest"
+import { expectedArtifactPartIds, ID_PATTERN, validateArtifactManifest, validateDesignManifest } from "../host/manifest"
 
 describe("manifest validation smoke", () => {
   test("accepts a valid design and artifact manifest", () => {
@@ -15,6 +15,18 @@ describe("manifest validation smoke", () => {
       ],
     })
     expect(design.id).toBe("box-lid-demo")
+    expect(design.parts[0]?.qty).toBe(1)
+    expect(expectedArtifactPartIds([{ id: "side_trim", qty: 2 }])).toEqual(["side_trim", "side_trim_mirror"])
+    expect(() =>
+      validateDesignManifest({
+        schema: 1,
+        id: "box-lid-demo",
+        parts: [
+          { id: "side_trim", source: "parts/side_trim.py", qty: 2 },
+          { id: "side_trim_mirror", source: "parts/side_trim_mirror.py" },
+        ],
+      }),
+    ).toThrow(/collides/)
 
     const artifact = validateArtifactManifest({
       schema: 1,

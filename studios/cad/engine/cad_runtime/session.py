@@ -141,6 +141,9 @@ class Session:
                 {"ok": False, "error": f"design_dir is not a directory: {path}"}
             )
         self.design_dir = str(path)
+        from cad_runtime.tools._paths import _root_var
+
+        _root_var.set(self.design_dir)
         bound = self._refresh_design_params()
         return json.dumps(
             {
@@ -163,6 +166,9 @@ class Session:
                 pass
         self._design_path_inserted = None
         sys.modules.pop("params", None)
+        from cad_runtime.tools._paths import _root_var
+
+        _root_var.set(None)
         self.design_dir = None
 
     def _refresh_design_params(self) -> bool:

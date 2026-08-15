@@ -99,21 +99,27 @@ describe("cad plugin smoke", () => {
     for (const name of [
       "cad_design_build",
       "cad_design_create",
-      "cad_design_list",
       "cad_design_qc_report",
       "cad_design_read",
-      "cad_design_view",
-      "cad_design_dispatch",
       "cad_design_join",
+      "cad_execute",
+      "cad_validate",
+      "cad_measure",
+      "cad_compare",
+      "cad_analyze_printability",
+      "cad_analyze_form",
+      "cad_render_view",
+      "cad_reset",
     ]) {
       expect(names).toContain(name)
     }
-    expect(names.filter((name) => name.startsWith("cad_")).length).toBeGreaterThan(30)
-    expect(names).toContain("cad_execute")
-    expect(names).toContain("cad_measure")
+    expect(names.filter((name) => name.startsWith("cad_")).length).toBe(13)
+    expect(names).not.toContain("cad_design_list")
+    expect(names).not.toContain("cad_design_dispatch")
+    expect(names).not.toContain("cad_find_holes")
     expect(names.some((name) => name.startsWith("design_") || name.startsWith("build123d_"))).toBe(false)
     const created = await (hooks.tool as any).cad_design_create.execute(
-      { id: "test-design", parts: [{ id: "body" }] },
+      { id: "test-design", parts: [{ id: "body", qty: 1 }] },
       { ...fakeContext, ask: async () => {} },
     )
     expect(created.title).toContain("test-design")
@@ -122,7 +128,7 @@ describe("cad plugin smoke", () => {
     expect(createdBody.tool).toBe("cad_design_create")
     expect(createdBody.data.id).toBe("test-design")
     expect(createdBody.next?.length).toBeGreaterThan(0)
-    const listed = JSON.parse(await (hooks.tool as any).cad_design_list.execute({}))
+    const listed = JSON.parse(await (hooks.tool as any).cad_design_read.execute({}))
     expect(listed.designs[0].partCount).toBe(1)
   })
 
@@ -139,15 +145,20 @@ describe("cad plugin smoke", () => {
       },
     })
     const hooks = await plugin(fakeContext, { studioRoot: studio.designsRoot, engineProjectDir: studio.engineDir })
-    await (hooks.tool as any).cad_design_create.execute({ id: "one", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
-    const serial = JSON.parse(await (hooks.tool as any).cad_design_dispatch.execute({ id: "one" }, fakeContext))
-    expect(serial.mode).toBe("serial")
+    const one = await (hooks.tool as any).cad_design_create.execute(
+      { id: "one", parts: [{ id: "body", qty: 1 }] },
+      { ...fakeContext, ask: async () => {} },
+    )
+    expect(JSON.parse(one.output).data.dispatch.mode).toBe("serial")
     expect(spawned).toEqual([])
 
     const created = await (hooks.tool as any).cad_design_create.execute(
       {
         id: "two",
-        parts: [{ id: "body" }, { id: "lid" }],
+        parts: [
+          { id: "body", qty: 1 },
+          { id: "lid", qty: 1 },
+        ],
         params: "BOX_L = 100\n",
         brief: "Desk box with press-fit lid.",
       },
@@ -155,9 +166,6 @@ describe("cad plugin smoke", () => {
     )
     const createdBody = JSON.parse(created.output)
     expect(createdBody.data.dispatch.mode).toBe("parallel")
-    expect(spawned).toEqual(["body", "lid"])
-    const again = JSON.parse(await (hooks.tool as any).cad_design_dispatch.execute({ id: "two" }, fakeContext))
-    expect(again.mode).toBe("parallel")
     expect(spawned).toEqual(["body", "lid"])
     const joined = JSON.parse(await (hooks.tool as any).cad_design_join.execute({ id: "two" }, fakeContext))
     expect(joined.ok).toBe(false)
@@ -172,7 +180,10 @@ describe("cad plugin smoke", () => {
     }
     const plugin = createStudioPlugin({ buildRunner: runner as any })
     const hooks = await plugin(fakeContext, { studioRoot: studio.designsRoot, engineProjectDir: studio.engineDir })
-    await (hooks.tool as any).cad_design_create.execute({ id: "demo", parts: [{ id: "body" }] }, { ...fakeContext, ask: async () => {} })
+    await (hooks.tool as any).cad_design_create.execute(
+      { id: "demo", parts: [{ id: "body", qty: 1 }] },
+      { ...fakeContext, ask: async () => {} },
+    )
     const built = await (hooks.tool as any).cad_design_build.execute({ id: "demo" }, { ...fakeContext, ask: async () => {} })
     const builtBody = JSON.parse(built.output)
     expect(builtBody.ok).toBe(true)

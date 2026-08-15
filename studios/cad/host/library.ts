@@ -3,7 +3,7 @@ import { lstat, opendir, readdir, readFile, realpath, stat } from "node:fs/promi
 import path from "node:path"
 import { isInside } from "../../../src/core/paths"
 import { ensurePublicArtifactLinks } from "./artifacts"
-import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
+import { artifactRevision, expectedArtifactPartIds, ID_PATTERN, readArtifactManifest, readDesignManifest } from "./manifest"
 
 export type DesignEntry = {
   id: string
@@ -100,10 +100,7 @@ export async function inspectDesign(id: string, directory: string): Promise<Desi
     revision = artifactRevision(artifact)
     const design = await readDesignManifest(directory, id).catch(() => null)
     if (design) {
-      const designPartIds = design.parts
-        .map((p) => p.id)
-        .sort()
-        .join(",")
+      const designPartIds = expectedArtifactPartIds(design.parts).join(",")
       const artifactPartIds = artifact.parts
         .map((p) => p.id)
         .sort()

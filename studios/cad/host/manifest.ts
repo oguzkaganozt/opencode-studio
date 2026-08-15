@@ -11,6 +11,7 @@ export const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/
 export type DesignPart = {
   id: string
   source: string
+  qty: 1 | 2
 }
 
 export type DesignManifest = {
@@ -134,8 +135,15 @@ export function validateDesignManifest(value: unknown): DesignManifest {
     if (typeof partId !== "string" || !ID_PATTERN.test(partId)) throw new ManifestError(`Invalid part id: ${String(partId)}`)
     if (seen.has(partId)) throw new ManifestError(`Duplicate part id: ${partId}`)
     const source = validatePartSource(p.source, partId)
+    const qty = p.qty === undefined || p.qty === 1 ? 1 : p.qty === 2 ? 2 : null
+    if (qty === null) throw new ManifestError(`Part ${partId} qty must be 1 or 2`)
     seen.add(partId)
-    normalizedParts.push({ id: partId, source })
+    normalizedParts.push({ id: partId, source, qty })
+  }
+  for (const part of normalizedParts) {
+    if (part.qty === 2 && seen.has(`${part.id}_mirror`)) {
+      throw new ManifestError(`Part ${part.id} qty 2 collides with existing id ${part.id}_mirror`)
+    }
   }
   const params = validateParamsSource(obj.params)
   return { schema: DESIGN_SCHEMA, id, params, parts: normalizedParts }
@@ -243,7 +251,11 @@ export function validateArtifactManifest(value: unknown): ArtifactManifest {
   return value as ArtifactManifest
 }
 
-export function scaffoldDesignManifest(id: string, parts: Array<{ id: string; source?: string }>): DesignManifest {
+export function expectedArtifactPartIds(parts: Array<{ id: string; qty?: 1 | 2 }>): string[] {
+  return parts.flatMap((part) => (part.qty === 2 ? [part.id, `${part.id}_mirror`] : [part.id])).sort()
+}
+
+export function scaffoldDesignManifest(id: string, parts: Array<{ id: string; source?: string; qty?: 1 | 2 }>): DesignManifest {
   if (!ID_PATTERN.test(id)) throw new ManifestError(`Invalid design id: ${id}`)
   const seen = new Set<string>()
   const resolvedParts: DesignPart[] = []
@@ -252,7 +264,14 @@ export function scaffoldDesignManifest(id: string, parts: Array<{ id: string; so
     if (seen.has(part.id)) throw new ManifestError(`Duplicate part id: ${part.id}`)
     seen.add(part.id)
     const source = validatePartSource(part.source ?? `parts/${part.id.replace(/-/g, "_")}.py`, part.id)
-    resolvedParts.push({ id: part.id, source })
+    const qty = part.qty === 2 ? 2 : 1
+    resolvedParts.push({ id: part.id, source, qty })
+  }
+  const declared = new Set(resolvedParts.map((part) => part.id))
+  for (const part of resolvedParts) {
+    if (part.qty === 2 && declared.has(`${part.id}_mirror`)) {
+      throw new ManifestError(`Part ${part.id} qty 2 collides with existing id ${part.id}_mirror`)
+    }
   }
   return { schema: DESIGN_SCHEMA, id, params: "params.py", parts: resolvedParts }
 }

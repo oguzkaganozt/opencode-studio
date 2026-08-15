@@ -1,11 +1,11 @@
-import { readFile, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
 import manifest from "../../../package.json" with { type: "json" }
 import { formatToolJson } from "../../../src/core/format-tool-json"
 import type { SpecRoots } from "../../../src/core/spec"
-import { createSpecTools } from "../../../src/core/spec-tools"
+import { specFilePath } from "../../../src/core/spec"
 import { buildDesign, type CadBuildRunner, createCadBuildRunner, scaffoldDesign } from "../host/build"
 import { type CadPartDispatcher, createClientDispatcher, readPartSourceStatus, spawnCadParts } from "../host/dispatch"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
@@ -112,38 +112,22 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
       tool: {
         ...build123dTools,
-        ...createSpecTools({
-          owner: "cad",
-          publish: (id, summary) =>
-            publishCadSpec(config.specRoots ?? { cad: layout.root, pcb: layout.root, fw: layout.root }, id, summary),
-        }),
-        cad_design_list: tool({
-          description:
-            "List CAD designs discovered under the CAD domain root (default studio/designs/). Each entry reports id, build status, and part count.",
-          args: {},
-          async execute() {
-            const designs = await scanDesigns(layout)
-            return asJson({
-              designs: designs.map((entry) => ({
-                id: entry.id,
-                buildStatus: entry.buildStatus,
-                partCount: entry.partCount,
-                revision: entry.revision,
-                renderRevision: entry.renderRevision,
-              })),
-            })
-          },
-        }),
 
         cad_design_create: tool({
           description:
-            "Scaffold a CAD design (design.json, params.py, parts/). Two or more parts automatically spawn cad-part workers — pass params and a short brief so they are not blind. One part stays on this agent. Then cad_design_join and cad_design_build.",
+            "Scaffold a CAD design (design.json, params.py, parts/). parts[].qty is required: 1 = one body, 2 = one worker plus a YZ mirror at build. Two or more unique ids spawn cad-part workers. Pass params and a short brief. Then cad_design_join and cad_design_build.",
           args: {
             id: tool.schema.string().min(1).describe("Lowercase design id matching ^[a-z0-9][a-z0-9_-]*$"),
             parts: tool.schema
               .array(
                 tool.schema.object({
-                  id: tool.schema.string().min(1).describe("One printed body. Left/right pairs are two ids (side_trim_left, side_trim_right)."),
+                  id: tool.schema.string().min(1).describe("Unique printable design (side_trim, not left+right ids)."),
+                  qty: tool.schema
+                    .number()
+                    .int()
+                    .min(1)
+                    .max(2)
+                    .describe("How many in the assembly. 2 = one worker; build mirrors across YZ."),
                   source: tool.schema
                     .string()
                     .optional()
@@ -151,7 +135,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 }),
               )
               .min(1)
-              .describe("Every printed body, not roles. Two or more spawn cad-part workers."),
+              .describe("Unique designs with qty. Two or more ids spawn cad-part workers."),
             params: tool.schema.string().optional().describe("Full params.py body (shared dimensions). Required for useful workers."),
             brief: tool.schema.string().optional().describe("One or two sentences of product intent forwarded to workers."),
           },
@@ -174,7 +158,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const { designDir, manifest } = await scaffoldDesign(
               layout,
               args.id,
-              args.parts.map((part) => ({ id: part.id, source: part.source })),
+              args.parts.map((part) => ({ id: part.id, source: part.source, qty: part.qty === 2 ? 2 : 1 })),
             )
             if (args.params?.trim())
               await writeFile(path.join(designDir, "params.py"), args.params.endsWith("\n") ? args.params : `${args.params}\n`, "utf8")
@@ -210,11 +194,22 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_read: tool({
           description:
-            "Read the canonical design/build summary, resolved artifact paths with existence checks, metrics, revision, and render inventory. Use after cad_design_build; do not follow it with raw manifest reads or artifact globs.",
+            "Without id: list designs (id, build status, part count). With id: design/build summary, artifact paths, renders, and companion viewer URL. Do not follow with raw manifest reads.",
           args: {
-            id: tool.schema.string().min(1).describe("Design id."),
+            id: tool.schema.string().min(1).optional().describe("Design id. Omit to list designs."),
           },
           async execute(args, context) {
+            if (!args.id) {
+              const designs = await scanDesigns(layout)
+              return asJson({
+                designs: designs.map((entry) => ({
+                  id: entry.id,
+                  buildStatus: entry.buildStatus,
+                  partCount: entry.partCount,
+                  revision: entry.revision,
+                })),
+              })
+            }
             setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
@@ -222,11 +217,19 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const design = await readDesignManifest(entry.directory, args.id)
             const artifact = await readArtifactManifest(entry.directory, args.id)
             const manifestPath = path.join(entry.directory, "manifest.json")
+            const viewer =
+              config.companionUrl != null
+                ? {
+                    url: `${config.companionUrl}/designs/${encodeURIComponent(args.id)}`,
+                    reachable: await companionReachable(config.companionUrl),
+                  }
+                : { url: null, reachable: false }
             return asJson({
               id: args.id,
               directory: entry.directory,
               buildStatus: entry.buildStatus,
               revision: entry.revision,
+              viewer,
               design,
               artifact: artifact
                 ? {
@@ -299,6 +302,19 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const artifact = await readArtifactManifest(entry.directory, args.id)
             if (!artifact || !result.manifestPath) throw new Error(`manifest.json not found after build: ${args.id}`)
             const revision = artifactRevision(artifact)
+            const bound: string[] = []
+            const bindErrors: string[] = []
+            if (!dependencies.buildRunner) {
+              await bindActiveDesign(config.engineProjectDir, context.directory || "", entry.directory, context.abort, context.sessionID)
+              const runtime = getCadRuntimeSession(config.engineProjectDir, context.directory || "", context.sessionID)
+              for (const part of artifact.parts) {
+                const stepPath = path.resolve(entry.directory, part.files.step)
+                const name = part.id.replace(/-/g, "_")
+                const imported = await runtime.callTool("import_cad_file", { path: stepPath, name }, { signal: context.abort })
+                if (imported.isError) bindErrors.push(`${part.id}: ${imported.text || "import failed"}`)
+                else bound.push(name)
+              }
+            }
             const envelope = designBuildSuccessResult({
               id: args.id,
               revision,
@@ -309,6 +325,8 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 stepPath: path.resolve(entry.directory, part.files.step),
                 metrics: part.metrics,
               })),
+              bound,
+              bindErrors,
             })
             return {
               title: `Built design: ${args.id}`,
@@ -325,71 +343,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
         }),
 
-        cad_design_view: tool({
-          description:
-            "Return the companion viewer URL for the design. Open it in a browser to inspect the 3D assembly, click surfaces to get coordinate/normal feedback, and use the Prompt button to send a feedback prompt into the companion agent composer.",
-          args: {
-            id: tool.schema.string().min(1).describe("Design id to view."),
-          },
-          async execute(args, context) {
-            setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
-            if (!(await findDesign(layout, args.id))) throw new Error(`Design not found: ${args.id}`)
-            if (!config.companionUrl) {
-              const result = {
-                reachable: false,
-                error: "Studio host unavailable (ensure failed or OPENCODE_STUDIO_AUTOSTART=0). Run opencode serve and open a directory.",
-              }
-              return { title: "companion unavailable", output: asJson(result), metadata: result }
-            }
-            const url = `${config.companionUrl}/designs/${encodeURIComponent(args.id)}`
-            const result = { url, reachable: await companionReachable(config.companionUrl) }
-            return {
-              title: url,
-              output: asJson(result),
-              metadata: result,
-            }
-          },
-        }),
-
-        cad_design_dispatch: tool({
-          description:
-            "After Phase 0, fan out cad-part workers for a multi-part design. One part stays serial on this agent. Two or more parts spawn up to 3 isolated cad-part sessions. Do not model assigned parts yourself. Then cad_design_join, then cad_design_build.",
-          args: {
-            id: tool.schema.string().min(1).describe("Design id whose parts should be dispatched."),
-          },
-          async execute(args, context) {
-            const entry = await findDesign(layout, args.id)
-            if (!entry) throw new Error(`Design not found: ${args.id}`)
-            const design = await readDesignManifest(entry.directory, args.id)
-            const params = await readFile(path.join(entry.directory, "params.py"), "utf8").catch(() => undefined)
-            const result = await spawnCadParts({
-              designId: args.id,
-              designDir: entry.directory,
-              parts: design.parts,
-              dispatcher,
-              directory: context.directory || context.worktree,
-              parentSessionID: context.sessionID,
-              params,
-            })
-            return asJson({
-              ok: result.mode === "serial" || result.workers.some((worker) => worker.sessionID),
-              id: args.id,
-              ...result,
-              next:
-                result.mode === "serial"
-                  ? ["Model the part in this session", "cad_design_build"]
-                  : [
-                      "cad_design_join",
-                      ...(result.remaining.length > 0 ? ["Model remaining parts here or cad_design_dispatch"] : []),
-                      "cad_design_build",
-                    ],
-            })
-          },
-        }),
-
         cad_design_join: tool({
           description:
-            "Check whether dispatched cad-part sources are no longer stubs. Call after cad_design_dispatch before cad_design_build. Does not build or fit.",
+            "Check whether cad-part sources are no longer stubs. Call after create spawned workers, before cad_design_build. Does not build or fit.",
           args: {
             id: tool.schema.string().min(1).describe("Design id to join."),
           },
@@ -415,116 +371,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
         }),
 
-        cad_form_review: tool({
-          description:
-            "Advisory visual form review only — does NOT unlock form QC pass. Attach reference photo(s) and CAD render(s) with a silhouette rubric. Prefer after cad_analyze_form. Pass optional verdict/findings for your own notes; gate still requires cad_analyze_form contract match (or prismatic 'not applicable').",
-          args: {
-            reference: tool.schema
-              .union([tool.schema.string(), tool.schema.array(tool.schema.string())])
-              .describe("Path(s) to reference image(s)."),
-            renders: tool.schema
-              .union([tool.schema.string(), tool.schema.array(tool.schema.string())])
-              .describe("Path(s) to CAD render PNG/SVG (front/side/iso preferred)."),
-            verdict: tool.schema
-              .enum(["pass", "fail", "unsure"] as const)
-              .optional()
-              .describe("Optional advisory verdict after comparing attachments."),
-            findings: tool.schema
-              .array(tool.schema.string())
-              .optional()
-              .describe("Optional silhouette notes (proportions, taper, crown, base)."),
-            id: tool.schema.string().optional().describe("Optional design id for context."),
-          },
-          async execute(args, context) {
-            const cwd = context.directory || process.cwd()
-            const toList = (v: string | string[]) => (Array.isArray(v) ? v : v ? [v] : [])
-            const resolvePath = (p: string) => (path.isAbsolute(p) ? p : path.resolve(cwd, p))
-            const refs = toList(args.reference as string | string[]).map(resolvePath)
-            const renders = toList(args.renders as string | string[]).map(resolvePath)
-            const missing: string[] = []
-            const attachments: Array<{ type: "file"; mime: string; url: string; filename: string }> = []
-            const mimeFor = (filePath: string) => {
-              const ext = path.extname(filePath).toLowerCase()
-              if (ext === ".png") return "image/png"
-              if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg"
-              if (ext === ".webp") return "image/webp"
-              if (ext === ".svg") return "image/svg+xml"
-              if (ext === ".gif") return "image/gif"
-              return "application/octet-stream"
-            }
-            for (const [label, list] of [
-              ["reference", refs],
-              ["render", renders],
-            ] as const) {
-              for (const filePath of list) {
-                const file = Bun.file(filePath)
-                if (!(await file.exists())) {
-                  missing.push(filePath)
-                  continue
-                }
-                const buf = Buffer.from(await file.arrayBuffer())
-                const mime = mimeFor(filePath)
-                attachments.push({
-                  type: "file",
-                  mime,
-                  url: `data:${mime};base64,${buf.toString("base64")}`,
-                  filename: `${label}-${path.basename(filePath)}`,
-                })
-              }
-            }
-            const findings = (args.findings as string[] | undefined)?.map((f) => f.trim()).filter(Boolean) ?? []
-            const verdict = (args.verdict as "pass" | "fail" | "unsure" | undefined) ?? "unsure"
-            const envelope = {
-              ok: missing.length === 0,
-              tool: "cad_form_review",
-              summary:
-                missing.length > 0
-                  ? `form review incomplete — missing files: ${missing.join(", ")}`
-                  : `form review advisory=${verdict}; ${attachments.length} image(s); not QC form evidence`,
-              status: missing.length > 0 ? "fail" : "unverified",
-              data: {
-                advisory: true,
-                unlocks_form_pass: false,
-                id: args.id ?? null,
-                verdict,
-                findings,
-                reference: refs,
-                renders,
-                missing,
-                rubric: [
-                  "Compare overall proportions (height:width) front and side",
-                  "Check taper / changing silhouette along primary axis",
-                  "Check crown, shoulders, base foot print vs reference",
-                  "Ignore materials/lighting; geometry silhouette only",
-                  "Hard form pass still requires cad_analyze_form contract match",
-                ],
-              },
-              warnings: [
-                "cad_form_review is feedback only and does not record form QC evidence",
-                ...(missing.length ? [`missing: ${missing.join(", ")}`] : []),
-              ],
-              next: [
-                "cad_analyze_form with numeric contract for form QC pass",
-                "cad_design_qc_report form claim after analyze_form pass (or prismatic N/A)",
-              ],
-            }
-            return {
-              title: missing.length ? "form review incomplete" : `form review: ${verdict}`,
-              output: formatCadToolResult(envelope as any),
-              metadata: {
-                tool: "cad_form_review",
-                advisory: true,
-                verdict,
-                ok: envelope.ok,
-              },
-              attachments: attachments.length > 0 ? attachments : undefined,
-            }
-          },
-        }),
-
         cad_design_qc_report: tool({
           description:
-            "Multi-axis CAD QC report (design-scoped evidence). Artifact from cad_design_build. printability pass needs cad_analyze_printability evidence covering parts. fit pass needs cad_compare kind=fit (multi-part) or finding 'not applicable' (single-part). form pass: exact finding 'not applicable' (prismatic) or cad_analyze_form pass (contract match). cad_form_review is advisory only. Bare pass without evidence is rejected. complete only when every axis is pass.",
+            "Multi-axis CAD QC report (design-scoped evidence). Artifact from cad_design_build. printability pass needs cad_analyze_printability evidence covering parts. fit pass needs cad_compare kind=fit (multi-part) or finding 'not applicable' (single-part). form pass: exact finding 'not applicable' (prismatic) or cad_analyze_form pass (contract match). Bare pass without evidence is rejected. complete only when every axis is pass. Writes SPEC.json when complete.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
             printability: tool.schema
@@ -566,14 +415,26 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               fit: args.fit as { status: QcAxisStatus; findings?: string[] } | undefined,
               form: args.form as { status: QcAxisStatus; findings?: string[] } | undefined,
             })
+            let specPath: string | undefined
+            let specError: string | undefined
+            if (report.complete) {
+              try {
+                await publishCadSpec(config.specRoots ?? { cad: layout.root, pcb: layout.root, fw: layout.root }, args.id)
+                specPath = specFilePath(entry.directory)
+              } catch (error) {
+                specError = error instanceof Error ? error.message : String(error)
+              }
+            }
             return {
               title: report.complete ? `QC pass: ${args.id}` : `QC incomplete: ${args.id}`,
-              output: asJson(report),
+              output: asJson({ ...report, specPath, specError }),
               metadata: {
                 complete: report.complete,
                 blockedBy: report.blockedBy,
                 buildStatus: report.buildStatus,
                 revision: report.revision,
+                specPath,
+                specError,
               },
             }
           },

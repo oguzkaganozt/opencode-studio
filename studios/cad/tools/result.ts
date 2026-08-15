@@ -84,7 +84,7 @@ export function structureCadSessionResult(input: {
       status: "error",
       data: null,
       warnings: [],
-      next: entryName === "validate" ? ["cad_last_error", "cad_repair_hints"] : ["cad_last_error"],
+      next: entryName === "validate" ? ["cad_validate", "cad_execute"] : ["cad_execute"],
       error: { code: "tool_error", message: text.trim() || `${toolName} failed` },
     }
   }
@@ -122,7 +122,7 @@ export function structureCadSessionResult(input: {
       status: "fail",
       data,
       warnings: stringList(data.warnings),
-      next: ["cad_session_state"],
+      next: ["cad_execute"],
       error: { code: "tool_reported_error", message: data.error },
     }
   }
@@ -161,7 +161,7 @@ function normalizeValidate(toolName: string, data: Record<string, unknown>, pref
     status: passes ? "pass" : "fail",
     data,
     warnings,
-    next: passes ? ["cad_measure", "cad_analyze_printability"] : ["cad_locate_gate_defects", "cad_repair_hints"],
+    next: passes ? ["cad_measure", "cad_analyze_printability"] : ["cad_execute", "cad_validate"],
   }
 }
 
@@ -298,7 +298,7 @@ function normalizeForm(toolName: string, data: Record<string, unknown>, prefix: 
     warnings,
     next:
       status === "pass"
-        ? ["cad_form_review (optional visual feedback)", "cad_design_qc_report form pass"]
+        ? ["cad_design_qc_report form pass"]
         : status === "unverified"
           ? ["Provide contract='t:widthxdepth,...' from form brief", "Re-run cad_analyze_form"]
           : ["Adjust loft/sweep stations or contract targets", "Re-run cad_analyze_form"],
@@ -367,7 +367,7 @@ export function designCreateResult(input: {
       ? [
           "Do not model assigned worker parts",
           "cad_design_join until pending is empty",
-          ...(input.dispatch!.remaining.length > 0 ? ["Model remaining parts here or cad_design_dispatch"] : []),
+          ...(input.dispatch!.remaining.length > 0 ? ["Model remaining parts here"] : []),
           "cad_design_build",
         ]
       : [
@@ -384,11 +384,17 @@ export function designBuildSuccessResult(input: {
   manifestPath: string
   designDir: string
   parts: Array<{ id: string; stepPath: string; metrics: unknown }>
+  bound?: string[]
+  bindErrors?: string[]
 }): CadToolEnvelope {
+  const bindErrors = input.bindErrors ?? []
   return {
     ok: true,
     tool: "cad_design_build",
-    summary: "Build succeeded; design verification was not performed.",
+    summary:
+      bindErrors.length > 0
+        ? `Build succeeded; ${bindErrors.length} part(s) failed to bind into the session.`
+        : "Build succeeded; design verification was not performed.",
     status: "pass",
     data: {
       id: input.id,
@@ -396,10 +402,16 @@ export function designBuildSuccessResult(input: {
       manifestPath: input.manifestPath,
       designDir: input.designDir,
       parts: input.parts,
+      bound: input.bound ?? [],
     },
-    warnings: ["Assembly fit, printability, and form QC were not run by cad_design_build."],
+    warnings: [
+      "Assembly fit, printability, and form QC were not run by cad_design_build.",
+      ...bindErrors.map((error) => `session bind: ${error}`),
+    ],
     next: [
-      "Import built STEP files into the session for fit/printability checks",
+      bindErrors.length > 0
+        ? "cad_execute to recreate unbound parts, then cad_compare / cad_analyze_printability"
+        : "cad_compare / cad_analyze_printability on bound part ids",
       "cad_design_read for metrics",
       "cad_design_qc_report with real axis statuses before claiming complete",
     ],

@@ -68,6 +68,27 @@ class BuildDesignTest(unittest.TestCase):
             self.assertTrue(current.is_symlink())
             self.assertFalse(os.readlink(current).startswith("/"), os.readlink(current))
 
+    def test_qty_two_exports_yz_mirror(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            design = self._make_design(
+                Path(tmp),
+                "from build123d import Box, Location\n\n"
+                "def build():\n"
+                "    return Location((20, 0, 0)) * Box(10, 10, 10)\n",
+            )
+            manifest = json.loads((design / "design.json").read_text(encoding="utf-8"))
+            manifest["parts"][0]["qty"] = 2
+            (design / "design.json").write_text(json.dumps(manifest), encoding="utf-8")
+            built = json.loads(build_design(str(design)).read_text(encoding="utf-8"))
+            ids = [part["id"] for part in built["parts"]]
+            self.assertEqual(ids, ["body", "body_mirror"])
+            self.assertTrue((design / "step" / "body.step").is_file())
+            self.assertTrue((design / "step" / "body_mirror.step").is_file())
+            body_min = built["parts"][0]["metrics"]["bounds_mm"]["min"][0]
+            mirror_max = built["parts"][1]["metrics"]["bounds_mm"]["max"][0]
+            self.assertGreater(body_min, 0)
+            self.assertLess(mirror_max, 0)
+
     def test_failed_build_preserves_previous_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             design = self._make_design(

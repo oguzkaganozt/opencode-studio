@@ -31,7 +31,7 @@ describe("Studio plugin roots", () => {
     const hooks = await plugin({ directory: project } as any, {})
     const tools = hooks.tool as any
 
-    await tools.cad_design_create.execute({ id: "home-design", parts: [{ id: "body" }] }, { ask: async () => {} })
+    await tools.cad_design_create.execute({ id: "home-design", parts: [{ id: "body", qty: 1 }] }, { ask: async () => {} })
     expect(await Bun.file(path.join(studioRoot, "studio", "designs", "home-design", "design.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(project, "designs", "home-design", "design.json")).exists()).toBe(false)
     expect(await Bun.file(path.join(studioRoot, "designs", "home-design", "design.json")).exists()).toBe(false)
@@ -63,7 +63,7 @@ describe("Studio plugin roots", () => {
     const hooks = await plugin({ directory: project } as any, {})
     const tools = hooks.tool as any
 
-    await tools.cad_design_create.execute({ id: "legacy-design", parts: [{ id: "body" }] }, { ask: async () => {} })
+    await tools.cad_design_create.execute({ id: "legacy-design", parts: [{ id: "body", qty: 1 }] }, { ask: async () => {} })
     expect(await Bun.file(path.join(cadRoot, "legacy-design", "design.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(studioRoot, "studio", "designs", "legacy-design", "design.json")).exists()).toBe(false)
     expect(JSON.parse(await tools.pcb_workspace_list.execute({}, {})).workspaceRoot).toBe(pcbRoot)

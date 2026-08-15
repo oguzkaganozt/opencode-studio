@@ -141,7 +141,7 @@ export async function buildDesign(
 export async function scaffoldDesign(
   layout: StudioLayout,
   id: string,
-  parts: Array<{ id: string; source?: string }>,
+  parts: Array<{ id: string; source?: string; qty?: 1 | 2 }>,
 ): Promise<{ designDir: string; manifest: ReturnType<typeof scaffoldDesignManifest> }> {
   const designDir = await resolveDesignDirectory(layout, id)
   if (!isInside(layout.root, designDir)) {

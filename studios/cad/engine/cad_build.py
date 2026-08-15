@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from build123d import Mesher, Shape, export_step, import_step
+from build123d import Mesher, Plane, Shape, export_step, import_step
 import numpy as np
 import trimesh
 from OCP.BRep import BRep_Tool
@@ -88,7 +88,13 @@ def load_manifest(design_dir: Path) -> dict[str, Any]:
             raise ValueError(f"Duplicate part id: {part_id}")
         if not isinstance(source, str) or not source.endswith(".py"):
             raise ValueError(f"Part {part_id} must reference a Python source file")
+        qty = part.get("qty", 1)
+        if qty not in (1, 2):
+            raise ValueError(f"Part {part_id} qty must be 1 or 2")
         seen.add(part_id)
+    for part in parts:
+        if part.get("qty", 1) == 2 and f"{part['id']}_mirror" in seen:
+            raise ValueError(f"Part {part['id']} qty 2 collides with existing id {part['id']}_mirror")
 
     return manifest
 
@@ -393,14 +399,12 @@ def build_design(design_path: str) -> Path:
         sys.modules.pop("params", None)
         sys.path.insert(0, str(design_dir))
         path_inserted = True
-        built_parts = [
-            export_part(
-                build_shape(resolve_source(design_dir, part["source"]), part["id"]),
-                part["id"],
-                tmp_dirs,
-            )
-            for part in manifest["parts"]
-        ]
+        built_parts: list[dict[str, Any]] = []
+        for part in manifest["parts"]:
+            shape = build_shape(resolve_source(design_dir, part["source"]), part["id"])
+            built_parts.append(export_part(shape, part["id"], tmp_dirs))
+            if part.get("qty", 1) == 2:
+                built_parts.append(export_part(shape.mirror(Plane.YZ), f"{part['id']}_mirror", tmp_dirs))
         artifact_manifest = {
             "schema": 1,
             "id": manifest["id"],

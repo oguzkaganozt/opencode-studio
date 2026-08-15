@@ -36,10 +36,6 @@
         "waive": "array"
       }
     },
-    "cad_design_list": {
-      "studio": "cad",
-      "args": {}
-    },
     "cad_design_create": {
       "studio": "cad",
       "args": {
@@ -61,12 +57,6 @@
         "id": "string"
       }
     },
-    "cad_design_view": {
-      "studio": "cad",
-      "args": {
-        "id": "string"
-      }
-    },
     "cad_design_qc_report": {
       "studio": "cad",
       "args": {
@@ -74,12 +64,6 @@
         "printability": "object",
         "fit": "object",
         "form": "object"
-      }
-    },
-    "cad_design_dispatch": {
-      "studio": "cad",
-      "args": {
-        "id": "string"
       }
     },
     "cad_design_join": {
@@ -180,19 +164,6 @@
         "object_name": "string"
       }
     },
-    "cad_locate_gate_defects": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string"
-      }
-    },
-    "cad_design_audit": {
-      "studio": "cad",
-      "args": {
-        "epsilon": "number",
-        "max_params": "integer"
-      }
-    },
     "cad_analyze_printability": {
       "studio": "cad",
       "args": {
@@ -218,96 +189,6 @@
         "t_mode": "string"
       }
     },
-    "cad_form_review": {
-      "studio": "cad",
-      "args": {
-        "reference": "array",
-        "renders": "array",
-        "verdict": "string",
-        "findings": "array",
-        "id": "string"
-      }
-    },
-    "cad_cross_sections": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string",
-        "axis": "string",
-        "num_slices": "integer"
-      }
-    },
-    "cad_inspect_part": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string",
-        "section_axis": "string",
-        "section_slices": "integer",
-        "expected": "string"
-      }
-    },
-    "cad_export": {
-      "studio": "cad",
-      "args": {
-        "filename": "string",
-        "format": "string",
-        "object_name": "string"
-      }
-    },
-    "cad_inspect_drawing": {
-      "studio": "cad",
-      "args": {
-        "objects": "string",
-        "svg_path": "string"
-      }
-    },
-    "cad_view_axes": {
-      "studio": "cad",
-      "args": {
-        "viewport_origin": "array",
-        "viewport_up": "unknown",
-        "look_at": "unknown"
-      }
-    },
-    "cad_lint_drawing": {
-      "studio": "cad",
-      "args": {
-        "svg_path": "string",
-        "drawing_scale": "number",
-        "view_shape_names": "unknown"
-      }
-    },
-    "cad_render_drawing": {
-      "studio": "cad",
-      "args": {
-        "svg_path": "string",
-        "width": "integer",
-        "save_to": "string"
-      }
-    },
-    "cad_save_drawing_annotations": {
-      "studio": "cad",
-      "args": {
-        "svg_path": "string"
-      }
-    },
-    "cad_save_snapshot": {
-      "studio": "cad",
-      "args": {
-        "name": "string"
-      }
-    },
-    "cad_restore_snapshot": {
-      "studio": "cad",
-      "args": {
-        "name": "string"
-      }
-    },
-    "cad_session_state": {
-      "studio": "cad"
-    },
-    "cad_health_check": {
-      "studio": "cad"
-    },
     "cad_reset": {
       "studio": "cad"
     },
@@ -320,87 +201,6 @@
         "axis": "string",
         "mode": "string",
         "format": "string"
-      }
-    },
-    "cad_find_holes": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string"
-      }
-    },
-    "cad_find_hole_patterns": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string"
-      }
-    },
-    "cad_find_bosses": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string"
-      }
-    },
-    "cad_find_bored_bosses": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string"
-      }
-    },
-    "cad_find_countersinks": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string"
-      }
-    },
-    "cad_resolve": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string",
-        "selector": "string",
-        "label": "string"
-      }
-    },
-    "cad_script": {
-      "studio": "cad",
-      "args": {
-        "save_to": "string"
-      }
-    },
-    "cad_import_cad_file": {
-      "studio": "cad",
-      "args": {
-        "path": "string",
-        "name": "string"
-      }
-    },
-    "cad_repair_hints": {
-      "studio": "cad",
-      "args": {
-        "error_text": "string"
-      }
-    },
-    "cad_repair_advice": {
-      "studio": "cad",
-      "args": {
-        "error_text": "string",
-        "goal": "string",
-        "context": "string"
-      }
-    },
-    "cad_last_error": {
-      "studio": "cad"
-    },
-    "cad_version": {
-      "studio": "cad"
-    },
-    "cad_workflow_hints": {
-      "studio": "cad"
-    },
-    "cad_spec": {
-      "studio": "cad",
-      "args": {
-        "id": "string",
-        "summary": "string"
       }
     },
     "pcb_spec": {
@@ -462,21 +262,6 @@
         "maxBytes": "number"
       }
     },
-    "cad_suggest_view_layout": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string",
-        "page_w": "number",
-        "page_h": "number",
-        "scale": "number",
-        "views": "unknown",
-        "title_block_w": "number",
-        "title_block_h": "number",
-        "margin": "number",
-        "extents": "unknown",
-        "centroid": "unknown"
-      }
-    },
     "image_generate": {
       "studio": "platform",
       "args": {
@@ -486,5 +271,5 @@
       }
     }
   },
-  "count": 79
+  "count": 46
 }
