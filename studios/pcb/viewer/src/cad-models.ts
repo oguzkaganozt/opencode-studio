@@ -29,7 +29,10 @@ function objDataUrl(obj: string): string {
   return `data:model/obj;base64,${btoa(obj)}`
 }
 
-export async function opaqueEasyedaObjModels(circuitJson: unknown, fetchModel: typeof fetch = fetch): Promise<unknown> {
+export async function opaqueEasyedaObjModels(
+  circuitJson: unknown,
+  fetchModel: (url: string) => Promise<Response> = fetch,
+): Promise<unknown> {
   if (!Array.isArray(circuitJson)) return circuitJson
   const urls = [
     ...new Set(
