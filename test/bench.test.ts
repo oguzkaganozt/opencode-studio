@@ -56,7 +56,7 @@ describe("bench cases", () => {
       await Promise.all(BENCH_STUDIOS.map(async (studio) => [studio, (await listBenchCases(studio)).map((item) => item.id)])),
     )
     expect(listed.cad).toContain("project-box-v0")
-    expect(listed.pcb).toEqual(["esp32-sensor-v0", "led-blink-v0"])
+    expect(listed.pcb).toEqual(["esp32-sensor-v0", "led-blink-v0", "lipo-logger-v0"])
     expect(listed.fw).toEqual(["uart-c6-v0", "uart-hello-v0"])
   })
 

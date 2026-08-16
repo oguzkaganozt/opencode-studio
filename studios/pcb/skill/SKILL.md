@@ -24,12 +24,12 @@ Any source edit invalidates build, SVG, Gerber, BOM, and CPL — rebuild before 
    reference is syntax guidance only; runtime compatibility warnings and this
    skill's readiness gates remain authoritative. Do not search `node_modules`,
    tscircuit source, or `.d.ts` files.
-4. Search once per part class. Use `pcb_component_add` on one returned `candidateId`;
-   import only after its smoke test passes. Do not run npm, inspect `node_modules`,
-   or repeat searches with synonyms. `footprintOnly` and
-   `catalogOnly` are not wired parts. For an exact JLCPCB `C` number, use
-   `pcb_component_import`; it stages, smoke-tests, fingerprints, and rolls back
-   failures. No verified implementation → placeholder + keepout.
+4. Search once per part class. Use `pcb_component_add` with one returned
+   `candidateId` or an exact JLCPCB `C` number. It smoke-tests and rolls back
+   failures. Do not run npm, inspect `node_modules`, or repeat searches with
+   synonyms. `footprintOnly` and `catalogOnly` are not wired parts until added.
+   After a JLCPCB add, read the returned datasheet notes before wiring analog or
+   power pins. No verified implementation → placeholder + keepout.
 5. Build after each stage (`pcb_circuit_build`). Fix placement DRC; do not disable it.
    Use `actionableDiagnostics` first; query exact remaining types with
    `pcb_circuit_read`, not full Circuit JSON. Use `pcb_circuit_check` for bounded

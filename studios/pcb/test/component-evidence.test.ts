@@ -137,6 +137,35 @@ describe("component implementation evidence", () => {
     expect(() => fingerprintComponent(missingPad, "U1")).toThrow("no physical pad mapping")
   })
 
+  test("fingerprints polygon SMT pads from vertex centroid when no center is present", () => {
+    const elements = circuit()
+    const pad = elements.find((entry) => entry.type === "pcb_smtpad" && entry.pcb_smtpad_id === "pad2-a") as Record<string, unknown>
+    delete pad.center
+    delete pad.width
+    delete pad.height
+    pad.shape = "polygon"
+    pad.points = [
+      { x: 10.5, y: 19.4 },
+      { x: 11.5, y: 19.4 },
+      { x: 11.5, y: 20.6 },
+      { x: 10.5, y: 20.6 },
+    ]
+    const result = fingerprintComponent(elements, "U1")
+    const io = result.footprint.pads.find((item) => item.pin === "IO")
+    expect(io?.shape).toBe("polygon")
+    expect(io?.x).toBe(1)
+    expect(io?.y).toBe(0)
+  })
+
+  test("still fails closed when a polygon pad has no usable vertices", () => {
+    const elements = circuit()
+    const pad = elements.find((entry) => entry.type === "pcb_smtpad" && entry.pcb_smtpad_id === "pad2-a") as Record<string, unknown>
+    delete pad.center
+    pad.shape = "polygon"
+    pad.points = []
+    expect(() => fingerprintComponent(elements, "U1")).toThrow("has no center")
+  })
+
   test("writes atomically and reads a verified, bounded versioned evidence file", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "component-evidence-"))
     temporaryDirectories.push(root)

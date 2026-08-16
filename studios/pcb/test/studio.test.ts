@@ -44,13 +44,31 @@ describe("pcb studio smoke", () => {
     expect(names).toContain("pcb_tsx_snippet")
     expect(names).toContain("pcb_tscircuit_reference")
     expect(names).toContain("pcb_component_add")
-    expect(names).toContain("pcb_component_import")
+    expect(names).not.toContain("pcb_component_import")
     expect(names).toContain("pcb_circuit_check")
     expect(names).not.toContain("pcb_sim_run")
     expect(names).not.toContain("pcb_spice_model_get")
     expect(names).not.toContain("pcb_spice_model_upsert")
     const listed = JSON.parse((await hooks.tool?.pcb_workspace_list.execute({}, {} as any)) as string)
     expect(listed.workspaceRoot).toBe(workspaceRoot)
+  })
+
+  test("pcb_component_add requires exactly one of candidateId or lcscPartNumber", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "pcb-add-dispatch-"))
+    temps.push(workspaceRoot)
+    const hooks = await createPcbStudioPlugin({ workspaceRoot })({ directory: workspaceRoot } as any)
+    const created = JSON.parse(
+      (await hooks.tool?.pcb_project_create.execute({ name: "dispatch-board", install: false }, {} as any)) as string,
+    )
+    const neither = JSON.parse((await hooks.tool?.pcb_component_add.execute({ projectId: created.projectId }, {} as any)) as string)
+    expect(neither).toMatchObject({ success: false, reason: "invalid_input" })
+    const both = JSON.parse(
+      (await hooks.tool?.pcb_component_add.execute(
+        { projectId: created.projectId, candidateId: "cand-1", lcscPartNumber: "C2049745" },
+        {} as any,
+      )) as string,
+    )
+    expect(both).toMatchObject({ success: false, reason: "invalid_input" })
   })
 
   test("returns a bounded PNG attachment for PCB visual inspection", async () => {

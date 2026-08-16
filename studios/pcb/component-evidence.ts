@@ -129,12 +129,44 @@ function quantize(value: number): number {
   return Object.is(result, -0) ? 0 : result
 }
 
+function numericPoint(value: unknown): { x: number; y: number } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+  const { x, y } = value as Element
+  return typeof x === "number" && typeof y === "number" && Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined
+}
+
+function polygonCentroid(points: unknown): { x: number; y: number } | undefined {
+  if (!Array.isArray(points) || points.length === 0) return undefined
+  const vertices = points.map(numericPoint)
+  if (vertices.some((vertex) => !vertex)) return undefined
+  const verts = vertices as Array<{ x: number; y: number }>
+  if (verts.length === 1) return verts[0]
+  if (verts.length === 2) return { x: (verts[0]!.x + verts[1]!.x) / 2, y: (verts[0]!.y + verts[1]!.y) / 2 }
+  let area2 = 0
+  let cx = 0
+  let cy = 0
+  for (let index = 0; index < verts.length; index++) {
+    const a = verts[index]!
+    const b = verts[(index + 1) % verts.length]!
+    const cross = a.x * b.y - b.x * a.y
+    area2 += cross
+    cx += (a.x + b.x) * cross
+    cy += (a.y + b.y) * cross
+  }
+  if (area2 === 0) {
+    return {
+      x: verts.reduce((sum, vertex) => sum + vertex.x, 0) / verts.length,
+      y: verts.reduce((sum, vertex) => sum + vertex.y, 0) / verts.length,
+    }
+  }
+  return { x: cx / (3 * area2), y: cy / (3 * area2) }
+}
+
 function point(element: Element): { x: number; y: number } | undefined {
   if (typeof element.x === "number" && typeof element.y === "number") return { x: element.x, y: element.y }
-  const center = element.center
-  if (!center || typeof center !== "object" || Array.isArray(center)) return undefined
-  const { x, y } = center as Element
-  return typeof x === "number" && typeof y === "number" ? { x, y } : undefined
+  const center = numericPoint(element.center)
+  if (center) return center
+  return polygonCentroid(element.points)
 }
 
 function numberField(element: Element, ...fields: string[]): number | undefined {

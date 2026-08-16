@@ -99,9 +99,6 @@
     "pcb_component_add": {
       "studio": "pcb"
     },
-    "pcb_component_import": {
-      "studio": "pcb"
-    },
     "pcb_circuit_build": {
       "studio": "pcb"
     },
@@ -271,5 +268,5 @@
       }
     }
   },
-  "count": 46
+  "count": 45
 }

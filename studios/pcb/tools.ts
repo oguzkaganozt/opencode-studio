@@ -19,6 +19,7 @@ import {
 import { CIRCUIT_CHECKS, checkCircuit } from "./circuit-check"
 import { inspectCircuitJson, queryCircuitJson, readCircuitJson } from "./circuit-json"
 import { importExactLcscComponent } from "./component-import"
+import { attachDatasheetNotes } from "./datasheet"
 import { projectCircuitReadiness } from "./readiness"
 import { installProjectDeps, scaffoldProject } from "./scaffold"
 import { publishPcbSpec } from "./spec"
@@ -293,7 +294,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
 
         pcb_component_search: tool({
           description:
-            "Search once for a component class. `candidates` are pinned tscircuit packages; call pcb_component_add with a candidateId before importing one. Only smoke-tested packages appear in `usable`. Repeated equivalent queries are cached. KiCad and supplier results are not ready components.",
+            "Search once for a component class. `candidates` are pinned tscircuit packages; call pcb_component_add with a candidateId. For an exact JLCPCB C-number from catalogOnly, call pcb_component_add with lcscPartNumber. Only smoke-tested packages appear in `usable`. Repeated equivalent queries are cached. KiCad and supplier results are not ready components.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list; create the project before searching"),
             query: tool.schema.string().min(1).describe("Exact MPN or focused component query, e.g. 'ESP32-S3-WROOM-1-N8R8' or 'BME280'"),
@@ -339,47 +340,70 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
 
         pcb_component_add: tool({
           description:
-            "Install one candidate returned by pcb_component_search at its pinned version. Runs a minimal tscircuit render smoke test. On failure restores package files and rejects the candidate; on success returns the exact import and JSX usage.",
+            "Add one part to the project. Pass candidateId from pcb_component_search for a tscircuit package, or lcscPartNumber (C…) for an exact JLCPCB footprint. Provide exactly one. Smoke-tests and rolls back on failure. JLCPCB adds also attach datasheet wiring notes when a PDF can be resolved.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
-            candidateId: tool.schema.string().min(1).describe("candidateId from pcb_component_search.candidates"),
-          },
-          async execute(args, ctx) {
-            const project = await resolveProject(workspaceRoot, args.projectId)
-            const result = await addComponentCandidate(project.absolutePath, args.candidateId, ctx.abort)
-            return formatToolJson({ projectId: args.projectId, name: project.name, ...result })
-          },
-        }),
-
-        pcb_component_import: tool({
-          description:
-            "Import one exact JLCPCB/LCSC component by canonical C-number using isolated staging. Keeps the exact footprint, refuses overwrite, smoke-builds it, and rolls back on failure.",
-          args: {
-            projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
+            candidateId: tool.schema.string().min(1).optional().describe("candidateId from pcb_component_search.candidates"),
             lcscPartNumber: tool.schema
               .string()
               .regex(/^C[1-9]\d*$/)
+              .optional()
               .describe("Exact canonical LCSC number, e.g. C2049745"),
             expectedSha256: tool.schema
               .string()
               .regex(/^[a-fA-F\d]{64}$/)
               .optional()
-              .describe("Optional generated TSX SHA-256 for byte-reproducible import"),
+              .describe("Optional generated TSX SHA-256; only valid with lcscPartNumber"),
           },
           async execute(args, ctx) {
             const project = await resolveProject(workspaceRoot, args.projectId)
+            const hasCandidate = Boolean(args.candidateId)
+            const hasLcsc = Boolean(args.lcscPartNumber)
+            if (hasCandidate === hasLcsc) {
+              return formatToolJson({
+                projectId: args.projectId,
+                name: project.name,
+                success: false,
+                reason: "invalid_input",
+                message: "Provide exactly one of candidateId or lcscPartNumber",
+              })
+            }
+            if (args.expectedSha256 && !hasLcsc) {
+              return formatToolJson({
+                projectId: args.projectId,
+                name: project.name,
+                success: false,
+                reason: "invalid_input",
+                message: "expectedSha256 is only valid with lcscPartNumber",
+              })
+            }
+            if (hasCandidate) {
+              const result = await addComponentCandidate(project.absolutePath, args.candidateId!, ctx.abort)
+              return formatToolJson({ projectId: args.projectId, name: project.name, source: "tscircuit", ...result })
+            }
             const result = await importExactLcscComponent(
-              { projectDir: project.absolutePath, lcscPartNumber: args.lcscPartNumber, expectedSha256: args.expectedSha256 },
+              { projectDir: project.absolutePath, lcscPartNumber: args.lcscPartNumber!, expectedSha256: args.expectedSha256 },
               { smoke: (input) => smokeTestImportedComponent(input, ctx.abort) },
             )
+            const datasheet =
+              result.success && result.relativePath
+                ? await attachDatasheetNotes({
+                    projectDir: project.absolutePath,
+                    lcscPartNumber: args.lcscPartNumber!,
+                    relativeTsx: result.relativePath,
+                    signal: ctx.abort,
+                  })
+                : undefined
             return formatToolJson({
               projectId: args.projectId,
               name: project.name,
+              source: "jlcpcb",
               ...result,
               importStatement: result.success
                 ? `import { ${result.exportName} } from "../${result.relativePath.replace(/\.tsx$/i, "")}"`
                 : null,
               exampleUsage: result.success ? `<${result.exportName} name="U1" />` : null,
+              datasheet,
             })
           },
         }),
