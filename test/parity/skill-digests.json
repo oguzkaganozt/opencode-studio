@@ -1,11 +1,11 @@
 {
   "studio-cad": {
     "path": "studios/cad/skill/SKILL.md",
-    "sha256": "270532fb1d3d0fb3b3a326ff8bd9f24c12411cf7c8407ba44a7adf9971239a24"
+    "sha256": "4a69e1683a3b597fe98f85ffc3b523c9821ca0599af1be3e421eb8b3b8a728d3"
   },
   "studio-cad-part": {
     "path": "studios/cad/skills/studio-cad-part/SKILL.md",
-    "sha256": "961b51ed1e7f57c618130ed8b25ca0c3aa09f1fcd88b350d7797e98e63f4f22e"
+    "sha256": "79f7d5ce124c0790b55d26340569207124f66a40d295d6c447d63b2c192b7d25"
   },
   "studio-concept": {
     "path": "studios/concept/skill/SKILL.md",

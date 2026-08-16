@@ -1,5 +1,5 @@
 {
-  "count": 47,
+  "count": 50,
   "tools": {
     "cad_analyze_form": {
       "args": {
@@ -52,6 +52,12 @@
       },
       "studio": "cad"
     },
+    "cad_design_join": {
+      "args": {
+        "id": "string"
+      },
+      "studio": "cad"
+    },
     "cad_design_qc_report": {
       "args": {
         "id": "string"
@@ -68,6 +74,19 @@
       "args": {
         "code": "string"
       },
+      "studio": "cad"
+    },
+    "cad_ir_apply": {
+      "args": {
+        "base_hash": "string",
+        "document": "unknown",
+        "id": "string",
+        "part": "string",
+        "patch": "unknown"
+      },
+      "studio": "cad"
+    },
+    "cad_ir_docs": {
       "studio": "cad"
     },
     "cad_measure": {

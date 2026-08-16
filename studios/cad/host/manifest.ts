@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { readFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { resolveArtifactGeneration } from "./artifacts"
 
@@ -13,6 +13,7 @@ export type DesignPart = {
   id: string
   source: string
   qty: 1 | 2
+  ir?: string
 }
 
 export type DesignManifestV1 = {
@@ -63,6 +64,22 @@ export type ArtifactManifest = {
 }
 
 export class ManifestError extends Error {}
+
+function validatePartIr(ir: unknown, partId: string): string | undefined {
+  if (ir === undefined) return undefined
+  if (typeof ir !== "string" || !ir.endsWith(".json")) {
+    throw new ManifestError(`Part ${partId} ir must be a JSON file`)
+  }
+  const normalized = ir.replaceAll("\\", "/")
+  if (
+    !normalized.startsWith("ir/") ||
+    normalized.startsWith("/") ||
+    normalized.split("/").some((component) => component === ".." || component === ".")
+  ) {
+    throw new ManifestError(`Part ${partId} ir must be a safe relative path under ir/`)
+  }
+  return normalized
+}
 
 function validatePartSource(source: unknown, partId: string) {
   if (typeof source !== "string" || !source.endsWith(".py")) {
@@ -121,6 +138,14 @@ export async function sha256File(filePath: string): Promise<string> {
     .digest("hex")
 }
 
+export async function writeDesignManifest(designDir: string, manifest: DesignManifest): Promise<void> {
+  await writeFile(path.join(designDir, "design.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8")
+}
+
+export function emptyIrDocument(part: string) {
+  return { schema: 1 as const, part, params: [] as string[], ops: [] as unknown[], show: "" }
+}
+
 export async function readDesignManifest(designDir: string, expectedId?: string): Promise<DesignManifest> {
   const manifestPath = path.join(designDir, "design.json")
   let text: string
@@ -162,10 +187,11 @@ export function validateDesignManifest(value: unknown): DesignManifest {
     if (typeof partId !== "string" || !ID_PATTERN.test(partId)) throw new ManifestError(`Invalid part id: ${String(partId)}`)
     if (seen.has(partId)) throw new ManifestError(`Duplicate part id: ${partId}`)
     const source = validatePartSource(p.source, partId)
+    const ir = validatePartIr(p.ir, partId)
     const qty = p.qty === undefined || p.qty === 1 ? 1 : p.qty === 2 ? 2 : null
     if (qty === null) throw new ManifestError(`Part ${partId} qty must be 1 or 2`)
     seen.add(partId)
-    normalizedParts.push({ id: partId, source, qty })
+    normalizedParts.push({ id: partId, source, qty, ...(ir ? { ir } : {}) })
   }
   for (const part of normalizedParts) {
     if (part.qty === 2 && seen.has(`${part.id}_mirror`)) {
@@ -300,7 +326,8 @@ export function scaffoldDesignManifest(id: string, parts: Array<{ id: string; so
     seen.add(part.id)
     const source = validatePartSource(part.source ?? `parts/${part.id.replace(/-/g, "_")}.py`, part.id)
     const qty = part.qty === 2 ? 2 : 1
-    resolvedParts.push({ id: part.id, source, qty })
+    const ir = `ir/${part.id.replace(/-/g, "_")}.json`
+    resolvedParts.push({ id: part.id, source, qty, ir })
   }
   const declared = new Set(resolvedParts.map((part) => part.id))
   for (const part of resolvedParts) {

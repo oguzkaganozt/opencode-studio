@@ -66,10 +66,14 @@ async function writeBuiltDesign(designDir: string, id: string, sizeMm = { x: 100
     await writeFile(path.join(designDir, format, `lid.${format}`), format)
   }
   const inputs: Record<string, string> = {}
-  for (const file of ["design.json", "params.py", "parts/body.py", "parts/lid.py"]) {
-    inputs[file] = createHash("sha256")
-      .update(await readFile(path.join(designDir, file)))
-      .digest("hex")
+  for (const file of ["design.json", "params.py", "parts/body.py", "parts/lid.py", "ir/body.json", "ir/lid.json"]) {
+    try {
+      inputs[file] = createHash("sha256")
+        .update(await readFile(path.join(designDir, file)))
+        .digest("hex")
+    } catch {
+      // optional IR draft
+    }
   }
   const parts = ["body", "lid"].map((partId) => ({
     id: partId,
@@ -152,8 +156,10 @@ describe("cad plugin smoke", () => {
     ]) {
       expect(names).toContain(name)
     }
-    expect(names.filter((name) => name.startsWith("cad_")).length).toBe(15)
-    expect(names).not.toContain("cad_design_join")
+    expect(names.filter((name) => name.startsWith("cad_")).length).toBe(18)
+    expect(names).toContain("cad_ir_apply")
+    expect(names).toContain("cad_ir_docs")
+    expect(names).toContain("cad_design_join")
     expect(names).not.toContain("cad_design_dispatch")
     expect(names.some((name) => name.startsWith("design_") || name.startsWith("build123d_"))).toBe(false)
     const created = await (hooks.tool as any).cad_design_create.execute(
@@ -246,6 +252,60 @@ describe("cad plugin smoke", () => {
     expect(design.schema).toBe(2)
     expect(design.acceptance).toBe("acceptance.json")
     expect(canonicalJson(contract)).toBe(canonicalJson(JSON.parse(JSON.stringify(contract))))
+  })
+
+  test("cad_ir_apply writes IR and cad_source_apply drops it", async () => {
+    const studio = await makeStudio()
+    const plugin = createStudioPlugin({ buildRunner: fakeCadBuildRunner as any })
+    const hooks = await plugin(fakeContext, { studioRoot: studio.designsRoot, engineProjectDir: studio.engineDir })
+    await (hooks.tool as any).cad_design_create.execute(
+      { id: "ir-box", parts: [{ id: "body", qty: 1 }], acceptance: acceptanceArg([{ id: "body", qty: 1 }]) },
+      { ...fakeContext, ask: async () => {} },
+    )
+    const read = JSON.parse(await (hooks.tool as any).cad_design_read.execute({ id: "ir-box" }, fakeContext))
+    expect(read.ir.body.path).toBe("ir/body.json")
+    expect(read.ir.body.stale).toBe(true)
+    const docs = JSON.parse(await (hooks.tool as any).cad_ir_docs.execute({}))
+    expect(docs.ops.length).toBeGreaterThan(0)
+    const applied = JSON.parse(
+      (
+        await (hooks.tool as any).cad_ir_apply.execute(
+          {
+            id: "ir-box",
+            part: "body",
+            base_hash: read.ir.body.hash,
+            document: {
+              schema: 1,
+              part: "body",
+              params: [],
+              ops: [{ op: "primitive", id: "box", kind: "box", size: [100, 70, 30] }],
+              show: "box",
+            },
+          },
+          { ...fakeContext, ask: async () => {} },
+        )
+      ).output,
+    )
+    expect(applied.ok).toBe(true)
+    const after = JSON.parse(await (hooks.tool as any).cad_design_read.execute({ id: "ir-box" }, fakeContext))
+    expect(after.design.parts[0].ir).toBe("ir/body.json")
+    const escaped = JSON.parse(
+      (
+        await (hooks.tool as any).cad_source_apply.execute(
+          {
+            id: "ir-box",
+            part: "body",
+            path: "parts/body.py",
+            contents: "def build():\n    raise NotImplementedError('hand')\n",
+            base_hash: after.sources["parts/body.py"],
+          },
+          { ...fakeContext, ask: async () => {} },
+        )
+      ).output,
+    )
+    expect(escaped.ok).toBe(true)
+    const hand = JSON.parse(await (hooks.tool as any).cad_design_read.execute({ id: "ir-box" }, fakeContext))
+    expect(hand.design.parts[0].ir).toBeUndefined()
   })
 
   test("qc report is claim-free and blocked without evidence", async () => {

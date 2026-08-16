@@ -8,9 +8,26 @@ import type { SpecRoots } from "../../../src/core/spec"
 import { specFilePath } from "../../../src/core/spec"
 import { type AcceptanceContract, normalizeAcceptanceContract, readAcceptance } from "../host/acceptance"
 import { buildDesign, type CadBuildRunner, createCadBuildRunner, scaffoldDesign } from "../host/build"
+import {
+  createClientDispatcher,
+  isWorkerSession,
+  markWorkerReady,
+  readDispatchLedger,
+  spawnCadParts,
+  writeDispatchLedger,
+} from "../host/dispatch"
 import { currentEvidence, latestByKey } from "../host/evidence"
+import { applyIrPatch, type CadIrV2, IR_DOCS, type IrPatch, irPathFor, validateIrDocument } from "../host/ir"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
-import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest, sha256File } from "../host/manifest"
+import {
+  artifactRevision,
+  emptyIrDocument,
+  ID_PATTERN,
+  readArtifactManifest,
+  readDesignManifest,
+  sha256File,
+  writeDesignManifest,
+} from "../host/manifest"
 import { buildPrintPlan, readPrintPlan } from "../host/print-plan"
 import { buildDesignQcReport } from "../host/qc-report"
 import { type CadVerifyKind, runCadVerify } from "../host/verify"
@@ -20,6 +37,7 @@ import {
   designBuildSuccessResult,
   designCreateResult,
   formatCadToolResult,
+  irApplyResult,
   printPlanApplyResult,
   sourceApplyResult,
   verifyResult,
@@ -92,6 +110,7 @@ function options(input: PluginOptions | undefined, directory: string): Options {
 
 export type StudioPluginDependencies = {
   buildRunner?: CadBuildRunner
+  dispatcher?: import("../host/dispatch").CadPartDispatcher
 }
 
 export function createStudioPlugin(dependencies: StudioPluginDependencies = {}): Plugin {
@@ -99,6 +118,8 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
     const config = options(rawOptions, context.directory)
     const layout = await initializeStudio(config.studioRoot)
     const buildRunner = dependencies.buildRunner ?? createCadBuildRunner(context.directory)
+    const dispatcher =
+      dependencies.dispatcher ?? createClientDispatcher((context as { client?: Parameters<typeof createClientDispatcher>[0] }).client)
     const build123dTools = createCadSessionTools({
       engineProjectDir: config.engineProjectDir,
       cwd: context.directory,
@@ -123,7 +144,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_create: tool({
           description:
-            "Scaffold a locked CAD design: locked acceptance.json (contract), design.json, params.py, parts/ stubs. acceptance is required: a JSON contract {schema:1, state:'locked', authority:'harness'|'user', manufacturing:{process:'fdm', buildVolumeMm, nozzleMm, minimumWallMm, bedToleranceMm, defaultClearanceMm}, dimensions:[{id, kind:'bbox', artifactId, measure:'size', axis, targetMm, toleranceMm}], interfaces:[{id, a, b, fit:'clearance'|'contact'|'interference', targetMm, toleranceMm}]}. contractHash is computed by the host (omit it). Recreate the design to change the contract. parts[].qty: 1 = one body, 2 = one source plus a YZ mirror at build. The parent models every part.",
+            "Scaffold a locked CAD design: locked acceptance.json, design.json, params.py, ir/<part>.json drafts, parts/ stubs. New parts default to IR (cad_ir_apply). acceptance is required: {schema:1, state:'locked', authority, manufacturing, dimensions:[{kind:bbox|hole_diameter|wall|station,...}], interfaces:[...]}. contractHash is computed by the host. parts[].qty: 1 = one body, 2 = one source plus a YZ mirror at build. Two or more unique ids spawn cad-part IR workers.",
           args: {
             id: tool.schema.string().min(1).describe("Lowercase design id matching ^[a-z0-9][a-z0-9_-]*$"),
             parts: tool.schema
@@ -177,9 +198,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             }
             for (const iface of contract.interfaces) {
               if (!declared.has(iface.a) || !declared.has(iface.b)) {
-                throw new Error(
-                  `Interface ${iface.id} references unknown artifact ${iface.a}/${iface.b}; declare both in parts`,
-                )
+                throw new Error(`Interface ${iface.id} references unknown artifact ${iface.a}/${iface.b}; declare both in parts`)
               }
             }
             const { contractHashOf } = await import("../host/acceptance")
@@ -191,6 +210,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 `studio/designs/${args.id}/design.json`,
                 `studio/designs/${args.id}/params.py`,
                 ...args.parts.map((part) => `studio/designs/${args.id}/${part.source ?? `parts/${part.id.replace(/-/g, "_")}.py`}`),
+                ...args.parts.map((part) => `studio/designs/${args.id}/ir/${part.id.replace(/-/g, "_")}.json`),
               ],
               always: [],
               metadata: {
@@ -208,6 +228,17 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             )
             if (args.params?.trim())
               await writeFile(path.join(designDir, "params.py"), args.params.endsWith("\n") ? args.params : `${args.params}\n`, "utf8")
+            if (args.parts.length >= 2 && context.sessionID) {
+              await spawnCadParts({
+                designId: args.id,
+                designDir,
+                parts: manifest.parts.map((part) => ({ id: part.id, source: part.source })),
+                dispatcher,
+                directory: context.directory || "",
+                parentSessionID: context.sessionID,
+                params: args.params,
+              })
+            }
             await bindActiveDesign(config.engineProjectDir, context.directory || "", designDir, context.abort, context.sessionID)
             const envelope = designCreateResult({
               id: args.id,
@@ -230,7 +261,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_read: tool({
           description:
-            "Without id: list designs (id, build status, part count). With id: locked contract, source hashes, artifact paths + body hashes, print plan, latest QC evidence, and companion viewer URL. Do not follow with raw manifest reads.",
+            "Without id: list designs. With id: locked contract, source hashes, IR hashes + stale/compile flags, artifact paths, print plan, latest QC evidence, viewer URL.",
           args: {
             id: tool.schema.string().min(1).optional().describe("Design id. Omit to list designs."),
           },
@@ -262,12 +293,25 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const acceptance = await readAcceptance(entry.directory).catch(() => null)
             const printPlan = await readPrintPlan(entry.directory)
             const sources: Record<string, string> = {}
-            for (const name of ["design.json", "params.py", ...design.parts.map((part) => part.source)]) {
+            for (const name of [
+              "design.json",
+              "params.py",
+              ...design.parts.map((part) => part.source),
+              ...design.parts.map((part) => part.ir).filter(Boolean),
+            ]) {
+              if (!name) continue
               try {
                 sources[name] = await sha256File(path.join(entry.directory, name))
               } catch {
                 // missing file: no hash
               }
+            }
+            const ir: Record<string, { path: string; hash: string | null; stale: boolean }> = {}
+            for (const part of design.parts) {
+              if (!part.ir) continue
+              const hash = sources[part.ir] ?? null
+              const published = artifact?.build.inputs[part.ir]
+              ir[part.id] = { path: part.ir, hash, stale: !hash || !published || published !== hash }
             }
             const evidence = artifact
               ? await currentEvidence(entry.directory, artifactRevision(artifact), acceptance?.contractHash ?? "")
@@ -281,6 +325,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               design,
               acceptance,
               sources,
+              ir,
               printPlan: printPlan && printPlan.buildRevision === entry.revision ? printPlan : null,
               evidence: latestByKey(evidence, (record) => record.id),
               artifact: artifact
@@ -314,6 +359,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           async execute(args, context) {
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
+            if (isWorkerSession(await readDispatchLedger(entry.directory), context.sessionID)) {
+              throw new Error("workers cannot cad_design_build")
+            }
             await context.ask({
               permission: "cad_mutate",
               patterns: [
@@ -356,7 +404,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const bound: string[] = []
             const bindErrors: string[] = []
             if (!dependencies.buildRunner) {
-              await bindActiveDesign(config.engineProjectDir, context.directory || "", entry.directory, context.abort, context.sessionID)
+              await bindActiveDesign(config.engineProjectDir, context?.directory || "", entry.directory, context?.abort, context?.sessionID)
               const runtime = getCadRuntimeSession(config.engineProjectDir, context.directory || "", context.sessionID)
               for (const part of artifact.parts) {
                 const stepPath = path.resolve(entry.directory, part.files.step)
@@ -397,7 +445,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_source_apply: tool({
           description:
-            "Write params.py or a parts/*.py source for a schema 2 design. base_hash must equal the current SHA-256 of the target file (read sources from cad_design_read). The host checks design id, part id, path, and base hash; a mismatch rejects the write. This is the only allowed way to change geometry sources.",
+            "Hand-escape write for params.py or parts/*.py. Prefer cad_ir_apply for new parts. Writing a part source drops that part's IR until cad_ir_apply is used again. base_hash must match the current file.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
             part: tool.schema.string().min(1).describe("Part id (or 'params' for params.py)."),
@@ -409,10 +457,17 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
             const design = await readDesignManifest(entry.directory, args.id)
+            const ledger = await readDispatchLedger(entry.directory)
+            if (isWorkerSession(ledger, context.sessionID)) {
+              const assigned = ledger.workers.find((item) => item.sessionId === context.sessionID)
+              const part = design.parts.find((item) => item.id === args.part)
+              if (!assigned || assigned.partId !== args.part) throw new Error("worker cannot write another part")
+              if (part?.ir) throw new Error("worker cannot cad_source_apply while the part is IR; use cad_ir_apply")
+            }
             const normalized = args.path.replaceAll("\\", "/")
             const isParams = args.part === "params"
-            const declaredSource = design.parts.find((part) => part.id === args.part)?.source
-            const expectedPath = isParams ? "params.py" : declaredSource
+            const declared = design.parts.find((part) => part.id === args.part)
+            const expectedPath = isParams ? "params.py" : declared?.source
             if (isParams ? normalized !== "params.py" : normalized !== expectedPath) {
               throw new Error(
                 `cad_source_apply path ${normalized} does not match ${isParams ? "params.py" : `part ${args.part} source ${expectedPath}`}`,
@@ -422,7 +477,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             if (!target.startsWith(entry.directory)) throw new Error("cad_source_apply path escapes the design")
             await context.ask({
               permission: "cad_mutate",
-              patterns: [`studio/designs/${args.id}/${normalized}`],
+              patterns: [`studio/designs/${args.id}/${normalized}`, `studio/designs/${args.id}/design.json`],
               always: [],
               metadata: {},
             })
@@ -433,12 +488,144 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const temporary = `${target}.${Math.random().toString(16).slice(2)}.tmp`
             await writeFile(temporary, args.contents.endsWith("\n") ? args.contents : `${args.contents}\n`, "utf8")
             await rename(temporary, target)
+            if (!isParams && declared?.ir) {
+              const next = {
+                ...design,
+                parts: design.parts.map((part) => (part.id === args.part ? { id: part.id, source: part.source, qty: part.qty } : part)),
+              }
+              await writeDesignManifest(entry.directory, next)
+            }
             const envelope = sourceApplyResult({ id: args.id, path: normalized, hash: await sha256File(target) })
             return {
               title: `Updated ${normalized}: ${args.id}`,
               output: formatCadToolResult(envelope),
               metadata: { ok: true, path: normalized },
             }
+          },
+        }),
+
+        cad_ir_docs: tool({
+          description: "Frozen CAD IR op list. Nothing else.",
+          args: {},
+          async execute() {
+            return asJson(IR_DOCS)
+          },
+        }),
+
+        cad_ir_apply: tool({
+          description:
+            "Write ir/<part>.json for a schema 2 part. Pass document (full CadIrV2) or patch. base_hash is the current IR file SHA-256 from cad_design_read. Build compiles IR to parts/*.py. This is the default write for new parts.",
+          args: {
+            id: tool.schema.string().min(1).describe("Design id."),
+            part: tool.schema.string().min(1).describe("Part id."),
+            base_hash: tool.schema.string().describe("Current SHA-256 of ir/<part>.json (empty-scaffold hash on first write)."),
+            document: tool.schema.any().optional().describe("Full CadIrV2 document."),
+            patch: tool.schema.any().optional().describe("Patch: params/show/ops insert_after|replace|delete."),
+          },
+          async execute(args, context) {
+            if ((args.document === undefined) === (args.patch === undefined)) {
+              throw new Error("cad_ir_apply requires exactly one of document or patch")
+            }
+            const entry = await findDesign(layout, args.id)
+            if (!entry) throw new Error(`Design not found: ${args.id}`)
+            const design = await readDesignManifest(entry.directory, args.id)
+            const declared = design.parts.find((part) => part.id === args.part)
+            if (!declared) throw new Error(`Unknown part ${args.part}`)
+            const ledger = await readDispatchLedger(entry.directory)
+            if (isWorkerSession(ledger, context.sessionID)) {
+              const assigned = ledger.workers.find((item) => item.sessionId === context.sessionID)
+              if (!assigned || assigned.partId !== args.part) throw new Error("worker can only cad_ir_apply its assigned part")
+              if (assigned.leaseExpiresAt < Date.now()) throw new Error("worker lease expired")
+            } else if (
+              ledger.workers.some(
+                (item) =>
+                  item.partId === args.part && (item.state === "starting" || item.state === "running") && item.leaseExpiresAt >= Date.now(),
+              )
+            ) {
+              throw new Error(`part ${args.part} is leased by a worker`)
+            }
+            const relative = declared.ir ?? irPathFor(args.part)
+            const target = path.resolve(entry.directory, relative)
+            if (!target.startsWith(entry.directory)) throw new Error("cad_ir_apply path escapes the design")
+            await context.ask({
+              permission: "cad_mutate",
+              patterns: [`studio/designs/${args.id}/${relative}`, `studio/designs/${args.id}/design.json`],
+              always: [],
+              metadata: {},
+            })
+            const currentHash = await sha256File(target).catch(async () => {
+              await writeFile(target, `${JSON.stringify(emptyIrDocument(args.part), null, 2)}\n`, "utf8")
+              return sha256File(target)
+            })
+            if (currentHash !== args.base_hash) {
+              throw new Error(`cad_ir_apply base_hash mismatch for ${relative}: file changed since the read hash`)
+            }
+            let nextDoc: CadIrV2
+            try {
+              if (args.document !== undefined) nextDoc = validateIrDocument(args.document)
+              else {
+                const raw = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(target, "utf8")))
+                const loose = raw && typeof raw === "object" ? raw : {}
+                nextDoc = applyIrPatch(
+                  {
+                    part: args.part,
+                    params: Array.isArray(loose.params) ? loose.params : [],
+                    ops: Array.isArray(loose.ops) ? loose.ops : [],
+                    show: typeof loose.show === "string" ? loose.show : "",
+                  },
+                  args.patch as IrPatch,
+                )
+              }
+            } catch (error) {
+              throw new Error(`Invalid IR: ${error instanceof Error ? error.message : String(error)}`)
+            }
+            if (nextDoc.part !== args.part) throw new Error(`IR part ${nextDoc.part} does not match ${args.part}`)
+            const temporary = `${target}.${Math.random().toString(16).slice(2)}.tmp`
+            await writeFile(temporary, `${JSON.stringify(nextDoc, null, 2)}\n`, "utf8")
+            await rename(temporary, target)
+            if (!declared.ir) {
+              await writeDesignManifest(entry.directory, {
+                ...design,
+                parts: design.parts.map((part) => (part.id === args.part ? { ...part, ir: relative } : part)),
+              })
+            }
+            if (isWorkerSession(ledger, context.sessionID) && nextDoc.ops.length > 0 && nextDoc.show) {
+              await writeDispatchLedger(entry.directory, markWorkerReady(ledger, args.part))
+            }
+            const envelope = irApplyResult({ id: args.id, part: args.part, path: relative, hash: await sha256File(target) })
+            return {
+              title: `Updated ${relative}: ${args.id}`,
+              output: formatCadToolResult(envelope),
+              metadata: { ok: true, path: relative },
+            }
+          },
+        }),
+
+        cad_design_join: tool({
+          description: "Wait/check worker ledger. ok when every dispatched part is ready or failed. Does not inspect Python stubs.",
+          args: {
+            id: tool.schema.string().min(1).describe("Design id to join."),
+          },
+          async execute(args) {
+            const entry = await findDesign(layout, args.id)
+            if (!entry) throw new Error(`Design not found: ${args.id}`)
+            const ledger = await readDispatchLedger(entry.directory)
+            if (ledger.workers.length === 0) {
+              return asJson({ ok: true, id: args.id, ready: [], failed: [], pending: [], next: ["cad_ir_apply or cad_design_build"] })
+            }
+            const ready = ledger.workers.filter((item) => item.state === "ready").map((item) => item.partId)
+            const failed = ledger.workers.filter((item) => item.state === "failed" || item.state === "cancelled").map((item) => item.partId)
+            const pending = ledger.workers
+              .filter((item) => item.state === "starting" || item.state === "running")
+              .map((item) => item.partId)
+            return asJson({
+              ok: pending.length === 0,
+              id: args.id,
+              ready,
+              failed,
+              pending,
+              next: pending.length === 0 ? ["cad_design_build"] : ["Wait for workers or model pending parts", "cad_design_join"],
+            })
           },
         }),
 
@@ -464,6 +651,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           async execute(args, context) {
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
+            if (isWorkerSession(await readDispatchLedger(entry.directory), context.sessionID)) {
+              throw new Error("workers cannot cad_print_plan_apply")
+            }
             const artifact = await readArtifactManifest(entry.directory, args.id)
             if (!artifact) throw new Error(`Design ${args.id} has no built artifacts; run cad_design_build first`)
             const acceptance = await readAcceptance(entry.directory)
@@ -492,7 +682,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_verify: tool({
           description:
-            "Verify a design axis against the locked contract using the exact built STEP bodies, and write disk evidence records bound to the current buildRevision and contractHash. kind=requirements: every bbox dimension measured on the final STEP. kind=printability: each artifact posed per the print plan and analyzed with the manufacturing profile. kind=interfaces: every declared pair fit-checked. Rebuild or contract change makes records stale; re-verify after each build.",
+            "Verify a design axis against the locked contract using the exact built STEP bodies, and write disk evidence records bound to the current buildRevision and contractHash. kind=requirements: bbox, hole_diameter, wall, and station. kind=printability: posed print plan + profile. kind=interfaces: declared pair fits. Rebuild or contract change makes records stale.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
             kind: tool.schema
@@ -502,6 +692,9 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           async execute(args, context) {
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
+            if (isWorkerSession(await readDispatchLedger(entry.directory), context.sessionID)) {
+              throw new Error("workers cannot cad_verify")
+            }
             const artifact = await readArtifactManifest(entry.directory, args.id)
             if (!artifact) throw new Error(`Design ${args.id} has no built artifacts; run cad_design_build first`)
             const acceptance = await readAcceptance(entry.directory)
@@ -533,13 +726,16 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_qc_report: tool({
           description:
-            "Claim-free CAD QC report from disk evidence bound to the current buildRevision and contractHash: artifact (built + body hashes), requirements (locked bbox dims), manufacturing (current print plan + printability passes), interfaces (declared pairs), findings (no warning/error on any current record). Takes no status fields — evidence comes only from cad_verify records on disk. Writes SPEC.json when complete.",
+            "Claim-free CAD QC report from disk evidence bound to the current buildRevision and contractHash: artifact, requirements (bbox/hole/wall/station), manufacturing, interfaces, findings. Takes no status fields. Writes SPEC.json when complete.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
           },
-          async execute(args, _context) {
+          async execute(args, context) {
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
+            if (isWorkerSession(await readDispatchLedger(entry.directory), context.sessionID)) {
+              throw new Error("workers cannot cad_design_qc_report")
+            }
             const artifact = await readArtifactManifest(entry.directory, args.id)
             const report = await buildDesignQcReport({
               id: args.id,

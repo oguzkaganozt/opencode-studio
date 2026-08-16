@@ -23,6 +23,7 @@
       "qty": 2
     }
   ],
-  "pinnedContractHash": "c833f2d431327e6ba37a2d0e006a5dfc2c0ee66a1ba1ae5df02a2272930b3000",
-  "wallTimeMs": 5400000
+  "pinnedContractHash": "ae80fd3dfac535c2c59328cae30ca31e0ea729e3086414a4b8a171b0d62f59a7",
+  "wallTimeMs": 5400000,
+  "requireIrParts": ["shell_l"]
 }

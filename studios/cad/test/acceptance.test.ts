@@ -54,6 +54,50 @@ describe("acceptance contract", () => {
     ).toThrow(/nozzleMm/)
   })
 
+  test("normalization accepts hole, wall, and station kinds", () => {
+    const hole = normalizeAcceptanceContract({
+      ...validContract(),
+      dimensions: [
+        {
+          id: "usb",
+          kind: "hole_diameter",
+          artifactId: "body",
+          match: { axis: "Y", nearMm: [0, -35, 15], maxDistanceMm: 25 },
+          targetMm: 8,
+          toleranceMm: 3,
+        },
+      ],
+    })
+    expect(hole.dimensions[0]).toMatchObject({ kind: "hole_diameter", targetMm: 8 })
+    expect(() =>
+      normalizeAcceptanceContract({
+        ...validContract(),
+        dimensions: [{ id: "usb", kind: "hole_diameter", artifactId: "body", match: { nearMm: [0, 0, 0] }, targetMm: 8, toleranceMm: 1 }],
+      }),
+    ).toThrow(/both be present/)
+    const wall = normalizeAcceptanceContract({
+      ...validContract(),
+      dimensions: [{ id: "side", kind: "wall", artifactId: "body", atMm: [0, 0, 10], direction: [1, 0, 0], minimumMm: 1.6 }],
+    })
+    expect(wall.dimensions[0]).toMatchObject({ kind: "wall", minimumMm: 1.6 })
+    const station = normalizeAcceptanceContract({
+      ...validContract(),
+      dimensions: [
+        {
+          id: "mid",
+          kind: "station",
+          artifactId: "diffuser",
+          axis: "Z",
+          tMode: "from_min",
+          t: 150,
+          target: { widthMm: 80, depthMm: 30 },
+          toleranceMm: 20,
+        },
+      ],
+    })
+    expect(station.dimensions[0]).toMatchObject({ kind: "station", tMode: "from_min" })
+  })
+
   test("normalization enforces dimension/interface integrity", () => {
     expect(() =>
       normalizeAcceptanceContract({

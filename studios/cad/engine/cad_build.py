@@ -366,6 +366,9 @@ def build_input_hashes(design_dir: Path, manifest: dict[str, Any]) -> dict[str, 
         source = part.get("source")
         if isinstance(source, str) and source.endswith(".py"):
             inputs.append(design_dir / source)
+        ir = part.get("ir")
+        if isinstance(ir, str) and ir.endswith(".json"):
+            inputs.append(design_dir / ir)
     return {
         path.relative_to(design_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in inputs
@@ -414,6 +417,22 @@ def build_design(design_path: str) -> Path:
         sys.modules.pop("params", None)
         sys.path.insert(0, str(design_dir))
         path_inserted = True
+        compiled_sources: dict[str, str] = {}
+        for part in manifest["parts"]:
+            ir = part.get("ir")
+            if isinstance(ir, str) and ir:
+                from cad_runtime.ir.compile import compile_part
+
+                ir_path = design_dir / ir
+                if not ir_path.is_file():
+                    raise ValueError(f"Part {part['id']} IR not found: {ir}")
+                compiled_sources[part["source"]] = compile_part(ir_path, design_dir / manifest.get("params", "params.py"))
+        for source, text in compiled_sources.items():
+            target = design_dir / source
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+        if compiled_sources:
+            input_hashes = build_input_hashes(design_dir, manifest)
         built_parts: list[dict[str, Any]] = []
         for part in manifest["parts"]:
             shape = build_shape(resolve_source(design_dir, part["source"]), part["id"])

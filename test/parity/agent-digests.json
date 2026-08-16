@@ -1,11 +1,11 @@
 {
   "cad": {
     "path": "studios/cad/agent/cad.md",
-    "sha256": "3a647abdf1fe308a1289dee388c709d0829a135acff8a5cffd75dd8489cc125d"
+    "sha256": "8d8d0bafcfb371f36ba3b5370ba6841f58b0aae3d15a8db0b77dee10225f7bce"
   },
   "cad-part": {
     "path": "studios/cad/agent/cad-part.md",
-    "sha256": "085f449c296aacb0e98a7b71c9786ace3258b0700e84013b084b2ff46f59f040"
+    "sha256": "20298f9077f384cabf48ac5507d1625e273acace3467a692f7df268ac1f64526"
   },
   "concept": {
     "path": "studios/concept/agent/concept.md",

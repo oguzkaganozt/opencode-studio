@@ -5,15 +5,48 @@ import path from "node:path"
 export const ACCEPTANCE_FILE = "acceptance.json"
 export const ACCEPTANCE_HISTORY_DIR = "acceptance/history"
 
+export type AxisName = "X" | "Y" | "Z"
+
 export type AcceptanceBboxDim = {
   id: string
   kind: "bbox"
   artifactId: string
   measure: "size"
-  axis: "X" | "Y" | "Z"
+  axis: AxisName
   targetMm: number
   toleranceMm: number
 }
+
+export type AcceptanceHoleDim = {
+  id: string
+  kind: "hole_diameter"
+  artifactId: string
+  match: { axis?: AxisName; nearMm?: [number, number, number]; maxDistanceMm?: number }
+  targetMm: number
+  toleranceMm: number
+}
+
+export type AcceptanceWallDim = {
+  id: string
+  kind: "wall"
+  artifactId: string
+  atMm: [number, number, number]
+  direction: [number, number, number]
+  minimumMm: number
+}
+
+export type AcceptanceStationDim = {
+  id: string
+  kind: "station"
+  artifactId: string
+  axis: AxisName
+  tMode: "from_min"
+  t: number
+  target: { widthMm: number; depthMm: number }
+  toleranceMm: number
+}
+
+export type AcceptanceDimension = AcceptanceBboxDim | AcceptanceHoleDim | AcceptanceWallDim | AcceptanceStationDim
 
 export type AcceptanceInterface = {
   id: string
@@ -37,7 +70,7 @@ export type AcceptanceV1 = {
     bedToleranceMm: number
     defaultClearanceMm: number
   }
-  dimensions: AcceptanceBboxDim[]
+  dimensions: AcceptanceDimension[]
   interfaces: AcceptanceInterface[]
 }
 
@@ -67,6 +100,84 @@ function finiteVector3(value: unknown, label: string): [number, number, number] 
 function requireObject(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new AcceptanceError(`${label} must be an object`)
   return value as Record<string, unknown>
+}
+
+function parseAxis(value: unknown, label: string): AxisName {
+  if (value !== "X" && value !== "Y" && value !== "Z") throw new AcceptanceError(`${label} must be X, Y, or Z`)
+  return value
+}
+
+function parseDimension(raw: unknown, index: number, seen: Set<string>): AcceptanceDimension {
+  const dim = requireObject(raw, `acceptance.dimensions[${index}]`)
+  const id = dim.id
+  if (typeof id !== "string" || id.length === 0) throw new AcceptanceError(`acceptance.dimensions[${index}] needs an id`)
+  if (seen.has(id)) throw new AcceptanceError(`Duplicate dimension id: ${id}`)
+  seen.add(id)
+  const artifactId = dim.artifactId
+  if (typeof artifactId !== "string" || artifactId.length === 0) throw new AcceptanceError(`Dimension ${id} needs artifactId`)
+  const kind = dim.kind
+  if (kind === "bbox") {
+    return {
+      id,
+      kind: "bbox",
+      artifactId,
+      measure: "size",
+      axis: parseAxis(dim.axis, `Dimension ${id} axis`),
+      targetMm: finitePositive(dim.targetMm, `Dimension ${id} targetMm`),
+      toleranceMm: finitePositive(dim.toleranceMm, `Dimension ${id} toleranceMm`),
+    }
+  }
+  if (kind === "hole_diameter") {
+    const matchRaw = dim.match === undefined ? {} : requireObject(dim.match, `Dimension ${id} match`)
+    const hasNear = matchRaw.nearMm !== undefined
+    const hasMax = matchRaw.maxDistanceMm !== undefined
+    if (hasNear !== hasMax)
+      throw new AcceptanceError(`Dimension ${id} match.nearMm and match.maxDistanceMm must both be present or both absent`)
+    const match: AcceptanceHoleDim["match"] = {}
+    if (matchRaw.axis !== undefined) match.axis = parseAxis(matchRaw.axis, `Dimension ${id} match.axis`)
+    if (hasNear) {
+      match.nearMm = finiteVector3(matchRaw.nearMm, `Dimension ${id} match.nearMm`)
+      match.maxDistanceMm = finitePositive(matchRaw.maxDistanceMm, `Dimension ${id} match.maxDistanceMm`)
+    }
+    return {
+      id,
+      kind: "hole_diameter",
+      artifactId,
+      match,
+      targetMm: finitePositive(dim.targetMm, `Dimension ${id} targetMm`),
+      toleranceMm: finitePositive(dim.toleranceMm, `Dimension ${id} toleranceMm`),
+    }
+  }
+  if (kind === "wall") {
+    const direction = finiteVector3(dim.direction, `Dimension ${id} direction`)
+    if (direction.every((item) => item === 0)) throw new AcceptanceError(`Dimension ${id} direction must be non-zero`)
+    return {
+      id,
+      kind: "wall",
+      artifactId,
+      atMm: finiteVector3(dim.atMm, `Dimension ${id} atMm`),
+      direction,
+      minimumMm: finitePositive(dim.minimumMm, `Dimension ${id} minimumMm`),
+    }
+  }
+  if (kind === "station") {
+    if (dim.tMode !== "from_min") throw new AcceptanceError(`Dimension ${id} tMode must be from_min`)
+    const target = requireObject(dim.target, `Dimension ${id} target`)
+    return {
+      id,
+      kind: "station",
+      artifactId,
+      axis: parseAxis(dim.axis, `Dimension ${id} axis`),
+      tMode: "from_min",
+      t: finiteNumber(dim.t, `Dimension ${id} t`),
+      target: {
+        widthMm: finitePositive(target.widthMm, `Dimension ${id} target.widthMm`),
+        depthMm: finitePositive(target.depthMm, `Dimension ${id} target.depthMm`),
+      },
+      toleranceMm: finitePositive(dim.toleranceMm, `Dimension ${id} toleranceMm`),
+    }
+  }
+  throw new AcceptanceError(`acceptance.dimensions[${index}] kind must be bbox, hole_diameter, wall, or station`)
 }
 
 /** Canonical JSON: stable key order, no whitespace — the contractHash input. */
@@ -101,29 +212,7 @@ export function normalizeAcceptanceContract(value: unknown): AcceptanceContract 
   const rawDims = obj.dimensions
   if (!Array.isArray(rawDims)) throw new AcceptanceError("acceptance.dimensions must be an array")
   const dimensionIds = new Set<string>()
-  const dimensions: AcceptanceBboxDim[] = rawDims.map((raw, index) => {
-    const dim = requireObject(raw, `acceptance.dimensions[${index}]`)
-    if (dim.kind !== "bbox") throw new AcceptanceError(`acceptance.dimensions[${index}] kind must be bbox`)
-    const id = dim.id
-    if (typeof id !== "string" || id.length === 0) throw new AcceptanceError(`acceptance.dimensions[${index}] needs an id`)
-    if (dimensionIds.has(id)) throw new AcceptanceError(`Duplicate dimension id: ${id}`)
-    dimensionIds.add(id)
-    const artifactId = dim.artifactId
-    if (typeof artifactId !== "string" || artifactId.length === 0) {
-      throw new AcceptanceError(`Dimension ${id} needs artifactId`)
-    }
-    const axis = dim.axis
-    if (axis !== "X" && axis !== "Y" && axis !== "Z") throw new AcceptanceError(`Dimension ${id} axis must be X, Y, or Z`)
-    return {
-      id,
-      kind: "bbox" as const,
-      artifactId,
-      measure: "size" as const,
-      axis,
-      targetMm: finitePositive(dim.targetMm, `Dimension ${id} targetMm`),
-      toleranceMm: finitePositive(dim.toleranceMm, `Dimension ${id} toleranceMm`),
-    }
-  })
+  const dimensions: AcceptanceDimension[] = rawDims.map((raw, index) => parseDimension(raw, index, dimensionIds))
 
   const rawInterfaces = obj.interfaces
   if (!Array.isArray(rawInterfaces)) throw new AcceptanceError("acceptance.interfaces must be an array")

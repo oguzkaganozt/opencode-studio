@@ -15,7 +15,15 @@
     { "id": "body-y", "kind": "bbox", "artifactId": "body", "measure": "size", "axis": "Y", "targetMm": 70, "toleranceMm": 5 },
     { "id": "body-z", "kind": "bbox", "artifactId": "body", "measure": "size", "axis": "Z", "targetMm": 30, "toleranceMm": 4 },
     { "id": "lid-x", "kind": "bbox", "artifactId": "lid", "measure": "size", "axis": "X", "targetMm": 100, "toleranceMm": 5 },
-    { "id": "lid-y", "kind": "bbox", "artifactId": "lid", "measure": "size", "axis": "Y", "targetMm": 70, "toleranceMm": 5 }
+    { "id": "lid-y", "kind": "bbox", "artifactId": "lid", "measure": "size", "axis": "Y", "targetMm": 70, "toleranceMm": 5 },
+    {
+      "id": "usb-hole",
+      "kind": "hole_diameter",
+      "artifactId": "body",
+      "match": { "axis": "Y", "nearMm": [0, -35, 15], "maxDistanceMm": 25 },
+      "targetMm": 8,
+      "toleranceMm": 3
+    }
   ],
   "interfaces": [{ "id": "body-lid", "a": "body", "b": "lid", "fit": "clearance", "targetMm": 0.2, "toleranceMm": 0.3 }]
 }

@@ -41,6 +41,7 @@ export type BenchFixtureV1 = {
   expectedParts: { id: string; qty: 1 | 2 }[]
   pinnedContractHash: string
   wallTimeMs: number
+  requireIrParts?: string[]
 }
 
 const DEFAULT_MODEL = "xai/grok-4.5"
@@ -231,7 +232,7 @@ export async function scoreCadBenchOnDisk(input: {
     const plan = await readPrintPlan(designDir)
     checks.print_plan = plan !== null
     checks.print_plan_current = plan !== null && artifact !== null && plan.buildRevision === artifactRevision(artifact)
-    checks.print_plan_covers = plan !== null && artifact !== null && artifact.parts.every((part) => plan.entries.some((e) => e.artifactId === part.id))
+    checks.print_plan_covers = Boolean(plan && artifact?.parts.every((part) => plan.entries.some((e) => e.artifactId === part.id)))
     if (!checks.print_plan) errors.push("missing print-plan.json")
     else if (!checks.print_plan_current) errors.push("print plan is stale relative to the build")
     else if (!checks.print_plan_covers) errors.push("print plan does not cover every final artifact")
@@ -274,6 +275,31 @@ export async function scoreCadBenchOnDisk(input: {
     errors.push(`QC computation failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 
+  const requireIr = fixture.requireIrParts ?? []
+  if (requireIr.length > 0) {
+    try {
+      const design = JSON.parse(await readFile(path.join(designDir, "design.json"), "utf8")) as {
+        parts?: Array<{ id?: string; ir?: string; source?: string }>
+      }
+      const byId = new Map((design.parts ?? []).map((part) => [part.id, part]))
+      checks.ir_declared = requireIr.every((id) => Boolean(byId.get(id)?.ir))
+      checks.ir_present = (
+        await Promise.all(
+          requireIr.map(async (id) => {
+            const ir = byId.get(id)?.ir
+            return Boolean(ir && (await Bun.file(path.join(designDir, ir)).exists()))
+          }),
+        )
+      ).every(Boolean)
+      if (!checks.ir_declared) errors.push("required parts are not IR")
+      if (!checks.ir_present) errors.push("required IR files are missing")
+    } catch (error) {
+      checks.ir_declared = false
+      checks.ir_present = false
+      errors.push(`IR provenance: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   checks.wall_time = !wallTimeExceeded
   if (wallTimeExceeded) errors.push(`wall time exceeded (${fixture.wallTimeMs}ms)`)
   checks.ok =
@@ -290,7 +316,8 @@ export async function scoreCadBenchOnDisk(input: {
     checks.requirements_pass &&
     checks.manufacturing_pass &&
     checks.interfaces_pass &&
-    checks.wall_time
+    checks.wall_time &&
+    (requireIr.length === 0 || (checks.ir_declared && checks.ir_present))
   return { ok: Boolean(checks.ok), checks, summary: null, errors }
 }
 

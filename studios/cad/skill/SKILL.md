@@ -20,7 +20,7 @@ Load this skill before `cad_design_*` / product CAD work. Do not load `studio-pc
 ## Minimum path (every design)
 
 1. Phase 0 — brief, locked `acceptance` contract, `cad_design_create`, `params.py`, part plan  
-2. Phase 1 — model each part in-session → validate/measure/printability → write `parts/*.py` via `cad_source_apply` → `cad_design_build`  
+2. Phase 1 — `cad_ir_docs` if needed → write each part via `cad_ir_apply` → `cad_design_join` if workers ran → `cad_design_build` (compiles IR)  
 3. Phase 1.5 — optional visual QC (skip if no image input; say so)  
 4. Phase 2 — `cad_print_plan_apply` + `cad_verify` (requirements / printability / interfaces) on exact built bodies  
 5. Phase 3 — `cad_design_read` + **`cad_design_qc_report`** (claim-free) → claim complete only if `complete: true`  
@@ -75,9 +75,11 @@ These are the only `cad_*` tools. Prefer `status`/`data` on structured envelopes
 
 **Lifecycle**
 
-- `cad_design_create(id, parts[{id, qty}], params, acceptance)` — acceptance is a required locked JSON contract (schema 1, no contractHash — the host pins it). `qty` required: `1` one body, `2` one source + YZ mirror at build. You model every part; there are no workers.
-- `cad_source_apply(id, part, path, contents, base_hash)` — the only way to write `params.py` / `parts/*.py`. Read source hashes from `cad_design_read`; the host rejects a stale `base_hash`.
-- `cad_design_build(id)` — build in a killable child; export STEP/STL/GLB + manifest with per-part `body_hash`. Does not verify acceptance, printability, or fit.
+- `cad_design_create(id, parts[{id, qty}], params, acceptance)` — locked contract (schema 1, no contractHash). `qty`: `1` one body, `2` one source + YZ mirror. New parts default to IR. Two or more unique ids may spawn workers.
+- `cad_ir_apply(id, part, base_hash, document | patch)` — default write. `cad_ir_docs()` is the frozen op list.
+- `cad_source_apply(id, part, path, contents, base_hash)` — params.py or hand escape (drops that part's IR).
+- `cad_design_join(id)` — ledger ready|failed; do not inspect Python stubs.
+- `cad_design_build(id)` — compiles stale IR into `parts/*.py`, then exports STEP/STL/GLB + `body_hash`. Does not verify acceptance.
 - `cad_print_plan_apply(id, entries)` — one entry per final artifact (mirrors included). Host fills bodyHash + posed bounds and checks bed contact + build volume.
 - `cad_verify(id, kind)` — requirements / printability / interfaces against the locked contract on exact built STEP bodies. Writes disk evidence bound to buildRevision + contractHash.
 - `cad_design_read(id?)` — omit id to list designs; with id: contract, source hashes, artifacts + body hashes, print plan, latest evidence, renders, viewer URL.

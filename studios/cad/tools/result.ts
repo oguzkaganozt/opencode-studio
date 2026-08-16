@@ -362,7 +362,7 @@ export function designCreateResult(input: {
     warnings: [],
     next: [
       "Write shared dimensions into params.py if you did not pass params",
-      "Model each part with cad_source_apply (params.py / parts/*.py)",
+      "Model each part with cad_ir_apply (default). cad_source_apply is the hand escape.",
       "cad_design_build when sources are ready",
       "cad_print_plan_apply then cad_verify requirements/printability/interfaces",
       "cad_design_qc_report",
@@ -445,6 +445,18 @@ function extractBuildFailureMessage(stderr: string, stdout: string): string {
     .filter(Boolean)
   const hit = lines.find((line) => /error|exception|traceback|failed|invalid/i.test(line) && line.length < 300) ?? lines[lines.length - 1]
   return hit ?? ""
+}
+
+export function irApplyResult(input: { id: string; part: string; path: string; hash: string }): CadToolEnvelope {
+  return {
+    ok: true,
+    tool: "cad_ir_apply",
+    summary: `Wrote ${input.path}`,
+    status: "pass",
+    data: { id: input.id, part: input.part, path: input.path, hash: input.hash },
+    warnings: ["Build compiles IR into parts/*.py. Rebuild and re-verify before citing QC."],
+    next: ["cad_design_build", "cad_verify requirements / printability / interfaces", "cad_design_qc_report"],
+  }
 }
 
 export function sourceApplyResult(input: { id: string; path: string; hash: string }): CadToolEnvelope {

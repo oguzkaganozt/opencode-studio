@@ -8,7 +8,7 @@ import { isInside } from "../../../src/core/paths"
 import type { AcceptanceContract } from "./acceptance"
 import { writeAcceptance } from "./acceptance"
 import { resolveDesignDirectory, type StudioLayout } from "./library"
-import { readArtifactManifest, readDesignManifest, scaffoldDesignManifest } from "./manifest"
+import { emptyIrDocument, readArtifactManifest, readDesignManifest, scaffoldDesignManifest } from "./manifest"
 
 /** Timed budget for a product build child. Host call ceiling is 210s. */
 const CAD_BUILD_TIMEOUT_MS = 180_000
@@ -99,7 +99,10 @@ export function createCadBuildRunner(cwd: string): CadBuildRunner {
         killGroup("SIGTERM")
         setTimeout(() => killGroup("SIGKILL"), CAD_BUILD_KILL_GRACE_MS).unref()
       }
-      exitCode = await Promise.race([exited.catch(() => -1), new Promise<number>((resolve) => setTimeout(() => resolve(-1), CAD_BUILD_KILL_GRACE_MS))])
+      exitCode = await Promise.race([
+        exited.catch(() => -1),
+        new Promise<number>((resolve) => setTimeout(() => resolve(-1), CAD_BUILD_KILL_GRACE_MS)),
+      ])
       return {
         ok: false,
         exitCode: signal?.aborted ? 130 : 1,
@@ -163,9 +166,12 @@ export async function buildDesign(
   }
   // Artifact manifest inputs must match the allowlisted design inputs.
   const expectedInputs = new Set<string>(
-    ["design.json", design.params ? (design.params as string) : undefined, ...design.parts.map((part) => part.source)].filter(
-      (name): name is string => Boolean(name),
-    ),
+    [
+      "design.json",
+      design.params ? (design.params as string) : undefined,
+      ...design.parts.map((part) => part.source),
+      ...design.parts.map((part) => part.ir).filter((name): name is string => Boolean(name)),
+    ].filter((name): name is string => Boolean(name)),
   )
   const actualInputs = new Set(Object.keys(artifact.build.inputs))
   for (const name of expectedInputs) {
@@ -216,6 +222,7 @@ export async function scaffoldDesign(
   const temporary = path.join(layout.root, `.${id}.${randomUUID()}.tmp`)
   try {
     await mkdir(path.join(temporary, "parts"), { recursive: true })
+    await mkdir(path.join(temporary, "ir"), { recursive: true })
     await mkdir(path.join(temporary, "renders"), { recursive: true })
     // Acceptance locks first; sources scaffold only after that commit.
     await writeAcceptance(temporary, acceptance)
@@ -237,6 +244,11 @@ export async function scaffoldDesign(
         `"""Parametric source for ${part.id}."""\n\ndef build():\n    raise NotImplementedError("Model ${part.id} before cad_design_build")\n`,
         { encoding: "utf8", flag: "wx" },
       )
+      if (part.ir) {
+        const irPath = path.join(temporary, part.ir)
+        await mkdir(path.dirname(irPath), { recursive: true })
+        await writeFile(irPath, `${JSON.stringify(emptyIrDocument(part.id), null, 2)}\n`, { encoding: "utf8", flag: "wx" })
+      }
     }
     await rename(temporary, designDir)
     return { designDir, manifest, acceptanceFile }

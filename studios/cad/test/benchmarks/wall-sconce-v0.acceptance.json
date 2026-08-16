@@ -4,11 +4,7 @@
   "authority": "harness",
   "manufacturing": {
     "process": "fdm",
-    "buildVolumeMm": [
-      220,
-      220,
-      350
-    ],
+    "buildVolumeMm": [220, 220, 350],
     "nozzleMm": 0.4,
     "minimumWallMm": 1.2,
     "bedToleranceMm": 0.1,
@@ -23,6 +19,16 @@
       "axis": "Z",
       "targetMm": 300,
       "toleranceMm": 40
+    },
+    {
+      "id": "diffuser-mid",
+      "kind": "station",
+      "artifactId": "diffuser",
+      "axis": "Z",
+      "tMode": "from_min",
+      "t": 150,
+      "target": { "widthMm": 80, "depthMm": 30 },
+      "toleranceMm": 20
     }
   ],
   "interfaces": [

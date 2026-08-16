@@ -650,6 +650,12 @@ def compare(
 
 
 @mcp.tool(annotations=_READ_ONLY)
+def wall_at(object_name: str = "", at_mm: str = "", direction: str = "") -> str:
+    """Measure wall thickness on the infinite line through at_mm along direction. Host acceptance probe."""
+    return _resolve_session().wall_at(object_name, at_mm, direction)
+
+
+@mcp.tool(annotations=_READ_ONLY)
 def find_holes(object_name: str = "") -> str:
     """Recognise drilled holes on a session object (defaults to current shape). Coaxial internal cylinders are grouped into one record per hole: drill + counterbore + spotface stacks, keyway-split bores, and bores interrupted by crossing holes all count once. Returns JSON: {count, holes: [{axis (drilling direction, unit vector), location (opening point), diameter, depth (bore top to deep end; drill-point cone excluded), bottom: through|flat|drill_point|unknown, cbore: {diameter, depth}|null, spotface: {diameter, depth}|null}]}. Countersinks read as openings (not steps); threads and non-cylindrical features are not recognised."""
     return _resolve_session().find_holes(object_name)

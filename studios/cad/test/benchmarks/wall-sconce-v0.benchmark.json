@@ -19,6 +19,7 @@
       "qty": 1
     }
   ],
-  "pinnedContractHash": "7025f44afa18bb8f02a206d5220acb28c79b55351d9112b2495ee2b5b506b82a",
-  "wallTimeMs": 3600000
+  "pinnedContractHash": "f2e3a997f0a76e5a4476bab7647fbec561f90df5e52ffd83008c03943183c2fd",
+  "wallTimeMs": 3600000,
+  "requireIrParts": ["diffuser"]
 }

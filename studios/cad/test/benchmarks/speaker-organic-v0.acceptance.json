@@ -4,11 +4,7 @@
   "authority": "harness",
   "manufacturing": {
     "process": "fdm",
-    "buildVolumeMm": [
-      300,
-      300,
-      350
-    ],
+    "buildVolumeMm": [300, 300, 350],
     "nozzleMm": 0.4,
     "minimumWallMm": 1.2,
     "bedToleranceMm": 0.1,
@@ -32,6 +28,36 @@
       "axis": "Y",
       "targetMm": 265,
       "toleranceMm": 30
+    },
+    {
+      "id": "shell-s0",
+      "kind": "station",
+      "artifactId": "shell_l",
+      "axis": "Y",
+      "tMode": "from_min",
+      "t": 40,
+      "target": { "widthMm": 160, "depthMm": 80 },
+      "toleranceMm": 50
+    },
+    {
+      "id": "shell-s1",
+      "kind": "station",
+      "artifactId": "shell_l",
+      "axis": "Y",
+      "tMode": "from_min",
+      "t": 130,
+      "target": { "widthMm": 170, "depthMm": 90 },
+      "toleranceMm": 50
+    },
+    {
+      "id": "shell-s2",
+      "kind": "station",
+      "artifactId": "shell_l",
+      "axis": "Y",
+      "tMode": "from_min",
+      "t": 220,
+      "target": { "widthMm": 150, "depthMm": 70 },
+      "toleranceMm": 50
     }
   ],
   "interfaces": [

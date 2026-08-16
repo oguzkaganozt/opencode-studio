@@ -216,7 +216,8 @@ describe("design_build integration (real subprocess)", () => {
         entries: [
           { artifactId: "body", rotateDeg: [0, 0, 0], translateMm: [0, 0, 15] },
           { artifactId: "lid", rotateDeg: [0, 0, 0], translateMm: [0, 0, -15.2] },
-        ],      })
+        ],
+      })
       await writePrintPlan(designDir, plan)
 
       const { runCadVerify } = await import("../host/verify")
