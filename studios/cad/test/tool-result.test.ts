@@ -213,6 +213,7 @@ describe("design lifecycle envelopes", () => {
     const created = designCreateResult({
       id: "box",
       designDir: "/tmp/box",
+      acceptanceFile: "/tmp/box/acceptance.json",
       parts: [{ id: "body", source: "parts/body.py" }],
     })
     expect(created.ok).toBe(true)
@@ -223,7 +224,7 @@ describe("design lifecycle envelopes", () => {
       revision: "abc",
       manifestPath: "/tmp/box/manifest.json",
       designDir: "/tmp/box",
-      parts: [{ id: "body", stepPath: "/tmp/box/step/body.step", metrics: { solid_count: 1 } }],
+      parts: [{ id: "body", bodyHash: null, stepPath: "/tmp/box/step/body.step", metrics: { solid_count: 1 } }],
     })
     expect(built.ok).toBe(true)
     expect(built.warnings[0]).toMatch(/not run/i)

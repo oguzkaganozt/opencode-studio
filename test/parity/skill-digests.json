@@ -1,4 +1,12 @@
 {
+  "studio-cad": {
+    "path": "studios/cad/skill/SKILL.md",
+    "sha256": "270532fb1d3d0fb3b3a326ff8bd9f24c12411cf7c8407ba44a7adf9971239a24"
+  },
+  "studio-cad-part": {
+    "path": "studios/cad/skills/studio-cad-part/SKILL.md",
+    "sha256": "961b51ed1e7f57c618130ed8b25ca0c3aa09f1fcd88b350d7797e98e63f4f22e"
+  },
   "studio-concept": {
     "path": "studios/concept/skill/SKILL.md",
     "sha256": "a2285e3d2a21e927215fbcfcfa713754242d3eff76e029f94df8dfca62aa9edd"
@@ -7,20 +15,12 @@
     "path": "studios/concept/skills/studio-concept-review/SKILL.md",
     "sha256": "9a45599e4f49cdc43d61025d06366c4a9792e431ea935307751a1f8367a460d6"
   },
-  "studio-cad": {
-    "path": "studios/cad/skill/SKILL.md",
-    "sha256": "aebaf72be8dccfcd747ce62885ff7fc76cfed53dcb6385bf4b4a37cad105a424"
-  },
-  "studio-cad-part": {
-    "path": "studios/cad/skills/studio-cad-part/SKILL.md",
-    "sha256": "c53a66236f9601a74cd14011a0e878d4b11c537490b2db2e0ffe7930ae206a2c"
-  },
-  "studio-pcb": {
-    "path": "studios/pcb/skill/SKILL.md",
-      "sha256": "53b7ebcc08d32078551a69a75b15033a9f340855a13b409dca322e3167c1b023"
-  },
   "studio-fw": {
     "path": "studios/fw/skill/SKILL.md",
     "sha256": "9b374f965a634eae68bb4b6ceaa234912352ef536d80716fbb966c5213e8bf27"
+  },
+  "studio-pcb": {
+    "path": "studios/pcb/skill/SKILL.md",
+    "sha256": "53b7ebcc08d32078551a69a75b15033a9f340855a13b409dca322e3167c1b023"
   }
 }

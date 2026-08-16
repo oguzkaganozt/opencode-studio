@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import tempfile
 import unittest
@@ -7,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import trimesh
 from build123d import Box
-from cad_build import build_design, export_part
+from cad_build import build_design, build_input_hashes, export_part
 
 
 class BuildDesignTest(unittest.TestCase):
@@ -88,6 +89,42 @@ class BuildDesignTest(unittest.TestCase):
             mirror_max = built["parts"][1]["metrics"]["bounds_mm"]["max"][0]
             self.assertGreater(body_min, 0)
             self.assertLess(mirror_max, 0)
+            for part in built["parts"]:
+                self.assertRegex(part["body_hash"], r"^[a-f0-9]{64}$")
+                step_bytes = (design / "step" / f"{part['id']}.step").read_bytes()
+                self.assertEqual(part["body_hash"], hashlib.sha256(step_bytes).hexdigest())
+
+    def test_schema_two_manifest_builds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            design = self._make_design(
+                Path(tmp),
+                "from build123d import Box\n"
+                "from params import SIZE\n\n"
+                "def build():\n"
+                "    return Box(SIZE, SIZE, SIZE)\n",
+            )
+            manifest = json.loads((design / "design.json").read_text(encoding="utf-8"))
+            manifest["schema"] = 2
+            manifest["params"] = "params.py"
+            manifest["acceptance"] = "acceptance.json"
+            (design / "design.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (design / "acceptance.json").write_text("{}", encoding="utf-8")
+            built = json.loads(build_design(str(design)).read_text(encoding="utf-8"))
+            self.assertEqual(built["id"], "test-design")
+            self.assertEqual(built["parts"][0]["id"], "body")
+
+    def test_input_hashes_only_allowlisted_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            design = self._make_design(
+                Path(tmp),
+                "from build123d import Box\n\ndef build():\n    return Box(2, 2, 2)\n",
+            )
+            (design / "stray.py").write_text("print('not a build input')\n", encoding="utf-8")
+            manifest = json.loads((design / "design.json").read_text(encoding="utf-8"))
+            hashes = build_input_hashes(design, manifest)
+            self.assertEqual(set(hashes), {"design.json", "params.py", "parts/body.py"})
+            (design / "stray.py").write_text("print('changed')\n", encoding="utf-8")
+            self.assertEqual(build_input_hashes(design, manifest), hashes)
 
     def test_failed_build_preserves_previous_output(self):
         with tempfile.TemporaryDirectory() as tmp:

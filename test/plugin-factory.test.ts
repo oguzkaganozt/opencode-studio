@@ -12,6 +12,23 @@ afterEach(async () => {
   for (const dir of temps.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
+const acceptanceArg = () =>
+  JSON.stringify({
+    schema: 1,
+    state: "locked",
+    authority: "user",
+    manufacturing: {
+      process: "fdm",
+      buildVolumeMm: [220, 220, 250],
+      nozzleMm: 0.4,
+      minimumWallMm: 1.2,
+      bedToleranceMm: 0.1,
+      defaultClearanceMm: 0.2,
+    },
+    dimensions: [],
+    interfaces: [],
+  })
+
 describe("Studio plugin roots", () => {
   test("all Studios use fixed Studio Home instead of the OpenCode project", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "osc-plugin-root-"))
@@ -31,7 +48,10 @@ describe("Studio plugin roots", () => {
     const hooks = await plugin({ directory: project } as any, {})
     const tools = hooks.tool as any
 
-    await tools.cad_design_create.execute({ id: "home-design", parts: [{ id: "body", qty: 1 }] }, { ask: async () => {} })
+    await tools.cad_design_create.execute(
+      { id: "home-design", parts: [{ id: "body", qty: 1 }], acceptance: acceptanceArg() },
+      { ask: async () => {} },
+    )
     expect(await Bun.file(path.join(studioRoot, "studio", "designs", "home-design", "design.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(project, "designs", "home-design", "design.json")).exists()).toBe(false)
     expect(await Bun.file(path.join(studioRoot, "designs", "home-design", "design.json")).exists()).toBe(false)
@@ -63,7 +83,10 @@ describe("Studio plugin roots", () => {
     const hooks = await plugin({ directory: project } as any, {})
     const tools = hooks.tool as any
 
-    await tools.cad_design_create.execute({ id: "legacy-design", parts: [{ id: "body", qty: 1 }] }, { ask: async () => {} })
+    await tools.cad_design_create.execute(
+      { id: "legacy-design", parts: [{ id: "body", qty: 1 }], acceptance: acceptanceArg() },
+      { ask: async () => {} },
+    )
     expect(await Bun.file(path.join(cadRoot, "legacy-design", "design.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(studioRoot, "studio", "designs", "legacy-design", "design.json")).exists()).toBe(false)
     expect(JSON.parse(await tools.pcb_workspace_list.execute({}, {})).workspaceRoot).toBe(pcbRoot)

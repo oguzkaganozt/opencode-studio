@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { expectedArtifactPartIds, ID_PATTERN, validateArtifactManifest, validateDesignManifest } from "../host/manifest"
+import {
+  DESIGN_SCHEMA_2,
+  expectedArtifactPartIds,
+  ID_PATTERN,
+  scaffoldDesignManifest,
+  validateArtifactManifest,
+  validateDesignManifest,
+} from "../host/manifest"
 
 describe("manifest validation smoke", () => {
   test("accepts a valid design and artifact manifest", () => {
@@ -53,6 +60,46 @@ describe("manifest validation smoke", () => {
     expect(artifact.parts[0]?.files.topo).toBe("topo/body.json")
   })
 
+  test("validates schema 2 manifests", () => {
+    const schema2 = validateDesignManifest({
+      schema: 2,
+      id: "box-lid-demo",
+      params: "params.py",
+      acceptance: "acceptance.json",
+      parts: [{ id: "body", source: "parts/body.py", qty: 2 }],
+    })
+    expect(schema2.schema).toBe(2)
+    if (schema2.schema === 2) expect(schema2.acceptance).toBe("acceptance.json")
+    expect(() =>
+      validateDesignManifest({
+        schema: 2,
+        id: "bad",
+        params: "other.py",
+        acceptance: "acceptance.json",
+        parts: [{ id: "b", source: "parts/b.py" }],
+      }),
+    ).toThrow(/params/)
+    expect(() =>
+      validateDesignManifest({
+        schema: 2,
+        id: "bad",
+        params: "params.py",
+        acceptance: "other.json",
+        parts: [{ id: "b", source: "parts/b.py" }],
+      }),
+    ).toThrow(/acceptance/)
+  })
+
+  test("scaffold produces schema 2 with acceptance reference", () => {
+    const manifest = scaffoldDesignManifest("box", [
+      { id: "body", qty: 1 },
+      { id: "lid", qty: 1 },
+    ])
+    expect(manifest.schema).toBe(DESIGN_SCHEMA_2)
+    expect(manifest.params).toBe("params.py")
+    expect(manifest.acceptance).toBe("acceptance.json")
+  })
+
   test("rejects unsafe artifact paths and invalid design ids", () => {
     expect(() =>
       validateDesignManifest({
@@ -84,5 +131,23 @@ describe("manifest validation smoke", () => {
         },
       }),
     ).toThrow()
+  })
+
+  test("rejects a bad body_hash", () => {
+    expect(() =>
+      validateArtifactManifest({
+        schema: 1,
+        id: "box",
+        parts: [
+          {
+            id: "body",
+            files: { step: "step/body.step", stl: "stl/body.stl", glb: "glb/body.glb" },
+            body_hash: "not-a-hash",
+            metrics: { volume_mm3: 1, size_mm: { x: 1, y: 1, z: 1 }, solid_count: 1 },
+          },
+        ],
+        build: { engine: "forge-cad/1", inputs: { "design.json": "a".repeat(64) } },
+      }),
+    ).toThrow(/body_hash/)
   })
 })

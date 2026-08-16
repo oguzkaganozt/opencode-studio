@@ -1,5 +1,4 @@
 import { tool } from "@opencode-ai/plugin"
-import { axisForSessionTool, qcSessionKey, recordQcEvidence, subjectsFromArgs } from "../host/qc-evidence"
 import catalog from "./catalog.json" with { type: "json" }
 import { CAD_SESSION_ALLOWLIST, cadSessionToolName } from "./names"
 import { CAD_SESSION_STRUCTURED_TOOLS, formatCadToolResult, structureCadSessionResult } from "./result"
@@ -37,7 +36,7 @@ const CAD_SESSION_TOOL_GUIDANCE: Record<string, string> = {
   cad_analyze_printability:
     "Returns structured JSON {ok, status, summary, data, next}. status is fail when any error-severity finding exists. The current world orientation is treated as the print orientation. Reorient the final source-built shape into its actual bed pose before analysis, and rerun this check after every geometry change.",
   cad_analyze_form:
-    "Returns structured JSON {ok, status, summary, data, next}. Slices the solid into stations (width/depth/center). status=pass only with a numeric contract within tol. Records form QC evidence. Prismatic designs should skip this and claim form pass with finding 'not applicable'.",
+    "Returns structured JSON {ok, status, summary, data, next}. Slices the solid into stations (width/depth/center). status=pass only with a numeric contract within tol. Diagnostic only in v1 — form is not a QC axis; the locked contract dimensions are. Prismatic designs should skip it.",
 }
 
 function schemaToZod(schema: JsonSchema | undefined): Field {
@@ -142,17 +141,6 @@ export function createCadSessionTools(options: { engineProjectDir: string; cwd: 
             isError: result.isError,
             args: cleaned,
           })
-          const axis = axisForSessionTool(entry.name, cleaned)
-          if (axis) {
-            recordQcEvidence(qcSessionKey(options.engineProjectDir, options.cwd), {
-              axis,
-              tool: toolName,
-              ok: envelope.ok,
-              status: envelope.status,
-              summary: envelope.summary,
-              subjects: subjectsFromArgs(entry.name, cleaned),
-            })
-          }
           return {
             title: envelope.ok ? toolName : `${toolName} failed`,
             output: formatCadToolResult(envelope),
@@ -161,7 +149,6 @@ export function createCadSessionTools(options: { engineProjectDir: string; cwd: 
               ok: envelope.ok,
               status: envelope.status,
               summary: envelope.summary,
-              qcAxis: axis ?? undefined,
             },
             attachments: attachments.length > 0 ? attachments : undefined,
           }

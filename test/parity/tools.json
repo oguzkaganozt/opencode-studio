@@ -1,102 +1,243 @@
 {
+  "count": 47,
   "tools": {
+    "cad_analyze_form": {
+      "args": {
+        "axis": "string",
+        "contract": "string",
+        "num_stations": "integer",
+        "object_name": "string",
+        "stations": "string",
+        "t_mode": "string",
+        "tol_frac": "number",
+        "tol_mm": "number"
+      },
+      "studio": "cad"
+    },
+    "cad_analyze_printability": {
+      "args": {
+        "bed_tol": "number",
+        "build_volume": "string",
+        "min_feature": "number",
+        "min_perimeters": "integer",
+        "nozzle": "number",
+        "object_name": "string",
+        "support_angle": "number"
+      },
+      "studio": "cad"
+    },
+    "cad_compare": {
+      "args": {
+        "a": "string",
+        "axis": "string",
+        "b": "string",
+        "format": "string",
+        "kind": "string",
+        "mode": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_design_build": {
+      "args": {
+        "id": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_design_create": {
+      "args": {
+        "acceptance": "string",
+        "id": "string",
+        "params": "string",
+        "parts": "array"
+      },
+      "studio": "cad"
+    },
+    "cad_design_qc_report": {
+      "args": {
+        "id": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_design_read": {
+      "args": {
+        "id": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_execute": {
+      "args": {
+        "code": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_measure": {
+      "args": {
+        "density": "number",
+        "material": "string",
+        "object_name": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_print_plan_apply": {
+      "args": {
+        "entries": "array",
+        "id": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_render_view": {
+      "args": {
+        "azimuth": "number",
+        "clip_at": "unknown",
+        "clip_plane": "string",
+        "colors": "unknown",
+        "direction": "string",
+        "elevation": "number",
+        "format": "string",
+        "highlights": "unknown",
+        "label_objects": "boolean",
+        "mode": "string",
+        "objects": "string",
+        "quality": "string",
+        "save_to": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_reset": {
+      "studio": "cad"
+    },
+    "cad_source_apply": {
+      "args": {
+        "base_hash": "string",
+        "contents": "string",
+        "id": "string",
+        "part": "string",
+        "path": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_validate": {
+      "args": {
+        "object_name": "string"
+      },
+      "studio": "cad"
+    },
+    "cad_verify": {
+      "args": {
+        "id": "string",
+        "kind": "string"
+      },
+      "studio": "cad"
+    },
     "concept_create": {
-      "studio": "concept",
       "args": {
-        "id": "string",
-        "from": "string"
-      }
-    },
-    "concept_update": {
-      "studio": "concept",
-      "args": {
-        "id": "string",
-        "section": "string",
-        "data": "object"
-      }
-    },
-    "concept_moodboard": {
-      "studio": "concept",
-      "args": {
-        "id": "string",
-        "direction_id": "string"
-      }
-    },
-    "concept_review": {
-      "studio": "concept",
-      "args": {
-        "id": "string",
-        "findings": "array"
-      }
+        "from": "string",
+        "id": "string"
+      },
+      "studio": "concept"
     },
     "concept_freeze": {
-      "studio": "concept",
       "args": {
         "id": "string",
         "waive": "array"
-      }
+      },
+      "studio": "concept"
     },
-    "cad_design_create": {
-      "studio": "cad",
+    "concept_moodboard": {
+      "args": {
+        "direction_id": "string",
+        "id": "string"
+      },
+      "studio": "concept"
+    },
+    "concept_review": {
+      "args": {
+        "findings": "array",
+        "id": "string"
+      },
+      "studio": "concept"
+    },
+    "concept_update": {
+      "args": {
+        "data": "object",
+        "id": "string",
+        "section": "string"
+      },
+      "studio": "concept"
+    },
+    "fw_build": {
+      "args": {
+        "projectId": "string"
+      },
+      "studio": "fw"
+    },
+    "fw_caps": {
+      "args": {
+        "chip": "string"
+      },
+      "studio": "fw"
+    },
+    "fw_project_create": {
+      "args": {
+        "chip": "string",
+        "id": "string"
+      },
+      "studio": "fw"
+    },
+    "fw_project_read": {
+      "args": {
+        "projectId": "string"
+      },
+      "studio": "fw"
+    },
+    "fw_sim_log": {
+      "args": {
+        "maxBytes": "number",
+        "projectId": "string"
+      },
+      "studio": "fw"
+    },
+    "fw_sim_run": {
+      "args": {
+        "expect": "string",
+        "fail": "string",
+        "projectId": "string",
+        "timeoutMs": "number"
+      },
+      "studio": "fw"
+    },
+    "fw_spec": {
       "args": {
         "id": "string",
-        "parts": "array",
-        "params": "string",
-        "brief": "string"
-      }
+        "summary": "string"
+      },
+      "studio": "fw"
     },
-    "cad_design_read": {
-      "studio": "cad",
+    "fw_workspace_list": {
+      "args": {},
+      "studio": "fw"
+    },
+    "image_generate": {
       "args": {
-        "id": "string"
-      }
+        "images": "array",
+        "outputPath": "string",
+        "prompt": "string"
+      },
+      "studio": "platform"
     },
-    "cad_design_build": {
-      "studio": "cad",
-      "args": {
-        "id": "string"
-      }
-    },
-    "cad_design_qc_report": {
-      "studio": "cad",
-      "args": {
-        "id": "string",
-        "printability": "object",
-        "fit": "object",
-        "form": "object"
-      }
-    },
-    "cad_design_join": {
-      "studio": "cad",
-      "args": {
-        "id": "string"
-      }
-    },
-    "pcb_workspace_list": {
+    "pcb_assembly_export": {
       "studio": "pcb"
     },
-    "pcb_project_create": {
-      "studio": "pcb"
-    },
-    "pcb_catalog_list": {
+    "pcb_bom_generate": {
       "studio": "pcb"
     },
     "pcb_catalog_get": {
       "studio": "pcb"
     },
+    "pcb_catalog_list": {
+      "studio": "pcb"
+    },
     "pcb_catalog_upsert": {
-      "studio": "pcb"
-    },
-    "pcb_tsx_snippet": {
-      "studio": "pcb"
-    },
-    "pcb_tscircuit_reference": {
-      "studio": "pcb"
-    },
-    "pcb_component_search": {
-      "studio": "pcb"
-    },
-    "pcb_component_add": {
       "studio": "pcb"
     },
     "pcb_circuit_build": {
@@ -108,165 +249,39 @@
     "pcb_circuit_export": {
       "studio": "pcb"
     },
-    "pcb_bom_generate": {
-      "studio": "pcb"
-    },
-    "pcb_assembly_export": {
-      "studio": "pcb"
-    },
     "pcb_circuit_read": {
       "studio": "pcb"
     },
-    "pcb_schematic_svg": {
+    "pcb_component_add": {
+      "studio": "pcb"
+    },
+    "pcb_component_search": {
       "studio": "pcb"
     },
     "pcb_pcb_svg": {
       "studio": "pcb"
     },
-    "cad_execute": {
-      "studio": "cad",
-      "args": {
-        "code": "string"
-      }
+    "pcb_project_create": {
+      "studio": "pcb"
     },
-    "cad_render_view": {
-      "studio": "cad",
-      "args": {
-        "direction": "string",
-        "objects": "string",
-        "quality": "string",
-        "clip_plane": "string",
-        "clip_at": "unknown",
-        "azimuth": "number",
-        "elevation": "number",
-        "save_to": "string",
-        "format": "string",
-        "label_objects": "boolean",
-        "highlights": "unknown",
-        "colors": "unknown",
-        "mode": "string"
-      }
-    },
-    "cad_measure": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string",
-        "density": "number",
-        "material": "string"
-      }
-    },
-    "cad_validate": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string"
-      }
-    },
-    "cad_analyze_printability": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string",
-        "support_angle": "number",
-        "nozzle": "number",
-        "min_perimeters": "integer",
-        "build_volume": "string",
-        "bed_tol": "number",
-        "min_feature": "number"
-      }
-    },
-    "cad_analyze_form": {
-      "studio": "cad",
-      "args": {
-        "object_name": "string",
-        "axis": "string",
-        "num_stations": "integer",
-        "stations": "string",
-        "contract": "string",
-        "tol_mm": "number",
-        "tol_frac": "number",
-        "t_mode": "string"
-      }
-    },
-    "cad_reset": {
-      "studio": "cad"
-    },
-    "cad_compare": {
-      "studio": "cad",
-      "args": {
-        "a": "string",
-        "b": "string",
-        "kind": "string",
-        "axis": "string",
-        "mode": "string",
-        "format": "string"
-      }
+    "pcb_schematic_svg": {
+      "studio": "pcb"
     },
     "pcb_spec": {
-      "studio": "pcb",
       "args": {
         "id": "string",
         "summary": "string"
-      }
+      },
+      "studio": "pcb"
     },
-    "fw_spec": {
-      "studio": "fw",
-      "args": {
-        "id": "string",
-        "summary": "string"
-      }
+    "pcb_tscircuit_reference": {
+      "studio": "pcb"
     },
-    "fw_workspace_list": {
-      "studio": "fw",
-      "args": {}
+    "pcb_tsx_snippet": {
+      "studio": "pcb"
     },
-    "fw_project_create": {
-      "studio": "fw",
-      "args": {
-        "id": "string",
-        "chip": "string"
-      }
-    },
-    "fw_project_read": {
-      "studio": "fw",
-      "args": {
-        "projectId": "string"
-      }
-    },
-    "fw_caps": {
-      "studio": "fw",
-      "args": {
-        "chip": "string"
-      }
-    },
-    "fw_build": {
-      "studio": "fw",
-      "args": {
-        "projectId": "string"
-      }
-    },
-    "fw_sim_run": {
-      "studio": "fw",
-      "args": {
-        "projectId": "string",
-        "expect": "string",
-        "fail": "string",
-        "timeoutMs": "number"
-      }
-    },
-    "fw_sim_log": {
-      "studio": "fw",
-      "args": {
-        "projectId": "string",
-        "maxBytes": "number"
-      }
-    },
-    "image_generate": {
-      "studio": "platform",
-      "args": {
-        "prompt": "string",
-        "outputPath": "string",
-        "images": "array"
-      }
+    "pcb_workspace_list": {
+      "studio": "pcb"
     }
-  },
-  "count": 45
+  }
 }

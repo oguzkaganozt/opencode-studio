@@ -1,22 +1,22 @@
 {
+  "cad": {
+    "path": "studios/cad/agent/cad.md",
+    "sha256": "3a647abdf1fe308a1289dee388c709d0829a135acff8a5cffd75dd8489cc125d"
+  },
+  "cad-part": {
+    "path": "studios/cad/agent/cad-part.md",
+    "sha256": "085f449c296aacb0e98a7b71c9786ace3258b0700e84013b084b2ff46f59f040"
+  },
   "concept": {
     "path": "studios/concept/agent/concept.md",
     "sha256": "8f7fbcacbf54a52a6b19faef193ae46abf2e89d4154e59e4185aa43fc6ae3adf"
   },
-  "cad": {
-    "path": "studios/cad/agent/cad.md",
-    "sha256": "159750e8cccd7fd7076aa75abca49f1e3ad8dee5cfc2f9bc82fc2999cd24841f"
-  },
-  "cad-part": {
-    "path": "studios/cad/agent/cad-part.md",
-    "sha256": "8b4cb18ee06f96fb8be437b6186d595b23f101a2b05464385ffe2d974cbfb1bc"
+  "firmware": {
+    "path": "studios/fw/agent/firmware.md",
+    "sha256": "78781f3dee59fdd6ad2be809632754b5158ab1e0e9dafc5791dd49f19d0ec655"
   },
   "pcb": {
     "path": "studios/pcb/agent/pcb.md",
     "sha256": "88ac7564fa2015fd1a6639ec6923d4e27416520565cf9b7acb2243f9c6cc16d4"
-  },
-  "firmware": {
-    "path": "studios/fw/agent/firmware.md",
-    "sha256": "78781f3dee59fdd6ad2be809632754b5158ab1e0e9dafc5791dd49f19d0ec655"
   }
 }

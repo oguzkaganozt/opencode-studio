@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "expectedDesignId": "speaker-organic-v0",
+  "expectedParts": [
+    {
+      "id": "shell_l",
+      "qty": 1
+    },
+    {
+      "id": "shell_r",
+      "qty": 1
+    },
+    {
+      "id": "baffle",
+      "qty": 1
+    },
+    {
+      "id": "foot_rail",
+      "qty": 1
+    },
+    {
+      "id": "cone",
+      "qty": 2
+    }
+  ],
+  "pinnedContractHash": "c833f2d431327e6ba37a2d0e006a5dfc2c0ee66a1ba1ae5df02a2272930b3000",
+  "wallTimeMs": 5400000
+}

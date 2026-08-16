@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "state": "locked",
+  "authority": "harness",
+  "manufacturing": {
+    "process": "fdm",
+    "buildVolumeMm": [
+      300,
+      300,
+      350
+    ],
+    "nozzleMm": 0.4,
+    "minimumWallMm": 1.2,
+    "bedToleranceMm": 0.1,
+    "defaultClearanceMm": 0.2
+  },
+  "dimensions": [
+    {
+      "id": "shell-x",
+      "kind": "bbox",
+      "artifactId": "shell_l",
+      "measure": "size",
+      "axis": "X",
+      "targetMm": 175,
+      "toleranceMm": 25
+    },
+    {
+      "id": "shell-y",
+      "kind": "bbox",
+      "artifactId": "shell_l",
+      "measure": "size",
+      "axis": "Y",
+      "targetMm": 265,
+      "toleranceMm": 30
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "shell-baffle",
+      "a": "shell_l",
+      "b": "baffle",
+      "fit": "clearance",
+      "targetMm": 0.2,
+      "toleranceMm": 0.5
+    },
+    {
+      "id": "shell-rail",
+      "a": "shell_l",
+      "b": "foot_rail",
+      "fit": "clearance",
+      "targetMm": 0.2,
+      "toleranceMm": 0.5
+    }
+  ]
+}

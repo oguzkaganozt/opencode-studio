@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "expectedDesignId": "project-box-v0",
+  "expectedParts": [{ "id": "body", "qty": 1 }, { "id": "lid", "qty": 1 }],
+  "pinnedContractHash": "528c011c8f41bf64a0f9513bcd3b2c1821873febc7aff13edda1d81a86b5af9d",
+  "wallTimeMs": 2700000
+}

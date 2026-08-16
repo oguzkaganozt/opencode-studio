@@ -34,7 +34,7 @@ export async function resolveSpecProject(roots: SpecRoots, studio: string, id: s
       id: entry.id,
       name: entry.id,
       directory: entry.directory,
-      sourceFiles: await listSourceFiles(entry.directory, ["design.json", "params.py", "parts/"]),
+      sourceFiles: await listSourceFiles(entry.directory, ["design.json", "params.py", "acceptance.json", "parts/"]),
     }
   }
   const project = await resolveProject(roots.pcb, id)

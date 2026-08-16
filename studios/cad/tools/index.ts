@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises"
+import { rename, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { Plugin, PluginOptions } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin"
@@ -6,20 +6,31 @@ import manifest from "../../../package.json" with { type: "json" }
 import { formatToolJson } from "../../../src/core/format-tool-json"
 import type { SpecRoots } from "../../../src/core/spec"
 import { specFilePath } from "../../../src/core/spec"
+import { type AcceptanceContract, normalizeAcceptanceContract, readAcceptance } from "../host/acceptance"
 import { buildDesign, type CadBuildRunner, createCadBuildRunner, scaffoldDesign } from "../host/build"
-import { type CadPartDispatcher, createClientDispatcher, readPartSourceStatus, spawnCadParts } from "../host/dispatch"
+import { currentEvidence, latestByKey } from "../host/evidence"
 import { findDesign, initializeStudio, listRenders, mapArtifactPartFiles, scanDesigns } from "../host/library"
-import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest } from "../host/manifest"
-import { clearQcEvidenceForDesign, clearQcSession, qcEvidenceKey, qcSessionKey, setActiveQcDesign } from "../host/qc-evidence"
-import { buildDesignQcReport, type QcAxisStatus } from "../host/qc-report"
+import { artifactRevision, ID_PATTERN, readArtifactManifest, readDesignManifest, sha256File } from "../host/manifest"
+import { buildPrintPlan, readPrintPlan } from "../host/print-plan"
+import { buildDesignQcReport } from "../host/qc-report"
+import { type CadVerifyKind, runCadVerify } from "../host/verify"
 import { publishCadSpec } from "../spec"
-import { designBuildFailureResult, designBuildSuccessResult, designCreateResult, formatCadToolResult } from "./result"
+import {
+  designBuildFailureResult,
+  designBuildSuccessResult,
+  designCreateResult,
+  formatCadToolResult,
+  printPlanApplyResult,
+  sourceApplyResult,
+  verifyResult,
+} from "./result"
 import { closeAllCadRuntimeSessions, closeCadRuntimeSession, getCadRuntimeSession } from "./session"
 import { createCadSessionTools } from "./session-tools"
 
 const PACKAGE_NAME = `${manifest.name}@${manifest.version}`
 const MAX_TOOL_OUTPUT_BYTES = 60_000
 const COMPANION_HEALTH_TIMEOUT_MS = 1_000
+const MAX_DESIGN_QTIES = 8
 
 type Options = {
   studioRoot: string
@@ -81,7 +92,6 @@ function options(input: PluginOptions | undefined, directory: string): Options {
 
 export type StudioPluginDependencies = {
   buildRunner?: CadBuildRunner
-  dispatcher?: CadPartDispatcher
 }
 
 export function createStudioPlugin(dependencies: StudioPluginDependencies = {}): Plugin {
@@ -89,7 +99,6 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
     const config = options(rawOptions, context.directory)
     const layout = await initializeStudio(config.studioRoot)
     const buildRunner = dependencies.buildRunner ?? createCadBuildRunner(context.directory)
-    const dispatcher = dependencies.dispatcher ?? createClientDispatcher(context.client)
     const build123dTools = createCadSessionTools({
       engineProjectDir: config.engineProjectDir,
       cwd: context.directory,
@@ -101,7 +110,6 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
         const directory = info.directory
         if (!directory) return
         await closeCadRuntimeSession(config.engineProjectDir, directory, info.id)
-        if (!info.parentID) clearQcSession(qcSessionKey(config.engineProjectDir, directory))
       },
 
       dispose: async () => {
@@ -115,7 +123,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_create: tool({
           description:
-            "Scaffold a CAD design (design.json, params.py, parts/). parts[].qty is required: 1 = one body, 2 = one worker plus a YZ mirror at build. Two or more unique ids spawn cad-part workers. Pass params and a short brief. Then cad_design_join and cad_design_build.",
+            "Scaffold a locked CAD design: locked acceptance.json (contract), design.json, params.py, parts/ stubs. acceptance is required: a JSON contract {schema:1, state:'locked', authority:'harness'|'user', manufacturing:{process:'fdm', buildVolumeMm, nozzleMm, minimumWallMm, bedToleranceMm, defaultClearanceMm}, dimensions:[{id, kind:'bbox', artifactId, measure:'size', axis, targetMm, toleranceMm}], interfaces:[{id, a, b, fit:'clearance'|'contact'|'interference', targetMm, toleranceMm}]}. contractHash is computed by the host (omit it). Recreate the design to change the contract. parts[].qty: 1 = one body, 2 = one source plus a YZ mirror at build. The parent models every part.",
           args: {
             id: tool.schema.string().min(1).describe("Lowercase design id matching ^[a-z0-9][a-z0-9_-]*$"),
             parts: tool.schema
@@ -127,7 +135,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                     .int()
                     .min(1)
                     .max(2)
-                    .describe("How many in the assembly. 2 = one worker; build mirrors across YZ."),
+                    .describe("How many in the assembly. 2 = one source; build mirrors across YZ."),
                   source: tool.schema
                     .string()
                     .optional()
@@ -135,49 +143,77 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 }),
               )
               .min(1)
-              .describe("Unique designs with qty. Two or more ids spawn cad-part workers."),
-            params: tool.schema.string().optional().describe("Full params.py body (shared dimensions). Required for useful workers."),
-            brief: tool.schema.string().optional().describe("One or two sentences of product intent forwarded to workers."),
+              .describe("Unique designs with qty. Total qty across parts is capped at 8."),
+            params: tool.schema.string().optional().describe("Full params.py body (shared dimensions)."),
+            acceptance: tool.schema
+              .string()
+              .min(1)
+              .describe("Locked acceptance contract JSON (schema 1, no contractHash field). The host computes and pins the hash."),
           },
           async execute(args, context) {
             if (!ID_PATTERN.test(args.id)) throw new Error(`Invalid design id: ${args.id}`)
             for (const part of args.parts) {
               if (!ID_PATTERN.test(part.id)) throw new Error(`Invalid part id: ${part.id}`)
             }
+            if (args.parts.reduce((sum, part) => sum + part.qty, 0) > MAX_DESIGN_QTIES) {
+              throw new Error(`Total qty across parts exceeds ${MAX_DESIGN_QTIES}`)
+            }
+            let contract: AcceptanceContract
+            try {
+              contract = normalizeAcceptanceContract(JSON.parse(args.acceptance))
+            } catch (error) {
+              throw new Error(`Invalid acceptance contract: ${error instanceof Error ? error.message : String(error)}`)
+            }
+            // Contract artifact refs must be declared parts (or *_mirror for qty 2).
+            const declared = new Set<string>()
+            for (const part of args.parts) {
+              declared.add(part.id)
+              if (part.qty === 2) declared.add(`${part.id}_mirror`)
+            }
+            for (const dim of contract.dimensions) {
+              if (!declared.has(dim.artifactId)) {
+                throw new Error(`Dimension ${dim.id} references unknown artifact ${dim.artifactId}; declare it in parts`)
+              }
+            }
+            for (const iface of contract.interfaces) {
+              if (!declared.has(iface.a) || !declared.has(iface.b)) {
+                throw new Error(
+                  `Interface ${iface.id} references unknown artifact ${iface.a}/${iface.b}; declare both in parts`,
+                )
+              }
+            }
+            const { contractHashOf } = await import("../host/acceptance")
             await context.ask({
-              permission: "edit",
+              permission: "cad_mutate",
               patterns: [
+                `studio/designs/${args.id}/acceptance.json`,
+                `studio/designs/${args.id}/acceptance/`,
                 `studio/designs/${args.id}/design.json`,
                 `studio/designs/${args.id}/params.py`,
                 ...args.parts.map((part) => `studio/designs/${args.id}/${part.source ?? `parts/${part.id.replace(/-/g, "_")}.py`}`),
               ],
               always: [],
-              metadata: {},
+              metadata: {
+                contractHash: contractHashOf(contract),
+                dimensions: contract.dimensions.length,
+                interfaces: contract.interfaces.length,
+                buildVolumeMm: contract.manufacturing.buildVolumeMm,
+              },
             })
-            setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
-            const { designDir, manifest } = await scaffoldDesign(
+            const { designDir, manifest, acceptanceFile } = await scaffoldDesign(
               layout,
               args.id,
               args.parts.map((part) => ({ id: part.id, source: part.source, qty: part.qty === 2 ? 2 : 1 })),
+              contract,
             )
             if (args.params?.trim())
               await writeFile(path.join(designDir, "params.py"), args.params.endsWith("\n") ? args.params : `${args.params}\n`, "utf8")
             await bindActiveDesign(config.engineProjectDir, context.directory || "", designDir, context.abort, context.sessionID)
-            const dispatch = await spawnCadParts({
-              designId: args.id,
-              designDir,
-              parts: manifest.parts,
-              dispatcher,
-              directory: context.directory || context.worktree,
-              parentSessionID: context.sessionID,
-              brief: args.brief,
-              params: args.params,
-            })
             const envelope = designCreateResult({
               id: args.id,
               designDir,
+              acceptanceFile,
               parts: manifest.parts,
-              dispatch,
             })
             return {
               title: designDir,
@@ -185,8 +221,8 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               metadata: {
                 ok: true,
                 designDir,
+                acceptanceFile,
                 parts: manifest.parts,
-                dispatch,
               },
             }
           },
@@ -194,7 +230,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_read: tool({
           description:
-            "Without id: list designs (id, build status, part count). With id: design/build summary, artifact paths, renders, and companion viewer URL. Do not follow with raw manifest reads.",
+            "Without id: list designs (id, build status, part count). With id: locked contract, source hashes, artifact paths + body hashes, print plan, latest QC evidence, and companion viewer URL. Do not follow with raw manifest reads.",
           args: {
             id: tool.schema.string().min(1).optional().describe("Design id. Omit to list designs."),
           },
@@ -210,7 +246,6 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 })),
               })
             }
-            setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
             await bindActiveDesign(config.engineProjectDir, context.directory || "", entry.directory, context.abort, context.sessionID)
@@ -224,6 +259,19 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                     reachable: await companionReachable(config.companionUrl),
                   }
                 : { url: null, reachable: false }
+            const acceptance = await readAcceptance(entry.directory).catch(() => null)
+            const printPlan = await readPrintPlan(entry.directory)
+            const sources: Record<string, string> = {}
+            for (const name of ["design.json", "params.py", ...design.parts.map((part) => part.source)]) {
+              try {
+                sources[name] = await sha256File(path.join(entry.directory, name))
+              } catch {
+                // missing file: no hash
+              }
+            }
+            const evidence = artifact
+              ? await currentEvidence(entry.directory, artifactRevision(artifact), acceptance?.contractHash ?? "")
+              : []
             return asJson({
               id: args.id,
               directory: entry.directory,
@@ -231,6 +279,10 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               revision: entry.revision,
               viewer,
               design,
+              acceptance,
+              sources,
+              printPlan: printPlan && printPlan.buildRevision === entry.revision ? printPlan : null,
+              evidence: latestByKey(evidence, (record) => record.id),
               artifact: artifact
                 ? {
                     schema: artifact.schema,
@@ -241,6 +293,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                     parts: await Promise.all(
                       artifact.parts.map(async (part) => ({
                         id: part.id,
+                        bodyHash: part.body_hash ?? null,
                         files: await mapArtifactPartFiles(entry.directory, part.files),
                         metrics: part.metrics,
                       })),
@@ -254,7 +307,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
 
         cad_design_build: tool({
           description:
-            "Deterministically build a CAD design and validate source plus round-tripped STEP geometry as one valid solid before exporting STEP/STL/GLB and manifest.json. Returns structured JSON {ok, status, summary, data, next, error?}. A failed build preserves the previous output. Build success does not verify assembly or printability. Do not revalidate or remeasure unchanged STEP artifacts solely to repeat build guarantees.",
+            "Deterministically build a CAD design in a killable child process and validate source plus round-tripped STEP geometry as one valid solid before exporting STEP/STL/GLB and manifest.json. Returns structured JSON {ok, status, summary, data, next, error?}. A failed build preserves the previous output. Build success does not verify acceptance, printability, or fit. Do not revalidate or remeasure unchanged STEP artifacts solely to repeat build guarantees.",
           args: {
             id: tool.schema.string().min(1).describe("Design id to build."),
           },
@@ -262,12 +315,14 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
             await context.ask({
-              permission: "edit",
+              permission: "cad_mutate",
               patterns: [
                 `studio/designs/${args.id}/step/`,
                 `studio/designs/${args.id}/stl/`,
                 `studio/designs/${args.id}/glb/`,
+                `studio/designs/${args.id}/topo/`,
                 `studio/designs/${args.id}/manifest.json`,
+                `studio/designs/${args.id}/.artifacts/`,
               ],
               always: [],
               metadata: {},
@@ -281,8 +336,6 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               context.directory,
               context.sessionID,
             )
-            const sessionKey = qcSessionKey(config.engineProjectDir, context.directory || "")
-            setActiveQcDesign(sessionKey, args.id)
             if (!result.ok) {
               const envelope = designBuildFailureResult({
                 id: args.id,
@@ -297,8 +350,6 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 metadata: { ok: false, exitCode: result.exitCode, designDir: result.designDir, status: "fail" },
               }
             }
-            // New artifacts invalidate prior session QC evidence for this runtime key.
-            clearQcEvidenceForDesign(sessionKey, args.id)
             const artifact = await readArtifactManifest(entry.directory, args.id)
             if (!artifact || !result.manifestPath) throw new Error(`manifest.json not found after build: ${args.id}`)
             const revision = artifactRevision(artifact)
@@ -322,6 +373,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               designDir: result.designDir,
               parts: artifact.parts.map((part) => ({
                 id: part.id,
+                bodyHash: part.body_hash ?? null,
                 stepPath: path.resolve(entry.directory, part.files.step),
                 metrics: part.metrics,
               })),
@@ -343,66 +395,149 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
           },
         }),
 
-        cad_design_join: tool({
+        cad_source_apply: tool({
           description:
-            "Check whether cad-part sources are no longer stubs. Call after create spawned workers, before cad_design_build. Does not build or fit.",
+            "Write params.py or a parts/*.py source for a schema 2 design. base_hash must equal the current SHA-256 of the target file (read sources from cad_design_read). The host checks design id, part id, path, and base hash; a mismatch rejects the write. This is the only allowed way to change geometry sources.",
           args: {
-            id: tool.schema.string().min(1).describe("Design id to join."),
+            id: tool.schema.string().min(1).describe("Design id."),
+            part: tool.schema.string().min(1).describe("Part id (or 'params' for params.py)."),
+            path: tool.schema.string().min(1).describe("Relative path: params.py or parts/<id>.py exactly as declared."),
+            contents: tool.schema.string().describe("Full new file contents."),
+            base_hash: tool.schema.string().describe("Expected current SHA-256 of the file being replaced (from cad_design_read sources)."),
           },
-          async execute(args) {
+          async execute(args, context) {
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
             const design = await readDesignManifest(entry.directory, args.id)
-            const parts = await Promise.all(
-              design.parts.map(async (part) => ({
-                partId: part.id,
-                ...(await readPartSourceStatus(entry.directory, part.source)),
-              })),
-            )
-            const ready = parts.filter((part) => part.ready).map((part) => part.partId)
-            const pending = parts.filter((part) => !part.ready).map((part) => part.partId)
-            return asJson({
-              ok: pending.length === 0,
-              id: args.id,
-              ready,
-              pending,
-              next: pending.length === 0 ? ["cad_design_build"] : ["Wait for workers or model pending parts", "cad_design_join"],
+            const normalized = args.path.replaceAll("\\", "/")
+            const isParams = args.part === "params"
+            const declaredSource = design.parts.find((part) => part.id === args.part)?.source
+            const expectedPath = isParams ? "params.py" : declaredSource
+            if (isParams ? normalized !== "params.py" : normalized !== expectedPath) {
+              throw new Error(
+                `cad_source_apply path ${normalized} does not match ${isParams ? "params.py" : `part ${args.part} source ${expectedPath}`}`,
+              )
+            }
+            const target = path.resolve(entry.directory, normalized)
+            if (!target.startsWith(entry.directory)) throw new Error("cad_source_apply path escapes the design")
+            await context.ask({
+              permission: "cad_mutate",
+              patterns: [`studio/designs/${args.id}/${normalized}`],
+              always: [],
+              metadata: {},
             })
+            const currentHash = await sha256File(target).catch(() => null)
+            if (currentHash !== args.base_hash) {
+              throw new Error(`cad_source_apply base_hash mismatch for ${normalized}: file changed since the read hash`)
+            }
+            const temporary = `${target}.${Math.random().toString(16).slice(2)}.tmp`
+            await writeFile(temporary, args.contents.endsWith("\n") ? args.contents : `${args.contents}\n`, "utf8")
+            await rename(temporary, target)
+            const envelope = sourceApplyResult({ id: args.id, path: normalized, hash: await sha256File(target) })
+            return {
+              title: `Updated ${normalized}: ${args.id}`,
+              output: formatCadToolResult(envelope),
+              metadata: { ok: true, path: normalized },
+            }
+          },
+        }),
+
+        cad_print_plan_apply: tool({
+          description:
+            "Lock a print plan for the current build: one entry per final artifact (mirrors included). Host fills bodyHash and posed bounds, then checks bed contact (minZ within bed tolerance) and build-volume fit. print-plan.json is written with the current buildRevision. Required before cad_verify kind=printability.",
+          args: {
+            id: tool.schema.string().min(1).describe("Design id."),
+            entries: tool.schema
+              .array(
+                tool.schema.object({
+                  artifactId: tool.schema.string().min(1).describe("Final artifact id, including *_mirror."),
+                  rotateDeg: tool.schema
+                    .array(tool.schema.number())
+                    .length(3)
+                    .describe("Rotation in degrees about world X, Y, Z in that order."),
+                  translateMm: tool.schema.array(tool.schema.number()).length(3).describe("Translation in mm."),
+                }),
+              )
+              .min(1)
+              .describe("Exactly one entry per final artifact."),
+          },
+          async execute(args, context) {
+            const entry = await findDesign(layout, args.id)
+            if (!entry) throw new Error(`Design not found: ${args.id}`)
+            const artifact = await readArtifactManifest(entry.directory, args.id)
+            if (!artifact) throw new Error(`Design ${args.id} has no built artifacts; run cad_design_build first`)
+            const acceptance = await readAcceptance(entry.directory)
+            const requested = args.entries.map((entryArg) => ({
+              artifactId: entryArg.artifactId,
+              rotateDeg: entryArg.rotateDeg as [number, number, number],
+              translateMm: entryArg.translateMm as [number, number, number],
+            }))
+            await context.ask({
+              permission: "cad_mutate",
+              patterns: [`studio/designs/${args.id}/print-plan.json`],
+              always: [],
+              metadata: {},
+            })
+            const plan = buildPrintPlan({ id: args.id, artifact, acceptance, entries: requested })
+            const { writePrintPlan } = await import("../host/print-plan")
+            await writePrintPlan(entry.directory, plan)
+            const envelope = printPlanApplyResult({ id: args.id, plan })
+            return {
+              title: `Print plan locked: ${args.id}`,
+              output: formatCadToolResult(envelope),
+              metadata: { ok: true, entries: plan.entries.length },
+            }
+          },
+        }),
+
+        cad_verify: tool({
+          description:
+            "Verify a design axis against the locked contract using the exact built STEP bodies, and write disk evidence records bound to the current buildRevision and contractHash. kind=requirements: every bbox dimension measured on the final STEP. kind=printability: each artifact posed per the print plan and analyzed with the manufacturing profile. kind=interfaces: every declared pair fit-checked. Rebuild or contract change makes records stale; re-verify after each build.",
+          args: {
+            id: tool.schema.string().min(1).describe("Design id."),
+            kind: tool.schema
+              .enum(["requirements", "printability", "interfaces"] as const)
+              .describe("Axis to verify against the locked acceptance contract."),
+          },
+          async execute(args, context) {
+            const entry = await findDesign(layout, args.id)
+            if (!entry) throw new Error(`Design not found: ${args.id}`)
+            const artifact = await readArtifactManifest(entry.directory, args.id)
+            if (!artifact) throw new Error(`Design ${args.id} has no built artifacts; run cad_design_build first`)
+            const acceptance = await readAcceptance(entry.directory)
+            await context.ask({
+              permission: "cad_mutate",
+              patterns: [`studio/designs/${args.id}/evidence/`],
+              always: [],
+              metadata: {},
+            })
+            const { records } = await runCadVerify({
+              designDir: entry.directory,
+              id: args.id,
+              engineProjectDir: config.engineProjectDir,
+              cwd: context.directory || "",
+              sessionID: context.sessionID,
+              artifact,
+              acceptance,
+              kind: args.kind as CadVerifyKind,
+              signal: context.abort,
+            })
+            const envelope = verifyResult({ id: args.id, kind: args.kind, records })
+            return {
+              title: `Verified ${args.kind}: ${args.id}`,
+              output: formatCadToolResult(envelope),
+              metadata: { ok: true, kind: args.kind, records: records.length },
+            }
           },
         }),
 
         cad_design_qc_report: tool({
           description:
-            "Multi-axis CAD QC report (design-scoped evidence). Artifact from cad_design_build. printability pass needs cad_analyze_printability evidence covering parts. fit pass needs cad_compare kind=fit (multi-part) or finding 'not applicable' (single-part). form pass: exact finding 'not applicable' (prismatic) or cad_analyze_form pass (contract match). Bare pass without evidence is rejected. complete only when every axis is pass. Writes SPEC.json when complete.",
+            "Claim-free CAD QC report from disk evidence bound to the current buildRevision and contractHash: artifact (built + body hashes), requirements (locked bbox dims), manufacturing (current print plan + printability passes), interfaces (declared pairs), findings (no warning/error on any current record). Takes no status fields — evidence comes only from cad_verify records on disk. Writes SPEC.json when complete.",
           args: {
             id: tool.schema.string().min(1).describe("Design id."),
-            printability: tool.schema
-              .object({
-                status: tool.schema
-                  .enum(["pass", "fail", "unverified"] as const)
-                  .describe("Claim only after cad_analyze_printability; pass needs ledger evidence."),
-                findings: tool.schema.array(tool.schema.string()).optional().describe("Unresolved print findings."),
-              })
-              .optional(),
-            fit: tool.schema
-              .object({
-                status: tool.schema
-                  .enum(["pass", "fail", "unverified"] as const)
-                  .describe("Multi-part: after cad_compare kind=fit. Single-part: pass + finding 'not applicable'."),
-                findings: tool.schema.array(tool.schema.string()).optional().describe("Fit/retention caveats."),
-              })
-              .optional(),
-            form: tool.schema
-              .object({
-                status: tool.schema
-                  .enum(["pass", "fail", "unverified"] as const)
-                  .describe("Prismatic: pass + finding 'not applicable'. Freeform: after cad_analyze_form contract pass."),
-                findings: tool.schema.array(tool.schema.string()).optional().describe("Form notes; exact 'not applicable' for prismatic."),
-              })
-              .optional(),
           },
-          async execute(args, context) {
-            setActiveQcDesign(qcSessionKey(config.engineProjectDir, context.directory || ""), args.id)
+          async execute(args, _context) {
             const entry = await findDesign(layout, args.id)
             if (!entry) throw new Error(`Design not found: ${args.id}`)
             const artifact = await readArtifactManifest(entry.directory, args.id)
@@ -410,16 +545,16 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
               id: args.id,
               entry,
               artifact,
-              evidenceKey: qcEvidenceKey(config.engineProjectDir, context.directory || "", args.id),
-              printability: args.printability as { status: QcAxisStatus; findings?: string[] } | undefined,
-              fit: args.fit as { status: QcAxisStatus; findings?: string[] } | undefined,
-              form: args.form as { status: QcAxisStatus; findings?: string[] } | undefined,
+              designDir: entry.directory,
             })
             let specPath: string | undefined
             let specError: string | undefined
             if (report.complete) {
               try {
-                await publishCadSpec(config.specRoots ?? { cad: layout.root, pcb: layout.root, fw: layout.root }, args.id)
+                await publishCadSpec(config.specRoots ?? { cad: layout.root, pcb: layout.root, fw: layout.root }, args.id, {
+                  revision: report.revision ?? undefined,
+                  contractHash: report.contractHash ?? undefined,
+                })
                 specPath = specFilePath(entry.directory)
               } catch (error) {
                 specError = error instanceof Error ? error.message : String(error)
@@ -433,6 +568,7 @@ export function createStudioPlugin(dependencies: StudioPluginDependencies = {}):
                 blockedBy: report.blockedBy,
                 buildStatus: report.buildStatus,
                 revision: report.revision,
+                contractHash: report.contractHash,
                 specPath,
                 specError,
               },

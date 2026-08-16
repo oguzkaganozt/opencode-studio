@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "state": "locked",
+  "authority": "harness",
+  "manufacturing": {
+    "process": "fdm",
+    "buildVolumeMm": [220, 220, 250],
+    "nozzleMm": 0.4,
+    "minimumWallMm": 1.2,
+    "bedToleranceMm": 0.1,
+    "defaultClearanceMm": 0.2
+  },
+  "dimensions": [
+    { "id": "body-x", "kind": "bbox", "artifactId": "body", "measure": "size", "axis": "X", "targetMm": 100, "toleranceMm": 5 },
+    { "id": "body-y", "kind": "bbox", "artifactId": "body", "measure": "size", "axis": "Y", "targetMm": 70, "toleranceMm": 5 },
+    { "id": "body-z", "kind": "bbox", "artifactId": "body", "measure": "size", "axis": "Z", "targetMm": 30, "toleranceMm": 4 },
+    { "id": "lid-x", "kind": "bbox", "artifactId": "lid", "measure": "size", "axis": "X", "targetMm": 100, "toleranceMm": 5 },
+    { "id": "lid-y", "kind": "bbox", "artifactId": "lid", "measure": "size", "axis": "Y", "targetMm": 70, "toleranceMm": 5 }
+  ],
+  "interfaces": [{ "id": "body-lid", "a": "body", "b": "lid", "fit": "clearance", "targetMm": 0.2, "toleranceMm": 0.3 }]
+}

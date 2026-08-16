@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "expectedDesignId": "wall-sconce-v0",
+  "expectedParts": [
+    {
+      "id": "base",
+      "qty": 1
+    },
+    {
+      "id": "diffuser",
+      "qty": 1
+    },
+    {
+      "id": "side_trim",
+      "qty": 1
+    },
+    {
+      "id": "foot",
+      "qty": 1
+    }
+  ],
+  "pinnedContractHash": "7025f44afa18bb8f02a206d5220acb28c79b55351d9112b2495ee2b5b506b82a",
+  "wallTimeMs": 3600000
+}

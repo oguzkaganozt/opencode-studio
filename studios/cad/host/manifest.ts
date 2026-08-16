@@ -4,6 +4,7 @@ import path from "node:path"
 import { resolveArtifactGeneration } from "./artifacts"
 
 export const DESIGN_SCHEMA = 1
+export const DESIGN_SCHEMA_2 = 2
 /** On-disk artifact engine id (must match engine/cad_build.py). Keep stable. */
 export const CAD_BUILD_ENGINE = "forge-cad/1"
 export const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/
@@ -14,12 +15,22 @@ export type DesignPart = {
   qty: 1 | 2
 }
 
-export type DesignManifest = {
+export type DesignManifestV1 = {
   schema: 1
   id: string
   params?: string
   parts: DesignPart[]
 }
+
+export type DesignManifestV2 = {
+  schema: 2
+  id: string
+  params: "params.py"
+  acceptance: "acceptance.json"
+  parts: DesignPart[]
+}
+
+export type DesignManifest = DesignManifestV1 | DesignManifestV2
 
 export type ArtifactPart = {
   id: string
@@ -30,6 +41,8 @@ export type ArtifactPart = {
     /** Face-index map for viewer pick (optional on legacy builds). */
     topo?: string
   }
+  /** Exact SHA-256 of the STEP bytes (v1 builds). Optional on legacy artifacts. */
+  body_hash?: string
   metrics: {
     volume_mm3: number
     size_mm: { x: number; y: number; z: number }
@@ -96,6 +109,18 @@ export function artifactRevision(artifact: Pick<ArtifactManifest, "build">): str
     .digest("hex")
 }
 
+/** v1 buildRevision: design.json + params.py + each part source + engine id. */
+export function buildRevision(artifact: Pick<ArtifactManifest, "build">): string {
+  return artifactRevision(artifact)
+}
+
+/** Plain SHA-256 of a file's exact bytes. */
+export async function sha256File(filePath: string): Promise<string> {
+  return createHash("sha256")
+    .update(await readFile(filePath))
+    .digest("hex")
+}
+
 export async function readDesignManifest(designDir: string, expectedId?: string): Promise<DesignManifest> {
   const manifestPath = path.join(designDir, "design.json")
   let text: string
@@ -119,7 +144,9 @@ export async function readDesignManifest(designDir: string, expectedId?: string)
 export function validateDesignManifest(value: unknown): DesignManifest {
   if (typeof value !== "object" || value === null) throw new ManifestError("design.json must be an object")
   const obj = value as Record<string, unknown>
-  if (obj.schema !== DESIGN_SCHEMA) throw new ManifestError("design.json must use schema 1")
+  if (obj.schema !== DESIGN_SCHEMA && obj.schema !== DESIGN_SCHEMA_2) {
+    throw new ManifestError("design.json must use schema 1 or 2")
+  }
   const id = obj.id
   if (typeof id !== "string" || !ID_PATTERN.test(id)) {
     throw new ManifestError("Design id must use lowercase letters, numbers, hyphens, or underscores")
@@ -144,6 +171,11 @@ export function validateDesignManifest(value: unknown): DesignManifest {
     if (part.qty === 2 && seen.has(`${part.id}_mirror`)) {
       throw new ManifestError(`Part ${part.id} qty 2 collides with existing id ${part.id}_mirror`)
     }
+  }
+  if (obj.schema === DESIGN_SCHEMA_2) {
+    if (obj.params !== "params.py") throw new ManifestError("design.json schema 2 params must be params.py")
+    if (obj.acceptance !== "acceptance.json") throw new ManifestError("design.json schema 2 must reference acceptance.json")
+    return { schema: DESIGN_SCHEMA_2, id, params: "params.py", acceptance: "acceptance.json", parts: normalizedParts }
   }
   const params = validateParamsSource(obj.params)
   return { schema: DESIGN_SCHEMA, id, params, parts: normalizedParts }
@@ -204,6 +236,9 @@ export function validateArtifactManifest(value: unknown): ArtifactManifest {
     if (f.topo !== undefined && f.topo !== `topo/${partId}.json`) {
       throw new ManifestError(`Part ${partId} topo path must be topo/${partId}.json`)
     }
+    if (p.body_hash !== undefined && (typeof p.body_hash !== "string" || !/^[a-f0-9]{64}$/.test(p.body_hash))) {
+      throw new ManifestError(`Part ${partId} body_hash must be a SHA-256 hex string`)
+    }
     const metrics = p.metrics
     if (typeof metrics !== "object" || metrics === null) throw new ManifestError(`Part ${partId} missing metrics`)
     const metric = metrics as Record<string, unknown>
@@ -255,7 +290,7 @@ export function expectedArtifactPartIds(parts: Array<{ id: string; qty?: 1 | 2 }
   return parts.flatMap((part) => (part.qty === 2 ? [part.id, `${part.id}_mirror`] : [part.id])).sort()
 }
 
-export function scaffoldDesignManifest(id: string, parts: Array<{ id: string; source?: string; qty?: 1 | 2 }>): DesignManifest {
+export function scaffoldDesignManifest(id: string, parts: Array<{ id: string; source?: string; qty?: 1 | 2 }>): DesignManifestV2 {
   if (!ID_PATTERN.test(id)) throw new ManifestError(`Invalid design id: ${id}`)
   const seen = new Set<string>()
   const resolvedParts: DesignPart[] = []
@@ -273,5 +308,5 @@ export function scaffoldDesignManifest(id: string, parts: Array<{ id: string; so
       throw new ManifestError(`Part ${part.id} qty 2 collides with existing id ${part.id}_mirror`)
     }
   }
-  return { schema: DESIGN_SCHEMA, id, params: "params.py", parts: resolvedParts }
+  return { schema: DESIGN_SCHEMA_2, id, params: "params.py", acceptance: "acceptance.json", parts: resolvedParts }
 }

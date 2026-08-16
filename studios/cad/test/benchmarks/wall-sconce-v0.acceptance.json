@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "state": "locked",
+  "authority": "harness",
+  "manufacturing": {
+    "process": "fdm",
+    "buildVolumeMm": [
+      220,
+      220,
+      350
+    ],
+    "nozzleMm": 0.4,
+    "minimumWallMm": 1.2,
+    "bedToleranceMm": 0.1,
+    "defaultClearanceMm": 0.2
+  },
+  "dimensions": [
+    {
+      "id": "diffuser-z",
+      "kind": "bbox",
+      "artifactId": "diffuser",
+      "measure": "size",
+      "axis": "Z",
+      "targetMm": 300,
+      "toleranceMm": 40
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "base-diffuser",
+      "a": "base",
+      "b": "diffuser",
+      "fit": "clearance",
+      "targetMm": 0.2,
+      "toleranceMm": 0.5
+    },
+    {
+      "id": "base-side_trim",
+      "a": "base",
+      "b": "side_trim",
+      "fit": "clearance",
+      "targetMm": 0.2,
+      "toleranceMm": 0.5
+    },
+    {
+      "id": "base-foot",
+      "a": "base",
+      "b": "foot",
+      "fit": "contact",
+      "targetMm": 0,
+      "toleranceMm": 0.3
+    }
+  ]
+}

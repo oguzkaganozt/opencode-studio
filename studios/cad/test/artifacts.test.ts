@@ -36,12 +36,25 @@ describe("relocatable artifact links", () => {
     const gen = path.join(artifacts, GENERATION)
     await mkdir(gen, { recursive: true })
     await writeFile(path.join(gen, "manifest.json"), `${JSON.stringify(manifest)}\n`)
-    await symlink(`/tmp/osc-bench-gone/home/studio/designs/wall-sconce/.artifacts/${GENERATION}`, path.join(artifacts, "current"))
-    await symlink("/tmp/osc-bench-gone/home/studio/designs/wall-sconce/.artifacts/current/manifest.json", path.join(root, "manifest.json"))
+    await symlink(path.join(artifacts, GENERATION), path.join(artifacts, "current"))
+    await symlink(path.join(artifacts, "current", "manifest.json"), path.join(root, "manifest.json"))
 
     expect(await resolveArtifactGeneration(root)).toBe(GENERATION)
     expect(await readArtifactManifest(root, "wall-sconce")).toMatchObject({ id: "wall-sconce" })
     expect(await ensurePublicArtifactLinks(root)).toBe(GENERATION)
     expect(await Bun.file(path.join(root, "manifest.json")).text()).toContain("wall-sconce")
+  })
+
+  test("dangling current yields no generation (no mtime fallback)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cad-art-"))
+    const artifacts = path.join(root, ".artifacts")
+    await mkdir(artifacts, { recursive: true })
+    // A generation dir exists on disk but current points elsewhere (dangling):
+    // the mtime fallback would have found it; the readlink-only rule must not.
+    await symlink("/tmp/osc-bench-gone/.artifacts/547c2b99bf784c3eb5ce2dda95a56fb9", path.join(artifacts, "current"))
+
+    expect(await resolveArtifactGeneration(root)).toBeNull()
+    expect(await readArtifactManifest(root, "wall-sconce")).toBeNull()
+    expect(await ensurePublicArtifactLinks(root)).toBeNull()
   })
 })

@@ -19,13 +19,13 @@ Load this skill before `cad_design_*` / product CAD work. Do not load `studio-pc
 
 ## Minimum path (every design)
 
-1. Phase 0 — brief, `cad_design_create`, `params.py`, part plan  
-2. Phase 1 — model each part in-session → validate/measure/printability → write `parts/*.py` → `cad_design_build`  
+1. Phase 0 — brief, locked `acceptance` contract, `cad_design_create`, `params.py`, part plan  
+2. Phase 1 — model each part in-session → validate/measure/printability → write `parts/*.py` via `cad_source_apply` → `cad_design_build`  
 3. Phase 1.5 — optional visual QC (skip if no image input; say so)  
-4. Phase 2 — `cad_compare` / `cad_analyze_printability` on bound part ids (+ motion stages if retention matters)  
-5. Phase 3 — `cad_design_read` + **`cad_design_qc_report`** → claim complete only if `complete: true`  
+4. Phase 2 — `cad_print_plan_apply` + `cad_verify` (requirements / printability / interfaces) on exact built bodies  
+5. Phase 3 — `cad_design_read` + **`cad_design_qc_report`** (claim-free) → claim complete only if `complete: true`  
 
-Any source edit invalidates prior renders, printability, fit, and motion evidence for affected parts — rebuild and re-check before citing results.
+Any source edit invalidates prior builds, print plans, and evidence for affected parts — rebuild and re-verify before citing results.
 
 ## Golden Rule
 
@@ -75,24 +75,26 @@ These are the only `cad_*` tools. Prefer `status`/`data` on structured envelopes
 
 **Lifecycle**
 
-- `cad_design_create(id, parts[{id, qty}], params, brief)` — `qty` required: `1` one body, `2` one worker + YZ mirror at build. Two or more ids spawn workers.
-- `cad_design_join(id)` — wait until worker sources are not stubs.
-- `cad_design_build(id)` — export STEP/STL/GLB, bind built parts into the session by id. Does not run fit/print QC.
-- `cad_design_read(id?)` — omit id to list designs; with id: metrics, artifacts, renders, viewer URL.
-- `cad_design_qc_report(id, printability?, fit?, form?)` — evidence-bound gate. complete only if every axis is pass. Writes SPEC.json when complete.
+- `cad_design_create(id, parts[{id, qty}], params, acceptance)` — acceptance is a required locked JSON contract (schema 1, no contractHash — the host pins it). `qty` required: `1` one body, `2` one source + YZ mirror at build. You model every part; there are no workers.
+- `cad_source_apply(id, part, path, contents, base_hash)` — the only way to write `params.py` / `parts/*.py`. Read source hashes from `cad_design_read`; the host rejects a stale `base_hash`.
+- `cad_design_build(id)` — build in a killable child; export STEP/STL/GLB + manifest with per-part `body_hash`. Does not verify acceptance, printability, or fit.
+- `cad_print_plan_apply(id, entries)` — one entry per final artifact (mirrors included). Host fills bodyHash + posed bounds and checks bed contact + build volume.
+- `cad_verify(id, kind)` — requirements / printability / interfaces against the locked contract on exact built STEP bodies. Writes disk evidence bound to buildRevision + contractHash.
+- `cad_design_read(id?)` — omit id to list designs; with id: contract, source hashes, artifacts + body hashes, print plan, latest evidence, renders, viewer URL.
+- `cad_design_qc_report(id)` — claim-free; takes no status fields. complete only when artifact / requirements / manufacturing / interfaces / findings all pass on current disk evidence. Writes SPEC.json when complete.
 
-**Session**
+**Session (diagnostic — never completes QC)**
 
 - `cad_execute(code)` — build123d in a persistent namespace. `show(obj, "name")`. `find_holes`/`measure`/`clearance` are Python helpers here, not tools.
 - `cad_validate(object_name)` — watertight manifold solid.
 - `cad_measure(object_name)` — volume, bbox, topology.
-- `cad_compare(a, b, kind)` — `kind=fit` for QC fit; also align/shape.
+- `cad_compare(a, b, kind)` — `kind=fit` for fit; also align/shape.
 - `cad_analyze_printability(object_name)` — FDM bed pose = current orientation.
-- `cad_analyze_form(object_name, contract)` — freeform stations; prismatic skip and claim `not applicable`.
+- `cad_analyze_form(object_name, contract)` — freeform stations.
 - `cad_render_view(direction, save_to, objects)` — PNG under `studio/designs/<id>/renders/`.
 - `cad_reset()` — empty the session.
 
-Final artifacts must come from `cad_design_build`. After build, compare the bound names (no import tool).
+Final artifacts must come from `cad_design_build`. After build, the bind step imports each STEP into the session by part id.
 
 ## FDM Design Rules
 
@@ -118,9 +120,9 @@ Follow these phases in order. Phase 1.5 is optional when the active model cannot
 ## Phase 0 - Product Brief
 
 1. Read the user's product request. Infer the functional architecture: what shells, what openings, what mounting features, what clearances. Classify the dominant body with Shape Strategy; if Manufactured Freeform Mode applies, state its form contract before modeling.
-2. List unique printable designs with `qty`. A left/right pair is one id with `qty: 2` (build mirrors). Two different shapes are two ids.
-3. Call `cad_design_create` with that list, `params`, and a short `brief`. Two or more ids spawn `cad-part` workers immediately — do not model those parts yourself.
-4. One part: model it in this session after create.
+2. List unique printable designs with `qty`. A left/right pair is one id with `qty: 2` (build mirrors). Two different shapes are two ids. Total qty is capped at 8.
+3. Author the **locked acceptance contract**: `manufacturing` (FDM profile: build volume, nozzle, min wall, bed tolerance, default clearance), `dimensions` (one bbox `size` per dominant axis per part you can quantify from the brief), and `interfaces` (every mating pair with its fit kind and target gap). Include real functional features — the contract is your manufacturing commitment.
+4. Call `cad_design_create` with that list, `params`, and the `acceptance` JSON. You model every part yourself — no workers.
 5. Share the part plan with the user.
 
 Every part source must import shared values from `params.py` and expose:
@@ -134,14 +136,13 @@ Do not duplicate shared parameters inside part modules.
 
 ## Phase 1 - Part Fabrication
 
-- **One part:** model it in this session (validate / measure / printability), then `cad_design_build`.
-- **Two or more parts:** create already spawned workers. Do not model assigned parts. `cad_design_join` until `pending` is empty. Then `cad_design_build`.
+- **All parts:** model each part in this session (validate / measure / printability), then `cad_source_apply` to write `parts/<id>.py`, then `cad_design_build`.
 
-If dispatch falls back to serial, model parts one at a time in this session:
+Model parts one at a time:
 
 1. Model in assembly coordinates with shells, openings, clearances, flat base, and viable overhangs. In Manufactured Freeform Mode, accept the measured master envelope before secondary features.
 2. Before saving: `cad_validate`, `cad_measure`, `cad_analyze_printability`; render if image review is available.
-3. Resolve failed checks in-session. Save to `parts/<part-id>.py`.
+3. Resolve failed checks in-session. Save to `parts/<part-id>.py` with `cad_source_apply` (the host checks the source base hash from `cad_design_read`).
 
 Do not use `cad_design_build` as a geometry scratchpad. A failed build preserves the previous generated output.
 
@@ -159,44 +160,39 @@ After `cad_design_build` succeeds, optionally inspect the built design visually 
    - **Features**: holes, cutouts, fillets, and other intended geometry should be present and correctly proportioned.
    - **Proportions**: the overall shape should match the product brief dimensions.
    - **No artifacts**: no degenerate faces, self-intersections, or missing bodies.
-3. If any visual issue is found, **fix the relevant `parts/<id>.py` source** and re-run `cad_design_build`. Do not edit generated artifacts.
+3. If any visual issue is found, **fix the relevant `parts/<id>.py` source with `cad_source_apply`** and re-run `cad_design_build`. Do not edit generated artifacts.
 4. **If your model cannot view images, skip this phase and report `visual QC not performed`.** Programmatic QC still gates geometry and printability, but does not prove semantic appearance; leave the renders for human review.
 5. Captured renders remain in `renders/` for the companion viewer and are available for the user to review.
 
-## Phase 2 - Assembly QC
+## Phase 2 - Contract Verification
 
-`cad_design_build` binds each exported part into the session under its part id. Compare mating pairs on those names:
+`cad_design_build` binds each exported part into the session under its part id. Verification is host-driven and claim-free:
 
-1. `cad_compare(a="body", b="lid", kind="fit")` — clearance / clash / overlap.
-2. `cad_compare(a="body", b="lid", kind="align", axis="Z", mode="center")` when alignment matters.
-3. `cad_analyze_printability` on each part in its bed pose.
+1. `cad_print_plan_apply(id, entries)` — one entry per final artifact (mirrors included). `rotateDeg` is rotation about world X, Y, Z in that order, then `translateMm`. The host checks bed contact and build-volume fit; a rejected pose must be corrected.
+2. `cad_verify(id, kind="requirements")` — every locked bbox dimension measured on the final STEP.
+3. `cad_verify(id, kind="printability")` — each artifact posed per the print plan and analyzed with the manufacturing profile (nozzle, min wall, build volume). Warnings block completion — fix geometry or accept the finding is gone before re-verify.
+4. `cad_verify(id, kind="interfaces")` — every declared pair fit-checked on exact built bodies.
 
-Do not repeat `cad_validate` or `cad_measure` unless the build report is missing data.
+Use session `cad_compare` / `cad_analyze_printability` during modeling for fast iteration, but only `cad_verify` writes evidence that completes QC. Interpret fit against the interface intent: snug gaps target the contract `targetMm`, unintended overlap is a failure.
 
-Interpret the fit result against the interface intent: snug gaps target 0.15 mm, moving gaps target 0.3 mm, and unintended overlap is a failure. A deliberate locating feature may interpenetrate only when the design explicitly requires it. Global clearance zero proves only that some surfaces touch; it does not measure the gap at the intended moving interface.
-
-For sliding, snapping, hinged, or otherwise moving mating parts, static closed-position fit is insufficient. Register source-built staged poses at minimum for open, first engagement, maximum deflection/interference, and closed positions; check each pose for unintended overlap and explain every intended contact. A detent without a lead-in ramp/chamfer or an evidenced compliant flex path is not verified positive retention. Rigid-body overlap at an engagement pose quantifies the deformation envelope only; it does not prove that a cantilever accommodates the overlap. Without deflected geometry plus material/strain evidence or a physical test, report `retention geometry staged; elastic snap behavior unverified` and do not claim insertion or retention force. If the available geometry cannot prove the motion path, report retention as unverified rather than inferring it from a notch and detent.
-
-If an interface fails, **fix the relevant `parts/<id>.py` source and rebuild** the whole design with `cad_design_build`. Generated artifacts are never edited in place.
+If an interface fails, **fix the relevant `parts/<id>.py` source and rebuild** the whole design with `cad_design_build`, then re-verify. Generated artifacts are never edited in place.
 
 ## Phase 3 - Build Summary
 
 Before saying `complete`:
 
-- Build success is not verification. Every validation, fit/alignment, and printability result must pass.
-- Report artifact build, printability verification, mechanical fit, and form fidelity as **separate** statuses; success in one never implies success in another.
-- When Manufactured Freeform Mode applies, run `cad_analyze_form` with the form-contract stations as `contract` and claim form pass only from that evidence. Missing analyze_form evidence blocks completion. For prismatic designs, set form to `pass` with finding `not applicable`.
-- Any reported wall below 1.2 mm blocks completion unless a separate geometry tool result localizes and measures it as a false positive. Source parameters, labels such as `chamfer` or `rail`, and verbal interpretation are not evidence.
-- A single-pose fit does not prove retention. Without motion or mechanism evidence, set fit to `fail` with finding `closed-position fit passes; retention unverified` — never fit `pass` with a retention caveat. The tool treats `pass` as claim-complete for that axis.
-- If retention is not a product requirement, static fit may be `pass` with finding `retention not required`.
+- Build success is not verification. Every locked dimension, printability pass, and interface fit must pass via `cad_verify` on the current build.
+- Report artifact build, requirements, manufacturing (print plan + printability), and interfaces as **separate** axes; success in one never implies success in another.
+- In Manufactured Freeform Mode, run `cad_analyze_form` with the form-contract stations as `contract` and report its result; the locked contract dimensions are the QC gate.
+- Any reported wall below the contract `minimumWallMm` blocks completion unless a separate geometry tool result localizes and measures it as a false positive. Source parameters, labels such as `chamfer` or `rail`, and verbal interpretation are not evidence.
 - If any printability finding or other check remains failed or unresolved, do not say `complete`, `implemented`, or `fabricated`; say `Build succeeded, verification failed.` and list it.
 
-Call `cad_design_read(id)` for metrics, then **must** call `cad_design_qc_report(id, { printability, fit, form })` after real session checks. printability/fit/form pass is evidence-bound (ledger from `cad_analyze_printability` / `cad_compare` / `cad_analyze_form`); inventing pass without those tools fails the gate. Form: pass + `not applicable` for prismatic, or `cad_analyze_form` contract pass for freeform. Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete. SPEC.json is written when complete.
+Call `cad_design_read(id)` for metrics and source hashes, then **must** call `cad_design_qc_report(id)` — it is claim-free and reads only disk evidence written by `cad_verify` against the current buildRevision + contractHash. Evidence from an older build or a different contract is ignored, so re-verify after every rebuild. Quote `complete`, `blockedBy`, and each axis from the tool output. Only if `complete: true` may you say the design is complete. SPEC.json is written when complete.
 
 Report to the user:
 
 - The part list with per-part volumes and dimensions (from `cad_design_read` / manifest).
-- The four QC axes from `cad_design_qc_report` (artifact / printability / fit / form).
+- The QC axes from `cad_design_qc_report` (artifact / requirements / manufacturing / interfaces / findings).
 - Assembly instructions (which part goes where, what hardware is needed).
 - Unresolved findings from any failed or unverified axis.
 
@@ -226,8 +222,8 @@ Toolbar context (user-side): **Pick** (pins, snap, optional Link distances), **R
 **How to act:**
 
 - Prefer STEP under `step/` for listed parts; verify mm with `cad_measure` / `cad_compare` before editing. Do not invent wires from freehand boundaries.
-- Map viewer face ids onto STEP, edit `parts/*.py`, then `cad_design_build` and re-run affected QC. Nothing is auto-applied.
+- Map viewer face ids onto STEP, verify mm with `cad_measure` / `cad_compare`, fix `parts/*.py` via `cad_source_apply`, then `cad_design_build` and re-verify affected QC. Nothing is auto-applied.
 
 ## Debugging
 
-If geometry work fails: read the tool error, fix `parts/*.py` in `cad_execute` + `cad_validate`, then `cad_design_build`. `cad_reset` clears a dirty session.
+If geometry work fails: read the tool error, fix `parts/*.py` in `cad_execute` + `cad_validate`, then apply with `cad_source_apply` and `cad_design_build`. `cad_reset` clears a dirty session.

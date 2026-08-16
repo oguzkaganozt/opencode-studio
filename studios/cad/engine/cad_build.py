@@ -63,8 +63,8 @@ def load_manifest(design_dir: Path) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {manifest_path}: {exc}") from exc
 
-    if manifest.get("schema") != 1:
-        raise ValueError("design.json must use schema 1")
+    if manifest.get("schema") not in (1, 2):
+        raise ValueError("design.json must use schema 1 or 2")
 
     design_id = manifest.get("id")
     if not isinstance(design_id, str) or not ID_PATTERN.fullmatch(design_id):
@@ -73,6 +73,12 @@ def load_manifest(design_dir: Path) -> dict[str, Any]:
     parts = manifest.get("parts")
     if not isinstance(parts, list) or not parts:
         raise ValueError("design.json must define at least one part")
+
+    if manifest.get("schema") == 2:
+        if manifest.get("acceptance") != "acceptance.json":
+            raise ValueError("design.json schema 2 must reference acceptance.json")
+        if manifest.get("params") != "params.py":
+            raise ValueError("design.json schema 2 params must be params.py")
 
     seen: set[str] = set()
     if manifest.get("params", "params.py") != "params.py":
@@ -277,6 +283,7 @@ def export_part(shape: Shape, part_id: str, tmp_dirs: dict[str, Path]) -> dict[s
 
     export_step(shape, step_path)
     validate_step_round_trip(shape, step_path, part_id)
+    body_hash = hashlib.sha256(step_path.read_bytes()).hexdigest()
     mesher = Mesher()
     mesher.add_shape(shape)
     mesher.write(stl_path)
@@ -292,6 +299,7 @@ def export_part(shape: Shape, part_id: str, tmp_dirs: dict[str, Path]) -> dict[s
             "glb": f"glb/{glb_path.name}",
             "topo": f"topo/{topo_path.name}",
         },
+        "body_hash": body_hash,
         "metrics": {
             "volume_mm3": round(shape.volume, 3),
             "solid_count": len(shape.solids()),
@@ -349,12 +357,19 @@ def acquire_build_lock(design_dir: Path) -> Path:
     return lock
 
 
-def build_input_hashes(design_dir: Path) -> dict[str, str]:
-    inputs = [design_dir / "design.json", *sorted(design_dir.rglob("*.py"))]
+def build_input_hashes(design_dir: Path, manifest: dict[str, Any]) -> dict[str, str]:
+    inputs = [design_dir / "design.json"]
+    params = manifest.get("params", "params.py")
+    if params:
+        inputs.append(design_dir / params)
+    for part in manifest.get("parts", []):
+        source = part.get("source")
+        if isinstance(source, str) and source.endswith(".py"):
+            inputs.append(design_dir / source)
     return {
         path.relative_to(design_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in inputs
-        if not any(part in {ARTIFACTS_DIR, LOCK_DIR} for part in path.parts)
+        if path.is_file()
     }
 
 
@@ -382,8 +397,8 @@ def build_design(design_path: str) -> Path:
     temporary_generation: Path | None = None
     path_inserted = False
     try:
-        input_hashes = build_input_hashes(design_dir)
         manifest = load_manifest(design_dir)
+        input_hashes = build_input_hashes(design_dir, manifest)
         artifacts_dir = design_dir / ARTIFACTS_DIR
         artifacts_dir.mkdir(exist_ok=True)
         current_link = artifacts_dir / "current"
@@ -416,7 +431,7 @@ def build_design(design_path: str) -> Path:
         }
         manifest_text = json.dumps(artifact_manifest, indent=2) + "\n"
         (temporary_generation / "manifest.json").write_text(manifest_text, encoding="utf-8")
-        if build_input_hashes(design_dir) != input_hashes:
+        if build_input_hashes(design_dir, manifest) != input_hashes:
             raise ValueError("Design inputs changed during build; build was not published")
         temporary_generation.rename(final_generation)
 

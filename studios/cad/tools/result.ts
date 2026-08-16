@@ -345,36 +345,28 @@ function normalizePrintability(toolName: string, data: Record<string, unknown>, 
 export function designCreateResult(input: {
   id: string
   designDir: string
-  parts: Array<{ id: string; source?: string }>
-  dispatch?: { mode: "serial" | "parallel"; workers: Array<{ partId: string; sessionID?: string; error?: string }>; remaining: string[] }
+  acceptanceFile: string
+  parts: Array<{ id: string; source?: string; qty?: 1 | 2 }>
 }): CadToolEnvelope {
-  const dispatched = input.dispatch?.mode === "parallel" && (input.dispatch.workers?.some((worker) => worker.sessionID) ?? false)
   return {
     ok: true,
     tool: "cad_design_create",
-    summary: dispatched
-      ? `Scaffolded design "${input.id}" and dispatched ${input.dispatch!.workers.filter((worker) => worker.sessionID).length} cad-part worker(s)`
-      : `Scaffolded design "${input.id}" with ${input.parts.length} part(s)`,
+    summary: `Scaffolded locked design "${input.id}" with ${input.parts.length} part(s)`,
     status: "pass",
     data: {
       id: input.id,
       directory: input.designDir,
+      acceptanceFile: input.acceptanceFile,
       parts: input.parts,
-      dispatch: input.dispatch,
     },
     warnings: [],
-    next: dispatched
-      ? [
-          "Do not model assigned worker parts",
-          "cad_design_join until pending is empty",
-          ...(input.dispatch!.remaining.length > 0 ? ["Model remaining parts here"] : []),
-          "cad_design_build",
-        ]
-      : [
-          "Write shared dimensions into params.py if you did not pass params",
-          "Model the part with cad_execute then save parts/*.py",
-          "cad_design_build when sources are ready",
-        ],
+    next: [
+      "Write shared dimensions into params.py if you did not pass params",
+      "Model each part with cad_source_apply (params.py / parts/*.py)",
+      "cad_design_build when sources are ready",
+      "cad_print_plan_apply then cad_verify requirements/printability/interfaces",
+      "cad_design_qc_report",
+    ],
   }
 }
 
@@ -383,7 +375,7 @@ export function designBuildSuccessResult(input: {
   revision: string
   manifestPath: string
   designDir: string
-  parts: Array<{ id: string; stepPath: string; metrics: unknown }>
+  parts: Array<{ id: string; bodyHash: string | null; stepPath: string; metrics: unknown }>
   bound?: string[]
   bindErrors?: string[]
 }): CadToolEnvelope {
@@ -405,15 +397,15 @@ export function designBuildSuccessResult(input: {
       bound: input.bound ?? [],
     },
     warnings: [
-      "Assembly fit, printability, and form QC were not run by cad_design_build.",
+      "Acceptance requirements, printability, and fit were not run by cad_design_build.",
       ...bindErrors.map((error) => `session bind: ${error}`),
     ],
     next: [
       bindErrors.length > 0
-        ? "cad_execute to recreate unbound parts, then cad_compare / cad_analyze_printability"
-        : "cad_compare / cad_analyze_printability on bound part ids",
+        ? "cad_execute to recreate unbound parts, then cad_verify"
+        : "cad_print_plan_apply then cad_verify requirements/printability/interfaces",
       "cad_design_read for metrics",
-      "cad_design_qc_report with real axis statuses before claiming complete",
+      "cad_design_qc_report (claim-free; evidence comes from cad_verify on disk)",
     ],
   }
 }
@@ -453,4 +445,51 @@ function extractBuildFailureMessage(stderr: string, stdout: string): string {
     .filter(Boolean)
   const hit = lines.find((line) => /error|exception|traceback|failed|invalid/i.test(line) && line.length < 300) ?? lines[lines.length - 1]
   return hit ?? ""
+}
+
+export function sourceApplyResult(input: { id: string; path: string; hash: string }): CadToolEnvelope {
+  return {
+    ok: true,
+    tool: "cad_source_apply",
+    summary: `Wrote ${input.path}`,
+    status: "pass",
+    data: { id: input.id, path: input.path, hash: input.hash },
+    warnings: ["Rebuild with cad_design_build and re-verify before citing QC."],
+    next: ["cad_design_build", "cad_verify requirements / printability / interfaces", "cad_design_qc_report"],
+  }
+}
+
+export function printPlanApplyResult(input: {
+  id: string
+  plan: { buildRevision: string; entries: Array<{ artifactId: string; bodyHash: string; boundsMm: unknown }> }
+}): CadToolEnvelope {
+  return {
+    ok: true,
+    tool: "cad_print_plan_apply",
+    summary: `Locked print plan for ${input.plan.entries.length} artifact(s)`,
+    status: "pass",
+    data: { id: input.id, buildRevision: input.plan.buildRevision, entries: input.plan.entries },
+    warnings: ["Poses are validated for bed contact and build volume; reapply after every rebuild."],
+    next: ["cad_verify kind=printability", "cad_verify kind=interfaces", "cad_design_qc_report"],
+  }
+}
+
+export function verifyResult(input: {
+  id: string
+  kind: string
+  records: Array<{ id: string; axis: string; status: string; subjects: string[] }>
+}): CadToolEnvelope {
+  const failed = input.records.filter((record) => record.status !== "pass")
+  return {
+    ok: failed.length === 0,
+    tool: "cad_verify",
+    summary:
+      failed.length === 0
+        ? `Verified ${input.kind} (${input.records.length} record(s))`
+        : `Verification failed (${failed.length}/${input.records.length}): ${failed.map((record) => record.id).join(", ")}`,
+    status: failed.length === 0 ? "pass" : "fail",
+    data: { id: input.id, kind: input.kind, records: input.records },
+    warnings: [],
+    next: failed.length === 0 ? ["cad_design_qc_report"] : ["Fix geometry sources and rebuild, then re-verify"],
+  }
 }

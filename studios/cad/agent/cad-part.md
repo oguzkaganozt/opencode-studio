@@ -4,6 +4,9 @@ mode: subagent
 hidden: true
 permission:
   "*": allow
+  bash: deny
+  edit: deny
+  write: deny
   pcb_*: deny
   fw_*: deny
   concept_*: deny
@@ -11,11 +14,10 @@ permission:
   build123d_*: deny
   cad_design_create: deny
   cad_design_build: deny
-  cad_design_dispatch: deny
-  cad_design_join: deny
+  cad_source_apply: deny
   cad_design_qc_report: deny
-  cad_spec: deny
-  cad_compare: deny
+  cad_verify: deny
+  cad_print_plan_apply: deny
   task:
     "*": deny
   skill:

@@ -6,7 +6,12 @@ import envPaths from "env-paths"
 import { agentNameFor } from "../src/core/package-meta"
 import { STUDIO_IDS } from "../src/core/registry"
 import { startHost } from "../src/server"
+import { contractHashOf, readAcceptance } from "../studios/cad/host/acceptance"
 import { ensurePublicArtifactLinks } from "../studios/cad/host/artifacts"
+import { findDesign, initializeStudio } from "../studios/cad/host/library"
+import { artifactRevision, readArtifactManifest } from "../studios/cad/host/manifest"
+import { readPrintPlan } from "../studios/cad/host/print-plan"
+import { buildDesignQcReport } from "../studios/cad/host/qc-report"
 
 export const BENCH_STUDIOS = ["cad", "pcb", "fw"] as const
 export type BenchStudio = (typeof BENCH_STUDIOS)[number]
@@ -29,6 +34,15 @@ export type BenchEvent = {
   part?: { type?: string; tool?: string; state?: { output?: unknown; input?: unknown }; tokens?: Record<string, number>; text?: string }
 }
 
+/** Fixture for the v1 offline CAD scorer. */
+export type BenchFixtureV1 = {
+  schema: 1
+  expectedDesignId: string
+  expectedParts: { id: string; qty: 1 | 2 }[]
+  pinnedContractHash: string
+  wallTimeMs: number
+}
+
 const DEFAULT_MODEL = "xai/grok-4.5"
 
 export function isBenchStudio(value: string): value is BenchStudio {
@@ -41,6 +55,23 @@ export function repoRoot() {
 
 export function casesDir(studio: BenchStudio, root = repoRoot()) {
   return path.join(root, "studios", studio, "test", "benchmarks")
+}
+
+export async function loadBenchFixture(studio: BenchStudio, id: string, root = repoRoot()): Promise<BenchFixtureV1> {
+  const file = path.join(casesDir(studio, root), `${id}.benchmark.json`)
+  const parsed = JSON.parse(await readFile(file, "utf8")) as BenchFixtureV1
+  if (parsed.schema !== 1 || !parsed.expectedDesignId || !Array.isArray(parsed.expectedParts) || !parsed.pinnedContractHash) {
+    throw new Error(`Invalid benchmark fixture: ${file}`)
+  }
+  return parsed
+}
+
+export async function loadBenchContract(studio: BenchStudio, id: string, root = repoRoot()) {
+  const file = path.join(casesDir(studio, root), `${id}.acceptance.json`)
+  const raw = JSON.parse(await readFile(file, "utf8"))
+  const contract = { ...raw, state: "locked", contractHash: undefined }
+  const pinned = contractHashOf(contract)
+  return { contract, pinned, file }
 }
 
 export function extractPrompt(markdown: string) {
@@ -140,6 +171,129 @@ export function summarizeEvents(events: BenchEvent[]) {
   }
 }
 
+/**
+ * v1 CAD scorer: scores the on-disk design with production validators.
+ * The agent's tool-call claims are ignored; forged `complete` claims and
+ * in-session evidence do not count.
+ */
+export async function scoreCadBenchOnDisk(input: {
+  studioHome: string
+  fixture: BenchFixtureV1
+  wallTimeExceeded: boolean
+}): Promise<{ ok: boolean; checks: Record<string, boolean>; summary: ReturnType<typeof summarizeEvents> | null; errors: string[] }> {
+  const { studioHome, fixture, wallTimeExceeded } = input
+  const errors: string[] = []
+  const checks: Record<string, boolean> = {}
+
+  const designs = path.join(studioHome, "studio", "designs")
+  const designDir = path.join(designs, fixture.expectedDesignId)
+  checks.design_exists = await Bun.file(path.join(designDir, "design.json")).exists()
+  if (!checks.design_exists) {
+    errors.push(`expected design ${fixture.expectedDesignId} not found on disk`)
+    return { ok: false, checks, summary: null, errors }
+  }
+
+  try {
+    const design = JSON.parse(await readFile(path.join(designDir, "design.json"), "utf8")) as {
+      schema?: number
+      id?: string
+      parts?: Array<{ id?: string; qty?: number }>
+    }
+    checks.expected_design = design.schema === 2 && design.id === fixture.expectedDesignId
+    const byId = new Map((design.parts ?? []).map((part) => [part.id, part.qty ?? 1]))
+    checks.expected_parts =
+      design.parts !== undefined &&
+      fixture.expectedParts.every((part) => byId.get(part.id) === part.qty) &&
+      (design.parts ?? []).every((part) => fixture.expectedParts.some((expected) => expected.id === part.id))
+  } catch (error) {
+    checks.expected_design = false
+    checks.expected_parts = false
+    errors.push(`design.json unreadable: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  // Locked contract hash must match the pinned harness contract.
+  try {
+    const acceptance = await readAcceptance(designDir)
+    checks.locked_contract = acceptance.contractHash === fixture.pinnedContractHash
+    if (!checks.locked_contract) {
+      errors.push(`active contract hash ${acceptance.contractHash} does not match pinned ${fixture.pinnedContractHash}`)
+    }
+  } catch (error) {
+    checks.locked_contract = false
+    errors.push(`acceptance.json invalid: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  // Print plan exists and covers the current revision.
+  try {
+    const artifact = await readArtifactManifest(designDir, fixture.expectedDesignId)
+    checks.valid_artifacts = artifact !== null
+    if (!artifact) errors.push("no valid artifact manifest")
+    const plan = await readPrintPlan(designDir)
+    checks.print_plan = plan !== null
+    checks.print_plan_current = plan !== null && artifact !== null && plan.buildRevision === artifactRevision(artifact)
+    checks.print_plan_covers = plan !== null && artifact !== null && artifact.parts.every((part) => plan.entries.some((e) => e.artifactId === part.id))
+    if (!checks.print_plan) errors.push("missing print-plan.json")
+    else if (!checks.print_plan_current) errors.push("print plan is stale relative to the build")
+    else if (!checks.print_plan_covers) errors.push("print plan does not cover every final artifact")
+  } catch (error) {
+    checks.valid_artifacts = false
+    checks.print_plan = false
+    checks.print_plan_current = false
+    checks.print_plan_covers = false
+    errors.push(`artifact/plan error: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  // Host-complete QC recomputed from disk with production validators.
+  try {
+    const layout = await initializeStudio(designs)
+    const entry = await findDesign(layout, fixture.expectedDesignId)
+    const artifact = await readArtifactManifest(designDir, fixture.expectedDesignId)
+    if (entry && artifact) {
+      const report = await buildDesignQcReport({
+        id: fixture.expectedDesignId,
+        entry,
+        artifact,
+        designDir,
+      })
+      checks.host_qc_complete = report.complete
+      checks.no_unresolved_findings = report.findings.status === "pass"
+      checks.requirements_pass = report.requirements.status === "pass"
+      checks.manufacturing_pass = report.manufacturing.status === "pass"
+      checks.interfaces_pass = report.interfaces.status === "pass"
+      if (!report.complete) errors.push(`host QC blocked by: ${report.blockedBy.join(", ")}`)
+    } else {
+      checks.host_qc_complete = false
+      errors.push("cannot recompute host QC from disk")
+    }
+  } catch (error) {
+    checks.host_qc_complete = false
+    checks.no_unresolved_findings = false
+    checks.requirements_pass = false
+    checks.manufacturing_pass = false
+    checks.interfaces_pass = false
+    errors.push(`QC computation failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  checks.wall_time = !wallTimeExceeded
+  if (wallTimeExceeded) errors.push(`wall time exceeded (${fixture.wallTimeMs}ms)`)
+  checks.ok =
+    checks.design_exists &&
+    checks.expected_design &&
+    checks.expected_parts &&
+    checks.locked_contract &&
+    checks.valid_artifacts &&
+    checks.print_plan &&
+    checks.print_plan_current &&
+    checks.print_plan_covers &&
+    checks.host_qc_complete &&
+    checks.no_unresolved_findings &&
+    checks.requirements_pass &&
+    checks.manufacturing_pass &&
+    checks.interfaces_pass &&
+    checks.wall_time
+  return { ok: Boolean(checks.ok), checks, summary: null, errors }
+}
+
 export async function scoreBench(input: {
   studio: BenchStudio
   events: BenchEvent[]
@@ -147,78 +301,100 @@ export async function scoreBench(input: {
   expect?: string
   requires?: string[]
   requireNoBash?: boolean
+  fixture?: BenchFixtureV1
+  wallTimeExceeded?: boolean
 }): Promise<{ ok: boolean; checks: Record<string, boolean>; summary: ReturnType<typeof summarizeEvents> }> {
   const summary = summarizeEvents(input.events)
-  const lastByTool = (name: string) => {
-    const hits = input.events.filter((event) => toolName(event) === name)
-    return hits.at(-1)
-  }
-  const checks: Record<string, boolean> = {}
-  if (input.studio === "cad") {
-    const designs = path.join(input.studioHome, "studio", "designs")
-    const created = lastByTool("cad_design_create")
-    const createdInput = created?.part?.state?.input
-    const id = createdInput && typeof createdInput === "object" ? (createdInput as { id?: string }).id : undefined
-    const designDir = id ? path.join(designs, id) : undefined
-    let allStep = false
-    if (designDir) {
-      try {
-        const design = JSON.parse(await readFile(path.join(designDir, "design.json"), "utf8")) as { parts?: Array<{ id?: string }> }
-        const parts = (design.parts ?? []).map((part) => part.id).filter((part): part is string => Boolean(part))
-        allStep = parts.length > 0
-        for (const part of parts) {
-          if (!(await Bun.file(path.join(designDir, "step", `${part}.step`)).exists())) allStep = false
-        }
-      } catch {
-        allStep = false
-      }
+  if (input.studio !== "cad") {
+    const lastByTool = (name: string) => {
+      const hits = input.events.filter((event) => toolName(event) === name)
+      return hits.at(-1)
     }
-    const qc = toolOutput(lastByTool("cad_design_qc_report"))
-    checks.has_build = (summary.tools.cad_design_build ?? 0) > 0
-    checks.has_qc = (summary.tools.cad_design_qc_report ?? 0) > 0
-    checks.complete = qc.complete === true
-    checks.artifacts = allStep
-    checks.ok = checks.has_build && checks.artifacts && checks.complete
-  } else if (input.studio === "pcb") {
-    const build = toolOutput(lastByTool("pcb_circuit_build"))
-    const exports = input.events.filter((event) => toolName(event) === "pcb_circuit_export").map((event) => toolOutput(event))
-    const blockers = Array.isArray(build.manufacturingBlockers) ? build.manufacturingBlockers : null
-    checks.has_create = (summary.tools.pcb_project_create ?? 0) > 0
-    checks.has_build = (summary.tools.pcb_circuit_build ?? 0) > 0
-    checks.has_export = (summary.tools.pcb_circuit_export ?? 0) > 0
-    checks.build_success = build.success === true
-    checks.design_valid = build.designValid === true
-    checks.fabrication_ready = build.fabricationReady === true
-    checks.no_manufacturing_blockers = blockers !== null && blockers.length === 0
-    checks.pcb_generated = exports.some(
-      (result) => result.success === true && Array.isArray(result.generatedFormats) && result.generatedFormats.includes("pcb"),
-    )
-    if (input.requireNoBash) checks.no_bash = (summary.tools.bash ?? 0) === 0
-    checks.ok =
-      checks.has_create &&
-      checks.has_build &&
-      checks.has_export &&
-      checks.build_success &&
-      checks.design_valid &&
-      checks.fabrication_ready &&
-      checks.no_manufacturing_blockers &&
-      checks.pcb_generated &&
-      (!input.requireNoBash || checks.no_bash)
-  } else {
-    const build = toolOutput(lastByTool("fw_build"))
-    const simEvent = lastByTool("fw_sim_run")
-    const sim = toolOutput(simEvent)
-    const simInput = simEvent?.part?.state?.input
-    const expectUsed = simInput && typeof simInput === "object" ? (simInput as { expect?: string }).expect : undefined
-    checks.has_create = (summary.tools.fw_project_create ?? 0) > 0
-    checks.has_build = build.ok === true
-    checks.has_sim = sim.ok === true && sim.reason === "expect"
-    checks.expect = Boolean(input.expect) && expectUsed === input.expect
-    checks.ok = checks.has_create && checks.has_build && checks.has_sim && checks.expect
+    const checks: Record<string, boolean> = {}
+    if (input.studio === "pcb") {
+      const build = toolOutput(lastByTool("pcb_circuit_build"))
+      const exports = input.events.filter((event) => toolName(event) === "pcb_circuit_export").map((event) => toolOutput(event))
+      const blockers = Array.isArray(build.manufacturingBlockers) ? build.manufacturingBlockers : null
+      checks.has_create = (summary.tools.pcb_project_create ?? 0) > 0
+      checks.has_build = (summary.tools.pcb_circuit_build ?? 0) > 0
+      checks.has_export = (summary.tools.pcb_circuit_export ?? 0) > 0
+      checks.build_success = build.success === true
+      checks.design_valid = build.designValid === true
+      checks.fabrication_ready = build.fabricationReady === true
+      checks.no_manufacturing_blockers = blockers !== null && blockers.length === 0
+      checks.pcb_generated = exports.some(
+        (result) => result.success === true && Array.isArray(result.generatedFormats) && result.generatedFormats.includes("pcb"),
+      )
+      if (input.requireNoBash) checks.no_bash = (summary.tools.bash ?? 0) === 0
+      checks.ok =
+        checks.has_create &&
+        checks.has_build &&
+        checks.has_export &&
+        checks.build_success &&
+        checks.design_valid &&
+        checks.fabrication_ready &&
+        checks.no_manufacturing_blockers &&
+        checks.pcb_generated &&
+        (!input.requireNoBash || checks.no_bash)
+    } else {
+      const build = toolOutput(lastByTool("fw_build"))
+      const simEvent = lastByTool("fw_sim_run")
+      const sim = toolOutput(simEvent)
+      const simInput = simEvent?.part?.state?.input
+      const expectUsed = simInput && typeof simInput === "object" ? (simInput as { expect?: string }).expect : undefined
+      checks.has_create = (summary.tools.fw_project_create ?? 0) > 0
+      checks.has_build = build.ok === true
+      checks.has_sim = sim.ok === true && sim.reason === "expect"
+      checks.expect = Boolean(input.expect) && expectUsed === input.expect
+      checks.ok = checks.has_create && checks.has_build && checks.has_sim && checks.expect
+    }
+    return { ok: Boolean(checks.ok), checks, summary }
   }
-  return { ok: Boolean(checks.ok), checks, summary }
-}
 
+  // CAD: fixture-scored from disk. Load fixture here; the runner passes it via
+  // the environment in main(). Fall back to the old event-based checks only if
+  // no fixture is available (schema 1 / legacy cases).
+  if (input.studio === "cad") {
+    const checks: Record<string, boolean> = {}
+    const fixture = input.fixture
+    if (!fixture) {
+      const lastByTool = (name: string) => input.events.filter((event) => toolName(event) === name).at(-1)
+      const created = lastByTool("cad_design_create")
+      const createdInput = created?.part?.state?.input
+      const id = createdInput && typeof createdInput === "object" ? (createdInput as { id?: string }).id : undefined
+      const designDir = id ? path.join(input.studioHome, "studio", "designs", id) : undefined
+      let allStep = false
+      if (designDir) {
+        try {
+          const design = JSON.parse(await readFile(path.join(designDir, "design.json"), "utf8")) as {
+            parts?: Array<{ id?: string }>
+          }
+          const parts = (design.parts ?? []).map((part) => part.id).filter((part): part is string => Boolean(part))
+          allStep = parts.length > 0
+          for (const part of parts) {
+            if (!(await Bun.file(path.join(designDir, "step", `${part}.step`)).exists())) allStep = false
+          }
+        } catch {
+          allStep = false
+        }
+      }
+      const qc = toolOutput(lastByTool("cad_design_qc_report"))
+      checks.has_build = (summary.tools.cad_design_build ?? 0) > 0
+      checks.has_qc = (summary.tools.cad_design_qc_report ?? 0) > 0
+      checks.complete = qc.complete === true
+      checks.artifacts = allStep
+      checks.ok = checks.has_build && checks.artifacts && checks.complete
+      return { ok: Boolean(checks.ok), checks, summary }
+    }
+    const scored = await scoreCadBenchOnDisk({
+      studioHome: input.studioHome,
+      fixture,
+      wallTimeExceeded: input.wallTimeExceeded === true,
+    })
+    return { ok: scored.ok, checks: scored.checks, summary }
+  }
+  return { ok: false, checks: {}, summary }
+}
 function usage() {
   return `Usage: bun run bench <cad|pcb|fw> <case> [--model provider/model] [--variant name] [--deny-bash] [--keep] [--headless]
 
@@ -279,7 +455,8 @@ async function runOpencode(input: {
   env: NodeJS.ProcessEnv
   eventsPath: string
   stderrPath: string
-}) {
+  wallTimeMs?: number
+}): Promise<{ code: number; wallTimeExceeded: boolean }> {
   const args = ["opencode", "run", "--print-logs", "--agent", input.agent, "-m", input.model]
   if (input.variant) args.push("--variant", input.variant)
   args.push("--auto", "--format", "json", "--dir", input.dir)
@@ -291,6 +468,17 @@ async function runOpencode(input: {
     stdout: "pipe",
     stderr: "pipe",
   })
+  let wallTimeExceeded = false
+  const wallTimer = input.wallTimeMs
+    ? setTimeout(() => {
+        wallTimeExceeded = true
+        try {
+          proc.kill("SIGTERM")
+        } catch {
+          /* already gone */
+        }
+      }, input.wallTimeMs)
+    : null
   const writeStream = async (stream: ReadableStream<Uint8Array> | null, filePath: string) => {
     const writer = Bun.file(filePath).writer()
     if (stream) {
@@ -308,7 +496,8 @@ async function runOpencode(input: {
     writeStream(proc.stderr, input.stderrPath),
     proc.exited,
   ])
-  return code
+  if (wallTimer) clearTimeout(wallTimer)
+  return { code, wallTimeExceeded }
 }
 
 export function benchLockPath(root: string) {
@@ -481,6 +670,25 @@ async function main(argv: string[]) {
   try {
     await ensureRuntime(root)
     const isolate = await prepareIsolate(root, { denyBash })
+    // v1 CAD fixtures: pinned harness contract + wall time. The runner injects
+    // the contract file; the scorer rejects a different active hash.
+    let fixture: BenchFixtureV1 | undefined
+    let benchContract: { contract: unknown; pinned: string; file: string } | undefined
+    if (studioArg === "cad") {
+      try {
+        fixture = await loadBenchFixture(studioArg, bench.id, root)
+        benchContract = await loadBenchContract(studioArg, bench.id, root)
+        const contractDir = path.join(isolate.studioHome, ".bench")
+        await mkdir(contractDir, { recursive: true })
+        await writeFile(path.join(contractDir, `${bench.id}.acceptance.json`), `${JSON.stringify(benchContract.contract, null, 2)}\n`)
+      } catch (error) {
+        // A CAD case without a fixture silently falls back to the legacy
+        // claim-based scorer; that must never happen for v1 gates.
+        throw new Error(
+          `CAD bench ${bench.id} requires fixture + contract files: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
     const stamp = new Date()
       .toISOString()
       .replace(/[-:]/g, "")
@@ -493,6 +701,10 @@ async function main(argv: string[]) {
     if (variant) await writeFile(path.join(runDir, "variant.txt"), `${variant}\n`)
     await writeFile(path.join(runDir, "agent.txt"), `${bench.agent}\n`)
     await writeFile(path.join(runDir, "isolate.txt"), `${isolate.isolate}\n`)
+    if (fixture) {
+      await writeFile(path.join(runDir, "benchmark.json"), `${JSON.stringify(fixture, null, 2)}\n`)
+      await writeFile(path.join(runDir, "contract.json"), `${JSON.stringify(benchContract!.contract, null, 2)}\n`)
+    }
     await writeFile(path.join(casesDir(studioArg, root), "runs", "LATEST"), `${runDir}\n`)
 
     const env = benchEnvironment(isolate)
@@ -508,7 +720,7 @@ async function main(argv: string[]) {
     }
     const eventsPath = path.join(runDir, "events.jsonl")
     try {
-      const code = await runOpencode({
+      const { code, wallTimeExceeded } = await runOpencode({
         agent: bench.agent,
         model: bench.model,
         variant,
@@ -518,6 +730,7 @@ async function main(argv: string[]) {
         env,
         eventsPath,
         stderrPath: path.join(runDir, "stderr.txt"),
+        wallTimeMs: fixture?.wallTimeMs,
       })
       const events = loadEvents(await readFile(eventsPath, "utf8").catch(() => ""))
       const scored = await scoreBench({
@@ -527,6 +740,8 @@ async function main(argv: string[]) {
         expect: bench.expect,
         requires: bench.requires,
         requireNoBash: denyBash,
+        fixture,
+        wallTimeExceeded,
       })
       const artifactDir = path.join(runDir, "studio")
       await cp(path.join(isolate.studioHome, "studio"), artifactDir, { recursive: true }).catch(() => {})
@@ -534,11 +749,18 @@ async function main(argv: string[]) {
       for (const name of await readdir(designsDir).catch(() => [] as string[])) {
         await ensurePublicArtifactLinks(path.join(designsDir, name)).catch(() => {})
       }
-      const report = { ...scored, exitCode: code, runDir, isolate: isolate.isolate, viewer: viewer?.studioUrl ?? null }
+      const report = { ...scored, exitCode: code, wallTimeExceeded, runDir, isolate: isolate.isolate, viewer: viewer?.studioUrl ?? null }
       await writeFile(path.join(runDir, "score.json"), `${JSON.stringify(report, null, 2)}\n`)
       console.log(
         JSON.stringify(
-          { ok: scored.ok && code === 0, checks: scored.checks, runDir, viewer: viewer?.studioUrl ?? null, exitCode: code },
+          {
+            ok: scored.ok && code === 0,
+            checks: scored.checks,
+            runDir,
+            viewer: viewer?.studioUrl ?? null,
+            exitCode: code,
+            wallTimeExceeded,
+          },
           null,
           2,
         ),

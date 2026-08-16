@@ -1,4 +1,4 @@
-import { lstat, readdir, readlink, rename, rm, symlink } from "node:fs/promises"
+import { lstat, readlink, rename, rm, symlink } from "node:fs/promises"
 import path from "node:path"
 
 const ARTIFACTS = ".artifacts"
@@ -14,22 +14,7 @@ export async function resolveArtifactGeneration(designDir: string): Promise<stri
   } catch {
     // current missing or dangling
   }
-  let best: { name: string; mtime: number } | null = null
-  let names: string[] = []
-  try {
-    names = await readdir(artifacts)
-  } catch {
-    return null
-  }
-  for (const name of names) {
-    if (!GENERATION.test(name)) continue
-    const dir = path.join(artifacts, name)
-    const st = await lstat(dir).catch(() => null)
-    if (!st?.isDirectory()) continue
-    if (!(await lstat(path.join(dir, "manifest.json")).catch(() => null))) continue
-    if (!best || st.mtimeMs > best.mtime) best = { name, mtime: st.mtimeMs }
-  }
-  return best?.name ?? null
+  return null
 }
 
 async function replaceSymlink(linkPath: string, target: string) {

@@ -82,12 +82,15 @@ describe("Studio agent isolation", () => {
       expect(actionFor({ permission: "skill", pattern: "studio-cad-part", rules: combined })).toBe("deny")
       expect(actionFor({ permission: "task", pattern: "general", rules: combined })).toBe("deny")
       expect(actionFor({ permission: "external_directory", pattern: "*", rules: combined })).toBe("allow")
-      expect(actionFor({ permission: "bash", pattern: "*", rules: combined })).toBe(studioId === "pcb" ? "deny" : "allow")
+      expect(actionFor({ permission: "bash", pattern: "*", rules: combined })).toBe(studioId === "pcb" || studioId === "cad" ? "deny" : "allow")
+      expect(actionFor({ permission: "edit", pattern: "*", rules: combined })).toBe(studioId === "cad" ? "deny" : "allow")
+      expect(actionFor({ permission: "write", pattern: "*", rules: combined })).toBe(studioId === "cad" ? "deny" : "allow")
+      expect(actionFor({ permission: "cad_mutate", pattern: "*", rules: combined })).toBe(studioId === "cad" ? "allow" : "deny")
       expect(actionFor({ permission: "doom_loop", pattern: "*", rules: combined })).toBe("allow")
     }
   })
 
-  test("cad-part worker cannot build, fit, or load the parent CAD skill", async () => {
+  test("cad-part worker cannot build, fit, verify, or load the parent CAD skill", async () => {
     const base: OpenCodeConfig = { exists: false, text: "{}\n", value: {}, filePath: "opencode.json" }
     const globalRules = rules(withManagedStudioPermissions(base).value.permission)
     const source = await readFile(path.join(import.meta.dir, "..", "studios", "cad", "agent", "cad-part.md"), "utf8")
@@ -99,8 +102,12 @@ describe("Studio agent isolation", () => {
     const combined = [...globalRules, ...rules(frontmatter.permission)]
     expect(actionFor({ permission: "cad_execute", pattern: "*", rules: combined })).toBe("allow")
     expect(actionFor({ permission: "cad_design_build", pattern: "*", rules: combined })).toBe("deny")
-    expect(actionFor({ permission: "cad_design_dispatch", pattern: "*", rules: combined })).toBe("deny")
-    expect(actionFor({ permission: "cad_compare", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "cad_source_apply", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "cad_verify", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "cad_print_plan_apply", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "bash", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "edit", pattern: "*", rules: combined })).toBe("deny")
+    expect(actionFor({ permission: "write", pattern: "*", rules: combined })).toBe("deny")
     expect(actionFor({ permission: "pcb_circuit_build", pattern: "*", rules: combined })).toBe("deny")
     expect(actionFor({ permission: "skill", pattern: "studio-cad-part", rules: combined })).toBe("allow")
     expect(actionFor({ permission: "skill", pattern: "studio-cad", rules: combined })).toBe("deny")
