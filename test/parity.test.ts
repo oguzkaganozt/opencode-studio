@@ -26,8 +26,8 @@ describe("parity fixtures", () => {
   test("skill and agent digests match every Studio source", async () => {
     const expectedSkills = STUDIO_IDS.map((id) => `studio-${id}`).sort()
     const expectedAgents = STUDIO_IDS.map(agentNameFor).sort()
-    expect(Object.keys(digests).sort()).toEqual([...expectedSkills, "studio-concept-review", "studio-cad-part"].sort())
-    expect(Object.keys(agentDigests).sort()).toEqual([...expectedAgents, "cad-part"].sort())
+    expect(Object.keys(digests).sort()).toEqual([...expectedSkills, "studio-concept-review"].sort())
+    expect(Object.keys(agentDigests).sort()).toEqual(expectedAgents)
     const mismatches: string[] = []
     for (const fixture of [digests, agentDigests]) {
       for (const [_name, meta] of Object.entries(fixture as Record<string, { path: string; sha256: string }>)) {

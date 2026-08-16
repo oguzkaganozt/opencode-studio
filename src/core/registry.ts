@@ -8,7 +8,7 @@ export const STUDIO_TOOL_PERMISSIONS: Record<StudioId, readonly string[]> = {
   fw: ["fw_*"],
 }
 
-export const EXTRA_STUDIO_SKILLS = ["studio-concept-review", "studio-cad-part"] as const
+export const EXTRA_STUDIO_SKILLS = ["studio-concept-review"] as const
 export const STUDIO_SKILL_NAMES = [...STUDIO_IDS.map((id) => `studio-${id}`), ...EXTRA_STUDIO_SKILLS]
 
 export type StudioRootDefault = "studio_home"

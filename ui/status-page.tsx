@@ -5,6 +5,7 @@ import { Button } from "./components/button"
 import { Dialog, DialogHeader } from "./components/dialog"
 import { fetchJson } from "./lib/fetch-json"
 import { closeStatusDialog, isStatusDialogOpen, subscribeStatusDialog } from "./status-dialog-state"
+import { MANAGED_IDS } from "./status-managed-ids"
 
 type StudiosResponse = {
   packageVersion: string
@@ -27,23 +28,6 @@ type LifecycleStatusResponse = {
   packageVersion: string
   checks: DoctorCheck[]
 }
-
-const MANAGED_IDS = [
-  "plugin-registration",
-  "permission:studio",
-  "skill:concept",
-  "skill:cad",
-  "skill:pcb",
-  "skill:fw",
-  "skill:concept-review",
-  "skill:cad-part",
-  "agent:concept",
-  "agent:cad",
-  "agent:cad-part",
-  "agent:pcb",
-  "agent:fw",
-  "cad-engine",
-] as const
 
 function toneOf(status: "pass" | "warn" | "fail" | undefined): "pass" | "warn" | "fail" | undefined {
   return status

@@ -105,6 +105,27 @@ describe("configureStudios", () => {
     expect(await Bun.file(agentFile).exists()).toBe(false)
   })
 
+  test("configure removes leftover managed cad-part skill and agent", async () => {
+    const ctx = await isolated()
+    const skillDir = path.join(ctx.openCodeHome, "skills/studio-cad-part")
+    const skillFile = path.join(skillDir, "SKILL.md")
+    const agentFile = path.join(ctx.openCodeHome, "agents/cad-part.md")
+    await mkdir(skillDir, { recursive: true })
+    await mkdir(path.join(ctx.openCodeHome, "agents"), { recursive: true })
+    const body = "# leftover cad-part\n"
+    const digest = createHash("sha256").update(body).digest("hex")
+    await writeFile(skillFile, body)
+    await writeFile(
+      path.join(skillDir, ".opencode-studio-managed.json"),
+      JSON.stringify({ studioId: "cad", packageVersion: "1.0.0", digest }),
+    )
+    await writeFile(agentFile, body)
+    await writeFile(`${agentFile}.opencode-studio-managed.json`, JSON.stringify({ studioId: "cad", packageVersion: "1.0.0", digest }))
+    await configureStudios({ ...ctx, validateOpenCode: false })
+    expect(await Bun.file(skillFile).exists()).toBe(false)
+    expect(await Bun.file(agentFile).exists()).toBe(false)
+  })
+
   test("configure removes leftover prefixed studio agents", async () => {
     const ctx = await isolated()
     const agentFile = path.join(ctx.openCodeHome, "agents/studio-fw.md")
@@ -276,10 +297,8 @@ describe("configureStudios", () => {
       "skill:pcb",
       "skill:fw",
       "skill:concept-review",
-      "skill:cad-part",
       "agent:concept",
       "agent:cad",
-      "agent:cad-part",
       "agent:pcb",
       "agent:fw",
       "cad-engine",

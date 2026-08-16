@@ -16,7 +16,6 @@ permission:
     studio-pcb: deny
     studio-concept: deny
     studio-concept-review: deny
-    studio-cad-part: deny
     studio-fw: allow
 ---
 

@@ -1,5 +1,5 @@
 {
-  "count": 50,
+  "count": 49,
   "tools": {
     "cad_analyze_form": {
       "args": {
@@ -49,12 +49,6 @@
         "id": "string",
         "params": "string",
         "parts": "array"
-      },
-      "studio": "cad"
-    },
-    "cad_design_join": {
-      "args": {
-        "id": "string"
       },
       "studio": "cad"
     },

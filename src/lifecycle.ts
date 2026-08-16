@@ -525,6 +525,14 @@ async function removeIfUnmodifiedManaged(filePath: string, markerFile: string, e
   for (const dir of extraDirs) await rmdir(dir).catch(() => {})
 }
 
+async function removeRetiredCadPartWorker(userPaths: UserPathOptions) {
+  const skillsHome = resolveOpenCodeSkillsHome(userPaths)
+  const skillDirectory = path.join(skillsHome, "studio-cad-part")
+  await removeIfUnmodifiedManaged(path.join(skillDirectory, "SKILL.md"), path.join(skillDirectory, MANAGED_MARKER_NAME), [skillDirectory])
+  const agentFile = path.join(resolveOpenCodeAgentsHome(userPaths), "cad-part.md")
+  await removeIfUnmodifiedManaged(agentFile, `${agentFile}${MANAGED_MARKER_NAME}`)
+}
+
 async function removeRetiredMediaStudio(userPaths: UserPathOptions) {
   const skillsHome = resolveOpenCodeSkillsHome(userPaths)
   const skillDirectory = path.join(skillsHome, "studio-media")
@@ -748,6 +756,7 @@ export async function configureStudios(
     }
     await removeManagedMediaGoPluginFile(userPaths)
     await removeRetiredMediaStudio(userPaths)
+    await removeRetiredCadPartWorker(userPaths)
     await removeRetiredPrefixedStudioAgents(userPaths)
 
     const written = await writeStudioConfigFile(
@@ -850,6 +859,7 @@ export async function removeStudios(input: LifecyclePaths & { validateOpenCode?:
 
   await removeManagedMediaGoPluginFile(userPaths)
   await removeRetiredMediaStudio(userPaths)
+  await removeRetiredCadPartWorker(userPaths)
   await removeRetiredPrefixedStudioAgents(userPaths)
 
   const removed: string[] = []

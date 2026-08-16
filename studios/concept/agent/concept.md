@@ -13,7 +13,6 @@ permission:
   skill:
     "*": allow
     studio-cad: deny
-    studio-cad-part: deny
     studio-pcb: deny
     studio-fw: deny
     studio-concept: allow

@@ -156,10 +156,10 @@ describe("cad plugin smoke", () => {
     ]) {
       expect(names).toContain(name)
     }
-    expect(names.filter((name) => name.startsWith("cad_")).length).toBe(18)
+    expect(names.filter((name) => name.startsWith("cad_")).length).toBe(17)
     expect(names).toContain("cad_ir_apply")
     expect(names).toContain("cad_ir_docs")
-    expect(names).toContain("cad_design_join")
+    expect(names).not.toContain("cad_design_join")
     expect(names).not.toContain("cad_design_dispatch")
     expect(names.some((name) => name.startsWith("design_") || name.startsWith("build123d_"))).toBe(false)
     const created = await (hooks.tool as any).cad_design_create.execute(

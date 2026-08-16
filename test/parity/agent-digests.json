@@ -1,22 +1,18 @@
 {
   "cad": {
     "path": "studios/cad/agent/cad.md",
-    "sha256": "8d8d0bafcfb371f36ba3b5370ba6841f58b0aae3d15a8db0b77dee10225f7bce"
-  },
-  "cad-part": {
-    "path": "studios/cad/agent/cad-part.md",
-    "sha256": "20298f9077f384cabf48ac5507d1625e273acace3467a692f7df268ac1f64526"
+    "sha256": "9592cc5cd87df2f21b318f09b1a687966fd5d9991f9cc0efdbf2aeeaecdbb2d1"
   },
   "concept": {
     "path": "studios/concept/agent/concept.md",
-    "sha256": "8f7fbcacbf54a52a6b19faef193ae46abf2e89d4154e59e4185aa43fc6ae3adf"
+    "sha256": "2ebf9963caa4dfca46f4c9f659726ae531df5231c5ff8928f2ca12452f342201"
   },
   "firmware": {
     "path": "studios/fw/agent/firmware.md",
-    "sha256": "78781f3dee59fdd6ad2be809632754b5158ab1e0e9dafc5791dd49f19d0ec655"
+    "sha256": "6193178e50366b7148c59e04ee052070c24c63fa9ada96f783bc683e478738b5"
   },
   "pcb": {
     "path": "studios/pcb/agent/pcb.md",
-    "sha256": "88ac7564fa2015fd1a6639ec6923d4e27416520565cf9b7acb2243f9c6cc16d4"
+    "sha256": "2e9393c97b2b502a5ade3cee2d0b3fe924099b164a9189200e4e8df216505b5f"
   }
 }
