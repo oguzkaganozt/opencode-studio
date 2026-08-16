@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { CadViewer } from "@tscircuit/3d-viewer"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { ErrorState } from "@ui/components/error-state"
-import { checkCadAssetHealth, preferKicadStepModels } from "./cad-models"
+import { checkCadAssetHealth, opaqueEasyedaObjModels, preferKicadStepModels } from "./cad-models"
 import { ViewerErrorBoundary } from "./error-boundary"
 import { useCircuitJson } from "./use-circuit-json"
 import { ViewerFrame } from "./viewer-frame"
@@ -42,8 +42,12 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
   const [manifoldError, setManifoldError] = useState<string | null>(null)
   const [manifoldAttempt, setManifoldAttempt] = useState(0)
   const { data, dataUpdatedAt, isLoading, error, refetch } = useCircuitJson(projectId)
-  // Stable reference — CadViewer JSON.stringifies circuitJson for its remount key.
-  const circuitJson = useMemo(() => preferKicadStepModels(data), [data])
+  const { data: circuitJson, isLoading: isRewritingModels } = useQuery({
+    queryKey: ["pcb", "cadCircuitJson", projectId, dataUpdatedAt],
+    queryFn: () => opaqueEasyedaObjModels(preferKicadStepModels(data)),
+    enabled: Array.isArray(data),
+    staleTime: Number.POSITIVE_INFINITY,
+  })
   const { data: assetHealth, isLoading: isCheckingAssets } = useQuery({
     queryKey: ["pcb", "cadAssetHealth", projectId, dataUpdatedAt],
     queryFn: () => checkCadAssetHealth(data),
@@ -89,7 +93,7 @@ export default function CadViewerTab({ projectId }: { projectId: string }) {
       />
     )
   }
-  if (!manifoldReady || isLoading) {
+  if (!manifoldReady || isLoading || isRewritingModels || !circuitJson) {
     return (
       <div className="pcb-viewer-empty" role="status" aria-busy="true">
         <div className="osc-skeleton h-48 w-72 max-w-[80%]" aria-hidden />

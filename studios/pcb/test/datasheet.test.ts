@@ -2,7 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { attachDatasheetNotes, type DatasheetFetch, extractLcscPdfUrl, renderDatasheetMarkdown, resolveLcscPdfUrl } from "../datasheet"
+import {
+  attachDatasheetNotes,
+  type DatasheetFetch,
+  extractLcscPdfUrl,
+  renderDatasheetBrief,
+  renderDatasheetMarkdown,
+  resolveLcscPdfUrl,
+} from "../datasheet"
 
 const temps: string[] = []
 
@@ -76,6 +83,7 @@ describe("datasheet attach", () => {
       fetcher,
     })
     expect(result).toMatchObject({ ok: true, source: "chatgpt", model: "gpt-5.6-luna", notesPath: "TP4056.notes.md" })
+    expect(result.notesMd).toContain("connect TEMP directly to GND")
     expect(await readFile(path.join(dir, "TP4056.notes.md"), "utf8")).toContain("connect TEMP directly to GND")
   })
 
@@ -131,5 +139,18 @@ describe("datasheet markdown", () => {
     expect(renderDatasheetMarkdown(notes, { source: "openrouter", model: "gpt-5.6-luna", pdfUrl: "https://example.com/x.pdf" })).toContain(
       "1 TEMP — Battery temperature input",
     )
+  })
+
+  test("renders a short brief for the tool response", () => {
+    const brief = renderDatasheetBrief({
+      ...notes,
+      unused_defaults: [
+        "TEMP (pin 1): If temperature monitoring is unused, connect TEMP directly to GND. Do not leave it floating.",
+        "PROG (pin 2): Connect a resistor from PROG to GND.",
+      ],
+    })
+    expect(brief.split("\n")[0]).toBe("TP4056")
+    expect(brief).toContain("connect TEMP directly to GND")
+    expect(brief.split("\n").length).toBeLessThanOrEqual(8)
   })
 })

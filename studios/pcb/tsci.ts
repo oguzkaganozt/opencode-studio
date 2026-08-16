@@ -27,6 +27,7 @@ import {
   readComponentEvidence,
   writeComponentEvidence,
 } from "./component-evidence"
+import { type CourtyardSize, measureComponentCourtyard } from "./courtyard"
 import { loadNoConnectIntents } from "./tsx-intent"
 
 export type TsciResult = {
@@ -34,6 +35,7 @@ export type TsciResult = {
   stdout: string
   stderr: string
   exitCode: number
+  courtyard?: CourtyardSize
 }
 
 export type ComponentSearchScope = "all" | "jlcpcb" | "tscircuit" | "kicad"
@@ -696,6 +698,7 @@ export type ComponentAddResult = {
   reason: string
   stdout: string
   stderr: string
+  courtyard?: CourtyardSize
 }
 
 type ComponentAddOperations = {
@@ -807,7 +810,7 @@ async function smokeTestComponent(projectDir: string, candidate: ComponentCandid
           version: candidate.version,
           export: candidate.exportName,
         })
-        return result
+        return { ...result, courtyard: measureComponentCourtyard(json, "U_TEST") }
       }
       return {
         ...result,
@@ -864,7 +867,7 @@ export async function smokeTestImportedComponent(
       version: input.sha256,
       export: input.exportName,
     })
-    return result
+    return { ...result, courtyard: measureComponentCourtyard(json, "U_TEST") }
   } catch (error) {
     return { success: false, stdout: "", stderr: error instanceof Error ? error.message : String(error), exitCode: 1 }
   } finally {
@@ -989,6 +992,7 @@ export async function addComponentCandidate(
     reason: "installed_and_verified",
     stdout: installed.stdout.slice(0, 8000),
     stderr: installed.stderr.slice(0, 4000),
+    courtyard: smokeResult?.courtyard,
   }
 }
 

@@ -16,6 +16,54 @@ export type CadAssetHealth = {
   issues: CadAssetIssue[]
 }
 
+const EASYEDA_OBJ = /modelcdn\.tscircuit\.com\/easyeda_models\/.*\.obj/i
+
+export function stripEmbeddedObjMaterials(obj: string): string {
+  return obj
+    .replace(/newmtl[\s\S]*?endmtl\s*/g, "")
+    .replace(/^usemtl.*(?:\r?\n|$)/gm, "")
+    .replace(/^mtllib.*(?:\r?\n|$)/gm, "")
+}
+
+function objDataUrl(obj: string): string {
+  return `data:model/obj;base64,${btoa(obj)}`
+}
+
+export async function opaqueEasyedaObjModels(circuitJson: unknown, fetchModel: typeof fetch = fetch): Promise<unknown> {
+  if (!Array.isArray(circuitJson)) return circuitJson
+  const urls = [
+    ...new Set(
+      circuitJson.flatMap((element) => {
+        if (!element || typeof element !== "object" || Array.isArray(element)) return []
+        const url = (element as CircuitElement).model_obj_url
+        return typeof url === "string" && EASYEDA_OBJ.test(url) ? [url] : []
+      }),
+    ),
+  ]
+  const rewritten = new Map<string, string>()
+  await Promise.all(
+    urls.map(async (url) => {
+      try {
+        const response = await fetchModel(url)
+        if (!response.ok) return
+        rewritten.set(url, objDataUrl(stripEmbeddedObjMaterials(await response.text())))
+      } catch {
+        // Keep the original EasyEDA URL if the rewrite fetch fails.
+      }
+    }),
+  )
+  if (rewritten.size === 0) return circuitJson
+  return circuitJson.map((element) => {
+    if (!element || typeof element !== "object" || Array.isArray(element)) return element
+    const record = element as CircuitElement
+    if (record.type !== "cad_component" || typeof record.model_obj_url !== "string") return element
+    const next = rewritten.get(record.model_obj_url)
+    if (!next) return element
+    const { model_step_url: _step, ...rest } = record
+    return { ...rest, model_obj_url: next }
+  })
+}
+
 export function preferKicadStepModels(circuitJson: unknown): unknown {
   if (!Array.isArray(circuitJson)) return circuitJson
 

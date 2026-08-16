@@ -340,7 +340,7 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
 
         pcb_component_add: tool({
           description:
-            "Add one part to the project. Pass candidateId from pcb_component_search for a tscircuit package, or lcscPartNumber (C…) for an exact JLCPCB footprint. Provide exactly one. Smoke-tests and rolls back on failure. JLCPCB adds also attach datasheet wiring notes when a PDF can be resolved.",
+            "Add one part to the project. Pass candidateId from pcb_component_search for a tscircuit package, or lcscPartNumber (C…) for an exact JLCPCB footprint. Provide exactly one. Smoke-tests and rolls back on failure. On success, courtyard is the keep-out box in mm for pcbX/pcbY. JLCPCB adds also attach datasheet wiring notes when a PDF can be resolved.",
           args: {
             projectId: tool.schema.string().describe("Project ID from pcb_workspace_list"),
             candidateId: tool.schema.string().min(1).optional().describe("candidateId from pcb_component_search.candidates"),
@@ -379,7 +379,13 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
             }
             if (hasCandidate) {
               const result = await addComponentCandidate(project.absolutePath, args.candidateId!, ctx.abort)
-              return formatToolJson({ projectId: args.projectId, name: project.name, source: "tscircuit", ...result })
+              return formatToolJson({
+                ...(result.courtyard ? { courtyard: result.courtyard } : {}),
+                projectId: args.projectId,
+                name: project.name,
+                source: "tscircuit",
+                ...result,
+              })
             }
             const result = await importExactLcscComponent(
               { projectDir: project.absolutePath, lcscPartNumber: args.lcscPartNumber!, expectedSha256: args.expectedSha256 },
@@ -395,6 +401,8 @@ export function createPcbStudioPlugin(options?: { workspaceRoot?: string; specRo
                   })
                 : undefined
             return formatToolJson({
+              ...(result.success && result.courtyard ? { courtyard: result.courtyard } : {}),
+              ...(datasheet?.ok && datasheet.notesMd ? { notesMd: datasheet.notesMd } : {}),
               projectId: args.projectId,
               name: project.name,
               source: "jlcpcb",

@@ -24,6 +24,7 @@ export type DatasheetAttachResult = {
   model?: string
   pdfUrl?: string
   notesPath?: string
+  notesMd?: string
   notes?: DatasheetNotes
   reason?: string
 }
@@ -241,6 +242,21 @@ async function extractViaOpenRouter(pdfUrl: string, fetcher: DatasheetFetch, sig
   return parseNotes(JSON.parse(content))
 }
 
+function clip(text: string, max = 110): string {
+  const compact = text.replace(/\s+/g, " ").trim()
+  return compact.length <= max ? compact : `${compact.slice(0, max - 1).trimEnd()}…`
+}
+
+export function renderDatasheetBrief(notes: DatasheetNotes): string {
+  const lines = [notes.mpn]
+  for (const item of notes.unused_defaults) {
+    if (lines.length >= 7) break
+    lines.push(`- ${clip(item)}`)
+  }
+  if (notes.typical_notes.trim() && lines.length < 8) lines.push(clip(notes.typical_notes, 140))
+  return lines.join("\n")
+}
+
 export function renderDatasheetMarkdown(notes: DatasheetNotes, meta: { source: string; model: string; pdfUrl: string }): string {
   const pins = notes.pins.map((pin) => `- ${pin.number} ${pin.name} — ${pin.function}`).join("\n")
   const unused = notes.unused_defaults.map((item) => `- ${item}`).join("\n")
@@ -288,7 +304,7 @@ export async function attachDatasheetNotes(input: {
     }
     const markdown = renderDatasheetMarkdown(notes, { source, model: DATASHEET_MODEL, pdfUrl })
     const notesPath = await writeDatasheetNotes(input.projectDir, input.relativeTsx, markdown)
-    return { ok: true, source, model: DATASHEET_MODEL, pdfUrl, notesPath, notes }
+    return { ok: true, source, model: DATASHEET_MODEL, pdfUrl, notesPath, notesMd: renderDatasheetBrief(notes), notes }
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }

@@ -108,12 +108,14 @@ describe("component candidate flow", () => {
         stdout: "rendered",
         stderr: "",
         exitCode: 0,
+        courtyard: { widthMm: 16.2, heightMm: 18.4 },
       }),
     })
     expect(result).toMatchObject({
       success: true,
       verified: true,
       rolledBack: false,
+      courtyard: { widthMm: 16.2, heightMm: 18.4 },
     })
     expect(partitionSearchEntries([entry], dir).usable).toEqual([entry])
     expect(commands[0]?.at(-1)).toBe("@tsci/vendor.GoodPart@1.0.1")

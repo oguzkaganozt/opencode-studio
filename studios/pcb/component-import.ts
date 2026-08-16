@@ -47,6 +47,7 @@ export type ExactLcscSmokeResult = {
   stdout?: string
   stderr?: string
   exitCode?: number
+  courtyard?: { widthMm: number; heightMm: number }
 }
 
 export type ExactLcscImportDependencies = {
@@ -67,7 +68,7 @@ export type ExactLcscImportFailureReason =
   | "filesystem_error"
 
 export type ExactLcscImportResult =
-  | ({ success: true; rolledBack: false } & ExactLcscSmokeInput)
+  | ({ success: true; rolledBack: false; courtyard?: { widthMm: number; heightMm: number } } & ExactLcscSmokeInput)
   | {
       success: false
       reason: ExactLcscImportFailureReason
@@ -308,7 +309,7 @@ export async function importExactLcscComponent(
     }
     await rm(published.temporary, { force: true })
     published = undefined
-    return { success: true, rolledBack: false, ...smokeInput }
+    return { success: true, rolledBack: false, ...smokeInput, courtyard: smoke.courtyard }
   } catch (error) {
     let rolledBack = false
     if (target && published) rolledBack = await rollbackPublished(target, published).catch(() => false)

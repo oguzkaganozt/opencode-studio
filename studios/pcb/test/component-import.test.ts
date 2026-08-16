@@ -55,7 +55,7 @@ describe("exact LCSC component import", () => {
   test("imports one validated component with pinned exact-footprint argv", async () => {
     const dir = await project()
     const source = component()
-    const mock = importer(source)
+    const mock = importer(source, async () => ({ success: true, courtyard: { widthMm: 2.4, heightMm: 1.2 } }))
     const expectedSha256 = createHash("sha256").update(source).digest("hex")
 
     const result = await importExactLcscComponent({ projectDir: dir, lcscPartNumber: "C2049745", expectedSha256 }, mock.dependencies)
@@ -67,6 +67,7 @@ describe("exact LCSC component import", () => {
       exportName: "DFE201210U_2R2M_P2",
       manufacturerPartNumber: "DFE201210U_2R2M_P2",
       sha256: expectedSha256,
+      courtyard: { widthMm: 2.4, heightMm: 1.2 },
     })
     expect(mock.commands).toHaveLength(1)
     expect(mock.commands[0]!.argv.slice(-4)).toEqual(["import", "--jlcpcb", "--use-exact-footprint", "C2049745"])

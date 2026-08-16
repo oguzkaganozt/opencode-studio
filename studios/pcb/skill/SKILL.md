@@ -28,8 +28,9 @@ Any source edit invalidates build, SVG, Gerber, BOM, and CPL — rebuild before 
    `candidateId` or an exact JLCPCB `C` number. It smoke-tests and rolls back
    failures. Do not run npm, inspect `node_modules`, or repeat searches with
    synonyms. `footprintOnly` and `catalogOnly` are not wired parts until added.
-   After a JLCPCB add, read the returned datasheet notes before wiring analog or
-   power pins. No verified implementation → placeholder + keepout.
+    After add, place with the returned `courtyard` `{widthMm,heightMm}` box; keep
+    neighbors outside it. After a JLCPCB add, read the returned datasheet notes
+    before wiring analog or power pins. No verified implementation → placeholder + keepout.
 5. Build after each stage (`pcb_circuit_build`). Fix placement DRC; do not disable it.
    Use `actionableDiagnostics` first; query exact remaining types with
    `pcb_circuit_read`, not full Circuit JSON. Use `pcb_circuit_check` for bounded

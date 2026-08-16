@@ -17,7 +17,7 @@
   },
   "studio-pcb": {
     "path": "studios/pcb/skill/SKILL.md",
-    "sha256": "f25e5e5db8855b9165f96473c6e0b9f8366445fd7896ad0f15f001f250887049"
+      "sha256": "53b7ebcc08d32078551a69a75b15033a9f340855a13b409dca322e3167c1b023"
   },
   "studio-fw": {
     "path": "studios/fw/skill/SKILL.md",
