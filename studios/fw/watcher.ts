@@ -36,6 +36,19 @@ function schedule(key: string, event: FwProjectEvent) {
   )
 }
 
+function scheduleRewatch(workspaceRoot: string) {
+  const key = `rewatch:${workspaceRoot}`
+  const existing = debounceTimers.get(key)
+  if (existing) clearTimeout(existing)
+  debounceTimers.set(
+    key,
+    setTimeout(() => {
+      debounceTimers.delete(key)
+      void ensureFwWatching(workspaceRoot)
+    }, DEBOUNCE_MS),
+  )
+}
+
 function dropWatcher(key: string) {
   const watcher = watchers.get(key)
   if (!watcher) return
@@ -95,7 +108,7 @@ function watchProject(project: FwProject) {
   watchPath(
     `root:${project.directory}`,
     project.directory,
-    (filename) => filename === "sim",
+    (filename) => String(filename ?? "").replace(/\/$/, "") === "sim",
     () => {
       watchSim(project)
       schedule(`artifacts:${project.id}`, { type: "artifacts-changed", projectId: project.id, at: Date.now() })
@@ -112,7 +125,7 @@ export async function ensureFwWatching(workspaceRoot: string): Promise<void> {
       () => true,
       () => {
         schedule(`projects:${workspaceRoot}`, { type: "projects-changed", at: Date.now() })
-        void ensureFwWatching(workspaceRoot)
+        scheduleRewatch(workspaceRoot)
       },
     )
     const projects = await listFwProjects(workspaceRoot)
