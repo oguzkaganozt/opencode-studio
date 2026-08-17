@@ -35,10 +35,10 @@
           <div class="timeline">
             <article class="timeline-item"><div class="timeline-number">0</div><div><h3>PCB dikey doğrulama</h3><p>Board intent, onay, gerçek PCB tool'u, DRC fail/retry, restart/resume, manufacturing artifact, graph ve eval.</p></div></article>
             <article class="timeline-item"><div class="timeline-number">1</div><div><h3>Platform foundation</h3><p>ProductDefinition, Studio SDK, entitlement, PlatformBridge, DB, event log, artifact graph, secrets, design system ve CI.</p></div></article>
-            <article class="timeline-item"><div class="timeline-number">2</div><div><h3>Product PCB</h3><p>Bağımsız onboarding, workflow, tool'lar, schematic/board/BOM/3D viewer'lar, benchmark, web ve release.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">2</div><div><h3>Product PCB</h3><p>Bağımsız onboarding, apply tool'ları, workflow, viewer'lar, benchmark ve yalnız PCB içeren install archive.</p></div></article>
             <article class="timeline-item"><div class="timeline-number">3</div><div><h3>Product CAD</h3><p>Ayrı konumlanan ikinci ürün. Platform contract'larının gerçekten tekrar kullanılabildiğini kanıtlar.</p></div></article>
             <article class="timeline-item"><div class="timeline-number">4</div><div><h3>Interoperability</h3><p>Versioned artifact import/export, deep link, entitlement-aware handoff ve integration workflow'ları.</p></div></article>
-            <article class="timeline-item"><div class="timeline-number">5</div><div><h3>Account portal ve dağıtım</h3><p>Ürün seçimi, entitlement, ayrı web entry point'leri, signed local daemon ve team Docker Compose.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">5</div><div><h3>Account portal ve dağıtım</h3><p>Ürün seçimi, entitlement, install.sh, signed daemon, Compose ve isteğe bağlı per-user systemd.</p></div></article>
             <article class="timeline-item"><div class="timeline-number">6</div><div><h3>Full Suite, yalnız talep varsa</h3><p>Mevcut ürünlerin composition'ı. Odaklı ürünleri değiştirmez veya zorunlu hale getirmez.</p></div></article>
             <article class="timeline-item"><div class="timeline-number">7</div><div><h3>Release gate</h3><p>Benchmark, trajectory eval, recovery, isolation, entitlement, artifact contract, upgrade ve temiz kurulum testleri.</p></div></article>
           </div>
@@ -57,6 +57,8 @@
               <tr><td>Üretim kalitesi ölçülebiliyor mu?</td><td>DRC/readiness, artifact integrity ve agent trajectory eval gate'lerinin geçmesi</td></tr>
               <tr><td>Agent iddiası yeterli mi?</td><td>Hayır. Host evidence, kilitli coverage ve negatif fixture olmadan complete yok</td></tr>
               <tr><td>Abort yayınlar mı?</td><td>Hayır. Yalnız current generation okunur</td></tr>
+              <tr><td>Kaynak nasıl değişir?</td><td>Hashed apply tool + in-lock recheck; generic edit/write yok</td></tr>
+              <tr><td>Archive başka ürün içerir mi?</td><td>Hayır. Product PCB tarball'ı yalnız PCB paketler</td></tr>
             </tbody>
           </table>
         </section>

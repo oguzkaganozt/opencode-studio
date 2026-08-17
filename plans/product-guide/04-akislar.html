@@ -107,6 +107,9 @@
             <article class="card"><h3>Onay kalıcı</h3><p>Tarayıcı kapansa bile approval kaydı ve bekleyen workflow kaybolmaz.</p></article>
             <article class="card"><h3>Artifact referanslı</h3><p>Workflow state büyük dosyayı değil yalnız artifact ID ve hash'i taşır.</p></article>
             <article class="card"><h3>Bağlantı bağımsız</h3><p>SSE kopunca kullanıcı event cursor üzerinden kaçırdığı olayları yeniden alır.</p></article>
+            <article class="card"><h3>Apply kilitli</h3><p>Kaynak yalnız hashed apply tool ile değişir. Aynı hash ile iki yazımdan biri kazanır.</p></article>
+            <article class="card"><h3>Abort dispose değil</h3><p>İkinci prompt 409 döner. Abort oturumu silmez; kapanış worker child'larını biçer.</p></article>
+            <article class="card"><h3>changedPaths</h3><p>Viewer'lar tool adından değil, mutator'un döndürdüğü canonical path listesinden yenilenir.</p></article>
           </div>
         </section>
 

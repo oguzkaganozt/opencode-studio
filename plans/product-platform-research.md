@@ -133,6 +133,11 @@ useful product lesson is kept as a studio SDK rule:
 - compute completion from coverage, never from agent status fields;
 - score benchmarks from disk, including negative fixtures;
 - fail closed on warnings, stale evidence, abort, and unsandboxed builds.
+- mutate PCB/firmware sources only through hashed apply tools, with in-lock
+  hash recheck and exactly one winner for concurrent same-hash writes;
+- return canonical `changedPaths` so viewers refresh without guessing;
+- keep abort separate from dispose and reap worker children on shutdown;
+- ship a single-product install archive; never a partial multi-product bundle.
 
 Product PCB instantiates this with ERC/DRC, netlist, BOM, footprint, and
 manufacturing readiness. Product CAD later reuses the same contract shape, not
@@ -503,7 +508,8 @@ to the default browser.
 Each focused product receives its own direct entry point and product manifest.
 The same daemon can serve multiple entitled products in a shared platform
 deployment, while a local install may package only one focused product and its
-required toolchains.
+required toolchains. Product PCB's first store is a GitHub Release archive plus
+`install.sh`. Do not ship a tarball that advertises missing products.
 
 Why Node rather than Bun as the product runtime:
 

@@ -133,6 +133,13 @@ the OpenCode plugin plans, tool names, or on-disk CAD schemas.
   missing checks, and warning-only reports.
 - Do not encode design choices as filename or part-name heuristics.
 - Ship the outer truth model before cheaper authoring loops or worker fan-out.
+- Register no generic `bash`, `edit`, `write`, `grep`, `find`, or `ls` tools.
+- PCB source changes go through `pcb_source_read` / `pcb_source_apply` with a
+  `base_hash`. Generic writes must not exist before these tools exist.
+- Serialize apply by canonical target path and recheck the hash inside the
+  lock. Two concurrent same-hash writes have exactly one winner.
+- Every mutator returns canonical `changedPaths`. Viewers refresh from that
+  set, not from tool-name guesses.
 
 For Product PCB the first locked checks are ERC/DRC, netlist, BOM, footprint,
 and manufacturing readiness. Gerber, drill, BOM, and pick-and-place publish
@@ -166,6 +173,17 @@ only from a current host-complete report.
 - Filesystem access always goes through backend capabilities; browser storage
   is never authoritative product state.
 
+## Sessions and distribution holes
+
+- One active prompt per session; a second prompt returns `409 busy`.
+- Abort cancels work without disposing the session. Dispose unsubscribes,
+  flushes, and reaps worker children. Shutdown disposes every live session.
+- Session and worker keys stay distinct when two conversations share a cwd.
+- Product PCB ships as a single-product GitHub Release archive plus
+  `install.sh`. Do not publish a partial multi-product bundle.
+- Team/self-host default remains Docker Compose. An optional per-user systemd
+  unit may run the same daemon; one user, one port, independent upgrade.
+
 ## Phases
 
 ### 0. Validate the platform hypothesis
@@ -185,9 +203,9 @@ adapters, design system, and CI/release pipeline.
 ### 2. First focused product
 
 Build Product PCB with its own positioning, onboarding, workflows, tools,
-schematic/board/BOM/3D viewers, locked intent, host evidence, negative
-benchmarks, web entry point, and release. Do not build a generic empty platform
-or expose placeholder products.
+schematic/board/BOM/3D viewers, locked intent, host evidence, apply tools,
+negative benchmarks, web entry point, and a PCB-only release archive. Do not
+build a generic empty platform or expose placeholder products.
 
 ### 3. Second focused product
 
@@ -203,8 +221,8 @@ handoffs, and connected workflows without making products depend on each other.
 ### 5. Account portal and distribution
 
 Ship the product selector, subscriptions/entitlements, signed local Node daemon
-releases, product-specific web deployments, and Docker Compose with PostgreSQL
-and Caddy for team/self-hosted deployments.
+releases, `install.sh`, product-specific web deployments, Docker Compose with
+PostgreSQL and Caddy, and an optional per-user systemd unit.
 
 ### 6. Optional Full Suite
 
@@ -230,3 +248,5 @@ upgrade/rollback, and clean installation before release.
 - Providers, runtimes, durability engines, and execution backends remain
   replaceable behind product-owned contracts.
 - A design is complete only when host evidence covers every locked check.
+- Agents cannot mutate product files except through hashed apply tools.
+- A second prompt cannot start on a busy session; abort does not leak workers.
