@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Teknik Stack</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="side-nav" aria-label="Plan sayfaları">
+        <strong>Platform planı</strong>
+        <ol>
+          <li><a href="index.html">0. Genel bakış</a></li>
+          <li><a href="01-urun.html">1. Ürün ailesi</a></li>
+          <li><a href="02-mimari.html">2. Mimari</a></li>
+          <li><a href="03-stack.html" aria-current="page">3. Teknik stack</a></li>
+          <li><a href="04-akislar.html">4. Çalışma modeli</a></li>
+          <li><a href="05-yol-haritasi.html">5. Yol haritası</a></li>
+        </ol>
+      </nav>
+
+      <main>
+        <header class="page-header">
+          <p class="eyebrow">3. Teknik stack</p>
+          <h1>Hangi araç ne işimize yarıyor?</h1>
+          <p class="lead">Her araç tek bir sorumluluk üstlenir. Aynı işi yapan iki runtime veya iki UI protokolü kullanmayız.</p>
+        </header>
+
+        <section>
+          <h2>Platform kompozisyonu</h2>
+          <table>
+            <thead><tr><th>İç sözleşme</th><th>Görevi</th><th>PCB-first kazancı</th></tr></thead>
+            <tbody>
+              <tr><td><strong>ProductDefinition</strong></td><td>Ürünün branding, route, studio, workflow, viewer ve worker allowlist'i</td><td>PCB yalnız kendi paketleriyle build olur</td></tr>
+              <tr><td><strong>Studio SDK</strong></td><td>Domain tool, artifact, quality gate, viewer ve benchmark contract'ları</td><td>CAD daha sonra aynı contract ile eklenir</td></tr>
+              <tr><td><strong>Entitlement model</strong></td><td>Hesabın hangi ürüne erişebildiğini belirler</td><td>Kullanıcı yalnız satın aldığı ürünü görür</td></tr>
+              <tr><td><strong>Artifact contracts</strong></td><td>Ürünler arası versioned import/export ve lineage</td><td>Entegrasyon doğrudan package bağımlılığı yaratmaz</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>Frontend</h2>
+          <table>
+            <thead><tr><th>Araç</th><th>Görevi</th><th>Kazancı</th></tr></thead>
+            <tbody>
+              <tr><td><strong>React 19 + Vite</strong> <span class="badge core">Ana</span></td><td>Ürün arayüzü ve hızlı build/dev ortamı</td><td>Olgun ekosistem, web ve desktop'ta aynı UI</td></tr>
+              <tr><td><strong>TanStack Query</strong> <span class="badge core">Ana</span></td><td>Sunucu verisi, cache, loading ve invalidation</td><td>Elle veri senkronizasyonunu azaltır</td></tr>
+              <tr><td><strong>assistant-ui</strong> <span class="badge core">Ana</span></td><td>Chat, tool kartları, composer ve history primitifleri</td><td>Standart agent UI parçalarını sıfırdan yazdırmaz</td></tr>
+              <tr><td><strong>AG-UI</strong> <span class="badge core">Ana</span></td><td>Agent run, tool, state ve HITL event protokolü</td><td>UI'ı Mastra'ya doğrudan kilitlemez</td></tr>
+              <tr><td><strong>React Flow</strong> <span class="badge core">Ana</span></td><td>Workflow grafiği ve canlı adım durumu</td><td>Olgun node/edge editörü</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>Agent ve workflow</h2>
+          <table>
+            <thead><tr><th>Araç</th><th>Görevi</th><th>Kazancı</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Mastra</strong> <span class="badge core">Ana</span></td><td>Agent, model router, tool, workflow, memory, approval ve evals</td><td>Ürün seviyesindeki agent altyapısını tek TypeScript çatıda verir</td></tr>
+              <tr><td><strong>Inngest</strong> <span class="badge optional">Gerektiğinde</span></td><td>Uzun workflow, retry, event wait ve concurrency</td><td>Mastra'nın resmi durability yolu; managed kullanımda düşük ops</td></tr>
+              <tr><td><strong>Restate</strong> <span class="badge optional">Alternatif</span></td><td>Local journal tabanlı durable execution</td><td>Offline/local durability zorunluysa güçlü tek-binary seçenek</td></tr>
+              <tr><td><strong>Temporal</strong> <span class="badge optional">İleri</span></td><td>Kritik dağıtık workflow ve güçlü versioning</td><td>Yüksek ölçek ve doğruluk gerektiğinde escalation path</td></tr>
+            </tbody>
+          </table>
+          <div class="callout">
+            <strong>Vercel AI SDK neden ana stack'te değil?</strong>
+            Mastra model, tool, streaming ve agent loop ihtiyacını karşılıyor. <code>ai@7</code> yalnız Mastra'nın
+            karşılamadığı somut bir düşük seviye ihtiyaç çıkarsa eklenir.
+          </div>
+        </section>
+
+        <section>
+          <h2>Kalite ve gözlemlenebilirlik</h2>
+          <table>
+            <thead><tr><th>Araç</th><th>Görevi</th><th>Kazancı</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Mastra evals + Vitest</strong></td><td>Tool sırası, çıktı, trajectory ve domain benchmark testleri</td><td>Model/prompt değişiminde regresyonu CI'da yakalar</td></tr>
+              <tr><td><strong>OpenTelemetry</strong></td><td>Framework-neutral trace standardı</td><td>Observability sağlayıcısını değiştirilebilir tutar</td></tr>
+              <tr><td><strong>Langfuse</strong></td><td>Trace, token/maliyet, dataset, experiment ve annotation</td><td>Üretimde agent davranışını ölçer ve iyileştirir</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>Execution ve veri</h2>
+          <table>
+            <thead><tr><th>Araç</th><th>Görevi</th><th>Kazancı</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Docker / rootless Podman</strong></td><td>CAD, PCB ve firmware toolchain izolasyonu</td><td>Sürüm kontrollü, limitli ve tekrar üretilebilir execution</td></tr>
+              <tr><td><strong>PGlite / PostgreSQL</strong></td><td>Ürünün transactional verisi</td><td>Local'de embedded, team/cloud'da gerçek Postgres</td></tr>
+              <tr><td><strong>Kysely</strong></td><td>Type-safe SQL ve migration</td><td>İnce, stabil ve veritabanına yakın katman</td></tr>
+              <tr><td><strong>Mastra LibSQL / Postgres</strong></td><td>Agent memory ve workflow snapshot</td><td>Framework state'i ürün verisinden ayırır</td></tr>
+              <tr><td><strong>Local CAS / S3 API</strong></td><td>Büyük immutable artifact dosyaları</td><td>DB'yi şişirmeden hash ile doğrulanabilir storage</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>Runtime ve dağıtım</h2>
+          <table>
+            <thead><tr><th>Araç</th><th>Görevi</th><th>Kazancı</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Node.js 24 LTS + Hono</strong></td><td>API, daemon ve stream sunucusu</td><td>Mastra ve native paketler için en güvenli runtime</td></tr>
+              <tr><td><strong>resumable SSE</strong></td><td>Agent/workflow event akışı</td><td>Bağlantı kopunca event cursor ile devam</td></tr>
+              <tr><td><strong>WebSocket</strong></td><td>PTY ve çift yönlü yüksek frekanslı iletişim</td><td>Yalnız gerçekten duplex yüzeylerde kullanılır</td></tr>
+              <tr><td><strong>pnpm workspaces</strong></td><td>Monorepo dependency yönetimi</td><td>Olgun Node uyumu ve sıkı dependency sınırları</td></tr>
+              <tr><td><strong>Docker Compose + Caddy</strong></td><td>Team/self-host deployment</td><td>Kubernetes olmadan basit HTTPS ve servis kurulumu</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <nav class="page-nav" aria-label="Sayfa geçişi">
+          <a href="02-mimari.html">&larr; Önceki</a>
+          <a href="04-akislar.html">Sonraki: Çalışma modeli &rarr;</a>
+        </nav>
+      </main>
+    </div>
+  </body>
+</html>

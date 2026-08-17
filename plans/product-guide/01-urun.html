@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ürün Ailesi</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="side-nav" aria-label="Plan sayfaları">
+        <strong>Platform planı</strong>
+        <ol>
+          <li><a href="index.html">0. Genel bakış</a></li>
+          <li><a href="01-urun.html" aria-current="page">1. Ürün ailesi</a></li>
+          <li><a href="02-mimari.html">2. Mimari</a></li>
+          <li><a href="03-stack.html">3. Teknik stack</a></li>
+          <li><a href="04-akislar.html">4. Çalışma modeli</a></li>
+          <li><a href="05-yol-haritasi.html">5. Yol haritası</a></li>
+        </ol>
+      </nav>
+
+      <main>
+        <header class="page-header">
+          <p class="eyebrow">1. Ürün ailesi</p>
+          <h1>Kullanıcı yalnız ihtiyacı olan ürünü görür</h1>
+          <p class="lead">
+            Platform hesabı ortaktır. Ürünler ayrı erişilir, ayrı konumlanır ve farklı ihtiyaçları çözer. Kullanıcı
+            almadığı veya kullanmadığı stüdyolarla karşılaşmaz. İlk ürün yalnız PCB tasarımına odaklanır.
+          </p>
+        </header>
+
+        <section>
+          <h2>Abonelik ve erişim</h2>
+          <div class="diagram" role="group" tabindex="0" aria-label="Platform aboneliği ve ürün erişimi">
+            <p class="diagram-title">Kullanıcı yolculuğu</p>
+            <div class="flow compact">
+              <div class="flow-node"><strong>Platforma kayıt</strong><small>Tek hesap</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Product PCB seçimi</strong><small>İlk ürün</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node accent"><strong>Entitlement</strong><small>Erişim hakkı</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Odaklı arayüz</strong><small>Yalnız ilgili workflow ve viewer'lar</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Artifact çıktısı</strong><small>İndir veya başka ürüne aktar</small></div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Odaklı ürünler</h2>
+          <table>
+            <thead><tr><th>Ürün</th><th>Kullanıcı ihtiyacı</th><th>Gördüğü deneyim</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Product PCB</strong> <span class="badge core">İlk</span></td><td>Elektronik kart tasarlamak ve üretime hazırlamak</td><td>Şema, PCB, parts, DRC, BOM, Gerber ve 3D viewer</td></tr>
+              <tr><td><strong>Product CAD</strong> <span class="badge optional">Sonra</span></td><td>Mekanik parça veya assembly tasarlamak</td><td>CAD workflow, 3D viewer, ölçüm, QC, STEP/STL/GLB</td></tr>
+              <tr><td><strong>Product Concept</strong> <span class="badge optional">Sonra</span></td><td>Fikri, gereksinimleri ve kararları netleştirmek</td><td>Brief, moodboard, araştırma, karar ve onay workflow'ları</td></tr>
+              <tr><td><strong>Product Firmware</strong> <span class="badge optional">Sonra</span></td><td>Firmware üretmek, derlemek ve doğrulamak</td><td>Kaynak, build, simulation, UART, binary ve test sonuçları</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <div class="callout">
+          <strong>Product PCB bağımsızlık koşulu</strong>
+          PCB ürünü diğer ürünler hiç yazılmamış gibi build, install ve run edebilmelidir. Başka ürünlerin route,
+          schema, worker image veya placeholder navigation öğeleri PCB paketine girmez.
+        </div>
+
+        <section>
+          <h2>Ürünler bağımsız ama bağlantılıdır</h2>
+          <div class="diagram" role="group" tabindex="0" aria-label="Ürünler arası artifact handoff">
+            <p class="diagram-title">İsteğe bağlı artifact handoff</p>
+            <div class="flow compact">
+              <div class="flow-node"><strong>Product CAD</strong><small>MechanicalSpec v1</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node accent"><strong>Artifact Graph</strong><small>Version, hash ve lineage</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Product PCB</strong><small>Board outline ve mounting</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node accent"><strong>ElectronicsSpec v1</strong><small>Pin, MCU ve interface</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Product Firmware</strong><small>Project ve pin map</small></div>
+            </div>
+          </div>
+          <p>
+            PCB kullanıcısının CAD ürününe sahip olması gerekmez. Artifact dışa aktarılabilir. İki ürüne de sahipse
+            <code>Open in CAD</code> veya <code>Open in Firmware</code> gibi entitlement-aware geçişler görünür.
+          </p>
+        </section>
+
+        <section>
+          <h2>Full Suite ne zaman gelir?</h2>
+          <div class="card-grid">
+            <article class="card"><h3>Başlangıçta değil</h3><p>Önce odaklı ürünlerin tek başına gerçek değer üretmesi kanıtlanır.</p></article>
+            <article class="card"><h3>Yeni ürün olarak</h3><p>Full Suite, tüm ürünleri zorunlu hale getirmez; ayrı bir entitlement ve composition olur.</p></article>
+            <article class="card"><h3>Gerçek talep ile</h3><p>Çok disiplinli ekiplerin workflow ihtiyacı ölçülmeden suite geliştirilmez.</p></article>
+          </div>
+        </section>
+
+        <section>
+          <h2>Web ve desktop</h2>
+          <div class="split-diagram diagram" role="group" tabindex="0" aria-label="Ürünlerin web ve desktop dağıtımı">
+            <div class="flow-node accent"><strong>Product PCB Web</strong><small>pcb.example.com</small></div>
+            <div class="arrow" aria-hidden="true">&rarr;</div>
+            <div class="flow-node"><strong>Product PCB Desktop</strong><small>Aynı web build'i, ince shell</small></div>
+          </div>
+          <p>
+            Her ürün aynı manifestten web deployment ve ileride ayrı Electron/Tauri uygulaması üretebilir. Platform
+            çekirdeği, daemon ve domain paketleri ortak kalır.
+          </p>
+        </section>
+
+        <nav class="page-nav" aria-label="Sayfa geçişi">
+          <a href="index.html">&larr; Önceki</a>
+          <a href="02-mimari.html">Sonraki: Mimari &rarr;</a>
+        </nav>
+      </main>
+    </div>
+  </body>
+</html>

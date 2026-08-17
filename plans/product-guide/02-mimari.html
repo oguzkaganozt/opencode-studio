@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Platform Mimarisi</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="side-nav" aria-label="Plan sayfaları">
+        <strong>Platform planı</strong>
+        <ol>
+          <li><a href="index.html">0. Genel bakış</a></li>
+          <li><a href="01-urun.html">1. Ürün ailesi</a></li>
+          <li><a href="02-mimari.html" aria-current="page">2. Mimari</a></li>
+          <li><a href="03-stack.html">3. Teknik stack</a></li>
+          <li><a href="04-akislar.html">4. Çalışma modeli</a></li>
+          <li><a href="05-yol-haritasi.html">5. Yol haritası</a></li>
+        </ol>
+      </nav>
+
+      <main>
+        <header class="page-header">
+          <p class="eyebrow">2. Mimari</p>
+          <h1>Platform, ürün ve stüdyo birbirinden ayrılır</h1>
+          <p class="lead">
+            Product PCB tek başına çalışır. Product CAD daha sonra aynı platform contract'larıyla eklenir, ancak PCB
+            paketine veya arayüzüne bağımlılık oluşturmaz.
+          </p>
+        </header>
+
+        <section>
+          <h2>Kompozisyon modeli</h2>
+          <div class="diagram stack-diagram" role="group" tabindex="0" aria-label="Platform ürün stüdyo katmanları">
+            <p class="diagram-title">Aynı platformdan farklı ürünler</p>
+            <div class="stack-layer"><strong>Platform account</strong> Abonelik, entitlement ve ürün seçimi</div>
+            <div class="stack-layer core"><strong>Product manifest</strong> PCB ürünü için yalnız PCB studio, workflow, viewer ve worker'ları</div>
+            <div class="stack-layer"><strong>Studio package</strong> PCB tool'ları, artifact schema'ları, DRC, viewer ve benchmark'ları</div>
+            <div class="stack-layer"><strong>Platform core</strong> Session, run, event, approval, artifact, agent, workflow ve execution</div>
+            <div class="stack-layer"><strong>Shared infrastructure</strong> Database, artifact store, observability, secrets ve dağıtım</div>
+          </div>
+        </section>
+
+        <section>
+          <h2>PCB ürünü yalnız PCB ile boot eder</h2>
+          <div class="diagram" role="group" tabindex="0" aria-label="PCB ürününün bağımsız kompozisyonu">
+            <p class="diagram-title">Product PCB build</p>
+            <div class="flow compact">
+              <div class="flow-node accent"><strong>pcb.product.ts</strong><small>Manifest</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>PCB Studio</strong><small>Domain package</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Shared Platform</strong><small>Runtime ve data</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>PCB Web/Desktop</strong><small>Odaklı ürün</small></div>
+            </div>
+          </div>
+          <p>
+            CAD, Concept ve Firmware paketleri import edilmez. Platform startup sırasında “eksik stüdyo” aramaz.
+            Ürün manifesti bir allowlist'tir; global registry keşfi değildir.
+          </p>
+        </section>
+
+        <section>
+          <h2>Kim hangi sorumluluğun sahibi?</h2>
+          <table>
+            <thead><tr><th>Katman</th><th>Sorumluluğu</th><th>Bilmediği şey</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Platform core</strong></td><td>Account, entitlement, session, run, event, approval, artifact ve runtime</td><td>PCB/CAD gibi domain davranışı</td></tr>
+              <tr><td><strong>Product manifest</strong></td><td>Branding, navigation, studio, workflow, viewer ve worker seçimi</td><td>Framework iç detayları</td></tr>
+              <tr><td><strong>Studio package</strong></td><td>Domain tool, artifact, kalite kapısı, worker, viewer ve benchmark</td><td>Diğer ürünlerin package'ları</td></tr>
+              <tr><td><strong>Integration package</strong></td><td>Versioned artifact dönüşümü ve cross-product workflow</td><td>Ürünlerin özel implementation'ları</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>Veri sahipliği</h2>
+          <table>
+            <thead><tr><th>Sistem</th><th>Sahip olduğu veri</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Ürün veritabanı</strong></td><td>Account, subscription, entitlement, product definition, project, session, run, approval, artifact metadata ve lineage</td></tr>
+              <tr><td><strong>Mastra storage</strong></td><td>Agent memory ve workflow resume snapshot'ları</td></tr>
+              <tr><td><strong>Artifact store</strong></td><td>Gerber, STEP, STL, firmware binary ve büyük log'lar</td></tr>
+              <tr><td><strong>Langfuse</strong></td><td>Trace, token, maliyet, eval sonucu ve insan etiketi</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>Web ve desktop aynı ürünü çalıştırır</h2>
+          <div class="diagram split-diagram" role="group" tabindex="0" aria-label="Web ve desktop istemcileri">
+            <div class="card"><h3>Product PCB Web</h3><p>React uygulaması normal tarayıcıdan versioned platform API'ye bağlanır.</p></div>
+            <div class="arrow" aria-hidden="true">&rarr;</div>
+            <div class="card"><h3>Ortak Node daemon</h3><p>API, auth, workflow, storage ve execution worker'larını yönetir.</p></div>
+          </div>
+          <div class="diagram split-diagram" role="group" tabindex="0" aria-label="Desktop istemcisi">
+            <div class="card"><h3>Product PCB Desktop</h3><p>Electron/Tauri shell aynı web build'ini açar ve daemon'ı sidecar olarak yönetir.</p></div>
+            <div class="arrow" aria-hidden="true">&rarr;</div>
+            <div class="card"><h3>Aynı platform contract'ları</h3><p>Desktop için ürün mantığı veya ikinci backend yazılmaz.</p></div>
+          </div>
+        </section>
+
+        <section>
+          <h2>PlatformBridge</h2>
+          <p>
+            UI, işletim sistemi özelliklerini doğrudan çağırmaz. Dosya seçici, bildirim, clipboard, deep link,
+            güncelleme ve keychain işlemleri küçük bir <code>PlatformBridge</code> üzerinden yapılır.
+          </p>
+          <div class="diagram flow vertical" role="group" tabindex="0" aria-label="PlatformBridge adaptörleri">
+            <div class="flow-node accent"><strong>Focused Product UI</strong><small>Tek ürün kodu</small></div>
+            <div class="arrow" aria-hidden="true">&darr;</div>
+            <div class="flow-node"><strong>PlatformBridge</strong><small>Ortak arayüz</small></div>
+            <div class="arrow" aria-hidden="true">&darr;</div>
+            <div class="flow">
+              <div class="flow-node"><strong>WebPlatformBridge</strong><small>Tarayıcı</small></div>
+              <div class="flow-node"><strong>DesktopPlatformBridge</strong><small>Electron/Tauri</small></div>
+            </div>
+          </div>
+        </section>
+
+        <nav class="page-nav" aria-label="Sayfa geçişi">
+          <a href="01-urun.html">&larr; Önceki</a>
+          <a href="03-stack.html">Sonraki: Teknik stack &rarr;</a>
+        </nav>
+      </main>
+    </div>
+  </body>
+</html>

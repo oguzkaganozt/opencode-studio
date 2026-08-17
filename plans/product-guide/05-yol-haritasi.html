@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Platform Yol Haritası</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="side-nav" aria-label="Plan sayfaları">
+        <strong>Platform planı</strong>
+        <ol>
+          <li><a href="index.html">0. Genel bakış</a></li>
+          <li><a href="01-urun.html">1. Ürün ailesi</a></li>
+          <li><a href="02-mimari.html">2. Mimari</a></li>
+          <li><a href="03-stack.html">3. Teknik stack</a></li>
+          <li><a href="04-akislar.html">4. Çalışma modeli</a></li>
+          <li><a href="05-yol-haritasi.html" aria-current="page">5. Yol haritası</a></li>
+        </ol>
+      </nav>
+
+      <main>
+        <header class="page-header">
+          <p class="eyebrow">5. Yol haritası</p>
+          <h1>Önce PCB, sonra platformu kanıtlayan ikinci ürün</h1>
+          <p class="lead">
+            Generic bir platform veya Full Suite ile başlamıyoruz. İlk olarak bağımsız Product PCB'yi çıkarıyor, sonra
+            Product CAD ile platform ortaklığını ve ayrı ürün modelini doğruluyoruz.
+          </p>
+        </header>
+
+        <section>
+          <h2>Fazlar</h2>
+          <div class="timeline">
+            <article class="timeline-item"><div class="timeline-number">0</div><div><h3>PCB dikey doğrulama</h3><p>Board intent, onay, gerçek PCB tool'u, DRC fail/retry, restart/resume, manufacturing artifact, graph ve eval.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">1</div><div><h3>Platform foundation</h3><p>ProductDefinition, Studio SDK, entitlement, PlatformBridge, DB, event log, artifact graph, secrets, design system ve CI.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">2</div><div><h3>Product PCB</h3><p>Bağımsız onboarding, workflow, tool'lar, schematic/board/BOM/3D viewer'lar, benchmark, web ve release.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">3</div><div><h3>Product CAD</h3><p>Ayrı konumlanan ikinci ürün. Platform contract'larının gerçekten tekrar kullanılabildiğini kanıtlar.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">4</div><div><h3>Interoperability</h3><p>Versioned artifact import/export, deep link, entitlement-aware handoff ve integration workflow'ları.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">5</div><div><h3>Account portal ve dağıtım</h3><p>Ürün seçimi, entitlement, ayrı web entry point'leri, signed local daemon ve team Docker Compose.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">6</div><div><h3>Full Suite, yalnız talep varsa</h3><p>Mevcut ürünlerin composition'ı. Odaklı ürünleri değiştirmez veya zorunlu hale getirmez.</p></div></article>
+            <article class="timeline-item"><div class="timeline-number">7</div><div><h3>Release gate</h3><p>Benchmark, trajectory eval, recovery, isolation, entitlement, artifact contract, upgrade ve temiz kurulum testleri.</p></div></article>
+          </div>
+        </section>
+
+        <section>
+          <h2>Product PCB hard gate'leri</h2>
+          <table>
+            <thead><tr><th>Soru</th><th>Başarı koşulu</th></tr></thead>
+            <tbody>
+              <tr><td>Başka ürün olmadan çalışıyor mu?</td><td>CAD/Concept/Firmware package, route, schema ve worker'ları olmadan build/install/run</td></tr>
+              <tr><td>Kullanıcı yalnız PCB deneyimini görüyor mu?</td><td>Navigation, onboarding, docs ve ayarlar yalnız PCB ihtiyacına odaklı</td></tr>
+              <tr><td>Mastra yeterli mi?</td><td>Tool, workflow, approval, eval ve stream için özel agent runtime yazılmaması</td></tr>
+              <tr><td>Workflow restart'tan dönüyor mu?</td><td>Duplicate mutation olmadan aynı run'ın devam etmesi</td></tr>
+              <tr><td>Sandbox toolchain'i çalıştırıyor mu?</td><td>PCB build, log stream, cancel ve artifact toplamanın geçmesi</td></tr>
+              <tr><td>Üretim kalitesi ölçülebiliyor mu?</td><td>DRC/readiness, artifact integrity ve agent trajectory eval gate'lerinin geçmesi</td></tr>
+              <tr><td>Agent iddiası yeterli mi?</td><td>Hayır. Host evidence, kilitli coverage ve negatif fixture olmadan complete yok</td></tr>
+              <tr><td>Abort yayınlar mı?</td><td>Hayır. Yalnız current generation okunur</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>Product CAD neden ikinci?</h2>
+          <div class="card-grid">
+            <article class="card"><h3>Gerçek platform testi</h3><p>Farklı toolchain ve viewer, core'un PCB'ye özel yazılmadığını gösterir.</p></article>
+            <article class="card"><h3>Ayrı pazar testi</h3><p>Aynı platformun farklı kullanıcı dili, onboarding ve ürün konumlandırmasını desteklediğini kanıtlar.</p></article>
+            <article class="card"><h3>Bağımsız build testi</h3><p>PCB, CAD package'ı kaldırıldığında da değişmeden release edilebilmelidir.</p></article>
+            <article class="card"><h3>Artifact handoff testi</h3><p>MechanicalSpec gibi versioned sözleşmeler direct import olmadan birlikte çalışmayı kanıtlar.</p></article>
+          </div>
+        </section>
+
+        <section>
+          <h2>Şimdilik yapmayacaklarımız</h2>
+          <div class="card-grid">
+            <article class="card"><h3>Mega-app</h3><p>Tüm stüdyoları PCB kullanıcısına gösteren tek navigation yapılmaz.</p></article>
+            <article class="card"><h3>Placeholder ürünler</h3><p>“Yakında CAD” gibi kapalı menüler Product PCB deneyimine eklenmez.</p></article>
+            <article class="card"><h3>Full Suite</h3><p>Odaklı ürünler ve cross-product talep kanıtlanmadan geliştirilmez.</p></article>
+            <article class="card"><h3>İkinci runtime</h3><p>Pi, LangGraph veya AI SDK agent loop yalnız ölçülmüş Mastra sınırında değerlendirilir.</p></article>
+            <article class="card"><h3>Temporal/Kubernetes</h3><p>Gerçek ölçek ve operasyon ihtiyacı oluşmadan ürün maliyetine eklenmez.</p></article>
+            <article class="card"><h3>Desktop shell</h3><p>Mimari hazır tutulur; native UX özelliği geliştirileceği zaman seçilir.</p></article>
+            <article class="card"><h3>Eski CAD planları</h3><p>OpenCode plugin, IR ve print-plan sözleşmeleri taşınmaz. Yalnız kalite kuralları kalır.</p></article>
+          </div>
+        </section>
+
+        <section>
+          <h2>Bittiğinde</h2>
+          <ul>
+            <li>Product PCB tek başına satın alınabilir, kurulabilir ve kullanılabilir.</li>
+            <li>Kullanıcı başka stüdyoların varlığını bilmeden odaklı PCB deneyimi yaşar.</li>
+            <li>Product CAD aynı platformdan ama ayrı ürün olarak çıkarılabilir.</li>
+            <li>Ürünler versioned artifact'larla isteğe bağlı haberleşebilir.</li>
+            <li>Web build'leri ileride ayrı desktop shell'ler içinde çalışabilir.</li>
+            <li>Full Suite yalnız gerçek çok-disiplin talebi varsa eklenebilir.</li>
+          </ul>
+        </section>
+
+        <div class="callout">
+          <strong>Detay kaynakları</strong>
+          Kısa plan için <a href="../product-rebuild-plan.md">product-rebuild-plan.md</a>, araştırma ve alternatifler için
+          <a href="../product-platform-research.md">product-platform-research.md</a>.
+        </div>
+
+        <nav class="page-nav" aria-label="Sayfa geçişi">
+          <a href="04-akislar.html">&larr; Önceki</a>
+          <a href="index.html">Başa dön &rarr;</a>
+        </nav>
+      </main>
+    </div>
+  </body>
+</html>

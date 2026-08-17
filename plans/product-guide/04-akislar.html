@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Çalışma Modeli</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="side-nav" aria-label="Plan sayfaları">
+        <strong>Platform planı</strong>
+        <ol>
+          <li><a href="index.html">0. Genel bakış</a></li>
+          <li><a href="01-urun.html">1. Ürün ailesi</a></li>
+          <li><a href="02-mimari.html">2. Mimari</a></li>
+          <li><a href="03-stack.html">3. Teknik stack</a></li>
+          <li><a href="04-akislar.html" aria-current="page">4. Çalışma modeli</a></li>
+          <li><a href="05-yol-haritasi.html">5. Yol haritası</a></li>
+        </ol>
+      </nav>
+
+      <main>
+        <header class="page-header">
+          <p class="eyebrow">4. Çalışma modeli</p>
+          <h1>Sistem bir işi nasıl tamamlar?</h1>
+          <p class="lead">Agent serbestçe çalışır; workflow, kalite kapıları ve execution sınırları ürün tarafından yönetilir.</p>
+        </header>
+
+        <section>
+          <h2>Örnek: Product PCB workflow</h2>
+          <div class="diagram" role="group" tabindex="0" aria-label="PCB workflow örneği">
+            <p class="diagram-title">İlk üründe hata ve düzeltme dahil gerçek akış</p>
+            <div class="flow compact">
+              <div class="flow-node"><strong>Board intent</strong><small>Gereksinim ve constraint</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node accent"><strong>Plan onayı</strong><small>HITL</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Şema ve PCB üret</strong><small>İzole worker</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>DRC/readiness</strong><small>Deterministic gate</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Fail ise düzelt</strong><small>Bounded retry</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node accent"><strong>Artifact yayınla</strong><small>Gerber, BOM, spec</small></div>
+            </div>
+          </div>
+          <p>
+            Workflow grafiği kullanıcıya sırayı gösterir. Ancak üretim hazırlığı modelin iddiasından değil, PCB domain
+            motorunun DRC, BOM ve assembly kanıtından gelir.
+          </p>
+        </section>
+
+        <section>
+          <h2>Kim neyin kanıtı?</h2>
+          <table>
+            <thead><tr><th>Konu</th><th>Tek otorite</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Gereksinim</strong></td><td>İlk domain yazısından önce kilitlenen board intent</td></tr>
+              <tr><td><strong>Kaynak</strong></td><td>Yalnız domain tool'ları; generic edit/write/shell yok</td></tr>
+              <tr><td><strong>Üretilmiş gerçek</strong></td><td>Yayımlanmış artifact ve hash'leri</td></tr>
+              <tr><td><strong>QC kanıtı</strong></td><td>Host'un yazdığı, revision'a bağlı evidence</td></tr>
+              <tr><td><strong>Tamamlanma</strong></td><td>Kilitli her kontrolün güncel coverage'ı</td></tr>
+              <tr><td><strong>Benchmark</strong></td><td>Disk üzerindeki scorer; agent'ın complete iddiası değil</td></tr>
+            </tbody>
+          </table>
+          <div class="card-grid">
+            <article class="card"><h3>Fail-closed</h3><p>Uyarı, stale evidence ve abort yayımlanmış artifact üretemez.</p></article>
+            <article class="card"><h3>Tam coverage</h3><p>Tek DRC geçişi ERC, netlist, BOM veya assembly'yi kapsamaz.</p></article>
+            <article class="card"><h3>Host yazar</h3><p>Hash, zaman, producer ve onay receipt'ini agent payload'ı veremez.</p></article>
+            <article class="card"><h3>Negatif fixture</h3><p>Sahte complete, eksik kontrol ve warning-only rapor bench'i geçemez.</p></article>
+          </div>
+        </section>
+
+        <section>
+          <h2>Cross-product workflow zorunlu değildir</h2>
+          <div class="diagram" role="group" tabindex="0" aria-label="Opsiyonel ürünler arası artifact akışı">
+            <p class="diagram-title">PCB tek başına çalışır, entegrasyon sonradan eklenir</p>
+            <div class="flow compact">
+              <div class="flow-node accent"><strong>Product PCB</strong><small>Bağımsız workflow</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>ElectronicsSpec v1</strong><small>Versioned artifact</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node"><strong>Export</strong><small>Firmware ürünü yoksa</small></div>
+              <div class="flow-node"><strong>Open in Firmware</strong><small>Entitlement varsa</small></div>
+            </div>
+          </div>
+          <p>Artifact sözleşmesi PCB'nin core workflow'unu başka bir ürünün varlığına bağlamaz.</p>
+        </section>
+
+        <section>
+          <h2>Workflow ve agent görev paylaşımı</h2>
+          <table>
+            <thead><tr><th>Agent karar verir</th><th>Workflow yönetir</th><th>Domain motoru zorlar</th></tr></thead>
+            <tbody>
+              <tr><td>Hangi yaklaşımı deneyeceği</td><td>Adım, retry, timeout ve onay sırası</td><td>Şema, hash, DRC/QC ve build doğruluğu</td></tr>
+              <tr><td>Hangi tool'u çağıracağı</td><td>Parallel worker ve fan-in</td><td>Dosya sınırları ve mutation kuralları</td></tr>
+              <tr><td>Hata bulunca nasıl düzelteceği</td><td>Pause/resume ve cancellation</td><td>Artifact bütünlüğü ve üretim kapıları</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h2>Dayanıklılık</h2>
+          <div class="card-grid">
+            <article class="card"><h3>Her run kimlikli</h3><p>Aynı iş tekrar gelirse mutation idempotency key ile tekrarlanmaz.</p></article>
+            <article class="card"><h3>Onay kalıcı</h3><p>Tarayıcı kapansa bile approval kaydı ve bekleyen workflow kaybolmaz.</p></article>
+            <article class="card"><h3>Artifact referanslı</h3><p>Workflow state büyük dosyayı değil yalnız artifact ID ve hash'i taşır.</p></article>
+            <article class="card"><h3>Bağlantı bağımsız</h3><p>SSE kopunca kullanıcı event cursor üzerinden kaçırdığı olayları yeniden alır.</p></article>
+          </div>
+        </section>
+
+        <section>
+          <h2>Evals neden ürünün parçası?</h2>
+          <div class="diagram flow vertical" role="group" tabindex="0" aria-label="Eval döngüsü">
+            <div class="flow-node"><strong>Golden benchmark</strong><small>Beklenen tool, çıktı ve artifact</small></div>
+            <div class="arrow" aria-hidden="true">&darr;</div>
+            <div class="flow-node"><strong>Agent/workflow çalışır</strong><small>Gerçek veya mock tool'lar</small></div>
+            <div class="arrow" aria-hidden="true">&darr;</div>
+            <div class="flow-node"><strong>Scorer ölçer</strong><small>Doğruluk, trajectory, maliyet, süre</small></div>
+            <div class="arrow" aria-hidden="true">&darr;</div>
+            <div class="flow-node accent"><strong>CI gate</strong><small>Regresyon varsa release durur</small></div>
+          </div>
+          <p>
+            Prompt, model veya tool değişikliği sezgiyle yayınlanmaz. Mastra evals ve repository benchmark'ları önce
+            sonucu ölçer; Langfuse üretim trace'lerini dataset'e dönüştürür.
+          </p>
+        </section>
+
+        <section>
+          <h2>Execution sınırı</h2>
+          <div class="diagram flow" role="group" tabindex="0" aria-label="Sandbox execution akışı">
+            <div class="flow-node"><strong>Agent tool call</strong><small>Typed request</small></div>
+            <div class="arrow" aria-hidden="true">&rarr;</div>
+            <div class="flow-node"><strong>Execution broker</strong><small>Policy ve resource limit</small></div>
+            <div class="arrow" aria-hidden="true">&rarr;</div>
+            <div class="flow-node accent"><strong>Docker/Podman worker</strong><small>CAD, PCB veya ESP-IDF image</small></div>
+            <div class="arrow" aria-hidden="true">&rarr;</div>
+            <div class="flow-node"><strong>Artifact store</strong><small>Dosya, log ve receipt</small></div>
+          </div>
+          <p>
+            MCP yalnız tool protokolüdür; izolasyonu sağlamaz. CPU, RAM, network, filesystem ve process-tree kontrolü
+            execution katmanının sorumluluğudur.
+          </p>
+        </section>
+
+        <nav class="page-nav" aria-label="Sayfa geçişi">
+          <a href="03-stack.html">&larr; Önceki</a>
+          <a href="05-yol-haritasi.html">Sonraki: Yol haritası &rarr;</a>
+        </nav>
+      </main>
+    </div>
+  </body>
+</html>

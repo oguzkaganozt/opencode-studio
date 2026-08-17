@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ürün Platformu Planı</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="side-nav" aria-label="Plan sayfaları">
+        <strong>Platform planı</strong>
+        <ol>
+          <li><a href="index.html" aria-current="page">0. Genel bakış</a></li>
+          <li><a href="01-urun.html">1. Ürün ailesi</a></li>
+          <li><a href="02-mimari.html">2. Mimari</a></li>
+          <li><a href="03-stack.html">3. Teknik stack</a></li>
+          <li><a href="04-akislar.html">4. Çalışma modeli</a></li>
+          <li><a href="05-yol-haritasi.html">5. Yol haritası</a></li>
+        </ol>
+      </nav>
+
+      <main>
+        <header class="page-header">
+          <p class="eyebrow">Genel bakış</p>
+          <h1>Tek platform, ayrı ve odaklı ürünler</h1>
+          <p class="lead">
+            Amaç dört stüdyoyu tek arayüzde toplamak değil. Ortak altyapı üzerinde PCB, CAD, Concept ve Firmware
+            gibi bağımsız ürünler geliştirmek; kullanıcıya yalnız ihtiyaç duyduğu ürünü göstermek. İlk çıkış yalnız
+            Product PCB olacak.
+          </p>
+        </header>
+
+        <section>
+          <h2>Ürün modeli</h2>
+          <div class="diagram" role="group" tabindex="0" aria-label="Platform ve odaklı ürünler">
+            <p class="diagram-title">Bir abonelik, ihtiyaca göre ürün erişimi</p>
+            <div class="flow compact">
+              <div class="flow-node accent"><strong>Platform hesabı</strong><small>Abonelik ve entitlement</small></div>
+              <div class="arrow" aria-hidden="true">&rarr;</div>
+              <div class="flow-node accent"><strong>PCB ürünü</strong><small>İlk bağımsız ürün</small></div>
+              <div class="flow-node"><strong>CAD ürünü</strong><small>Daha sonra, ayrı pazar</small></div>
+              <div class="flow-node"><strong>Concept ürünü</strong><small>Daha sonra</small></div>
+              <div class="flow-node"><strong>Firmware ürünü</strong><small>Daha sonra</small></div>
+            </div>
+          </div>
+          <p>
+            Kullanıcı yalnız PCB ürününe sahipse PCB arayüzünü görür. Diğer ürünler ana navigation'a karışmaz.
+            Birden fazla ürüne sahip kullanıcılar artifact handoff ve deep link ile ürünler arasında çalışabilir.
+          </p>
+        </section>
+
+        <section>
+          <h2>Temel hedefler</h2>
+          <div class="card-grid">
+            <article class="card">
+              <h3>Odaklı kullanıcı deneyimi</h3>
+              <p>Product PCB ilk günden kendi dili, onboarding'i, workflow'ları ve viewer'larıyla tamamlanır.</p>
+            </article>
+            <article class="card">
+              <h3>Ortak bakım</h3>
+              <p>Auth, agent, workflow, eval, artifact, execution ve UI altyapısı bir kez geliştirilir.</p>
+            </article>
+            <article class="card">
+              <h3>İsteğe bağlı entegrasyon</h3>
+              <p>Ürünler versioned artifact sözleşmeleriyle haberleşir; birbirine doğrudan bağımlı olmaz.</p>
+            </article>
+            <article class="card">
+              <h3>Full Suite seçeneği</h3>
+              <p>Gerçek ihtiyaç oluşursa mevcut ürünler daha sonra ayrı bir Full Suite olarak birleştirilir.</p>
+            </article>
+            <article class="card">
+              <h3>Host doğrular</h3>
+              <p>Tamamlanma agent iddiasından değil, kilitli intent ve disk üzerindeki QC kanıtından gelir.</p>
+            </article>
+          </div>
+        </section>
+
+        <div class="callout">
+          <strong>Ana ilke</strong>
+          Kullanıcıya generic bir iskelet veya karmaşık mega-app sunmuyoruz. Aynı platform üzerinde çalışan net,
+          bağımsız ve satın alınabilir ürünler sunuyoruz.
+        </div>
+
+        <section>
+          <h2>Bu rehberde ne var?</h2>
+          <table>
+            <thead><tr><th>Sayfa</th><th>Cevapladığı soru</th></tr></thead>
+            <tbody>
+              <tr><td><a href="01-urun.html">Ürün ailesi</a></td><td>Kullanıcı hangi ürünü nasıl alacak ve kullanacak?</td></tr>
+              <tr><td><a href="02-mimari.html">Mimari</a></td><td>Platform, ürün ve stüdyo paketleri nasıl ayrılıyor?</td></tr>
+              <tr><td><a href="03-stack.html">Teknik stack</a></td><td>Her kütüphane ve servis tam olarak ne işe yarıyor?</td></tr>
+              <tr><td><a href="04-akislar.html">Çalışma modeli</a></td><td>Workflow, eval, sandbox ve artifact handoff nasıl işliyor?</td></tr>
+              <tr><td><a href="05-yol-haritasi.html">Yol haritası</a></td><td>Platformu ve ilk ürünleri hangi sırayla geliştireceğiz?</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <nav class="page-nav" aria-label="Sayfa geçişi">
+          <span></span>
+          <a href="01-urun.html">Sonraki: Ürün ailesi &rarr;</a>
+        </nav>
+      </main>
+    </div>
+  </body>
+</html>
