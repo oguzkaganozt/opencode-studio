@@ -28,7 +28,7 @@ The platform must support:
 - interactive agents and explicit, visual engineering workflows;
 - deterministic domain gates alongside nondeterministic model decisions;
 - human approvals, structured input, cancellation, retry, suspend, and resume;
-- multi-provider BYOK without making a model vendor the product runtime;
+- operator-swappable models behind one product model, without user keys or a picker;
 - isolated CAD, PCB, and firmware execution with streamed logs and artifacts;
 - persistent sessions, runs, events, interrupts, and artifact lineage;
 - first-class deterministic benchmarks, trajectory evals, traces, token/cost
@@ -670,7 +670,7 @@ PCB board intent
 
 Hard gates:
 
-- provider-neutral BYOK;
+- operator model swap without a user-facing key or picker;
 - tool allowlists and approval persistence;
 - process-tree cancellation;
 - restart recovery with no duplicate mutation;

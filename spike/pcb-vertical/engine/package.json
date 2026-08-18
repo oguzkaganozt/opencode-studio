@@ -1,0 +1,11 @@
+{
+  "name": "pcb-spike-engine",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@tscircuit/checks": "0.0.162",
+    "react": "19.2.8",
+    "tscircuit": "0.0.2306",
+    "zod": "3.25.76"
+  }
+}

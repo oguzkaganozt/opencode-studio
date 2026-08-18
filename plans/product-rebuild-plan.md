@@ -35,12 +35,12 @@ required schemas. They do not exist from the PCB user's perspective.
 
 ## Shared stack
 
-| Layer | Choice |
+| Layer | Locked (ADR 0001) |
 | --- | --- |
 | Web | React 19, Vite, TanStack Query |
 | Agent UI | assistant-ui, AG-UI, React Flow |
 | Agent/runtime | Mastra agents, workflows, memory, evals |
-| Models | Mastra model router, multi-provider BYOK |
+| Models | One product model; operators swap via Mastra router; keys stay on the platform |
 | Durability | Mastra locally; Inngest when required |
 | Observability | OpenTelemetry to Langfuse |
 | Execution | Docker/rootless Podman behind an internal adapter |
@@ -186,13 +186,16 @@ only from a current host-complete report.
 
 ## Phases
 
-### 0. Validate the platform hypothesis
+### 0. Validate the platform hypothesis — done
 
-Build a Product PCB vertical slice: locked board intent -> approval -> real PCB
-task -> DRC/readiness failure -> correction -> abort that cannot publish ->
-restart/resume -> host-complete manufacturing artifact -> claim-free score ->
-trace/eval. Confirm Mastra, durability, AG-UI, Docker/Podman, packaging, and
-provider switching. Record the decision in an ADR.
+Spike `spike/pcb-vertical` and ADR `plans/adr/0001-phase-0-stack.md` lock
+the stack. Evidence: locked intent, hashed apply, tscircuit DRC
+fail/correct, abort-without-publish, Mastra suspend/resume + LibSQL
+restart, agent tools, model-router fail-closed, AG-UI lifecycle events.
+
+Live OpenRouter dual-model generate, AG-UI encoder SSE, and PCB-only
+archive are evidenced. assistant-ui, Hono daemon, and signed product
+install remain implementation, not stack reopeners.
 
 ### 1. Platform foundation
 

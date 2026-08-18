@@ -1,0 +1,27 @@
+{
+  "name": "pcb-vertical-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "slice": "tsx src/cli.ts",
+    "test": "tsx --test src/host.test.ts src/slice.test.ts src/agent.test.ts src/agui.test.ts src/pack.test.ts src/byok.test.ts",
+    "pack": "bash scripts/pack.sh"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@ag-ui/core": "0.0.58",
+    "@ag-ui/encoder": "0.0.58",
+    "@mastra/core": "1.59.0",
+    "@mastra/libsql": "1.20.0",
+    "@tscircuit/checks": "^0.0.162",
+    "tscircuit": "0.0.2306",
+    "zod": "4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "tsx": "4.20.5",
+    "typescript": "5.9.3"
+  }
+}
